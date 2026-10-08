@@ -17,16 +17,16 @@ inline constexpr std::size_t kReportedHoldings = 5;
 
 enum class Crossing : std::uint8_t { kNone, kRose, kFell };
 
-struct HoldingLevel {
-  std::uint32_t level = 0;
+struct HoldingStep {
+  std::uint32_t step = 0;
   Crossing crossing = Crossing::kNone;
-  [[nodiscard]] bool operator==(const HoldingLevel &) const = default;
+  [[nodiscard]] bool operator==(const HoldingStep &) const = default;
 };
 
 struct ActorHolding {
   std::uint32_t actor = 0;
   std::string name;
-  std::uint64_t bytes = 0;
+  std::uint64_t ownBytes = 0;
   std::uint64_t sharedBytes = 0;
   float screenFraction = 0.0f;
   std::vector<std::string> recipes;
@@ -37,7 +37,7 @@ struct ActorTargets {
   std::string name;
   float screenFraction = 0.0f;
   std::vector<std::string> recipes;
-  std::vector<HeldTarget> held;
+  std::vector<HeldTarget> targets;
 };
 
 struct TargetTotals {
@@ -59,8 +59,8 @@ struct TargetBurst {
   std::uint32_t intervalMs = 0;
 };
 
-[[nodiscard]] HoldingLevel NextHoldingLevel(std::uint32_t a_level,
-                                            std::uint64_t a_bytes) noexcept;
+[[nodiscard]] HoldingStep NextHoldingStep(std::uint32_t a_step,
+                                          std::uint64_t a_bytes) noexcept;
 [[nodiscard]] bool IsBurst(const TargetBurst &a_burst) noexcept;
 [[nodiscard]] ScreenSpread SpreadOf(std::vector<float> a_fractions);
 [[nodiscard]] std::vector<ActorHolding>

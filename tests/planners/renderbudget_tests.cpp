@@ -1,4 +1,5 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
+#include "Core.h"
 #include "planners/RenderBudget.h"
 #include "test_support.h"
 
@@ -23,6 +24,21 @@ BudgetActor Npc(ResolutionLevel a_level, float a_fraction,
   return actor;
 }
 
+std::vector<BudgetActor> Numbered(std::vector<BudgetActor> a_actors) {
+  for (std::size_t i = 0; i < a_actors.size(); ++i) {
+    a_actors[i].actor = static_cast<std::uint32_t>(i + 1);
+  }
+  return a_actors;
+}
+
+std::vector<std::uint32_t> ReleasedActors(const BudgetResponse &a_response) {
+  std::vector<std::uint32_t> actors;
+  for (const BudgetRelease &release : a_response.release) {
+    actors.push_back(release.actor);
+  }
+  return actors;
+}
+
 BudgetActor Hidden(std::uint64_t a_releasable) {
   BudgetActor actor = Npc(ResolutionLevel::kFull, 0.5f, a_releasable);
   actor.inView = false;
@@ -30,13 +46,14 @@ BudgetActor Hidden(std::uint64_t a_releasable) {
   return actor;
 }
 
-void AllowanceFollowsHeadroom() {
+void AllowanceIsFreeVideoMemoryLessMargin() {
   const BudgetSample sample{VideoMemory{8 * kGiB, 6 * kGiB}, 1 * kGiB, 0};
   Equal(MarginOf(8 * kGiB), kMinBudgetMargin,
         "a small budget keeps the 512 MiB margin");
   Equal(MarginOf(20 * kGiB), 1 * kGiB, "a large budget keeps 5 % as margin");
   Check(AllowanceOf(sample) == 1 * kGiB + 2 * kGiB - kMinBudgetMargin,
-        "the allowance is the plugin's bytes plus headroom less the margin");
+        "the allowance is the plugin's bytes plus free video memory less the "
+        "margin");
   BudgetSample capped = sample;
   capped.capBytes = 1 * kGiB;
   Check(AllowanceOf(capped) == 1 * kGiB, "the cap lowers the allowance");
@@ -107,16 +124,16 @@ void PressureHasABand() {
         "the goal is the allowance less the band");
 }
 
-void ResizeNeedsOldAndNewBytes() {
+void GrowthMustFitTheAllowance() {
   const BudgetState state{3 * kGiB, 2 * kGiB, Pressure::kNone};
   Check(AdmitGrowth(state, 1 * kGiB) == Admission::kAdmitted,
-        "a build that fits on top of the holding is admitted");
+        "growth that fits on top of the planned bytes is admitted");
   Check(AdmitGrowth(state, 1 * kGiB + 1) == Admission::kOverAllowance,
-        "a build that needs more than the headroom waits");
-  const BudgetState after = Admitted(state, 1 * kGiB);
-  Equal(after.planned, 3 * kGiB, "an admitted build counts at once");
+        "growth that needs more than the headroom waits");
+  const BudgetState after = Charged(state, 1 * kGiB);
+  Equal(after.planned, 3 * kGiB, "admitted growth is charged at once");
   Check(AdmitGrowth(after, 1) == Admission::kOverAllowance,
-        "a second build in the same interval sees the first");
+        "a second step up in the same interval sees the first");
   const BudgetState pressed{3 * kGiB, 1 * kGiB, Pressure::kOver};
   Check(AdmitGrowth(pressed, 1) == Admission::kUnderPressure,
         "no step up is admitted under pressure");
@@ -128,7 +145,7 @@ void StepDownPricesBothLevels() {
   Check(StepDownOf(ResolutionLevel::kFull, full, half,
                    IntermediateHolding::kHeld) ==
             StepDownOption{ResolutionLevel::kHalf, 600 * kMebibyte},
-        "a step down frees the difference of the held bytes");
+        "a step down frees the difference of the planned bytes");
   Check(StepDownOf(ResolutionLevel::kFull, full, half,
                    IntermediateHolding::kReleased) ==
             StepDownOption{ResolutionLevel::kHalf, 150 * kMebibyte},
@@ -146,46 +163,45 @@ void StepDownPricesBothLevels() {
 }
 
 void HiddenActorsReleaseFirst() {
-  const std::vector<BudgetActor> actors{
-      Npc(ResolutionLevel::kFull, 0.1f, 500 * kMebibyte), Hidden(100),
-      Hidden(300)};
+  const std::vector<BudgetActor> actors =
+      Numbered({Npc(ResolutionLevel::kFull, 0.1f, 500 * kMebibyte), Hidden(100),
+                Hidden(300)});
   const BudgetResponse small = RespondToPressure(1000, 800, actors, false);
-  Check(small.release == std::vector<std::size_t>{2},
+  Check(small.release == std::vector<BudgetRelease>{{3, 300}},
         "the largest hidden holding releases first and enough stops");
-  Check(!small.stepDown, "a release that fits needs no step down");
+  Check(Is<Enough>(small.next), "a release that fits needs no step down");
   const BudgetResponse large = RespondToPressure(1000, 500, actors, false);
-  Check(large.release == std::vector<std::size_t>{2, 1},
+  Check(ReleasedActors(large) == std::vector<std::uint32_t>{3, 2},
         "every hidden actor releases before a step down");
-  Check(large.stepDown && large.stepDown->actor == 0,
+  const StepDown *stepDown = Get<StepDown>(large.next);
+  Check(stepDown && stepDown->actor == 1,
         "a step down follows when the releases do not fit");
   Check(RespondToPressure(400, 500, actors, false).release.empty(),
         "nothing happens below the goal");
 }
 
-void StepDownOrder() {
+void WidestGapThenMostFreedStepsDownFirst() {
   BudgetActor player = Npc(ResolutionLevel::kFull, 0.01f, 9 * kGiB);
   player.role = ActorRole::kPlayer;
   BudgetActor resizing = Npc(ResolutionLevel::kFull, 0.01f, 9 * kGiB);
   resizing.resizing = true;
-  const std::vector<BudgetActor> actors{
-      player,
-      resizing,
-      Npc(ResolutionLevel::kFull, 0.6f, 4 * kGiB),
-      Npc(ResolutionLevel::kFull, 0.2f, 1 * kGiB),
-      Npc(ResolutionLevel::kHalf, 0.05f, 2 * kGiB),
-      Npc(ResolutionLevel::kEighth, 0.01f, 0)};
+  const std::vector<BudgetActor> actors =
+      Numbered({player, resizing, Npc(ResolutionLevel::kFull, 0.6f, 4 * kGiB),
+                Npc(ResolutionLevel::kFull, 0.2f, 1 * kGiB),
+                Npc(ResolutionLevel::kHalf, 0.05f, 2 * kGiB),
+                Npc(ResolutionLevel::kEighth, 0.01f, 0)});
   const BudgetResponse response =
       RespondToPressure(10 * kGiB, 1 * kGiB, actors, false);
-  Check(response.stepDown && response.stepDown->actor == 4,
+  const StepDown *stepDown = Get<StepDown>(response.next);
+  Check(stepDown && stepDown->actor == 5,
         "the NPC finest against its screen need steps down, bytes break the "
         "tie");
-  Check(response.stepDown &&
-            response.stepDown->option.to == ResolutionLevel::kQuarter,
+  Check(stepDown && stepDown->option.to == ResolutionLevel::kQuarter,
         "a step down goes one level coarser");
-  Check(!RespondToPressure(10 * kGiB, 1 * kGiB, actors, true).stepDown,
-        "no step down starts while a resize is in flight");
-  Check(!RespondToPressure(10 * kGiB, 1 * kGiB, actors, true).exhausted,
-        "a resize in flight is not exhaustion");
+  Check(Is<AwaitResize>(
+            RespondToPressure(10 * kGiB, 1 * kGiB, actors, true).next),
+        "no step down starts while a resize is in flight, and that is not "
+        "exhaustion");
 }
 
 void PlayerIsNeverPicked() {
@@ -195,8 +211,8 @@ void PlayerIsNeverPicked() {
                                         Npc(ResolutionLevel::kEighth, 0.0f, 0)};
   const BudgetResponse response =
       RespondToPressure(10 * kGiB, 1 * kGiB, actors, false);
-  Check(!response.stepDown, "the player never steps down");
-  Check(response.exhausted,
+  Check(!Is<StepDown>(response.next), "the player never steps down");
+  Check(Is<Exhausted>(response.next),
         "pressure with only the player and coarsest NPCs is exhausted");
 }
 
@@ -318,14 +334,14 @@ void LinesCarryTheNumbers() {
 }
 
 int main() {
-  AllowanceFollowsHeadroom();
+  AllowanceIsFreeVideoMemoryLessMargin();
   UnknownBudgetDoesNothing();
   GarbageReadingsStayBounded();
   PressureHasABand();
-  ResizeNeedsOldAndNewBytes();
+  GrowthMustFitTheAllowance();
   StepDownPricesBothLevels();
   HiddenActorsReleaseFirst();
-  StepDownOrder();
+  WidestGapThenMostFreedStepsDownFirst();
   PlayerIsNeverPicked();
   HeadroomFollowsTheState();
   InstallTakesTheFinestFittingLevel();

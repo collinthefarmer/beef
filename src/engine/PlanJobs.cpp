@@ -19,7 +19,7 @@ PlanJobBook Opened(PlanJobBook a_book, OpenPlanJob a_job) {
   return a_book;
 }
 
-ClosedPlanJob Closed(PlanJobBook a_book, JobId a_job) {
+BookAfterClose Closed(PlanJobBook a_book, JobId a_job) {
   const auto found = std::ranges::find(a_book.open, a_job, &OpenPlanJob::job);
   if (found == a_book.open.end()) {
     return {std::move(a_book), std::nullopt};
@@ -29,11 +29,14 @@ ClosedPlanJob Closed(PlanJobBook a_book, JobId a_job) {
   return {std::move(a_book), std::move(closed)};
 }
 
-PlanArrival ArrivalOf(bool a_open, bool a_built) noexcept {
-  if (!a_open) {
+PlanArrival ArrivalOf(
+    const std::optional<OpenPlanJob> &a_job,
+    const std::expected<PlanBuildOutput, std::string> &a_result) noexcept {
+  if (!a_job) {
     return PlanArrival::kStale;
   }
-  return a_built ? PlanArrival::kBuilt : PlanArrival::kFailed;
+  return a_result && a_result->plan ? PlanArrival::kBuilt
+                                    : PlanArrival::kFailed;
 }
 
 AwaiterStep StepFor(std::optional<JobId> a_awaited, JobId a_arrived,

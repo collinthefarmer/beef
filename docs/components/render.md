@@ -24,8 +24,8 @@ test covers it.
   `BuildActorRender` (`engine/ManagerApply.cpp`) creates one instance per
   actor, and every geometry of the actor shares it through
   `GeometryInputs::render`. A resolution resize (`engine/ActorResize.h`)
-  creates a second instance with `AtSides`, which copies the plan, the
-  `GeometryInputs` and the graphs and takes new sides. The second instance
+  creates a second instance with `AtSizes`, which copies the plan, the
+  `GeometryInputs` and the graphs and takes new sizes. The second instance
   draws before it is attached, because it holds its own copies of every
   input. A new instance from an install or a plan arrival is attached at once
   and draws its slots hidden over several ticks (`engine/ActorResize.h`,
@@ -60,7 +60,7 @@ dispatches each `RenderStepKind` to one function per kind, for example `ExecuteB
 
 | Type | Description | Declared in |
 |---|---|---|
-| `RenderInstance` | Owns the `RenderPlan`, the recipe graphs, the `GeometryInputs` of each geometry, and the execution. `UpdateInput` imports one value. `Update` refreshes the signal-driven inputs of one recipe instance. `Render` draws one stack output. `BeginFrame` starts one render tick. `Targets` gives the plan's `PlanTargets`, computed once at construction. `AtSides` returns a new instance with the same plan, inputs and graphs at other sides. | `RenderInstance.h` |
+| `RenderInstance` | Owns the `RenderPlan`, the recipe graphs, the `GeometryInputs` of each geometry, and the execution. `UpdateInput` imports one value. `Update` refreshes the signal-driven inputs of one recipe instance. `Render` draws one stack output. `BeginFrame` starts one render tick. `Targets` gives the plan's `PlanTargets`, computed once at construction. `AtSizes` returns a new instance with the same plan, inputs and graphs at other sizes. `SizeAt` gives the `TextureSize` of one side reference. | `RenderInstance.h` |
 | `RenderValue` | The variant of every value a step reads or writes: a numeric `Value`, a `TextureView`, a mesh entry, `MaterialInputs`, a `RenderTransform`, `RenderFirings`, bake buffers, a material sample or analysis, a **lookup**, a `LayerFilter` or a `StackResult`. | `RenderInstance.h` |
 | `RenderScratch` | Per-step scratch: a weak reuse hint for the step's target, the reduction and material readback state, and the cached `LayerFieldPack`. | `RenderInstance.h` |
 | `TextureView` | A texture with its sampling (`TextureLab::LayerInput`), its normalization factor and, when a step produced it, its owning target. | `RenderInstance.h` |

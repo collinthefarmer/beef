@@ -25,7 +25,7 @@ struct StepExecution {
   Arguments arguments;
   RenderScratch &scratch;
   TextureLab &lab;
-  const PlanSides &sides;
+  const PlanSizes &sizes;
 };
 struct ProgramOperands {
   std::span<const RenderValueRef> inputs;
@@ -148,7 +148,7 @@ AcquireStepTarget(StepExecution &execution, TextureRequirements requirements) {
   if (const auto target = execution.scratch.target.lock())
     return target;
   const auto target = execution.lab.Acquire(
-      SideOf(execution.sides, requirements.side), "render step",
+      SizeOf(execution.sizes, requirements.side), "render step",
       requirements.format, requirements.mipPolicy);
   execution.scratch.target = target;
   return target;
@@ -353,13 +353,13 @@ LayerPassesFor(std::span<const PlannedLayer *const> layers,
 }
 constexpr std::uint64_t kReleaseAfterIdleMS = 500;
 static_assert(kRenderStepKindCount <= Metrics::kStepKindSlots);
-std::string StepSpanKey(const RenderStep &step, const PlanSides &sides) {
+std::string StepSpanKey(const RenderStep &step, const PlanSizes &sizes) {
   const auto requirements = RequirementsOf(step.kind);
   if (!requirements)
     return std::string{StepKindName(step.kind)};
   return std::format(
       "{} {} {}", StepKindName(step.kind),
-      SideOf(sides, requirements->side).Pixels(),
+      SizeOf(sizes, requirements->side).Pixels(),
       requirements->format == TextureFormat::kRgba32Float ? "f32" : "rgba8");
 }
 bool Releasable(const RenderStep &step, const RenderValue &value) {
@@ -590,7 +590,7 @@ StepResult DrawSampledView(const TextureView &view, ValueType type,
       {{reference, view, 0}}};
   const std::array references{reference};
   StepExecution sampling{Arguments{bound}, execution.scratch, execution.lab,
-                         execution.sides};
+                         execution.sizes};
   return DrawProgram(FieldProgram::Sample(type),
                      ProgramOperands{references, {}}, requirements, sampling);
 }
@@ -621,8 +621,8 @@ StepResult ExecuteSubmitReductionStep(const SubmitReductionStep &step,
   if (!view || !view->target)
     return std::unexpected("reduction field is unavailable");
   const auto extent = TextureLab::ExtentOf(view->texture.get());
-  const std::uint32_t side = SideOf(execution.sides, step.domain).Pixels();
-  if (!extent || extent->width != side || extent->height != side)
+  const std::uint32_t pixels = SizeOf(execution.sizes, step.domain).Pixels();
+  if (!extent || extent->width != pixels || extent->height != pixels)
     return std::unexpected("reduction field extent does not match its domain");
   if (!execution.lab.SubmitReduction(*view->target, step.kind, step.type,
                                      execution.scratch.reduction))
@@ -950,11 +950,11 @@ StepResult ExecuteCompositeStackStep(const CompositeStackStep &step,
 }
 StepResult ExecuteStep(const RenderStep &step,
                        std::span<const ResolvedRenderInput<RenderValue>> inputs,
-                       RenderScratch &scratch, const PlanSides &sides) {
+                       RenderScratch &scratch, const PlanSizes &sizes) {
   auto *lab = TextureLab::GetSingleton();
   if (!lab)
     return std::unexpected("texture lab is unavailable");
-  StepExecution execution{Arguments{inputs}, scratch, *lab, sides};
+  StepExecution execution{Arguments{inputs}, scratch, *lab, sizes};
   return Match(
       step.kind,
       [](const UnavailableStep &k) -> StepResult {
@@ -1100,22 +1100,22 @@ std::optional<RenderValue> ImportedValueOf(const BoundTextureValue &bound,
 }
 }
 RenderInstance::RenderInstance(
-    RenderPlan plan, PlanSides sides, std::vector<GeometryInputs> geometries,
+    RenderPlan plan, PlanSizes sizes, std::vector<GeometryInputs> geometries,
     std::vector<std::shared_ptr<const RecipeGraph>> graphs)
     : graphs_(std::move(graphs)), geometries_(std::move(geometries)),
-      sides_(std::move(sides)), execution_(std::move(plan)),
-      targets_(TargetsOf(execution_.Plan(), sides_)),
+      sizes_(std::move(sizes)), execution_(std::move(plan)),
+      targets_(TargetsOf(execution_.Plan(), sizes_)),
       animated_(AnimatedSteps(execution_.Plan())) {
   for (auto &geometry : geometries_)
     geometry.render.reset();
 }
 const PlanTargets &RenderInstance::Targets() const noexcept { return targets_; }
-std::shared_ptr<RenderInstance> RenderInstance::AtSides(PlanSides sides) const {
-  return std::make_shared<RenderInstance>(Plan(), std::move(sides), geometries_,
+std::shared_ptr<RenderInstance> RenderInstance::AtSizes(PlanSizes sizes) const {
+  return std::make_shared<RenderInstance>(Plan(), std::move(sizes), geometries_,
                                           graphs_);
 }
-TextureSize RenderInstance::Side(SideRef side) const noexcept {
-  return SideOf(sides_, side);
+TextureSize RenderInstance::SizeAt(SideRef side) const noexcept {
+  return SizeOf(sizes_, side);
 }
 const RenderPlan &RenderInstance::Plan() const noexcept {
   return execution_.Plan();
@@ -1283,8 +1283,8 @@ void RenderInstance::CollectReadback(RenderInputId input) {
   };
   if (const auto *reduction = Get<SubmitReductionStep>(kind))
     import(lab->CollectReduction(reduction->kind, reduction->type,
-                                 {SideOf(sides_, reduction->domain).Pixels(),
-                                  SideOf(sides_, reduction->domain).Pixels()},
+                                 {SizeOf(sizes_, reduction->domain).Pixels(),
+                                  SizeOf(sizes_, reduction->domain).Pixels()},
                                  scratch->reduction),
            [](Value value) { return RenderValue{value}; });
   else if (Is<SubmitMaterialSampleStep>(kind))
@@ -1316,13 +1316,13 @@ namespace {
 StepResult
 ExecuteTimed(const RenderStep &step,
              std::span<const ResolvedRenderInput<RenderValue>> inputs,
-             RenderScratch &scratch, const PlanSides &sides) {
+             RenderScratch &scratch, const PlanSizes &sizes) {
   Metrics::CountStepExecution(step.kind.index());
   auto *lab = TextureLab::GetSingleton();
   std::optional<TextureLab::TimedSpan> span;
   if (lab && lab->Timing())
-    span.emplace(*lab, StepSpanKey(step, sides));
-  return ExecuteStep(step, inputs, scratch, sides);
+    span.emplace(*lab, StepSpanKey(step, sizes));
+  return ExecuteStep(step, inputs, scratch, sizes);
 }
 std::vector<Value>
 NumericOperandsOf(std::span<const ResolvedRenderInput<RenderValue>> inputs) {
@@ -1388,32 +1388,32 @@ void ReportRestore(const RenderPlan &plan, RenderStepId step,
        {"kind", std::string{StepKindName(plan.steps[step].kind)}}});
 }
 struct InstanceContext {
-  const PlanSides &sides;
+  const PlanSizes &sizes;
   std::uint64_t nowMS = 0;
 };
 StepResult
 ExecuteCached(const RenderStep &step,
               std::span<const ResolvedRenderInput<RenderValue>> inputs,
               RenderScratch &scratch, const InstanceContext &context) {
-  const PlanSides &sides = context.sides;
+  const PlanSizes &sizes = context.sizes;
   const std::uint64_t nowMS = context.nowMS;
-  const std::optional<std::string> shared = SharedKeyOf(step, sides);
+  const std::optional<std::string> shared = SharedKeyOf(step, sizes);
   if (!shared)
-    return ExecuteTimed(step, inputs, scratch, sides);
+    return ExecuteTimed(step, inputs, scratch, sizes);
   const std::optional<std::string> found =
       CacheKeyFor(*shared, NumericOperandsOf(inputs));
   if (!found)
-    return ExecuteTimed(step, inputs, scratch, sides);
+    return ExecuteTimed(step, inputs, scratch, sizes);
   const std::string &key = *found;
   Compositor *compositor = Compositor::GetSingleton();
   if (!compositor)
-    return ExecuteTimed(step, inputs, scratch, sides);
+    return ExecuteTimed(step, inputs, scratch, sizes);
   ForgetReuseHint(scratch);
   if (std::optional<TextureView> hit = compositor->FindStepOutput(key, nowMS)) {
     Metrics::CountStepCacheHit();
     return RenderValue{std::move(*hit)};
   }
-  StepResult produced = ExecuteTimed(step, inputs, scratch, sides);
+  StepResult produced = ExecuteTimed(step, inputs, scratch, sizes);
   if (produced)
     if (const auto *view = Get<TextureView>(*produced))
       compositor->PublishStepOutput(key, *view, nowMS);
@@ -1424,7 +1424,7 @@ std::expected<ResolvedRenderInput<RenderValue>, std::string>
 RenderInstance::Demand(RenderValueRef output) {
   return execution_.Evaluate(
       output,
-      [context = InstanceContext{sides_, nowMS_}](
+      [context = InstanceContext{sizes_, nowMS_}](
           const RenderStep &step,
           std::span<const ResolvedRenderInput<RenderValue>> inputs,
           RenderScratch &scratch) {

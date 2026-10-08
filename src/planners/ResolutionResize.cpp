@@ -2,12 +2,12 @@
 #include "planners/ResolutionResize.h"
 
 namespace BetterEnchantmentEffects {
-ResizeDraw DrawOf(bool a_inView, std::size_t a_drawn,
-                  std::size_t a_stacks) noexcept {
-  if (!a_inView) {
+ResizeDraw DrawOf(const ResizeDrawState &a_state) noexcept {
+  if (!a_state.inView) {
     return ResizeDraw::kOutOfView;
   }
-  return a_drawn >= a_stacks ? ResizeDraw::kDrawn : ResizeDraw::kDrawing;
+  return a_state.drawn >= a_state.stacks ? ResizeDraw::kDrawn
+                                         : ResizeDraw::kDrawing;
 }
 
 bool SwapDue(const ResizeProgress &a_progress, ResizeDraw a_draw,
@@ -19,9 +19,9 @@ bool SwapDue(const ResizeProgress &a_progress, ResizeDraw a_draw,
          a_frame - a_progress.beganFrame >= kResizeSwapAfterFrames;
 }
 
-std::optional<std::size_t>
-NextBuild(std::span<const ResizeCandidate> a_candidates,
-          std::size_t a_inFlight) noexcept {
+std::optional<std::uint32_t>
+NextResize(std::span<const ResizeCandidate> a_candidates,
+           std::size_t a_inFlight) noexcept {
   if (a_inFlight >= kResizesInFlight) {
     return std::nullopt;
   }
@@ -33,6 +33,9 @@ NextBuild(std::span<const ResizeCandidate> a_candidates,
       chosen = i;
     }
   }
-  return chosen;
+  if (!chosen) {
+    return std::nullopt;
+  }
+  return a_candidates[*chosen].actor;
 }
 }

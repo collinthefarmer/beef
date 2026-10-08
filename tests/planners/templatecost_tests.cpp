@@ -80,16 +80,16 @@ std::optional<Recipe> ImportedRecipe(const Recipe &a_template) {
 
 struct SizedPlan {
   RenderPlan plan;
-  PlanSides sides;
+  PlanSizes sizes;
 };
 
-SideRef SideFor(std::vector<TextureSize> &a_sides, TextureSize a_size) {
-  const auto found = std::ranges::find(a_sides, a_size);
-  if (found != a_sides.end()) {
-    return {static_cast<std::uint32_t>(found - a_sides.begin())};
+SideRef SideFor(std::vector<TextureSize> &a_sizes, TextureSize a_size) {
+  const auto found = std::ranges::find(a_sizes, a_size);
+  if (found != a_sizes.end()) {
+    return {static_cast<std::uint32_t>(found - a_sizes.begin())};
   }
-  a_sides.push_back(a_size);
-  return {static_cast<std::uint32_t>(a_sides.size() - 1)};
+  a_sizes.push_back(a_size);
+  return {static_cast<std::uint32_t>(a_sizes.size() - 1)};
 }
 
 std::optional<SizedPlan> PlanFor(const Recipe &a_recipe,
@@ -97,7 +97,7 @@ std::optional<SizedPlan> PlanFor(const Recipe &a_recipe,
                                  const RenderBindingResolver &a_wearer,
                                  std::uint32_t a_base) {
   std::vector<RenderStackRequest> requests;
-  std::vector<TextureSize> sides;
+  std::vector<TextureSize> sizes;
   for (std::size_t o = 0; o < a_recipe.outputs.size(); ++o) {
     if (const auto *surface = Get<SurfaceOutput>(a_recipe.outputs[o])) {
       requests.push_back({&a_graph,
@@ -105,7 +105,7 @@ std::optional<SizedPlan> PlanFor(const Recipe &a_recipe,
                           1,
                           PlacementId{o},
                           o,
-                          {SideFor(sides, StackSize(*surface, a_base))}});
+                          {SideFor(sizes, StackSize(*surface, a_base))}});
     }
   }
   std::expected<RenderPlan, std::string> plan =
@@ -118,9 +118,9 @@ std::optional<SizedPlan> PlanFor(const Recipe &a_recipe,
   if (!plan) {
     return std::nullopt;
   }
-  std::expected<PlanSides, std::string> resolved =
-      SidesFor(*plan, std::move(sides));
-  Check(resolved.has_value(), "the plan names only the sides it was given");
+  std::expected<PlanSizes, std::string> resolved =
+      SizesFor(*plan, std::move(sizes));
+  Check(resolved.has_value(), "the plan names only the sizes it was given");
   if (!resolved) {
     return std::nullopt;
   }
@@ -128,13 +128,13 @@ std::optional<SizedPlan> PlanFor(const Recipe &a_recipe,
 }
 
 std::string Describe(const TargetCost &a_cost) {
-  std::string sides;
-  for (const auto &[side, count] : a_cost.targetsBySide) {
-    sides += std::format(" {}x{}", count, side);
+  std::string sizes;
+  for (const auto &[size, count] : a_cost.targetsBySize) {
+    sizes += std::format(" {}x{}", count, size);
   }
   return std::format("{} targets, {:.1f} MiB ({} )", a_cost.targets,
                      static_cast<double>(a_cost.bytes) / (1024.0 * 1024.0),
-                     sides);
+                     sizes);
 }
 }
 
@@ -153,12 +153,12 @@ std::size_t StacksIn(const RenderPlan &a_plan) {
 }
 
 void OneTargetPerContentKey() {
-  const TextureSize side{512};
-  const HeldTarget keyed{side, TextureFormat::kRgba8, "key"};
-  const HeldTarget unkeyed{side, TextureFormat::kRgba8, std::nullopt};
+  const TextureSize size{512};
+  const HeldTarget keyed{size, TextureFormat::kRgba8, "key"};
+  const HeldTarget unkeyed{size, TextureFormat::kRgba8, std::nullopt};
   const std::vector<HeldTarget> targets{keyed, keyed, unkeyed, unkeyed};
   const TargetCost cost = CostOf(targets);
-  const std::uint64_t one = TargetBytes(side, TextureFormat::kRgba8);
+  const std::uint64_t one = TargetBytes(size, TextureFormat::kRgba8);
   Check(cost.targets == 3 && cost.bytes == 3 * one &&
             one == std::uint64_t{512} * 512 * 4 * 4 / 3,
         "a content key counts once and an unkeyed target counts each time");
@@ -186,15 +186,17 @@ std::optional<Wearers> WearersAt(const Recipe &a_recipe,
 
 TargetCost CheckedCost(const Wearers &a_wearers, std::uint32_t a_base) {
   const PlanTargets first =
-      TargetsOf(a_wearers.first.plan, a_wearers.first.sides);
+      TargetsOf(a_wearers.first.plan, a_wearers.first.sizes);
   const PlanTargets same =
-      TargetsOf(a_wearers.sameItem.plan, a_wearers.sameItem.sides);
+      TargetsOf(a_wearers.sameItem.plan, a_wearers.sameItem.sizes);
   const PlanTargets other =
-      TargetsOf(a_wearers.otherItem.plan, a_wearers.otherItem.sides);
-  const TargetCost held = CostOf(first.held);
+      TargetsOf(a_wearers.otherItem.plan, a_wearers.otherItem.sizes);
+  const TargetCost held = CostOf(first.withIntermediates);
   const TargetCost stacks = CostOf(first.stacks);
-  const TargetCost twoSame = CostOf(Joined(first.held, same.held));
-  const TargetCost twoOther = CostOf(Joined(first.held, other.held));
+  const TargetCost twoSame =
+      CostOf(Joined(first.withIntermediates, same.withIntermediates));
+  const TargetCost twoOther =
+      CostOf(Joined(first.withIntermediates, other.withIntermediates));
   std::cout << std::format("base {}\n  held: {}\n  stacks: {}\n"
                            "  held, two wearers of one item: {}\n"
                            "  held, two wearers of two items: {}\n",
@@ -223,13 +225,14 @@ void LevelsMatchFreshPlans(const Recipe &a_recipe, const RecipeGraph &a_graph) {
     if (!full || !fresh) {
       return;
     }
-    const PlanSides leveled = AtLevel(full->sides, level);
-    Check(SameStructure(full->plan, fresh->plan) && leveled == fresh->sides &&
-              CostOf(TargetsOf(full->plan, leveled).held) ==
-                  CostOf(TargetsOf(fresh->plan, fresh->sides).held),
-          std::format("a base {} plan at level {} holds what a fresh base {} "
-                      "plan holds",
-                      base, LevelName(level), smaller));
+    const PlanSizes leveled = AtLevel(full->sizes, level);
+    Check(
+        SameStructure(full->plan, fresh->plan) && leveled == fresh->sizes &&
+            CostOf(TargetsOf(full->plan, leveled).withIntermediates) ==
+                CostOf(TargetsOf(fresh->plan, fresh->sizes).withIntermediates),
+        std::format("a base {} plan at level {} holds what a fresh base {} "
+                    "plan holds",
+                    base, LevelName(level), smaller));
   }
 }
 

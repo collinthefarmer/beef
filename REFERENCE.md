@@ -1532,7 +1532,7 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
   (`SlotWriter::WriteTexture`), so a material keeps the vanilla look. A shell
   would still be posed with its recipe opacity, so `RenderGeometry` hides
   shells while the actor waits. `ObserveApplication` reports the outputs as
-  waiting (`prepared`), not as failed. `UpdateResolution` skips the actor,
+  waiting (`prepared`), not as failed. `RequestStepUp` skips the actor,
   because it has no instance to resize.
 - `VerifyRenderPlanCache`, a run file's `verifyRenderPlans`, a disabled plan
   cache and an uncacheable key keep the synchronous build. Verification
@@ -1588,8 +1588,8 @@ them:
 - A sync that arrives from the queue while the budget is left runs at once.
   The budget is left only when the waiting list is empty, so an arrival does
   not overtake a waiting entry.
-- A deferred install is not admitted. The budget adds an install's bytes only
-  when it runs (`KeepActorRender`, `Admitted`). A deferred actor has no state
+- A deferred install is not charged. The budget adds an install's bytes only
+  when it runs (`KeepActorRender`, `Charged`). A deferred actor has no state
   change, so the radius and `FarthestTrackedDistance` do not see it.
 - A sync that runs and does not install removes the actor's entry, for
   example when the actor left the radius. `ForgetActor` and a load remove it
@@ -1607,7 +1607,7 @@ them:
   hides the shells, as for a waiting plan. The material keeps the vanilla
   look. The actor's lights are hidden. `FinishApplications` waits.
 - After the actor loop, `DrawHidden` draws the slots of the first draws and
-  the stacks of the 7c-2 builds. It draws only actors in view. The player
+  the stacks of the 7c-2 resizes. It draws only actors in view. The player
   draws first, then the actors by screen fraction, largest first
   (`HiddenDrawOrder`).
 - The tick draws stacks until it spent 4 ms (`kHiddenDrawBudgetUs`,
@@ -1641,7 +1641,7 @@ them:
 - A 7c-2 resize does not start while the actor's first draw runs
   (`AdvanceResizes`). A step down for the budget stays pending until then.
 - The instance is attached to the geometries during the first draw, so
-  `InstancesOf` and `EstimateTargets` count its targets once the actor is in
+  `InstancesOf` and `PlannedTargets` count its targets once the actor is in
   view.
 - The heartbeat gives `sync_frame_max_us`, `sync_deferred`, `sync_waiting`,
   `install_wait_max_ms`, `hidden_stacks`, `hidden_stacks_tick_max`,
@@ -1832,7 +1832,7 @@ keeps two steps from matching when their outputs could differ:
 | --- | --- | --- |
 | Produced key (`RenderStep::producedKey`, set in lowering) | The produced value's `TextureKey`: its canonical identity and the requested side reference, format and mip policy | Two values with one identity can be requested at different sides |
 | Step kind and requirements | `StepKindName` and the step's own side reference, format and mip policy | Lowering can give one value different step requirements |
-| Resolved sides | The pixels of every side the step names, put before the content key by `SharedKeyOf` (`planners/PlanSides.h`) at execution (the **shared key**) | A plan holds side references, not pixels, and one plan runs at several resolution levels |
+| Resolved sides | The pixels of every side the step names, put before the content key by `SharedKeyOf` (`planners/PlanSizes.h`) at execution (the **shared key**) | A plan holds side references, not pixels, and one plan runs at several resolution levels |
 | Geometry identity | The mesh content (`mesh:<hash>:<parts>`) when the mesh cache can read it, and the geometry pointer otherwise. `MeshData::hash` covers the vertex and index bytes and, through `HashPartitionsAndBound`, each partition's slot and bone names and the model bound | The partition, bone-weight and position bakes read them |
 | Material identity | Each texture's pointer, generation and name (`TextureIdentity` in `render/TextureRef.h`) | A freed address reused while a cache entry lives cannot match a different texture |
 | State and signal identity | `graph:context:actor` from the geometry's `ApplicationScope`. The actor is the form ID that keys the manager's `live_` map | State and signals never match across actors |
@@ -2574,32 +2574,32 @@ cancel by the user instead of the load.
   such reinstall of an NPC with 2 recipes on 7 shelled geometries took about
   26 ms of sync and about 36 ms of plugin time on the next frame, and it
   restarted the effect.
-- `Manager::UpdateResolution` records the new level as a pending resize on the
+- `Manager::RequestStepUp` records the new level as a pending resize on the
   `LiveActor` and emits the trace event `resolution_level` with the levels and
-  the fraction. The tracked level (`TrackedActor::resolution`) changes at once,
-  so a reinstall during the resize builds at the new level.
-- One resize builds at a time across all actors (`kResizesInFlight`), because
-  a camera zoom changes every actor's fraction at once and a build holds the
+  the fraction. The target level (`TrackedActor::targetResolution`) changes at
+  once, so a reinstall during the resize builds at the new level.
+- One resize runs at a time across all actors (`kResizesInFlight`), because
+  a camera zoom changes every actor's fraction at once and a resize holds the
   old and the new targets together. The pending actor with the largest screen
-  fraction builds first. Before 7c-2 the limit was two level changes per tick
+  fraction resizes first (`NextResize`). Before 7c-2 the limit was two level changes per tick
   (`kLevelChangesPerTick`).
 - The new instance copies the plan, the `GeometryInputs` and the graphs of the
-  current instance (`RenderInstance::AtSides`). A copy of the plan equals a
+  current instance (`RenderInstance::AtSizes`). A copy of the plan equals a
   cache hit, because the plan holds side references and no pixels. It does
   not compute a plan key, because the key needs the stack requests, which the
-  actor does not keep after placement. `LiveActor::fullSides` keeps the
-  full-resolution sides, because with the 64-pixel floor the sides of a
-  coarser level do not give back the full sides.
+  actor does not keep after placement. `LiveActor::fullSizes` keeps the
+  full-resolution sizes, because with the 64-pixel floor the sizes of a
+  coarser level do not give back the full sizes.
 - The new instance draws hidden, before it is attached. It holds its own copy
   of every input, so it needs no attached geometry. `DrawResize` draws each
   stack with no hidden layers and an empty base. Since 7h it shares the
   tick's hidden draw budget with the first draws (`DrawPace`). On the swap tick the real
   draw sets the filter and the preceding stack, and only the composite steps
   draw again. The hidden draw still creates the new targets and draws every
-  step once, so its cost moves to the build ticks and does not go away.
+  step once, so its cost moves to the resize ticks and does not go away.
 - The swap comes at the start of the tick after every stack has drawn once,
   so the tick that swaps writes the new textures. An actor out of view swaps
-  at once. A build that does not finish drawing in 60 frames
+  at once. A resize that does not finish drawing in 60 frames
   (`kResizeSwapAfterFrames`) swaps anyway, so a readback that never arrives
   cannot hold two instances. Its stacks that have not drawn can show nothing
   for a few frames, as a reinstall did.
@@ -2611,11 +2611,12 @@ cancel by the user instead of the load.
   shared references.
 - An equip change or any other reinstall replaces the `LiveActor`, so it drops
   a pending or in-flight resize. `RetireActorEffects` drops it too. When a
-  geometry is claimed during a build, the actor's stack outputs no longer
-  match the build, and the build returns to pending.
+  geometry is claimed during a resize, the actor's stack outputs no longer
+  match the resize, and the resize returns to pending (`ResizeInFlight`,
+  `SwapRender`).
 - The sync log has no `resized` kind. The trace event `resolution_swap` gives
-  the actor, the old and new levels (`from`, `level`), the frames from build
-  to swap, the stack and drawn counts, and the planned targets and bytes of
+  the actor, the old and new levels (`from`, `level`), the frames from the
+  start of the resize to the swap, the stack and drawn counts, and the planned targets and bytes of
   the new instance (`targets`, `target_bytes`). With `VerboseLogging` the text
   log writes one line per swap, `actor … resized: drawn at <level>
   resolution`. The trace event `resolution_levels`, written with the
@@ -2623,9 +2624,10 @@ cancel by the user instead of the load.
 - The first install bounds the level by the actor's screen fraction at that
   moment (`Manager::InstallBoundOf`), so a new actor is not built at full and
   rebuilt one tick later. The render target budget can take a coarser level
-  at that install. `TrackedActor::resolution` keeps the level that the install
-  built across reinstalls. `LiveActor::resolution` is the level the current
-  instance uses.
+  at that install. `TrackedActor::targetResolution` keeps the level that the
+  manager decided, after the budget, across reinstalls.
+  `LiveActor::appliedResolution` is the level the current instance uses. An
+  install that builds no render instance (`NoRender`) records no level.
 - The level divides the side after `Compositor::StackSize`, which raises a
   stack to its slot's base map. A stack draws over the armor's own map and
   replaces it in the material, so a lower level also lowers the armor's own
@@ -2656,12 +2658,14 @@ cancel by the user instead of the load.
   any pressure, admits every step up and does nothing else. A DXGI budget of 0
   also counts as unknown.
 - The **allowance** is the most target memory the plugin may hold:
-  `allowance = live + (budget - usage) - margin` (`AllowanceOf`). `live` is
-  the measured target bytes less the scratch targets, because the plans'
-  estimate leaves out the scratch targets. The plugin's own targets are part
-  of the DXGI usage. A release therefore lowers `live` and `usage` by the same
-  bytes, and the allowance stays the same. A usage over the budget gives no
-  headroom. Live bytes over the usage count only up to the usage. Every sum
+  `allowance = plugin + (budget - usage) - margin` (`AllowanceOf`).
+  `budget - usage` is the **free video memory** (`FreeVideoMemory`). `plugin`
+  is the measured target bytes less the scratch targets
+  (`BudgetSample::pluginBytes`), because the planned figure leaves out the
+  scratch targets. The plugin's own targets are part of the DXGI usage. A
+  release therefore lowers `plugin` and `usage` by the same bytes, and the
+  allowance stays the same. A usage over the budget gives no free video
+  memory. Plugin bytes over the usage count only up to the usage. Every sum
   saturates.
 - The **margin** is the larger of 512 MiB and 5 % of the DXGI budget
   (`MarginOf`). The plugin samples once a second and cannot see the game's
@@ -2671,7 +2675,7 @@ cancel by the user instead of the load.
 - The setting `RenderTargetBudgetMiB` caps the allowance; 0 sets no cap. The
   run file field `renderTargetBudgetMiB` replaces the setting for one
   regression run. The cap applies only while the DXGI reading is known.
-- **Pressure** starts when the planned bytes (`EstimateTargets`) exceed the
+- **Pressure** starts when the planned bytes (`PlannedTargets`) exceed the
   allowance. It ends only when the planned bytes fall below the allowance
   less a **band** (`NextBudget`, `PressureGoal`). The band is the larger of
   256 MiB and 10 % of the allowance, and at most half of the allowance
@@ -2680,40 +2684,41 @@ cancel by the user instead of the load.
   half-allowance limit lets a small cap end its pressure. Under pressure, the
   responses aim below the band, not below the allowance, so that the episode
   ends.
-- **Admission.** A step up from `LevelChange` waits under pressure. It also
+- **Admission.** A step up from `StepUpFor` waits under pressure. It also
   waits when the planned bytes plus the bytes of the new instance exceed the
   allowance (`AdmitGrowth`). The new instance counts in full on top of the
   current holding, because a resize holds the old and the new targets until
-  the swap. An admitted step up adds its bytes to the planned figure at once
-  (`Admitted`), so a second step up in the same second sees the first. The
+  the swap. An admitted step up is charged to the planned figure at once
+  (`Charged`), so a second step up in the same second sees the first. The
   player is always admitted. A blocked step up writes the trace event
   `resolution_blocked`, not a log line, because it repeats every tick.
-- `LiveActor::blockedAt` keeps the level at which a step up of the actor is
+- `LiveActor::stepUpBlockedFrom` keeps the level at which a step up of the actor is
   blocked. A blocked step up writes `resolution_blocked` only when the actor
   is not yet blocked at its current level. The event gives the first wanted
-  level of the episode. An admitted step up clears `blockedAt`. A step down
-  clears `blockedAt`. A wanted level that changes with the screen fraction
+  level of the episode. An admitted step up clears `stepUpBlockedFrom`. A step
+  down clears it. A wanted level that changes with the screen fraction
   does not start a new episode. A reinstall builds a new `LiveActor`, so it
   starts with no episode.
 - **Install level.** The first install of an NPC takes the finest level, no
-  finer than its ideal level, whose held bytes fit the **headroom**
+  finer than its ideal level, whose bytes with intermediates fit the
+  **headroom**
   (`FittingLevel`). A reinstall of an NPC takes the finest level, no finer
-  than its tracked level, whose held bytes fit the headroom. An equip change
+  than its target level, whose bytes with intermediates fit the headroom. An equip change
   causes a reinstall. A spawned NPC equips piece by piece just after it
   appears, so its first reinstalls follow its first install within a second.
 - The headroom is the allowance less the planned bytes, with the
   **replaced holding** subtracted from the planned bytes first (`HeadroomOf`).
   The replaced holding is the bytes that the planned figure counts for the
   actor just before the reinstall retires it (`PlannedBytesOf`). It uses the
-  rule of `EstimateTargets`, so an actor that has not rendered replaces 0
+  rule of `PlannedTargets`, so an actor that has not rendered replaces 0
   bytes. Without the credit, an actor that fits is pushed down by its own
   bytes. Under pressure the headroom is the replaced holding, so a reinstall
   does not grow. A first install replaces 0 bytes, so under pressure it takes
   eighth. An unknown allowance gives no headroom, and the install takes its
   bound level.
 - The install prices its levels after it has the plan and before it sizes the
-  sides (`ChooseInstallLevel` in `BuildActorRender`). The level reaches only
-  `SidesFor`, so one plan prices every level (`PlanLevelCost`). Before the
+  sizes (`ChooseInstallLevel` in `BuildActorRender`). The level reaches only
+  `SizesFor`, so one plan prices every level (`LevelCostOf`). Before the
   plan, `Manager::InstallBoundOf` gives the finest level and the headroom.
 - When no level fits, the install takes eighth. The budget does not hold back
   an install. Holding it back for memory needs an actor state with a plan but
@@ -2722,18 +2727,21 @@ cancel by the user instead of the load.
   Install pacing (7g) delays an install for frame time only, and the deferred
   sync records no state.
 - An install takes the replaced holding off the planned bytes (`Released`) and
-  adds its held bytes at once (`Admitted`), so a second install in the same
-  second sees the first. The next heartbeat
-  replaces the planned bytes with `EstimateTargets`, which counts an actor
+  is charged its bytes with intermediates at once (`Charged`,
+  `InstallLevelChoice::chargedBytes`), so a second install in the same second
+  sees the first. The next heartbeat
+  replaces the planned bytes with `PlannedTargets`, which counts an actor
   only after its first render.
 - The player takes its level without the budget and adds no bytes. A first
   install without a positive screen fraction or with
-  `ScreenResolution=false` takes full without the budget and adds no bytes.
+  `ScreenResolution=false` (`Settings::sizeByScreen`) takes full without the
+  budget and adds no bytes.
 - The trace event `actor_place` gives the built `level` and the bound
   `finest_level`. When the budget chose the level, it also gives
   `replaced_bytes`, `headroom_bytes` and `admitted_bytes`.
-- `kResizesInFlight` stays 1. The budget admits each step-up build by its
-  bytes and starts no step down while any resize is pending or in flight.
+- `kResizesInFlight` stays 1. The budget admits each step-up resize by its
+  bytes and starts no step down while any resize is pending or in flight
+  (`AwaitResize`).
 - **Response 1: hidden actors release their intermediates.** An actor out of
   view releases every texture and bake output of its instance except the
   stacks (`RenderInstance::ReleaseIntermediates`, the `Releasable` rule of
@@ -2751,14 +2759,14 @@ cancel by the user instead of the load.
   level is finest against `IdealLevel` of its screen fraction (`LevelGap`).
   The most bytes freed breaks a tie. The player is never a candidate, and
   neither is an actor with a resize. `TargetsOf` prices the current and the
-  coarser level (`LevelCostOf`, cached per level on the `LiveActor`). The step
+  coarser level (`CachedLevelCost`, cached per level on the `LiveActor`). The step
   down goes through the 7c-2 resize (`RequestResize`), at most one per
   heartbeat. Each step down writes one `info` line, `actor … steps down from
   <level> to <level> resolution: frees … (render target budget)`, and the
   trace event `budget_step_down`. An NPC stepped down rises again only
-  through `LevelChange` and admission.
+  through `StepUpFor` and admission.
 - **Response 3: the budget radius.** When responses 1 and 2 have nothing
-  left and no resize is pending or in flight, the budget sets or lowers a
+  left (`Exhausted`) and no resize is pending or in flight, the budget sets or lowers a
   **budget radius** (`planners/BudgetRadius.h`, `Manager::budgetRadius_`).
   The radius is a distance from the player. The effect of an NPC beyond it
   goes through distance eviction. A design review chose the radius over a
@@ -2778,16 +2786,17 @@ cancel by the user instead of the load.
   `evicted` sync kind. An actor beyond the current radius is already
   leaving, and the next shrink skips it.
 - Each shrink writes one `info` line, `render target budget: effects beyond
-  N units are off: <actor> (<name>) loses its effect, frees ~M MiB`, and the
+  N units are off: <actor> (<name>) is evicted, frees ~M MiB`, and the
   trace event `budget_radius` with `change` `shrink`, `radius`, `actor` and
-  `freed_bytes`. The bytes are the actor's held bytes at its level
-  (`BudgetActor::held`).
+  `freed_bytes`. The bytes are the actor's planned bytes at its level
+  (`BudgetActor::plannedBytes`). The candidate must be evictable (`CanEvict`):
+  it is not resizing.
 - **Growth.** Each heartbeat under pressure restarts the radius's dwell
   (`BudgetRadius::sinceMs`). Without pressure, the radius grows by 1 / 0.8
   once per dwell (`GrowRadius`, `kRadiusDwellMs` 10 s). The 1 / 0.8 step
   lets every NPC inside the old radius pass the 0.8 restore rule. The dwell is
   10 s because a pressure episode from an install ends within 1 to 2 s, and
-  the returning installs reach the estimate within one heartbeat. A 10 s
+  the returning installs reach the planned figure within one heartbeat. A 10 s
   dwell therefore sees any pressure that a growth step causes before the
   next step. Each growth writes `render target budget: effects return up to
   N units` and the trace event `budget_radius` with `change` `grow`.
@@ -2810,7 +2819,7 @@ cancel by the user instead of the load.
   and `pressure`.
 
 - `TargetsOf` (`planners/TargetCost.h`) lists the targets a plan holds
-  (`held`): every step that draws a texture or a stack and that a rendered
+  (`withIntermediates`): every step that draws a texture or a stack and that a rendered
   root reaches (`RenderedRoots`, `StepDependencies`). `stacks` lists the
   stacks among them. The rule follows `RenderInstance::BeginFrame`, which
   releases only the output of an animated step (`AnimatedSteps`) that was not
@@ -2832,8 +2841,8 @@ cancel by the user instead of the load.
   (`SideRef`): an index into the list of distinct stack sides that the engine
   collects (`SideFor`, `engine/ManagerApply.cpp`). Two stacks get one side
   reference only when their sides are equal at full resolution. The instance
-  gets the pixels as a `PlanSides` list (`planners/PlanSides.h`), and
-  `SidesFor` refuses a list that does not cover every side the plan names.
+  gets the sizes as a `PlanSizes` list (`planners/PlanSizes.h`), and
+  `SizesFor` refuses a list that does not cover every side the plan names.
 - Planning compares sides only for equality: demand merging
   (`TextureKey::operator<=>`), field inlining (`InlineField`) and chain merging
   (`MergeSlotChains`). No lowering decision reads a side's pixels. One plan
@@ -2874,8 +2883,9 @@ cancel by the user instead of the load.
 - The plain log carries two render-target lines whether or not the trace is
   on (`Manager::ReportRenderMemory`, render-performance 7a). The holding line
   is an `info` line. It is written when the live target bytes rise to a new
-  1 GiB level or fall half a step below the level. It gives the measured
-  total and the plans' total (`EstimateTargets`). It names the five actors
+  1 GiB step or fall half a step below the step (`NextHoldingStep`,
+  `HoldingStep`). It gives the measured
+  total and the plans' total (`PlannedTargets`). It names the five actors
   with the most own bytes, each with its shared bytes, its screen fraction
   and its recipes. A shared target has a content key that another rendered
   actor also holds. The own bytes of all actors plus each shared target once
@@ -3322,7 +3332,7 @@ player, so the rows are meant to reach the half, quarter and eighth levels. It
 is not yet verified in game which level each row gets; the report's
 *screen resolution* table gives the counts. The run file's
 `screenResolution` replaces the setting at both level decisions
-(`Manager::InstallBoundOf` and `Manager::UpdateResolution`) until the run ends,
+(`Manager::InstallBoundOf` and `Manager::RequestStepUp`) until the run ends,
 so `--screen-resolution on` and `off` runs of one case give the A/B
 comparison.
 

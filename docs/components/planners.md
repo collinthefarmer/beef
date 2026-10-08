@@ -190,11 +190,11 @@ bytes. The heartbeat compares the count with the measured holdings.
 
 | Type or function | Description |
 |---|---|
-| `HeldTarget` | One target: its side in pixels, its format and its shared key, if it has one. |
-| `PlanTargets` | The targets one plan holds (`held`: every drawing step a rendered root reaches) and the stacks among them (`stacks`). A static output is kept until the instance goes; only animated outputs are released when idle. |
-| `TargetCost` | The number of targets, their bytes, and the count per side length. |
-| `TargetBytes` | The bytes of one target: side² × 4 × 4/3 for the full mip chain, ×4 for `kRgba32Float`. `TextureLab::RenderTarget::Bytes` uses it. |
-| `TargetsOf` | The `PlanTargets` of a plan at the given `PlanSides`. |
+| `HeldTarget` | One target: its `TextureSize` (`size`), its format and its shared key, if it has one. |
+| `PlanTargets` | The targets one plan holds (`withIntermediates`: every drawing step a rendered root reaches) and the stacks among them (`stacks`). A static output is kept until the instance goes; only animated outputs are released when idle. |
+| `TargetCost` | The number of targets, their bytes, and the count per size (`targetsBySize`). |
+| `TargetBytes` | The bytes of one target: size² × 4 × 4/3 for the full mip chain, ×4 for `kRgba32Float`. `TextureLab::RenderTarget::Bytes` uses it. |
+| `TargetsOf` | The `PlanTargets` of a plan at the given `PlanSizes`. |
 | `CostOf` | The cost of a list of held targets, with one target per shared key. |
 
 ### Sides and resolution levels
@@ -204,33 +204,34 @@ A plan names texture sizes by **side reference** (`SideRef`, in `TextureDemand.h
 | Type or function | Description |
 |---|---|
 | `SideRef` | An index into the plan's list of distinct stack sides. `TextureRequirements::side` and `SubmitReductionStep::domain` hold one. |
-| `PlanSides` | The pixels of each side reference. |
-| `SidesFor` | Returns the `PlanSides`, or an error when the list lacks a side that the plan names. |
-| `SideOf` | The pixels of one side reference, or 64 for an unknown one. |
+| `PlanSizes` | The `TextureSize` of each side reference (`sizes`). |
+| `SizesFor` | Returns the `PlanSizes`, or an error when the list lacks a side that the plan names. |
+| `SizeOf` | The `TextureSize` of one side reference, or 64 for an unknown one. `RenderInstance::SizeAt` gives it for the instance's sizes. |
 | `SharedKeyOf` | A step's content key with the pixels of its sides in front. The step output cache and `CostOf` use it. |
 | `ResolutionLevel` | `kFull`, `kHalf`, `kQuarter` or `kEighth` of every side. |
 | `IdealLevel` | The level for a screen fraction. |
-| `LevelChange` | The finer level that a screen fraction needs, or no change. A smaller fraction never gives a coarser level. The player is always full. |
-| `AtLevel` | The `PlanSides` divided by a level, with 64 as the floor. |
+| `PerLevel`, `LevelIndex`, `kResolutionLevels` | One value per level, read with `At`; the index of a level; every level from full to eighth. |
+| `StepUpFor` | The finer level that a screen fraction needs, or no change. A smaller fraction never gives a coarser level. The player is always full. |
+| `AtLevel` | The `PlanSizes` divided by a level, with 64 as the floor. |
 | `CoarserLevel`, `LevelGap` | The next coarser level, if any, and the number of steps between two levels. |
-| `ResizeIdle`, `ResizePending`, `ResizeProgress` | The resize states of one actor (`ResolutionResize.h`): none, a level that waits for a build, and a build with its old level, new level and first frame. |
-| `ResizeDraw` | What a tick saw of a build: `kOutOfView`, `kDrawing` or `kDrawn`. `DrawOf` gives it from the view and the drawn and total stack counts. |
-| `SwapDue` | True when a build is drawn, out of view, or `kResizeSwapAfterFrames` (60) frames old. |
-| `NextBuild` | The pending actor with the largest screen fraction, or none while `kResizesInFlight` (1) builds are in flight. |
+| `ResizeIdle`, `ResizePending`, `ResizeProgress` | The resize states of one actor (`ResolutionResize.h`): none, a level that waits for a resize, and a resize with its old level, new level and first frame. |
+| `ResizeDraw`, `ResizeDrawState` | What a tick saw of a resize: `kOutOfView`, `kDrawing` or `kDrawn`. `DrawOf` gives it from a `ResizeDrawState`: the view and the drawn and total stack counts. |
+| `SwapDue` | True when a resize is drawn, out of view, or `kResizeSwapAfterFrames` (60) frames old. |
+| `ResizeCandidate`, `NextResize` | One actor with its FormID, whether a level is pending, and its screen fraction; the FormID of the pending actor with the largest screen fraction, or none while `kResizesInFlight` (1) resizes are in flight. |
 
 `RenderBudget.h` holds the decisions of the render target budget
 (render-performance 7d).
 
 | Type or function | Description |
 |---|---|
-| `VideoMemory`, `BudgetSample` | The DXGI budget and usage of the local segment, and one sample: the optional reading, the plugin's live target bytes and the cap. |
-| `MarginOf`, `AllowanceOf` | The margin (the larger of 512 MiB and 5 % of the budget) and the **allowance**: live bytes plus headroom less the margin, capped. No reading, or a budget of 0, gives no allowance. |
+| `VideoMemory`, `BudgetSample` | The DXGI budget and usage of the local segment, and one sample: the optional reading, the plugin's target bytes (`pluginBytes`) and the cap. |
+| `MarginOf`, `AllowanceOf` | The margin (the larger of 512 MiB and 5 % of the budget) and the **allowance**: the plugin's bytes plus the **free video memory** (budget less usage) less the margin, capped. No reading, or a budget of 0, gives no allowance. |
 | `BandOf`, `PressureGoal` | The band (the larger of 256 MiB and 10 % of the allowance, at most half of it) and the allowance less the band. |
 | `Pressure`, `BudgetState`, `NextBudget`, `IsOver` | The pressure state with its hysteresis: it starts over the allowance and ends below the goal. An unknown allowance ends it. |
-| `Admission`, `AdmitGrowth`, `Admitted`, `Released`, `AdmissionName` | Whether a step up of the given bytes may start, the planned bytes after one starts, and the planned bytes after a holding goes. |
-| `InstallBound`, `LevelBytes`, `HeadroomOf`, `FittingLevel` | The finest level and the optional headroom of an install, and the held bytes per level. `HeadroomOf` gives the allowance less the planned bytes without the replaced bytes, the replaced bytes under pressure, and none when the allowance is unknown. A first install replaces 0 bytes. `FittingLevel` gives the finest level from the bound to eighth whose bytes fit the headroom, eighth when none fits, and the bound when there is no headroom. |
-| `LevelCost`, `IntermediateHolding`, `HeldBytes`, `StepDownOption`, `StepDownOf` | The held and stack bytes of a plan at one level, whether an actor's intermediates are released, and the bytes that one step down frees. |
-| `BudgetActor`, `StepDown`, `BudgetResponse`, `RespondToPressure` | One actor's facts, and the responses for one heartbeat: the hidden actors that release, at most one NPC step down, and whether nothing is left. The facts include the held bytes and the optional distance to the player. |
+| `Admission`, `AdmitGrowth`, `Charged`, `Released`, `AdmissionName` | Whether a step up of the given bytes may start, the planned bytes after bytes are charged, and the planned bytes after a holding goes. |
+| `InstallBound`, `LevelBytes`, `HeadroomOf`, `FittingLevel` | The finest level and the optional headroom of an install, and the bytes with intermediates per level (a `PerLevel`). `HeadroomOf` gives the allowance less the planned bytes without the replaced bytes, the replaced bytes under pressure, and none when the allowance is unknown. A first install replaces 0 bytes. `FittingLevel` gives the finest level from the bound to eighth whose bytes fit the headroom, eighth when none fits, and the bound when there is no headroom. |
+| `LevelCost`, `IntermediateHolding`, `PlannedBytes`, `IntermediateBytes`, `StepDownOption`, `StepDownOf` | The bytes of a plan at one level with intermediates (`withIntermediates`) and with stacks only (`stacksOnly`), whether an actor's intermediates are released, the bytes the planned figure counts for each case, the bytes a release frees, and the bytes that one step down frees. |
+| `BudgetActor`, `BudgetRelease`, `PressureStep`, `BudgetResponse`, `RespondToPressure` | One actor's facts, and the responses for one heartbeat: the hidden actors that release, by FormID with their bytes, and the next step: `Enough`, `AwaitResize` while a resize is pending or in flight, `StepDown` (one NPC by FormID) or `Exhausted`. The facts include the planned bytes (`plannedBytes`) and the optional distance to the player. |
 | `PressureStartLine`, `PressureEndLine`, `StepDownLine`, `ExhaustedLine` | The text of the budget's log lines. |
 
 `BudgetRadius.h` holds the decisions of the **budget radius**, the third
@@ -240,16 +241,16 @@ response of the budget.
 |---|---|
 | `BudgetRadius` | The radius in game units and the time of its last change or of the last heartbeat under pressure (`sinceMs`). The manager keeps it optional; no record means no radius. |
 | `LimitsDistance`, `EffectiveEvictDistance` | Whether an `EvictDistance` sets a limit (above 0), and the distance that eviction uses: the smaller of `EvictDistance` and the radius. Without a radius it is `EvictDistance` unchanged. |
-| `RadiusShrink`, `ShrinkRadius` | The actor that loses its effect, the new radius and the bytes freed. The candidate is the farthest NPC inside the current radius that is not resizing. The new radius is 0.99 × its distance (`kRadiusShrinkFactor`), raised to the next nearer distance, so that `EvictionFor` evicts that actor alone. The player and missing, non-finite or non-positive distances never count. A resizing actor beyond the candidate stops the shrink. |
-| `RadiusChange`, `RadiusGrowth`, `GrowRadius` | One heartbeat of the radius without a shrink. Under pressure it holds and restarts the dwell. After `kRadiusDwellMs` (10 s) it grows by 1 / 0.8 (`kRestoreFraction`). It clears when the grown radius reaches `EvictDistance`, or the farthest loaded NPC when `EvictDistance` sets no limit. |
+| `RadiusShrink`, `ShrinkRadius` | The FormID of the actor that is evicted, the new radius and the bytes freed. The candidate is the farthest NPC inside the current radius that is not resizing. The new radius is 0.99 × its distance (`kRadiusShrinkFactor`), raised to the next nearer distance, so that `EvictionFor` evicts that actor alone. The player and missing, non-finite or non-positive distances never count. A resizing actor beyond the candidate stops the shrink. |
+| `RadiusGrowth`, `GrowRadius` | One heartbeat of the radius without a shrink: `RadiusUnchanged`, `RadiusGrown` or `RadiusCleared`. Under pressure the distance is unchanged and the dwell restarts. After `kRadiusDwellMs` (10 s) it grows by 1 / 0.8 (`kRestoreFraction`). It clears when the grown radius reaches `EvictDistance`, or the farthest loaded NPC when `EvictDistance` sets no limit. |
 | `RadiusShrinkLine`, `RadiusGrowLine`, `RadiusClearLine` | The text of the radius's log lines. |
 
 `RenderMemory.h` turns the counts into the render-target log lines.
 
 | Type or function | Description |
 |---|---|
-| `NextHoldingLevel`, `HoldingLevel`, `Crossing` | The 1 GiB level of the live target bytes, with a **crossing** when it rises a level or falls half a step below one. |
-| `ActorTargets`, `HoldingsOf`, `ActorHolding` | One actor's held targets, split into its own bytes and its shared bytes. A shared target has a content key that another actor also holds. The own bytes of all actors plus each shared target once make the plans' total. |
+| `NextHoldingStep`, `HoldingStep`, `Crossing` | The 1 GiB step of the live target bytes, with a **crossing** when it rises a step or falls half a step below one. |
+| `ActorTargets`, `HoldingsOf`, `ActorHolding` | One actor's targets (`targets`), split into its own bytes (`ownBytes`) and its shared bytes. A shared target has a content key that another actor also holds. The own bytes of all actors plus each shared target once make the plans' total. |
 | `LargestHoldings` | The five actors with the most own bytes. |
 | `TargetBurst`, `IsBurst` | The targets created and destroyed in one heartbeat interval; a **burst** creates 256 MiB or more. |
 | `ScreenSpread`, `SpreadOf` | The least, median and most screen fraction of the rendered actors. |
@@ -476,13 +477,13 @@ PSGeneratedStack, or PSStack until the compile finishes     render/GeneratedShad
 | `RenderPlanLowering.cpp` | Render planning | `LowerRenderPlan` and `BuildRenderPlan`. |
 | `RenderPlanKey.h`/`.cpp`, `RenderPlanCache.h`/`.cpp` | Render planning | `RenderPlanKeyOf`, `RenderPlanKeyHash`, `GraphsNamedBy`; `RenderPlanCache`. |
 | `RenderPlanJob.h`/`.cpp`, `IdentityFacts.h`/`.cpp` | Render planning | `PlanBuildInput`, `BuildPlanFrom`; `IdentityFacts`, `IdentityBindings`, `InstanceIdentity`. |
-| `RenderMemory.h`/`.cpp` | Render planning | `NextHoldingLevel`, `HoldingsOf`, `LargestHoldings`, `IsBurst`, `SpreadOf`, `HoldingLine`, `BurstLine`. |
+| `RenderMemory.h`/`.cpp` | Render planning | `NextHoldingStep`, `HoldingsOf`, `LargestHoldings`, `IsBurst`, `SpreadOf`, `HoldingLine`, `BurstLine`. |
 | `RenderBudget.h`/`.cpp` | Render planning | The render target budget: `AllowanceOf`, `NextBudget`, `AdmitGrowth`, `FittingLevel`, `StepDownOf`, `RespondToPressure` and the log lines. |
 | `BudgetRadius.h`/`.cpp` | Render planning | The budget radius: `EffectiveEvictDistance`, `ShrinkRadius`, `GrowRadius` and the log lines. |
 | `InstallPacing.h`/`.cpp` | Render planning | The install budget per frame and the order of deferred installs: `InstallMayStart`, `Synced`, `NextInstall`, `Deferred`, `Removed`, `WaitedMS`. |
 | `DrawPacing.h`/`.cpp` | Render planning | The hidden draw budget per tick, the order of hidden draws and the end of a first draw: `MayDrawStack`, `Drew`, `HiddenDrawOrder`, `FirstDrawDone`. |
 | `TargetCost.h`/`.cpp` | Render planning | `HeldTarget`, `PlanTargets`, `TargetCost`, `TargetBytes`, `TargetsOf`, `CostOf`. |
-| `PlanSides.h`/`.cpp`, `ResolutionLevel.h`/`.cpp`, `ResolutionResize.h`/`.cpp` | Render planning | `PlanSides`, `SidesFor`, `SideOf`, `SharedKeyOf`; `ResolutionLevel`, `IdealLevel`, `LevelChange`, `CoarserLevel`, `LevelGap`, `AtLevel`, `LevelName`; `DrawOf`, `SwapDue`, `NextBuild`. |
+| `PlanSizes.h`/`.cpp`, `ResolutionLevel.h`/`.cpp`, `ResolutionResize.h`/`.cpp`, `ActorRole.h` | Render planning | `PlanSizes`, `SizesFor`, `SizeOf`, `SharedKeyOf`; `ResolutionLevel`, `PerLevel`, `IdealLevel`, `StepUpFor`, `CoarserLevel`, `LevelGap`, `AtLevel`, `LevelName`; `DrawOf`, `SwapDue`, `NextResize`; `ActorRole`. |
 | `FieldInlining.h`/`.cpp` | Render planning | `AsProgramLike` and `InlineFields`. |
 | `RenderExecution.h` | Render planning | `RenderExecution` and its state records. `ReleaseIdle` and `ReleaseWhere` release step outputs. |
 | `RenderFirings.h` | Render planning | `RenderFiring` and `RenderFirings`. |

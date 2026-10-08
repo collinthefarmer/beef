@@ -128,7 +128,9 @@ void Manager::Clear() {
   Compositor::GetSingleton()->ClearStepOutputs();
   Compositor::GetSingleton()->ClearMeshes();
   Compositor::GetSingleton()->ClearMaterials();
-  TextureLab::GetSingleton()->Clear();
+  if (TextureLab *lab = TextureLab::GetSingleton()) {
+    lab->Clear();
+  }
   {
     std::scoped_lock lock{snapshotLock_};
     auto empty = std::make_shared<Snapshot>();

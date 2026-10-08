@@ -18,10 +18,10 @@ public:
 
 private:
   using Adapter = REX::W32::ComPtr<REX::W32::IDXGIAdapter3>;
-  struct Unreached {};
-  struct Unreachable {
+  struct NotProbed {};
+  struct Unavailable {
     std::string problem;
   };
-  std::variant<Unreached, Adapter, Unreachable> adapter_;
+  std::variant<NotProbed, Adapter, Unavailable> adapter_;
 };
 }

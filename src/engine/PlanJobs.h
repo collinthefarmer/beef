@@ -8,8 +8,10 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <expected>
 #include <memory>
 #include <optional>
+#include <string>
 #include <vector>
 
 namespace BetterEnchantmentEffects {
@@ -32,7 +34,7 @@ struct PlanJobBook {
   std::vector<OpenPlanJob> open;
 };
 
-struct ClosedPlanJob {
+struct BookAfterClose {
   PlanJobBook book;
   std::optional<OpenPlanJob> job;
 };
@@ -44,8 +46,10 @@ enum class AwaiterStep { kIgnore, kRebuild, kFail };
 [[nodiscard]] std::optional<JobId> OpenJobFor(const PlanJobBook &a_book,
                                               const RenderPlanKey &a_key);
 [[nodiscard]] PlanJobBook Opened(PlanJobBook a_book, OpenPlanJob a_job);
-[[nodiscard]] ClosedPlanJob Closed(PlanJobBook a_book, JobId a_job);
-[[nodiscard]] PlanArrival ArrivalOf(bool a_open, bool a_built) noexcept;
+[[nodiscard]] BookAfterClose Closed(PlanJobBook a_book, JobId a_job);
+[[nodiscard]] PlanArrival
+ArrivalOf(const std::optional<OpenPlanJob> &a_job,
+          const std::expected<PlanBuildOutput, std::string> &a_result) noexcept;
 [[nodiscard]] AwaiterStep StepFor(std::optional<JobId> a_awaited,
                                   JobId a_arrived,
                                   PlanArrival a_arrival) noexcept;

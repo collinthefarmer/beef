@@ -18,14 +18,14 @@ void IdealLevelHalvesWithScreenSize() {
 }
 
 void LevelsOnlyStepUp() {
-  Check(LevelChange(ResolutionLevel::kEighth, 0.26f, ActorRole::kOther) ==
+  Check(StepUpFor(ResolutionLevel::kEighth, 0.26f, ActorRole::kOther) ==
             ResolutionLevel::kHalf,
         "a larger screen size steps up at once, skipping the levels between");
-  Check(!LevelChange(ResolutionLevel::kHalf, 0.24f, ActorRole::kOther),
+  Check(!StepUpFor(ResolutionLevel::kHalf, 0.24f, ActorRole::kOther),
         "just under a threshold an actor keeps its level");
-  Check(!LevelChange(ResolutionLevel::kFull, 0.05f, ActorRole::kOther),
+  Check(!StepUpFor(ResolutionLevel::kFull, 0.05f, ActorRole::kOther),
         "a smaller screen size never steps down");
-  Check(!LevelChange(ResolutionLevel::kHalf, 0.3f, ActorRole::kOther),
+  Check(!StepUpFor(ResolutionLevel::kHalf, 0.3f, ActorRole::kOther),
         "an actor at its level asks for nothing");
 }
 
@@ -34,7 +34,7 @@ void BackAndForthChangesOnce() {
   std::size_t changes = 0;
   for (const float fraction : {0.26f, 0.24f, 0.51f, 0.39f, 0.52f, 0.1f, 0.6f}) {
     if (const std::optional<ResolutionLevel> next =
-            LevelChange(level, fraction, ActorRole::kOther)) {
+            StepUpFor(level, fraction, ActorRole::kOther)) {
       level = *next;
       ++changes;
     }
@@ -44,25 +44,25 @@ void BackAndForthChangesOnce() {
 }
 
 void UnknownSizeKeepsTheLevel() {
-  Check(!LevelChange(ResolutionLevel::kEighth, 0.0f, ActorRole::kOther),
+  Check(!StepUpFor(ResolutionLevel::kEighth, 0.0f, ActorRole::kOther),
         "a screen fraction of zero changes nothing");
 }
 
 void PlayerStaysFull() {
-  Check(!LevelChange(ResolutionLevel::kFull, 0.01f, ActorRole::kPlayer),
+  Check(!StepUpFor(ResolutionLevel::kFull, 0.01f, ActorRole::kPlayer),
         "the player stays full however small");
-  Check(LevelChange(ResolutionLevel::kQuarter, 0.0f, ActorRole::kPlayer) ==
+  Check(StepUpFor(ResolutionLevel::kQuarter, 0.0f, ActorRole::kPlayer) ==
             ResolutionLevel::kFull,
         "a player below full returns to full");
 }
 
 void SidesScaleAndStopAtTheMinimum() {
-  const PlanSides sides{{TextureSize{2048}, TextureSize{512}}};
-  const PlanSides half = AtLevel(sides, ResolutionLevel::kHalf);
-  Check(half.pixels == std::vector{TextureSize{1024}, TextureSize{256}},
+  const PlanSizes sides{{TextureSize{2048}, TextureSize{512}}};
+  const PlanSizes half = AtLevel(sides, ResolutionLevel::kHalf);
+  Check(half.sizes == std::vector{TextureSize{1024}, TextureSize{256}},
         "a level divides every side");
-  const PlanSides eighth = AtLevel(sides, ResolutionLevel::kEighth);
-  Check(eighth.pixels == std::vector{TextureSize{256}, TextureSize{64}},
+  const PlanSizes eighth = AtLevel(sides, ResolutionLevel::kEighth);
+  Check(eighth.sizes == std::vector{TextureSize{256}, TextureSize{64}},
         "a side never falls below the minimum");
   Check(AtLevel(sides, ResolutionLevel::kFull) == sides,
         "full keeps the sides");

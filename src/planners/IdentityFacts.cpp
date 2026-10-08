@@ -12,60 +12,64 @@ namespace BetterEnchantmentEffects {
 namespace {
 using Identity = std::expected<std::string, std::string>;
 
-std::string FloatBitsText(const std::optional<float> &value) {
-  return value ? std::to_string(std::bit_cast<std::uint32_t>(*value))
-               : std::string{"none"};
+std::string FloatBitsText(const std::optional<float> &a_value) {
+  return a_value ? std::to_string(std::bit_cast<std::uint32_t>(*a_value))
+                 : std::string{"none"};
 }
 
-std::string EventOriginIdentity(const EventInput &event,
-                                const std::string &instance) {
+std::string EventOriginIdentity(const EventInput &a_event,
+                                const std::string &a_instance) {
   return Match(
-      event.origin,
-      [&](const EventOrigin &origin) -> std::string {
-        return std::format("{}:event:{}:{}:{}:{}:{}:{}:{}:{}", instance,
-                           origin.event.size(), origin.event,
-                           origin.filter.node.size(), origin.filter.node,
-                           origin.filter.arg.size(), origin.filter.arg,
-                           FloatBitsText(origin.filter.value.min),
-                           FloatBitsText(origin.filter.value.max));
+      a_event.origin,
+      [&](const EventOrigin &a_origin) -> std::string {
+        return std::format("{}:event:{}:{}:{}:{}:{}:{}:{}:{}", a_instance,
+                           a_origin.event.size(), a_origin.event,
+                           a_origin.filter.node.size(), a_origin.filter.node,
+                           a_origin.filter.arg.size(), a_origin.filter.arg,
+                           FloatBitsText(a_origin.filter.value.min),
+                           FloatBitsText(a_origin.filter.value.max));
       },
-      [&](const PluginOrigin &origin) -> std::string {
-        return instance + ":plugin:" + origin.id;
+      [&](const PluginOrigin &a_origin) -> std::string {
+        return a_instance + ":plugin:" + a_origin.id;
       });
 }
 
-Identity ExternalSourceIdentity(const ExternalSource &source,
-                                const IdentityFacts &facts) {
-  const std::string &instance = facts.instance;
+Identity ExternalSourceIdentity(const ExternalSource &a_source,
+                                const IdentityFacts &a_facts) {
+  const std::string &instance = a_facts.instance;
   return Match(
-      source, [&](const GeometryInput &) -> Identity { return facts.mesh; },
-      [&](const MaterialInput &) -> Identity { return facts.material; },
-      [&](const TextureInput &k) -> Identity { return ImageCacheKey(k.path); },
-      [&](const NodePositionInput &k) -> Identity {
-        return std::format("{}:{}:{}", facts.geometry, facts.root, k.name);
+      a_source, [&](const GeometryInput &) -> Identity { return a_facts.mesh; },
+      [&](const MaterialInput &) -> Identity { return a_facts.material; },
+      [&](const TextureInput &a_input) -> Identity {
+        return ImageCacheKey(a_input.path);
+      },
+      [&](const NodePositionInput &a_input) -> Identity {
+        return std::format("{}:{}:{}", a_facts.geometry, a_facts.root,
+                           a_input.name);
       },
       [&](const ChartCountInput &) -> Identity {
-        return "charts:" + facts.mesh;
+        return "charts:" + a_facts.mesh;
       },
       [&](const ItemHashInput &) -> Identity {
         return std::format("item:{:08x}",
-                           std::bit_cast<std::uint32_t>(facts.itemHash));
+                           std::bit_cast<std::uint32_t>(a_facts.itemHash));
       },
-      [&](const ActorValueSignal &k) -> Identity {
-        return std::format("{}:{}:{}", instance, static_cast<int>(k.measure),
-                           k.actorValue);
+      [&](const ActorValueSignal &a_input) -> Identity {
+        return std::format("{}:{}:{}", instance,
+                           static_cast<int>(a_input.measure),
+                           a_input.actorValue);
       },
-      [&](const ActorStateSignal &k) -> Identity {
-        return std::format("{}:{}", instance, static_cast<int>(k.kind));
+      [&](const ActorStateSignal &a_input) -> Identity {
+        return std::format("{}:{}", instance, static_cast<int>(a_input.kind));
       },
-      [&](const EnchantmentSignal &k) -> Identity {
-        return EnchantmentIdentity(k, facts.enchantment);
+      [&](const EnchantmentSignal &a_input) -> Identity {
+        return EnchantmentIdentity(a_input, a_facts.enchantment);
       },
-      [&](const EffectShaderInput &k) -> Identity {
-        return "efsh:" + k.record.text;
+      [&](const EffectShaderInput &a_input) -> Identity {
+        return "efsh:" + a_input.record.text;
       },
-      [&](const EventInput &k) -> Identity {
-        return EventOriginIdentity(k, instance);
+      [&](const EventInput &a_input) -> Identity {
+        return EventOriginIdentity(a_input, instance);
       },
       [&](const RootTransformInput &) -> Identity { return instance; },
       [&](const TimeInput &) -> Identity { return instance; },
@@ -84,11 +88,11 @@ ValueBindings IdentityBindings(std::shared_ptr<const IdentityFacts> a_facts) {
     a_facts = std::make_shared<const IdentityFacts>();
   }
   ValueBindings bindings;
-  bindings.state = [a_facts](NodeId node) {
-    return std::format("{}:{}", a_facts->instance, node);
+  bindings.state = [a_facts](NodeId a_node) {
+    return std::format("{}:{}", a_facts->instance, a_node);
   };
-  bindings.external = [a_facts](const ExternalSource &source) -> Identity {
-    return ExternalSourceIdentity(source, *a_facts);
+  bindings.external = [a_facts](const ExternalSource &a_source) -> Identity {
+    return ExternalSourceIdentity(a_source, *a_facts);
   };
   return bindings;
 }

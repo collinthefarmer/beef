@@ -27,7 +27,14 @@ struct ResizeProgress {
 
 enum class ResizeDraw { kOutOfView, kDrawing, kDrawn };
 
+struct ResizeDrawState {
+  bool inView = true;
+  std::size_t drawn = 0;
+  std::size_t stacks = 0;
+};
+
 struct ResizeCandidate {
+  std::uint32_t actor = 0;
   bool pending = false;
   float screenFraction = 0.0f;
 };
@@ -35,11 +42,10 @@ struct ResizeCandidate {
 inline constexpr std::size_t kResizesInFlight = 1;
 inline constexpr std::uint64_t kResizeSwapAfterFrames = 60;
 
-[[nodiscard]] ResizeDraw DrawOf(bool a_inView, std::size_t a_drawn,
-                                std::size_t a_stacks) noexcept;
+[[nodiscard]] ResizeDraw DrawOf(const ResizeDrawState &a_state) noexcept;
 [[nodiscard]] bool SwapDue(const ResizeProgress &a_progress, ResizeDraw a_draw,
                            std::uint64_t a_frame) noexcept;
-[[nodiscard]] std::optional<std::size_t>
-NextBuild(std::span<const ResizeCandidate> a_candidates,
-          std::size_t a_inFlight) noexcept;
+[[nodiscard]] std::optional<std::uint32_t>
+NextResize(std::span<const ResizeCandidate> a_candidates,
+           std::size_t a_inFlight) noexcept;
 }

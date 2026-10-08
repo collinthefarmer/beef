@@ -42,7 +42,7 @@ public:
   JobQueue(Work a_work, std::size_t a_capacity)
       : shared_(std::make_shared<Shared>(a_work, a_capacity)) {}
   ~JobQueue() {
-    shared_->stop.store(true);
+    shared_->stopRequested.store(true);
     shared_->wake.notify_all();
   }
   JobQueue(const JobQueue &) = delete;
@@ -51,7 +51,7 @@ public:
   JobQueue &operator=(JobQueue &&) = delete;
 
   [[nodiscard]] std::expected<JobId, JobRefusal> Submit(Input a_input) {
-    if (!shared_->work || shared_->stopped.load()) {
+    if (!shared_->work || shared_->workerDied.load()) {
       return std::unexpected(JobRefusal::kNoWorker);
     }
     {
@@ -76,7 +76,7 @@ public:
   [[nodiscard]] std::vector<JobDone<Output>> TakeDone() {
     std::vector<JobDone<Output>> taken;
     const std::scoped_lock held{shared_->lock};
-    if (shared_->stopped.load()) {
+    if (shared_->workerDied.load()) {
       if (shared_->running) {
         shared_->done.push_back(
             {*shared_->running,
@@ -129,8 +129,8 @@ private:
     std::vector<JobDone<Output>> done;
     std::size_t unfinished = 0;
     std::optional<JobId> running;
-    std::atomic<bool> stop{false};
-    std::atomic<bool> stopped{false};
+    std::atomic<bool> stopRequested{false};
+    std::atomic<bool> workerDied{false};
   };
 
   static std::uint64_t MicrosBetween(Clock::time_point a_from,
@@ -157,9 +157,9 @@ private:
   static std::optional<Queued> NextQueued(Shared &a_shared) {
     std::unique_lock held{a_shared.lock};
     a_shared.wake.wait(held, [&a_shared] {
-      return a_shared.stop.load() || !a_shared.queued.empty();
+      return a_shared.stopRequested.load() || !a_shared.queued.empty();
     });
-    if (a_shared.stop.load()) {
+    if (a_shared.stopRequested.load()) {
       return std::nullopt;
     }
     std::optional<Queued> next{std::move(a_shared.queued.front())};
@@ -183,7 +183,7 @@ private:
   }
 
   static void Run(const std::shared_ptr<Shared> a_shared) noexcept {
-    while (!a_shared->stop.load()) {
+    while (!a_shared->stopRequested.load()) {
       try {
         std::optional<Queued> next = NextQueued(*a_shared);
         if (!next) {
@@ -191,7 +191,7 @@ private:
         }
         Finish(*a_shared, std::move(*next));
       } catch (...) {
-        a_shared->stopped.store(true);
+        a_shared->workerDied.store(true);
         return;
       }
     }

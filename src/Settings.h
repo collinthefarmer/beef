@@ -42,7 +42,7 @@ struct Settings {
   bool renderPlanCache = true;
   bool verifyRenderPlanCache = false;
   bool cullOutOfView = true;
-  bool screenResolution = true;
+  bool sizeByScreen = true;
   std::uint32_t renderTargetBudgetMiB = 0;
   std::uint32_t animationFPS = 60;
   float animationSpeed = 1.0f;

@@ -130,9 +130,9 @@ void OnDataLoaded(BetterEnchantmentEffects::Manager &a_manager) {
   if (effectsEnabled) {
     RegisterEventSinks();
   }
-  ReadRegressionRun(RunSetup{
-      effectsEnabled, BuildIdentity::build, BuildIdentity::source,
-      GetSettings().screenResolution, GetSettings().renderTargetBudgetMiB});
+  ReadRegressionRun(RunSetup{effectsEnabled, BuildIdentity::build,
+                             BuildIdentity::source, GetSettings().sizeByScreen,
+                             GetSettings().renderTargetBudgetMiB});
 }
 
 void BeginGameLoad(BetterEnchantmentEffects::Manager &a_manager) {

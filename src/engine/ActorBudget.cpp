@@ -8,20 +8,21 @@
 #include <memory>
 
 namespace BetterEnchantmentEffects {
-std::optional<LevelCost> PlanLevelCost(const RenderPlan &a_plan,
-                                       const PlanSides &a_full,
-                                       ResolutionLevel a_level) {
-  const std::expected<PlanSides, std::string> sides =
-      SidesFor(a_plan, AtLevel(a_full, a_level).pixels);
-  if (!sides) {
+std::optional<LevelCost> LevelCostOf(const RenderPlan &a_plan,
+                                     const PlanSizes &a_full,
+                                     ResolutionLevel a_level) {
+  const std::expected<PlanSizes, std::string> sizes =
+      SizesFor(a_plan, AtLevel(a_full, a_level).sizes);
+  if (!sizes) {
     return std::nullopt;
   }
-  const PlanTargets targets = TargetsOf(a_plan, *sides);
-  return LevelCost{CostOf(targets.held).bytes, CostOf(targets.stacks).bytes};
+  const PlanTargets targets = TargetsOf(a_plan, *sizes);
+  return LevelCost{CostOf(targets.withIntermediates).bytes,
+                   CostOf(targets.stacks).bytes};
 }
 
 InstallLevelChoice ChooseInstallLevel(const RenderPlan &a_plan,
-                                      const PlanSides &a_full,
+                                      const PlanSizes &a_full,
                                       const InstallBound &a_bound) {
   if (!a_bound.headroom) {
     return {a_bound.finest, 0};
@@ -29,25 +30,19 @@ InstallLevelChoice ChooseInstallLevel(const RenderPlan &a_plan,
   LevelBytes bytes;
   for (std::optional<ResolutionLevel> level = a_bound.finest; level;
        level = CoarserLevel(*level)) {
-    const auto index = static_cast<std::size_t>(*level);
-    const std::optional<LevelCost> cost = PlanLevelCost(a_plan, a_full, *level);
-    if (index < bytes.size() && cost) {
-      bytes[index] = cost->held;
+    if (const std::optional<LevelCost> cost =
+            LevelCostOf(a_plan, a_full, *level)) {
+      bytes.At(*level) = cost->withIntermediates;
     }
   }
   const ResolutionLevel chosen =
       FittingLevel(a_bound.finest, bytes, a_bound.headroom);
-  const auto index = static_cast<std::size_t>(chosen);
-  return {chosen, index < bytes.size() ? bytes[index].value_or(0) : 0};
+  return {chosen, bytes.At(chosen).value_or(0)};
 }
 
-std::optional<LevelCost> LevelCostOf(LiveActor &a_state,
-                                     ResolutionLevel a_level) {
-  const auto index = static_cast<std::size_t>(a_level);
-  if (index >= a_state.levelCosts.size()) {
-    return std::nullopt;
-  }
-  std::optional<LevelCost> &cached = a_state.levelCosts[index];
+std::optional<LevelCost> CachedLevelCost(LiveActor &a_state,
+                                         ResolutionLevel a_level) {
+  std::optional<LevelCost> &cached = a_state.levelCosts.At(a_level);
   if (cached) {
     return cached;
   }
@@ -55,7 +50,7 @@ std::optional<LevelCost> LevelCostOf(LiveActor &a_state,
   if (!render) {
     return std::nullopt;
   }
-  cached = PlanLevelCost(render->Plan(), a_state.fullSides, a_level);
+  cached = LevelCostOf(render->Plan(), a_state.fullSizes, a_level);
   return cached;
 }
 
@@ -66,27 +61,26 @@ BudgetActor BudgetActorOf(LiveActor &a_state, std::uint32_t a_id,
                     a_role,
                     a_state.inView,
                     !Is<ResizeIdle>(a_state.resize),
-                    a_state.resolution,
+                    a_state.appliedResolution,
                     a_fraction,
                     0,
                     std::nullopt,
                     0,
                     a_distance};
   const std::optional<LevelCost> current =
-      LevelCostOf(a_state, a_state.resolution);
+      CachedLevelCost(a_state, a_state.appliedResolution);
   if (!current) {
     return actor;
   }
-  actor.held = HeldBytes(*current, a_state.intermediates);
+  actor.plannedBytes = PlannedBytes(*current, a_state.intermediates);
   if (a_state.intermediates == IntermediateHolding::kHeld) {
-    actor.releasable =
-        current->held > current->stacks ? current->held - current->stacks : 0;
+    actor.releasable = IntermediateBytes(*current);
   }
   if (const std::optional<ResolutionLevel> coarser =
-          CoarserLevel(a_state.resolution)) {
+          CoarserLevel(a_state.appliedResolution)) {
     actor.stepDown =
-        StepDownOf(a_state.resolution, *current, LevelCostOf(a_state, *coarser),
-                   a_state.intermediates);
+        StepDownOf(a_state.appliedResolution, *current,
+                   CachedLevelCost(a_state, *coarser), a_state.intermediates);
   }
   return actor;
 }
@@ -95,7 +89,7 @@ const std::vector<HeldTarget> &HeldNow(const LiveActor &a_state,
                                        const PlanTargets &a_targets) noexcept {
   return a_state.intermediates == IntermediateHolding::kReleased
              ? a_targets.stacks
-             : a_targets.held;
+             : a_targets.withIntermediates;
 }
 
 std::vector<const RenderInstance *> InstancesOf(const LiveActor &a_state) {

@@ -21,11 +21,12 @@ void BudgetDrawsAtLeastOneStack() {
 }
 
 void PlayerThenLargestOnScreen() {
-  const std::vector<HiddenDrawCandidate> candidates{{ActorRole::kOther, 0.2f},
-                                                    {ActorRole::kOther, 0.8f},
-                                                    {ActorRole::kPlayer, 0.1f},
-                                                    {ActorRole::kOther, 0.5f}};
-  Check(HiddenDrawOrder(candidates) == std::vector<std::size_t>{2, 1, 3, 0},
+  const std::vector<HiddenDrawCandidate> candidates{
+      {1, ActorRole::kOther, 0.2f},
+      {2, ActorRole::kOther, 0.8f},
+      {3, ActorRole::kPlayer, 0.1f},
+      {4, ActorRole::kOther, 0.5f}};
+  Check(HiddenDrawOrder(candidates) == std::vector<std::uint32_t>{3, 2, 4, 1},
         "the player draws first, then actors by screen fraction");
   Check(HiddenDrawOrder({}).empty(), "no candidates draw nothing");
 }

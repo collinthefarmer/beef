@@ -9,7 +9,7 @@
 
 namespace BetterEnchantmentEffects {
 namespace {
-std::uint32_t LevelOf(std::uint64_t a_bytes) noexcept {
+std::uint32_t StepOf(std::uint64_t a_bytes) noexcept {
   return static_cast<std::uint32_t>(a_bytes / kHoldingStepBytes);
 }
 
@@ -28,7 +28,7 @@ std::string HoldingText(const ActorHolding &a_holding) {
           : std::format("{} ({:08X})", a_holding.name, a_holding.actor);
   return std::format("{} {} own and {} shared, {:.2f} of the screen height, "
                      "recipes {}",
-                     actor, Mebibytes(a_holding.bytes),
+                     actor, Mebibytes(a_holding.ownBytes),
                      Mebibytes(a_holding.sharedBytes), a_holding.screenFraction,
                      Joined(a_holding.recipes));
 }
@@ -38,7 +38,7 @@ HoldersByKey(std::span<const ActorTargets> a_actors) {
   std::map<std::string, std::size_t> holders;
   for (const ActorTargets &actor : a_actors) {
     std::set<std::string> keys;
-    for (const HeldTarget &target : actor.held) {
+    for (const HeldTarget &target : actor.targets) {
       if (target.sharedKey && keys.insert(*target.sharedKey).second) {
         ++holders[*target.sharedKey];
       }
@@ -53,20 +53,20 @@ std::string Mebibytes(std::uint64_t a_bytes) {
                      static_cast<double>(a_bytes) / (1024.0 * 1024.0));
 }
 
-HoldingLevel NextHoldingLevel(std::uint32_t a_level,
-                              std::uint64_t a_bytes) noexcept {
-  const std::uint32_t level = LevelOf(a_bytes);
-  if (level > a_level) {
-    return {level, Crossing::kRose};
+HoldingStep NextHoldingStep(std::uint32_t a_step,
+                            std::uint64_t a_bytes) noexcept {
+  const std::uint32_t step = StepOf(a_bytes);
+  if (step > a_step) {
+    return {step, Crossing::kRose};
   }
   const std::uint64_t fallBelow =
-      a_level == 0
+      a_step == 0
           ? 0
-          : std::uint64_t{a_level} * kHoldingStepBytes - kHoldingStepBytes / 2;
-  if (a_level > 0 && a_bytes < fallBelow) {
-    return {level, Crossing::kFell};
+          : std::uint64_t{a_step} * kHoldingStepBytes - kHoldingStepBytes / 2;
+  if (a_step > 0 && a_bytes < fallBelow) {
+    return {step, Crossing::kFell};
   }
-  return {a_level, Crossing::kNone};
+  return {a_step, Crossing::kNone};
 }
 
 bool IsBurst(const TargetBurst &a_burst) noexcept {
@@ -88,7 +88,7 @@ std::vector<ActorHolding> HoldingsOf(std::span<const ActorTargets> a_actors) {
   for (const ActorTargets &actor : a_actors) {
     std::vector<HeldTarget> own;
     std::vector<HeldTarget> shared;
-    for (const HeldTarget &target : actor.held) {
+    for (const HeldTarget &target : actor.targets) {
       const auto found =
           target.sharedKey ? holders.find(*target.sharedKey) : holders.end();
       if (found != holders.end() && found->second > 1) {
@@ -107,7 +107,7 @@ std::vector<ActorHolding> HoldingsOf(std::span<const ActorTargets> a_actors) {
 std::vector<ActorHolding> LargestHoldings(std::vector<ActorHolding> a_holdings,
                                           std::size_t a_count) {
   std::ranges::stable_sort(a_holdings, std::ranges::greater{},
-                           &ActorHolding::bytes);
+                           &ActorHolding::ownBytes);
   if (a_holdings.size() > a_count) {
     a_holdings.resize(a_count);
   }

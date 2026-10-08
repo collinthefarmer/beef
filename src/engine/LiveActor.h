@@ -8,7 +8,7 @@
 #include "engine/JobQueue.h"
 #include "planners/ActorMatches.h"
 #include "planners/BindingPlan.h"
-#include "planners/PlanSides.h"
+#include "planners/PlanSizes.h"
 #include "planners/RenderBudget.h"
 #include "planners/RenderPlan.h"
 #include "planners/ResolutionLevel.h"
@@ -21,7 +21,6 @@
 #include "render/Binding.h"
 #include "render/Compositor.h"
 
-#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -105,13 +104,13 @@ struct ResizedStack {
   bool drawn = false;
 };
 
-struct ResizeBuild {
+struct ResizeInFlight {
   ResizeProgress progress;
   std::shared_ptr<RenderInstance> render;
   std::vector<ResizedStack> stacks;
 };
 
-using LiveResize = std::variant<ResizeIdle, ResizePending, ResizeBuild>;
+using LiveResize = std::variant<ResizeIdle, ResizePending, ResizeInFlight>;
 
 struct HiddenSlot {
   std::size_t piece = 0;
@@ -130,13 +129,13 @@ struct LiveActor {
   RE::ActorHandle actor;
   bool inView = true;
   float screenFraction = 0.0f;
-  ResolutionLevel resolution = ResolutionLevel::kFull;
-  PlanSides fullSides;
+  ResolutionLevel appliedResolution = ResolutionLevel::kFull;
+  PlanSizes fullSizes;
   LiveResize resize;
   std::optional<FirstDraw> firstDraw;
-  std::array<std::optional<LevelCost>, kResolutionLevelCount> levelCosts;
+  PerLevel<std::optional<LevelCost>> levelCosts;
   IntermediateHolding intermediates = IntermediateHolding::kHeld;
-  std::optional<ResolutionLevel> blockedAt;
+  std::optional<ResolutionLevel> stepUpBlockedFrom;
   std::optional<JobId> awaitedPlan;
   std::uint64_t renderedFrame = 0;
   std::shared_ptr<const RecipeCatalog> catalog;

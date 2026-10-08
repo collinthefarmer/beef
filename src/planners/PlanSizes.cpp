@@ -1,5 +1,5 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
-#include "planners/PlanSides.h"
+#include "planners/PlanSizes.h"
 
 #include <format>
 
@@ -21,33 +21,33 @@ std::vector<SideRef> SidesNamedBy(const RenderStep &a_step) {
 }
 }
 
-std::expected<PlanSides, std::string>
-SidesFor(const RenderPlan &a_plan, std::vector<TextureSize> a_pixels) {
+std::expected<PlanSizes, std::string>
+SizesFor(const RenderPlan &a_plan, std::vector<TextureSize> a_sizes) {
   for (const RenderStep &step : a_plan.steps) {
     for (const SideRef side : SidesNamedBy(step)) {
-      if (side.index >= a_pixels.size()) {
+      if (side.index >= a_sizes.size()) {
         return std::unexpected(std::format("{} names side {} of {}",
                                            step.displayName, side.index,
-                                           a_pixels.size()));
+                                           a_sizes.size()));
       }
     }
   }
-  return PlanSides{std::move(a_pixels)};
+  return PlanSizes{std::move(a_sizes)};
 }
 
-TextureSize SideOf(const PlanSides &a_sides, SideRef a_side) noexcept {
-  return a_side.index < a_sides.pixels.size() ? a_sides.pixels[a_side.index]
-                                              : TextureSize{TextureSize::kMin};
+TextureSize SizeOf(const PlanSizes &a_sizes, SideRef a_side) noexcept {
+  return a_side.index < a_sizes.sizes.size() ? a_sizes.sizes[a_side.index]
+                                             : TextureSize{TextureSize::kMin};
 }
 
 std::optional<std::string> SharedKeyOf(const RenderStep &a_step,
-                                       const PlanSides &a_sides) {
+                                       const PlanSizes &a_sizes) {
   if (!a_step.contentKey) {
     return std::nullopt;
   }
   std::string key;
   for (const SideRef side : SidesNamedBy(a_step)) {
-    key += std::format("{}|", SideOf(a_sides, side).Pixels());
+    key += std::format("{}|", SizeOf(a_sizes, side).Pixels());
   }
   key += *a_step.contentKey;
   if (key.size() > kMaxCacheKeyBytes) {

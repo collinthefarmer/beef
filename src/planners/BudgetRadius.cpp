@@ -17,9 +17,7 @@ std::optional<float> UsableDistance(std::optional<float> a_distance) noexcept {
   return a_distance;
 }
 
-bool CanLoseEffect(const BudgetActor &a_actor) noexcept {
-  return !a_actor.resizing;
-}
+bool CanEvict(const BudgetActor &a_actor) noexcept { return !a_actor.resizing; }
 
 std::optional<float> InsideOf(const BudgetActor &a_actor,
                               float a_bound) noexcept {
@@ -37,7 +35,7 @@ FarthestCandidate(std::span<const BudgetActor> a_actors,
   float farthest = 0.0f;
   for (std::size_t i = 0; i < a_actors.size(); ++i) {
     const std::optional<float> distance = InsideOf(a_actors[i], a_bound);
-    if (distance && CanLoseEffect(a_actors[i]) &&
+    if (distance && CanEvict(a_actors[i]) &&
         (!chosen || *distance > farthest)) {
       chosen = i;
       farthest = *distance;
@@ -88,33 +86,34 @@ ShrinkRadius(std::span<const BudgetActor> a_actors,
   }
   const float radius =
       std::min(std::max(evicted * kRadiusShrinkFactor, kept), bound);
-  return RadiusShrink{*chosen, BudgetRadius{radius, a_nowMs},
-                      a_actors[*chosen].held};
+  const BudgetActor &evictee = a_actors[*chosen];
+  return RadiusShrink{evictee.actor, BudgetRadius{radius, a_nowMs},
+                      evictee.plannedBytes};
 }
 
 RadiusGrowth GrowRadius(const BudgetRadius &a_radius, Pressure a_pressure,
                         std::uint32_t a_nowMs, float a_evictDistance,
                         std::optional<float> a_farthest) noexcept {
   if (IsOver(a_pressure)) {
-    return {BudgetRadius{a_radius.distance, a_nowMs}, RadiusChange::kHeld};
+    return RadiusUnchanged{BudgetRadius{a_radius.distance, a_nowMs}};
   }
   if (a_nowMs - a_radius.sinceMs < kRadiusDwellMs) {
-    return {a_radius, RadiusChange::kHeld};
+    return RadiusUnchanged{a_radius};
   }
   const float grown = a_radius.distance / kRestoreFraction;
   const std::optional<float> limit = LimitsDistance(a_evictDistance)
                                          ? std::optional<float>{a_evictDistance}
                                          : UsableDistance(a_farthest);
   if (!limit || !(grown < *limit)) {
-    return {std::nullopt, RadiusChange::kCleared};
+    return RadiusCleared{};
   }
-  return {BudgetRadius{grown, a_nowMs}, RadiusChange::kGrown};
+  return RadiusGrown{BudgetRadius{grown, a_nowMs}};
 }
 
 std::string RadiusShrinkLine(float a_radius, std::uint32_t a_actor,
                              std::string_view a_name, std::uint64_t a_freed) {
   return std::format("render target budget: effects beyond {:.0f} units are "
-                     "off: {:08X} ({}) loses its effect, frees ~{}",
+                     "off: {:08X} ({}) is evicted, frees ~{}",
                      a_radius, a_actor, a_name.empty() ? "unnamed" : a_name,
                      Mebibytes(a_freed));
 }

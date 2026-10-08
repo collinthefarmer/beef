@@ -14,17 +14,17 @@
 namespace BetterEnchantmentEffects {
 struct InstallLevelChoice {
   ResolutionLevel level = ResolutionLevel::kFull;
-  std::uint64_t admitted = 0;
+  std::uint64_t chargedBytes = 0;
 };
 
-[[nodiscard]] std::optional<LevelCost> PlanLevelCost(const RenderPlan &a_plan,
-                                                     const PlanSides &a_full,
-                                                     ResolutionLevel a_level);
-[[nodiscard]] InstallLevelChoice
-ChooseInstallLevel(const RenderPlan &a_plan, const PlanSides &a_full,
-                   const InstallBound &a_bound);
-[[nodiscard]] std::optional<LevelCost> LevelCostOf(LiveActor &a_state,
+[[nodiscard]] std::optional<LevelCost> LevelCostOf(const RenderPlan &a_plan,
+                                                   const PlanSizes &a_full,
                                                    ResolutionLevel a_level);
+[[nodiscard]] InstallLevelChoice
+ChooseInstallLevel(const RenderPlan &a_plan, const PlanSizes &a_full,
+                   const InstallBound &a_bound);
+[[nodiscard]] std::optional<LevelCost> CachedLevelCost(LiveActor &a_state,
+                                                       ResolutionLevel a_level);
 [[nodiscard]] BudgetActor BudgetActorOf(LiveActor &a_state, std::uint32_t a_id,
                                         ActorRole a_role, float a_fraction,
                                         std::optional<float> a_distance);

@@ -2,8 +2,10 @@
 #include "engine/PlanJobs.h"
 #include "test_support.h"
 
+#include <expected>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 
 using namespace BetterEnchantmentEffects;
@@ -39,26 +41,36 @@ void OneJobPerKey() {
 
 void ClosingFreesTheKey() {
   PlanJobBook book = Opened({}, JobOf(1, 1));
-  ClosedPlanJob closed = Closed(std::move(book), JobId{1});
+  BookAfterClose closed = Closed(std::move(book), JobId{1});
   Check(closed.job.has_value() && closed.job->key == KeyNamed(1),
         "closing an open job returns its key");
   Check(!OpenJobFor(closed.book, KeyNamed(1)).has_value(),
         "a closed job no longer takes awaiters");
-  ClosedPlanJob again = Closed(std::move(closed.book), JobId{1});
+  BookAfterClose again = Closed(std::move(closed.book), JobId{1});
   Check(!again.job.has_value(), "a job closes once");
 }
 
 void AResetBookMakesResultsStale() {
   PlanJobBook book = Opened({}, JobOf(1, 1));
   book = {};
-  const ClosedPlanJob closed = Closed(std::move(book), JobId{1});
+  const BookAfterClose closed = Closed(std::move(book), JobId{1});
   Check(!closed.job.has_value(), "a reset book does not know the old job");
-  Check(ArrivalOf(closed.job.has_value(), true) == PlanArrival::kStale,
+  const std::expected<PlanBuildOutput, std::string> built =
+      PlanBuildOutput{RenderPlan{}, {}, {}};
+  const std::expected<PlanBuildOutput, std::string> unlowered =
+      PlanBuildOutput{std::unexpected(std::string{"no plan"}), {}, {}};
+  const std::expected<PlanBuildOutput, std::string> thrown =
+      std::unexpected(std::string{"the job threw"});
+  const std::optional<OpenPlanJob> open = JobOf(1, 1);
+  Check(ArrivalOf(closed.job, built) == PlanArrival::kStale,
         "a built plan for a job the book dropped is stale");
-  Check(ArrivalOf(false, false) == PlanArrival::kStale,
+  Check(ArrivalOf(std::nullopt, thrown) == PlanArrival::kStale,
         "a failed job the book dropped is stale, not a failure");
-  Check(ArrivalOf(true, true) == PlanArrival::kBuilt, "an open job builds");
-  Check(ArrivalOf(true, false) == PlanArrival::kFailed, "an open job can fail");
+  Check(ArrivalOf(open, built) == PlanArrival::kBuilt, "an open job builds");
+  Check(ArrivalOf(open, unlowered) == PlanArrival::kFailed,
+        "an open job can fail to lower");
+  Check(ArrivalOf(open, thrown) == PlanArrival::kFailed,
+        "an open job can fail in the worker");
 }
 
 void AwaitersFollowTheirJob() {
@@ -89,7 +101,7 @@ void BookHoldsGraphsUntilClosed() {
     book = Opened(std::move(book), std::move(job));
   }
   Equal(watched.use_count(), long{2}, "the open job holds the graph");
-  ClosedPlanJob closed = Closed(std::move(book), JobId{1});
+  BookAfterClose closed = Closed(std::move(book), JobId{1});
   Check(closed.job && closed.job->graphs.size() == 1,
         "the closed job hands its graphs to the cache");
 }

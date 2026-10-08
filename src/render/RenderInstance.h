@@ -37,15 +37,15 @@ struct RenderScratch {
 };
 class RenderInstance {
 public:
-  RenderInstance(RenderPlan plan, PlanSides sides,
+  RenderInstance(RenderPlan plan, PlanSizes sizes,
                  std::vector<GeometryInputs> geometries,
                  std::vector<std::shared_ptr<const RecipeGraph>> graphs);
   [[nodiscard]] std::expected<void, std::string>
   UpdateInput(RenderInputId input, RenderValue value);
   [[nodiscard]] const RenderPlan &Plan() const noexcept;
   [[nodiscard]] const PlanTargets &Targets() const noexcept;
-  [[nodiscard]] TextureSize Side(SideRef side) const noexcept;
-  [[nodiscard]] std::shared_ptr<RenderInstance> AtSides(PlanSides sides) const;
+  [[nodiscard]] TextureSize SizeAt(SideRef side) const noexcept;
+  [[nodiscard]] std::shared_ptr<RenderInstance> AtSizes(PlanSizes sizes) const;
   bool BeginFrame(std::uint64_t frame, std::uint64_t nowMS);
   std::size_t ReleaseIntermediates();
   [[nodiscard]] std::expected<void, std::string>
@@ -70,7 +70,7 @@ private:
   [[nodiscard]] const GeometryInputs *GeometryOf(GeometryId id) const noexcept;
 
   std::vector<GeometryInputs> geometries_;
-  PlanSides sides_;
+  PlanSizes sizes_;
   std::optional<std::uint64_t> frame_;
   std::optional<std::uint64_t> lastFrameMS_;
   std::uint64_t renderClockMS_ = 0;

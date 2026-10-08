@@ -80,7 +80,7 @@ void TheInputOutlivesItsSources() {
         "them");
 }
 
-void MissingPartsAreSkipped() {
+void RequestsWithoutIdentityGraphOrOutputStillBuild() {
   const auto recipe = std::make_shared<const Recipe>(MaterialEmissive());
   PlanBuildInput input = InputOf(recipe, "mesh:1");
   input.requests[0].identity = nullptr;
@@ -124,7 +124,7 @@ void IdentityBindingsReadOnlyTheFacts() {
 int main() {
   APlanBuildsFromOwnedInputs();
   TheInputOutlivesItsSources();
-  MissingPartsAreSkipped();
+  RequestsWithoutIdentityGraphOrOutputStillBuild();
   IdentityBindingsReadOnlyTheFacts();
   return test::Finish("planners_renderplanjob");
 }

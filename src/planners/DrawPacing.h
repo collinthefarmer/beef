@@ -1,7 +1,7 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #pragma once
 
-#include "planners/ResolutionLevel.h"
+#include "planners/ActorRole.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -20,6 +20,7 @@ struct DrawPace {
 };
 
 struct HiddenDrawCandidate {
+  std::uint32_t actor = 0;
   ActorRole role = ActorRole::kOther;
   float screenFraction = 0.0f;
 };
@@ -34,7 +35,7 @@ enum class FirstDrawEnd { kDrawn, kTickLimit };
 
 [[nodiscard]] bool MayDrawStack(DrawPace a_pace) noexcept;
 [[nodiscard]] DrawPace Drew(DrawPace a_pace, std::uint64_t a_us) noexcept;
-[[nodiscard]] std::vector<std::size_t>
+[[nodiscard]] std::vector<std::uint32_t>
 HiddenDrawOrder(std::span<const HiddenDrawCandidate> a_candidates);
 [[nodiscard]] std::optional<FirstDrawEnd>
 FirstDrawDone(const FirstDrawProgress &a_progress) noexcept;

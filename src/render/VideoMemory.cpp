@@ -34,7 +34,7 @@ AdapterOf(REX::W32::ID3D11Device &a_device) {
 }
 
 std::expected<VideoMemory, std::string> VideoMemoryProbe::Sample() {
-  if (Is<Unreached>(adapter_)) {
+  if (Is<NotProbed>(adapter_)) {
     REX::W32::ID3D11Device *device = RE::BSGraphics::Renderer::GetDevice();
     if (!device) {
       return std::unexpected("no D3D11 device yet");
@@ -43,10 +43,10 @@ std::expected<VideoMemory, std::string> VideoMemoryProbe::Sample() {
     if (reached) {
       adapter_ = std::move(*reached);
     } else {
-      adapter_ = Unreachable{std::move(reached.error())};
+      adapter_ = Unavailable{std::move(reached.error())};
     }
   }
-  if (const Unreachable *unreachable = Get<Unreachable>(adapter_)) {
+  if (const Unavailable *unreachable = Get<Unavailable>(adapter_)) {
     return std::unexpected(unreachable->problem);
   }
   const Adapter *adapter = Get<Adapter>(adapter_);

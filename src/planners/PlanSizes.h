@@ -10,15 +10,15 @@
 #include <vector>
 
 namespace BetterEnchantmentEffects {
-struct PlanSides {
-  std::vector<TextureSize> pixels;
-  [[nodiscard]] bool operator==(const PlanSides &) const = default;
+struct PlanSizes {
+  std::vector<TextureSize> sizes;
+  [[nodiscard]] bool operator==(const PlanSizes &) const = default;
 };
 
-[[nodiscard]] std::expected<PlanSides, std::string>
-SidesFor(const RenderPlan &a_plan, std::vector<TextureSize> a_pixels);
-[[nodiscard]] TextureSize SideOf(const PlanSides &a_sides,
+[[nodiscard]] std::expected<PlanSizes, std::string>
+SizesFor(const RenderPlan &a_plan, std::vector<TextureSize> a_sizes);
+[[nodiscard]] TextureSize SizeOf(const PlanSizes &a_sizes,
                                  SideRef a_side) noexcept;
 [[nodiscard]] std::optional<std::string> SharedKeyOf(const RenderStep &a_step,
-                                                     const PlanSides &a_sides);
+                                                     const PlanSizes &a_sizes);
 }

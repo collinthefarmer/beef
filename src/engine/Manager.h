@@ -173,8 +173,7 @@ private:
   void RelieveBudget(std::uint64_t a_goal, const Settings &a_settings);
   void StepDownForBudget(RE::FormID a_actorID, LiveActor &a_state,
                          const StepDownOption &a_option);
-  [[nodiscard]] bool ShrinkBudgetRadius(std::span<const RE::FormID> a_ids,
-                                        std::span<const BudgetActor> a_actors);
+  [[nodiscard]] bool ShrinkBudgetRadius(std::span<const BudgetActor> a_actors);
   void GrowBudgetRadius(const Settings &a_settings);
   [[nodiscard]] std::optional<float> FarthestTrackedDistance() const;
   [[nodiscard]] float EvictDistanceNow(const Settings &a_settings) const;
@@ -221,8 +220,8 @@ private:
                                             std::uint64_t a_replaced,
                                             const Settings &a_settings) const;
   void KeepInstallLevel(RE::FormID a_actorID, ResolutionLevel a_level);
-  void UpdateResolution(RE::FormID a_actorID, RE::Actor &a_actor,
-                        LiveActor &a_state, const Settings &a_settings);
+  void RequestStepUp(RE::FormID a_actorID, RE::Actor &a_actor,
+                     LiveActor &a_state, const Settings &a_settings);
   void AdvanceResizes(const Settings &a_settings);
   void PlaceInstances(LiveActor &a_state, RE::FormID a_actorID,
                       std::uint64_t a_replaced, const Settings &a_settings);
@@ -243,8 +242,7 @@ private:
 
   void Tick(std::uint32_t a_nowMS, const Settings &a_settings);
   void TickInstance(LiveInstance &a_instance, float a_time, float a_delta);
-  void DrawHidden(std::span<const RE::FormID> a_actors,
-                  std::span<const HiddenDrawCandidate> a_candidates);
+  void DrawHidden(std::span<const HiddenDrawCandidate> a_candidates);
   void AttachFirstDraw(RE::FormID a_actorID, LiveActor &a_state);
   void ClaimLostGeometries(RE::FormID a_actorID, LiveActor &a_state);
   void RenderGeometry(LiveActor &a_state, LiveGeometry &a_bound, bool a_hidden,
@@ -284,7 +282,7 @@ private:
   struct TrackedActor {
     std::optional<Actors::ActorState> state;
     ModelTable models;
-    std::optional<ResolutionLevel> resolution;
+    std::optional<ResolutionLevel> targetResolution;
   };
   std::unordered_map<RE::FormID, TrackedActor> tracked_;
   std::optional<IdleCameraHold> menuIdleHold_;
@@ -292,7 +290,7 @@ private:
   std::uint64_t regressionPaintSession_ = 0;
   std::uint32_t lastTickMS_ = 0;
   std::uint32_t lastMetricsMS_ = 0;
-  std::uint32_t holdingLevel_ = 0;
+  std::uint32_t holdingStep_ = 0;
   VideoMemoryProbe videoMemory_;
   BudgetState budget_;
   std::optional<BudgetRadius> budgetRadius_;

@@ -14,18 +14,18 @@ namespace {
 constexpr std::uint64_t kGiB = kHoldingStepBytes;
 
 void LevelsRiseAndFallWithHysteresis() {
-  Check(NextHoldingLevel(0, kGiB / 2) == HoldingLevel{0, Crossing::kNone},
+  Check(NextHoldingStep(0, kGiB / 2) == HoldingStep{0, Crossing::kNone},
         "below the first step nothing is reported");
-  Check(NextHoldingLevel(0, kGiB) == HoldingLevel{1, Crossing::kRose},
+  Check(NextHoldingStep(0, kGiB) == HoldingStep{1, Crossing::kRose},
         "reaching a step rises");
-  Check(NextHoldingLevel(1, 3 * kGiB + 1) == HoldingLevel{3, Crossing::kRose},
+  Check(NextHoldingStep(1, 3 * kGiB + 1) == HoldingStep{3, Crossing::kRose},
         "a jump rises to the level reached");
-  Check(NextHoldingLevel(3, 3 * kGiB - kGiB / 4) ==
-            HoldingLevel{3, Crossing::kNone},
+  Check(NextHoldingStep(3, 3 * kGiB - kGiB / 4) ==
+            HoldingStep{3, Crossing::kNone},
         "a small dip below the step does not fall");
-  Check(NextHoldingLevel(3, 2 * kGiB) == HoldingLevel{2, Crossing::kFell},
+  Check(NextHoldingStep(3, 2 * kGiB) == HoldingStep{2, Crossing::kFell},
         "half a step below the level falls");
-  Check(NextHoldingLevel(1, 0) == HoldingLevel{0, Crossing::kFell},
+  Check(NextHoldingStep(1, 0) == HoldingStep{0, Crossing::kFell},
         "an empty pool falls to zero");
 }
 
@@ -53,42 +53,42 @@ void LargestHoldingsComeFirst() {
 }
 
 void SharedTargetsAreNamed() {
-  const TextureSize side{512};
+  const TextureSize size{512};
   const TextureFormat format = TextureFormat::kRgba8;
-  const std::uint64_t one = TargetBytes(side, format);
+  const std::uint64_t one = TargetBytes(size, format);
   const std::vector<ActorTargets> actors{
       {1,
        "A",
        0.1f,
        {},
-       {{side, format, "mask"}, {side, format, std::nullopt}}},
-      {2, "B", 0.2f, {}, {{side, format, "mask"}, {side, format, "own"}}}};
+       {{size, format, "mask"}, {size, format, std::nullopt}}},
+      {2, "B", 0.2f, {}, {{size, format, "mask"}, {size, format, "own"}}}};
   const std::vector<ActorHolding> holdings = HoldingsOf(actors);
-  Check(holdings.size() == 2 && holdings[0].bytes == one &&
-            holdings[0].sharedBytes == one && holdings[1].bytes == one &&
+  Check(holdings.size() == 2 && holdings[0].ownBytes == one &&
+            holdings[0].sharedBytes == one && holdings[1].ownBytes == one &&
             holdings[1].sharedBytes == one,
         "a key that two actors hold counts as shared in both, not as own");
 }
 
 void OwnBytesAddUpToThePlannedTotal() {
-  const TextureSize side{512};
+  const TextureSize size{512};
   const TextureFormat format = TextureFormat::kRgba8;
   const std::vector<ActorTargets> actors{
       {1,
        "A",
        0.1f,
        {},
-       {{side, format, "mask"}, {side, format, std::nullopt}}},
-      {2, "B", 0.2f, {}, {{side, format, "mask"}, {side, format, "own"}}}};
+       {{size, format, "mask"}, {size, format, std::nullopt}}},
+      {2, "B", 0.2f, {}, {{size, format, "mask"}, {size, format, "own"}}}};
   std::vector<HeldTarget> all;
   for (const ActorTargets &actor : actors) {
-    all.insert(all.end(), actor.held.begin(), actor.held.end());
+    all.insert(all.end(), actor.targets.begin(), actor.targets.end());
   }
   std::uint64_t own = 0;
   for (const ActorHolding &holding : HoldingsOf(actors)) {
-    own += holding.bytes;
+    own += holding.ownBytes;
   }
-  Equal(own + TargetBytes(side, format), CostOf(all).bytes,
+  Equal(own + TargetBytes(size, format), CostOf(all).bytes,
         "the actors' own bytes and each shared target once make the total");
 }
 

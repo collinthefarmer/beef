@@ -5,8 +5,8 @@ namespace BetterEnchantmentEffects {
 namespace {
 constexpr float kFullLevelFraction = 0.5f;
 
-constexpr unsigned Step(ResolutionLevel a_level) noexcept {
-  return static_cast<unsigned>(a_level);
+constexpr unsigned Halvings(ResolutionLevel a_level) noexcept {
+  return static_cast<unsigned>(LevelIndex(a_level));
 }
 }
 
@@ -23,16 +23,16 @@ ResolutionLevel IdealLevel(float a_screenFraction) noexcept {
   return ResolutionLevel::kEighth;
 }
 
-std::optional<ResolutionLevel> LevelChange(ResolutionLevel a_current,
-                                           float a_screenFraction,
-                                           ActorRole a_role) noexcept {
+std::optional<ResolutionLevel> StepUpFor(ResolutionLevel a_current,
+                                         float a_screenFraction,
+                                         ActorRole a_role) noexcept {
   if (a_role != ActorRole::kPlayer && !(a_screenFraction > 0.0f)) {
     return std::nullopt;
   }
   const ResolutionLevel wanted = a_role == ActorRole::kPlayer
                                      ? ResolutionLevel::kFull
                                      : IdealLevel(a_screenFraction);
-  if (Step(wanted) >= Step(a_current)) {
+  if (Halvings(wanted) >= Halvings(a_current)) {
     return std::nullopt;
   }
   return wanted;
@@ -53,14 +53,15 @@ std::optional<ResolutionLevel> CoarserLevel(ResolutionLevel a_level) noexcept {
 }
 
 int LevelGap(ResolutionLevel a_finer, ResolutionLevel a_coarser) noexcept {
-  return static_cast<int>(Step(a_coarser)) - static_cast<int>(Step(a_finer));
+  return static_cast<int>(Halvings(a_coarser)) -
+         static_cast<int>(Halvings(a_finer));
 }
 
-PlanSides AtLevel(const PlanSides &a_sides, ResolutionLevel a_level) {
-  PlanSides leveled;
-  leveled.pixels.reserve(a_sides.pixels.size());
-  for (const TextureSize side : a_sides.pixels) {
-    leveled.pixels.emplace_back(side.Pixels() >> Step(a_level));
+PlanSizes AtLevel(const PlanSizes &a_sizes, ResolutionLevel a_level) {
+  PlanSizes leveled;
+  leveled.sizes.reserve(a_sizes.sizes.size());
+  for (const TextureSize size : a_sizes.sizes) {
+    leveled.sizes.emplace_back(size.Pixels() >> Halvings(a_level));
   }
   return leveled;
 }

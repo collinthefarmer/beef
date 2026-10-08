@@ -100,7 +100,7 @@ bool RangeChanged(RE::FormID a_actor, const Actors::ActorState &a_state,
 }
 
 bool DrawsHidden(const LiveActor &a_state) {
-  return a_state.firstDraw.has_value() || Is<ResizeBuild>(a_state.resize);
+  return a_state.firstDraw.has_value() || Is<ResizeInFlight>(a_state.resize);
 }
 
 ActorRole RoleOf(RE::Actor &a_actor) {
@@ -580,7 +580,10 @@ void MarkReferencedInstances(LiveActor &a_state, const LiveGeometry &a_bound,
 }
 
 void EmitGpuTimings() {
-  const GpuTiming::Totals gpu = TextureLab::GetSingleton()->DrainTimings();
+  TextureLab *lab = TextureLab::GetSingleton();
+  if (!lab)
+    return;
+  const GpuTiming::Totals gpu = lab->DrainTimings();
   if (gpu.timedTicks == 0 && gpu.droppedTicks == 0 && gpu.discardedTicks == 0)
     return;
   Trace::EmitSafely(Trace::Event::kMetrics,
@@ -613,7 +616,7 @@ void EmitStepKinds(const Metrics::StepKindCounts &a_counts) {
 }
 
 TargetCost
-EstimateTargets(const std::unordered_map<RE::FormID, LiveActor> &a_live) {
+PlannedTargets(const std::unordered_map<RE::FormID, LiveActor> &a_live) {
   std::unordered_set<const RenderInstance *> seen;
   std::vector<HeldTarget> held;
   for (const auto &[actor, state] : a_live) {
@@ -676,8 +679,8 @@ RenderedActorTargets(const std::unordered_map<RE::FormID, LiveActor> &a_live) {
 
 std::string Fraction(float a_value) { return std::format("{:.3f}", a_value); }
 
-float LevelFraction(const LiveActor &a_state, const Settings &a_settings) {
-  return RegressionScreenResolution().value_or(a_settings.screenResolution)
+float SizingFraction(const LiveActor &a_state, const Settings &a_settings) {
+  return RegressionScreenResolution().value_or(a_settings.sizeByScreen)
              ? a_state.screenFraction
              : 1.0f;
 }
@@ -717,37 +720,34 @@ void ReportResize(RE::FormID a_actorID, const LiveActor &a_state,
   if (!a_settings.verboseLogging) {
     return;
   }
-  const RE::NiPointer<RE::Actor> actor = a_state.actor.get();
-  const char *name = actor ? actor->GetName() : nullptr;
+  const std::string name = NameOf(a_state);
   logger::info("actor {:08X} ({}) resized: drawn at {} resolution", a_actorID,
-               name && *name ? name : "unnamed", LevelName(a_swap.to));
+               name.empty() ? "unnamed" : name, LevelName(a_swap.to));
 }
 
 void EmitLevelCounts(const std::unordered_map<RE::FormID, LiveActor> &a_live) {
-  std::array<std::size_t, kResolutionLevelCount> counts{};
+  PerLevel<std::size_t> counts;
   for (const auto &[actor, state] : a_live) {
-    const auto index = static_cast<std::size_t>(state.resolution);
-    if (index < counts.size()) {
-      ++counts[index];
-    }
+    ++counts.At(state.appliedResolution);
   }
-  Trace::EmitSafely(Trace::Event::kMetrics,
-                    {{"action", "resolution_levels"},
-                     {"full", std::to_string(counts[0])},
-                     {"half", std::to_string(counts[1])},
-                     {"quarter", std::to_string(counts[2])},
-                     {"eighth", std::to_string(counts[3])}});
+  std::vector<Trace::Field> fields{{"action", "resolution_levels"}};
+  for (const ResolutionLevel level : kResolutionLevels) {
+    fields.push_back(
+        {std::string{LevelName(level)}, std::to_string(counts.At(level))});
+  }
+  Trace::EmitSafely(Trace::Event::kMetrics, fields);
 }
 
 void EmitMetricsHeartbeat(const Metrics::Snapshot &a_measured,
-                          const TargetCost &a_estimate,
+                          const TargetCost &a_planned,
                           const ScreenSpread &a_screen,
                           const BudgetSample &a_sample,
                           const BudgetState &a_budget,
                           std::size_t a_waitingInstalls) {
   EmitGpuTimings();
+  const TextureLab *lab = TextureLab::GetSingleton();
   const TextureLab::TargetHoldings held =
-      TextureLab::GetSingleton()->HeldTargets();
+      lab ? lab->HeldTargets() : TextureLab::TargetHoldings{};
   const Compositor *compositor = Compositor::GetSingleton();
   EmitStepKinds(a_measured.stepExecutionsByKind);
   std::vector<Trace::Field> heartbeat{
@@ -781,8 +781,8 @@ void EmitMetricsHeartbeat(const Metrics::Snapshot &a_measured,
       {"screen_fraction_min", Fraction(a_screen.least)},
       {"screen_fraction_median", Fraction(a_screen.median)},
       {"screen_fraction_max", Fraction(a_screen.most)},
-      {"estimated_targets", std::to_string(a_estimate.targets)},
-      {"estimated_bytes", std::to_string(a_estimate.bytes)},
+      {"estimated_targets", std::to_string(a_planned.targets)},
+      {"estimated_bytes", std::to_string(a_planned.bytes)},
       {"pool_targets", std::to_string(held.idleTargets)},
       {"pool_bytes", std::to_string(held.idleBytes)},
       {"scratch_targets", std::to_string(held.scratchTargets)},
@@ -820,7 +820,7 @@ void Manager::FlushMetricsHeartbeat() {
   const std::uint32_t intervalMs = now - lastMetricsMS_;
   lastMetricsMS_ = now;
   const Metrics::Snapshot measured = Metrics::Drain();
-  const TargetCost planned = EstimateTargets(live_);
+  const TargetCost planned = PlannedTargets(live_);
   const Settings settings = GetSettings();
   const BudgetSample sample = SampleBudget(measured, settings);
   UpdateBudget(sample, planned.bytes, settings);
@@ -833,9 +833,9 @@ void Manager::FlushMetricsHeartbeat() {
 void Manager::ReportRenderMemory(const Metrics::Snapshot &a_measured,
                                  const TargetCost &a_planned,
                                  std::uint32_t a_intervalMs) {
-  const HoldingLevel next =
-      NextHoldingLevel(holdingLevel_, a_measured.targetBytes);
-  holdingLevel_ = next.level;
+  const HoldingStep next =
+      NextHoldingStep(holdingStep_, a_measured.targetBytes);
+  holdingStep_ = next.step;
   if (next.crossing != Crossing::kNone) {
     logger::info("{}", HoldingLine({a_measured.targets, a_measured.targetBytes},
                                    {a_planned.targets, a_planned.bytes},
@@ -854,10 +854,14 @@ void Manager::ReportRenderMemory(const Metrics::Snapshot &a_measured,
 }
 
 void Manager::OnFrame() {
+  TextureLab *lab = TextureLab::GetSingleton();
+  if (!lab) {
+    return;
+  }
   if (!textureLabStarted_) {
     textureLabStarted_ = true;
     const Metrics::Stopwatch startWatch;
-    const bool started = TextureLab::GetSingleton()->Init();
+    const bool started = lab->Init();
     Trace::EmitSafely(Trace::Event::kMetrics,
                       {{"action", "texture_lab_start"},
                        {"started", started ? "true" : "false"},
@@ -876,9 +880,9 @@ void Manager::OnFrame() {
   frameSyncs_ = {};
   RunWaitingInstalls(now);
   const SectionTimer frameTimer{Metrics::Section::kFrame};
-  TextureLab::GetSingleton()->CollectTimings();
+  lab->CollectTimings();
   SweepRetiredMaterialTextures();
-  TextureLab::GetSingleton()->CollectPreviewDraws();
+  lab->CollectPreviewDraws();
   FireDueFinalizes();
   editor_.TickGesture();
   Metrics::CountFrame();
@@ -909,10 +913,10 @@ void Manager::OnFrame() {
   }
   if (!live_.empty()) {
     const SectionTimer tickTimer{Metrics::Section::kTick};
-    TextureLab::GetSingleton()->SetGeneratedShaders(settings.generatedShaders);
-    TextureLab::GetSingleton()->BeginTimedTick(settings.gpuTiming);
+    lab->SetGeneratedShaders(settings.generatedShaders);
+    lab->BeginTimedTick(settings.gpuTiming);
     Tick(now, settings);
-    TextureLab::GetSingleton()->EndTimedTick();
+    lab->EndTimedTick();
   }
   {
     const SectionTimer sweepTimer{Metrics::Section::kSweep};
@@ -950,14 +954,15 @@ void Manager::Tick(std::uint32_t a_nowMS, const Settings &a_settings) {
   const Studio::View &view = editor_.CurrentView();
   {
     const SectionTimer previewsTimer{Metrics::Section::kPreviews};
-    TextureLab::GetSingleton()->RenderPreviews();
+    if (TextureLab *lab = TextureLab::GetSingleton()) {
+      lab->RenderPreviews();
+    }
   }
   const TickFrame frame{a_settings, view, a_nowMS,
                         frozenLastTick_ && !view.freeze};
   frozenLastTick_ = view.freeze;
   const std::optional<RE::FormID> inspected = InspectedActor(a_nowMS);
   AdvanceResizes(a_settings);
-  std::vector<RE::FormID> drawing;
   std::vector<HiddenDrawCandidate> candidates;
   for (auto it = live_.begin(); it != live_.end();) {
     LiveActor &state = it->second;
@@ -987,15 +992,14 @@ void Manager::Tick(std::uint32_t a_nowMS, const Settings &a_settings) {
     if (state.inView) {
       state.intermediates = IntermediateHolding::kHeld;
     }
-    UpdateResolution(it->first, *actor, state, a_settings);
+    RequestStepUp(it->first, *actor, state, a_settings);
     std::vector<bool> hidden;
     if (state.inView) {
       const SectionTimer renderTimer{Metrics::Section::kRender};
       hidden = RenderPieces(state, it->first);
       state.renderedFrame = renderFrame_;
       if (DrawsHidden(state)) {
-        drawing.push_back(it->first);
-        candidates.push_back({RoleOf(*actor), state.screenFraction});
+        candidates.push_back({it->first, RoleOf(*actor), state.screenFraction});
       }
     }
     if (state.firstDraw) {
@@ -1010,19 +1014,17 @@ void Manager::Tick(std::uint32_t a_nowMS, const Settings &a_settings) {
     }
     ++it;
   }
-  DrawHidden(drawing, candidates);
+  DrawHidden(candidates);
 }
 
-void Manager::DrawHidden(std::span<const RE::FormID> a_actors,
-                         std::span<const HiddenDrawCandidate> a_candidates) {
+void Manager::DrawHidden(std::span<const HiddenDrawCandidate> a_candidates) {
   const SectionTimer renderTimer{Metrics::Section::kRender};
   const Studio::View &view = editor_.CurrentView();
   const std::optional<RE::FormID> inspected = InspectedActor(tickNowMS_);
   const bool publish = GetSettings().publishEffects;
   DrawPace pace;
-  for (const std::size_t index : HiddenDrawOrder(a_candidates)) {
-    const auto found =
-        index < a_actors.size() ? live_.find(a_actors[index]) : live_.end();
+  for (const std::uint32_t actor : HiddenDrawOrder(a_candidates)) {
+    const auto found = live_.find(actor);
     if (found == live_.end()) {
       continue;
     }
@@ -1132,18 +1134,17 @@ void Manager::TickInstance(LiveInstance &a_instance, float a_time,
   a_instance.signals->Tick(*a_instance.environment, {a_time, a_delta});
 }
 
-void Manager::UpdateResolution(RE::FormID a_actorID, RE::Actor &a_actor,
-                               LiveActor &a_state, const Settings &a_settings) {
+void Manager::RequestStepUp(RE::FormID a_actorID, RE::Actor &a_actor,
+                            LiveActor &a_state, const Settings &a_settings) {
   const auto tracked = tracked_.find(a_actorID);
-  if (tracked == tracked_.end() || !tracked->second.resolution ||
+  if (tracked == tracked_.end() || !tracked->second.targetResolution ||
       a_state.awaitedPlan) {
     return;
   }
-  ResolutionLevel &level = *tracked->second.resolution;
-  const ActorRole role =
-      a_actor.IsPlayerRef() ? ActorRole::kPlayer : ActorRole::kOther;
+  ResolutionLevel &level = *tracked->second.targetResolution;
+  const ActorRole role = RoleOf(a_actor);
   const std::optional<ResolutionLevel> next =
-      LevelChange(level, LevelFraction(a_state, a_settings), role);
+      StepUpFor(level, SizingFraction(a_state, a_settings), role);
   if (!next) {
     return;
   }
@@ -1163,27 +1164,25 @@ void Manager::UpdateResolution(RE::FormID a_actorID, RE::Actor &a_actor,
 
 void Manager::AdvanceResizes(const Settings &a_settings) {
   std::size_t inFlight = 0;
-  std::vector<RE::FormID> actors;
   std::vector<ResizeCandidate> candidates;
-  actors.reserve(live_.size());
   candidates.reserve(live_.size());
   for (auto &[id, state] : live_) {
     if (const std::optional<ResizeSwap> swap =
             FinishResize(state, renderFrame_)) {
       ReportResize(id, state, *swap, a_settings);
     }
-    if (Is<ResizeBuild>(state.resize)) {
+    if (Is<ResizeInFlight>(state.resize)) {
       ++inFlight;
     }
-    actors.push_back(id);
-    candidates.push_back({Is<ResizePending>(state.resize) && !state.firstDraw,
+    candidates.push_back({id,
+                          Is<ResizePending>(state.resize) && !state.firstDraw,
                           state.screenFraction});
   }
-  const std::optional<std::size_t> next = NextBuild(candidates, inFlight);
-  if (!next || *next >= actors.size()) {
+  const std::optional<std::uint32_t> next = NextResize(candidates, inFlight);
+  if (!next) {
     return;
   }
-  const auto found = live_.find(actors[*next]);
+  const auto found = live_.find(*next);
   if (found == live_.end()) {
     return;
   }
@@ -1198,16 +1197,16 @@ void Manager::AdvanceResizes(const Settings &a_settings) {
 
 bool Manager::AdmitStepUp(RE::FormID a_actorID, LiveActor &a_state,
                           ResolutionLevel a_from, ResolutionLevel a_to) {
-  const std::optional<LevelCost> cost = LevelCostOf(a_state, a_to);
-  const std::uint64_t added = cost ? cost->held : 0;
+  const std::optional<LevelCost> cost = CachedLevelCost(a_state, a_to);
+  const std::uint64_t added = cost ? cost->withIntermediates : 0;
   const Admission admission = AdmitGrowth(budget_, added);
   if (admission == Admission::kAdmitted) {
-    budget_ = Admitted(budget_, added);
-    a_state.blockedAt.reset();
+    budget_ = Charged(budget_, added);
+    a_state.stepUpBlockedFrom.reset();
     return true;
   }
-  if (a_state.blockedAt != a_from) {
-    a_state.blockedAt = a_from;
+  if (a_state.stepUpBlockedFrom != a_from) {
+    a_state.stepUpBlockedFrom = a_from;
     Trace::EmitSafely(
         Trace::Event::kMetrics,
         {{"action", "resolution_blocked"},
@@ -1265,7 +1264,6 @@ void Manager::UpdateBudget(const BudgetSample &a_sample,
 }
 
 void Manager::RelieveBudget(std::uint64_t a_goal, const Settings &a_settings) {
-  std::vector<RE::FormID> ids;
   std::vector<BudgetActor> actors;
   bool resizeBusy = false;
   for (auto &[id, state] : live_) {
@@ -1274,18 +1272,14 @@ void Manager::RelieveBudget(std::uint64_t a_goal, const Settings &a_settings) {
     if (!actor || state.renderedFrame == 0) {
       continue;
     }
-    const ActorRole role =
-        actor->IsPlayerRef() ? ActorRole::kPlayer : ActorRole::kOther;
-    ids.push_back(id);
-    actors.push_back(BudgetActorOf(state, id, role,
-                                   LevelFraction(state, a_settings),
+    actors.push_back(BudgetActorOf(state, id, RoleOf(*actor),
+                                   SizingFraction(state, a_settings),
                                    DistanceToPlayer(*actor)));
   }
   const BudgetResponse response =
       RespondToPressure(budget_.planned, a_goal, actors, resizeBusy);
-  for (const std::size_t index : response.release) {
-    const auto found =
-        index < ids.size() ? live_.find(ids[index]) : live_.end();
+  for (const BudgetRelease &release : response.release) {
+    const auto found = live_.find(release.actor);
     if (found == live_.end()) {
       continue;
     }
@@ -1294,15 +1288,15 @@ void Manager::RelieveBudget(std::uint64_t a_goal, const Settings &a_settings) {
                       {{"action", "budget_release"},
                        {"actor", std::to_string(found->first)},
                        {"steps", std::to_string(steps)},
-                       {"bytes", std::to_string(actors[index].releasable)}});
+                       {"bytes", std::to_string(release.bytes)}});
   }
-  if (response.stepDown && response.stepDown->actor < ids.size()) {
-    const auto found = live_.find(ids[response.stepDown->actor]);
+  if (const StepDown *stepDown = Get<StepDown>(response.next)) {
+    const auto found = live_.find(stepDown->actor);
     if (found != live_.end()) {
-      StepDownForBudget(found->first, found->second, response.stepDown->option);
+      StepDownForBudget(found->first, found->second, stepDown->option);
     }
   }
-  if (response.exhausted && !ShrinkBudgetRadius(ids, actors) &&
+  if (Is<Exhausted>(response.next) && !ShrinkBudgetRadius(actors) &&
       budget_.pressure == Pressure::kOver) {
     budget_.pressure = Pressure::kOverWarned;
     logger::warn(
@@ -1313,14 +1307,13 @@ void Manager::RelieveBudget(std::uint64_t a_goal, const Settings &a_settings) {
   }
 }
 
-bool Manager::ShrinkBudgetRadius(std::span<const RE::FormID> a_ids,
-                                 std::span<const BudgetActor> a_actors) {
+bool Manager::ShrinkBudgetRadius(std::span<const BudgetActor> a_actors) {
   const std::optional<RadiusShrink> shrink =
       ShrinkRadius(a_actors, budgetRadius_, NowMS());
-  if (!shrink || shrink->actor >= a_ids.size()) {
+  if (!shrink) {
     return false;
   }
-  const RE::FormID id = a_ids[shrink->actor];
+  const RE::FormID id = shrink->actor;
   const auto found = live_.find(id);
   const std::string name =
       found != live_.end() ? NameOf(found->second) : std::string{};
@@ -1347,19 +1340,25 @@ void Manager::GrowBudgetRadius(const Settings &a_settings) {
   const RadiusGrowth growth =
       GrowRadius(*budgetRadius_, budget_.pressure, NowMS(),
                  a_settings.evictDistance, farthest);
-  budgetRadius_ = growth.radius;
-  if (growth.change == RadiusChange::kHeld) {
+  if (const RadiusUnchanged *unchanged = Get<RadiusUnchanged>(growth)) {
+    budgetRadius_ = unchanged->radius;
     return;
   }
-  const bool cleared = growth.change == RadiusChange::kCleared;
-  logger::info("{}", cleared ? RadiusClearLine()
-                             : RadiusGrowLine(growth.radius->distance));
+  if (const RadiusGrown *grown = Get<RadiusGrown>(growth)) {
+    budgetRadius_ = grown->radius;
+    logger::info("{}", RadiusGrowLine(grown->radius.distance));
+    Trace::EmitSafely(
+        Trace::Event::kMetrics,
+        {{"action", "budget_radius"},
+         {"change", "grow"},
+         {"radius", std::format("{:.0f}", grown->radius.distance)}});
+    return;
+  }
+  budgetRadius_.reset();
+  logger::info("{}", RadiusClearLine());
   Trace::EmitSafely(
       Trace::Event::kMetrics,
-      {{"action", "budget_radius"},
-       {"change", cleared ? "clear" : "grow"},
-       {"radius", growth.radius ? std::format("{:.0f}", growth.radius->distance)
-                                : std::string{"none"}}});
+      {{"action", "budget_radius"}, {"change", "clear"}, {"radius", "none"}});
 }
 
 std::optional<float> Manager::FarthestTrackedDistance() const {
@@ -1386,12 +1385,12 @@ float Manager::EvictDistanceNow(const Settings &a_settings) const {
 void Manager::StepDownForBudget(RE::FormID a_actorID, LiveActor &a_state,
                                 const StepDownOption &a_option) {
   const auto tracked = tracked_.find(a_actorID);
-  if (tracked == tracked_.end() || !tracked->second.resolution) {
+  if (tracked == tracked_.end() || !tracked->second.targetResolution) {
     return;
   }
-  const ResolutionLevel from = a_state.resolution;
-  tracked->second.resolution = a_option.to;
-  a_state.blockedAt.reset();
+  const ResolutionLevel from = a_state.appliedResolution;
+  tracked->second.targetResolution = a_option.to;
+  a_state.stepUpBlockedFrom.reset();
   RequestResize(a_state, a_option.to);
   logger::info("{}", StepDownLine(a_actorID, NameOf(a_state), from, a_option));
   Trace::EmitSafely(Trace::Event::kMetrics,
@@ -1431,7 +1430,11 @@ void Manager::ClaimLostGeometries(RE::FormID a_actorID, LiveActor &a_state) {
 
 void Manager::RenderGeometry(LiveActor &a_state, LiveGeometry &a_bound,
                              bool a_hidden, bool a_inspected) {
-  const TextureLab::PassBatch batch{*TextureLab::GetSingleton()};
+  TextureLab *lab = TextureLab::GetSingleton();
+  if (!lab) {
+    return;
+  }
+  const TextureLab::PassBatch batch{*lab};
   const Studio::View &view = editor_.CurrentView();
   if (a_bound.inputs.render &&
       a_bound.inputs.render->BeginFrame(renderFrame_, tickNowMS_)) {

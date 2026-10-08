@@ -46,6 +46,10 @@ StepDownCandidate(std::span<const BudgetActor> a_actors) noexcept {
   return chosen;
 }
 
+std::uint64_t FreeVideoMemory(const VideoMemory &a_memory) noexcept {
+  return Less(a_memory.budget, a_memory.usage);
+}
+
 std::vector<std::size_t> ReleaseOrder(std::span<const BudgetActor> a_actors) {
   std::vector<std::size_t> order;
   for (std::size_t i = 0; i < a_actors.size(); ++i) {
@@ -63,9 +67,9 @@ std::vector<std::size_t> ReleaseOrder(std::span<const BudgetActor> a_actors) {
 std::string HolderText(const ActorHolding &a_holding) {
   return a_holding.name.empty()
              ? std::format("{:08X} {}", a_holding.actor,
-                           Mebibytes(a_holding.bytes))
+                           Mebibytes(a_holding.ownBytes))
              : std::format("{} ({:08X}) {}", a_holding.name, a_holding.actor,
-                           Mebibytes(a_holding.bytes));
+                           Mebibytes(a_holding.ownBytes));
 }
 
 std::string AllowanceText(const BudgetState &a_state) {
@@ -90,9 +94,9 @@ AllowanceOf(const BudgetSample &a_sample) noexcept {
     return std::nullopt;
   }
   const VideoMemory &memory = *a_sample.memory;
-  const std::uint64_t live = std::min(a_sample.liveBytes, memory.usage);
-  const std::uint64_t allowance = Less(
-      Sum(live, Less(memory.budget, memory.usage)), MarginOf(memory.budget));
+  const std::uint64_t plugin = std::min(a_sample.pluginBytes, memory.usage);
+  const std::uint64_t allowance =
+      Less(Sum(plugin, FreeVideoMemory(memory)), MarginOf(memory.budget));
   return a_sample.capBytes > 0 ? std::min(allowance, a_sample.capBytes)
                                : allowance;
 }
@@ -133,7 +137,7 @@ Admission AdmitGrowth(const BudgetState &a_state,
              : Admission::kAdmitted;
 }
 
-BudgetState Admitted(BudgetState a_state, std::uint64_t a_added) noexcept {
+BudgetState Charged(BudgetState a_state, std::uint64_t a_added) noexcept {
   a_state.planned = Sum(a_state.planned, a_added);
   return a_state;
 }
@@ -162,19 +166,22 @@ ResolutionLevel FittingLevel(ResolutionLevel a_finest,
   }
   for (std::optional<ResolutionLevel> level = a_finest; level;
        level = CoarserLevel(*level)) {
-    const auto index = static_cast<std::size_t>(*level);
-    if (index < a_bytes.size() && a_bytes[index] &&
-        *a_bytes[index] <= *a_headroom) {
+    const std::optional<std::uint64_t> &bytes = a_bytes.At(*level);
+    if (bytes && *bytes <= *a_headroom) {
       return *level;
     }
   }
   return ResolutionLevel::kEighth;
 }
 
-std::uint64_t HeldBytes(const LevelCost &a_cost,
-                        IntermediateHolding a_holding) noexcept {
-  return a_holding == IntermediateHolding::kReleased ? a_cost.stacks
-                                                     : a_cost.held;
+std::uint64_t PlannedBytes(const LevelCost &a_cost,
+                           IntermediateHolding a_holding) noexcept {
+  return a_holding == IntermediateHolding::kReleased ? a_cost.stacksOnly
+                                                     : a_cost.withIntermediates;
+}
+
+std::uint64_t IntermediateBytes(const LevelCost &a_cost) noexcept {
+  return Less(a_cost.withIntermediates, a_cost.stacksOnly);
 }
 
 std::optional<StepDownOption>
@@ -185,14 +192,14 @@ StepDownOf(ResolutionLevel a_level, const LevelCost &a_current,
   if (!coarser || !a_coarser) {
     return std::nullopt;
   }
-  return StepDownOption{*coarser, Less(HeldBytes(a_current, a_holding),
-                                       HeldBytes(*a_coarser, a_holding))};
+  return StepDownOption{*coarser, Less(PlannedBytes(a_current, a_holding),
+                                       PlannedBytes(*a_coarser, a_holding))};
 }
 
 BudgetResponse RespondToPressure(std::uint64_t a_planned, std::uint64_t a_goal,
                                  std::span<const BudgetActor> a_actors,
                                  bool a_resizeBusy) {
-  BudgetResponse response;
+  BudgetResponse response{{}, Enough{}};
   std::uint64_t remaining = a_planned;
   if (remaining < a_goal) {
     return response;
@@ -201,17 +208,23 @@ BudgetResponse RespondToPressure(std::uint64_t a_planned, std::uint64_t a_goal,
     if (remaining < a_goal) {
       break;
     }
-    response.release.push_back(index);
-    remaining = Less(remaining, a_actors[index].releasable);
+    const BudgetActor &actor = a_actors[index];
+    response.release.push_back({actor.actor, actor.releasable});
+    remaining = Less(remaining, actor.releasable);
   }
-  if (remaining < a_goal || a_resizeBusy) {
+  if (remaining < a_goal) {
+    return response;
+  }
+  if (a_resizeBusy) {
+    response.next = AwaitResize{};
     return response;
   }
   if (const std::optional<std::size_t> chosen = StepDownCandidate(a_actors)) {
-    response.stepDown = StepDown{*chosen, *a_actors[*chosen].stepDown};
+    const BudgetActor &actor = a_actors[*chosen];
+    response.next = StepDown{actor.actor, *actor.stepDown};
     return response;
   }
-  response.exhausted = true;
+  response.next = Exhausted{};
   return response;
 }
 
@@ -241,7 +254,7 @@ std::string PressureStartLine(const BudgetSample &a_sample,
   return std::format("render target budget: pressure starts: planned {} is "
                      "over the allowance {} ({}, plugin targets {}, {})",
                      Mebibytes(a_state.planned), AllowanceText(a_state), memory,
-                     Mebibytes(a_sample.liveBytes), cap);
+                     Mebibytes(a_sample.pluginBytes), cap);
 }
 
 std::string PressureEndLine(const BudgetState &a_state) {

@@ -63,8 +63,13 @@ Compositor::AnalyseMaterial(const MaterialInputs &a_material) {
                                                 ? a_material.rmaos->name.c_str()
                                                 : "?");
   }
-  auto sample = TextureLab::GetSingleton()->SampleMaterial(
-      a_material.rmaos.get(), a_material.diffuse.get());
+  TextureLab *lab = TextureLab::GetSingleton();
+  if (!lab) {
+    record.problem = "the texture lab is not available";
+    return record;
+  }
+  auto sample =
+      lab->SampleMaterial(a_material.rmaos.get(), a_material.diffuse.get());
   if (!sample) {
     record.problem = "the maps could not be read back";
     return record;

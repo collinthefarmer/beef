@@ -8,8 +8,10 @@ namespace {
 bool MeasureFlatDisplacement(const TextureRef &texture) {
   if (!IsNonPlaceholderTexture(texture))
     return true;
-  const float mean =
-      TextureLab::GetSingleton()->MeanChannel(texture.get(), ShaderChannel::kR);
+  TextureLab *lab = TextureLab::GetSingleton();
+  if (!lab)
+    return true;
+  const float mean = lab->MeanChannel(texture.get(), ShaderChannel::kR);
   return mean <= 0.02f || mean >= 0.98f;
 }
 }

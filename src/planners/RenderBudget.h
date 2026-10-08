@@ -11,6 +11,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <variant>
 #include <vector>
 
 namespace BetterEnchantmentEffects {
@@ -28,7 +29,7 @@ struct VideoMemory {
 
 struct BudgetSample {
   std::optional<VideoMemory> memory;
-  std::uint64_t liveBytes = 0;
+  std::uint64_t pluginBytes = 0;
   std::uint64_t capBytes = 0;
 };
 
@@ -48,13 +49,12 @@ enum class Admission : std::uint8_t {
 };
 
 struct LevelCost {
-  std::uint64_t held = 0;
-  std::uint64_t stacks = 0;
+  std::uint64_t withIntermediates = 0;
+  std::uint64_t stacksOnly = 0;
   [[nodiscard]] bool operator==(const LevelCost &) const = default;
 };
 
-using LevelBytes =
-    std::array<std::optional<std::uint64_t>, kResolutionLevelCount>;
+using LevelBytes = PerLevel<std::optional<std::uint64_t>>;
 
 struct InstallBound {
   ResolutionLevel finest = ResolutionLevel::kFull;
@@ -79,20 +79,39 @@ struct BudgetActor {
   float screenFraction = 0.0f;
   std::uint64_t releasable = 0;
   std::optional<StepDownOption> stepDown;
-  std::uint64_t held = 0;
+  std::uint64_t plannedBytes = 0;
   std::optional<float> distance;
 };
 
+struct BudgetRelease {
+  std::uint32_t actor = 0;
+  std::uint64_t bytes = 0;
+  [[nodiscard]] bool operator==(const BudgetRelease &) const = default;
+};
+
+struct Enough {
+  [[nodiscard]] bool operator==(const Enough &) const = default;
+};
+
+struct AwaitResize {
+  [[nodiscard]] bool operator==(const AwaitResize &) const = default;
+};
+
 struct StepDown {
-  std::size_t actor = 0;
+  std::uint32_t actor = 0;
   StepDownOption option;
   [[nodiscard]] bool operator==(const StepDown &) const = default;
 };
 
+struct Exhausted {
+  [[nodiscard]] bool operator==(const Exhausted &) const = default;
+};
+
+using PressureStep = std::variant<Enough, AwaitResize, StepDown, Exhausted>;
+
 struct BudgetResponse {
-  std::vector<std::size_t> release;
-  std::optional<StepDown> stepDown;
-  bool exhausted = false;
+  std::vector<BudgetRelease> release;
+  PressureStep next;
 };
 
 [[nodiscard]] std::uint64_t MarginOf(std::uint64_t a_budget) noexcept;
@@ -106,8 +125,8 @@ AllowanceOf(const BudgetSample &a_sample) noexcept;
 [[nodiscard]] std::uint64_t PressureGoal(std::uint64_t a_allowance) noexcept;
 [[nodiscard]] Admission AdmitGrowth(const BudgetState &a_state,
                                     std::uint64_t a_added) noexcept;
-[[nodiscard]] BudgetState Admitted(BudgetState a_state,
-                                   std::uint64_t a_added) noexcept;
+[[nodiscard]] BudgetState Charged(BudgetState a_state,
+                                  std::uint64_t a_added) noexcept;
 [[nodiscard]] BudgetState Released(BudgetState a_state,
                                    std::uint64_t a_freed) noexcept;
 [[nodiscard]] std::optional<std::uint64_t>
@@ -115,8 +134,9 @@ HeadroomOf(const BudgetState &a_state, std::uint64_t a_replaced) noexcept;
 [[nodiscard]] ResolutionLevel
 FittingLevel(ResolutionLevel a_finest, const LevelBytes &a_bytes,
              std::optional<std::uint64_t> a_headroom) noexcept;
-[[nodiscard]] std::uint64_t HeldBytes(const LevelCost &a_cost,
-                                      IntermediateHolding a_holding) noexcept;
+[[nodiscard]] std::uint64_t
+PlannedBytes(const LevelCost &a_cost, IntermediateHolding a_holding) noexcept;
+[[nodiscard]] std::uint64_t IntermediateBytes(const LevelCost &a_cost) noexcept;
 [[nodiscard]] std::optional<StepDownOption>
 StepDownOf(ResolutionLevel a_level, const LevelCost &a_current,
            const std::optional<LevelCost> &a_coarser,

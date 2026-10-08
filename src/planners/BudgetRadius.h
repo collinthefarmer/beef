@@ -9,6 +9,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <variant>
 
 namespace BetterEnchantmentEffects {
 inline constexpr float kRadiusShrinkFactor = 0.99f;
@@ -21,19 +22,27 @@ struct BudgetRadius {
 };
 
 struct RadiusShrink {
-  std::size_t actor = 0;
+  std::uint32_t actor = 0;
   BudgetRadius radius;
   std::uint64_t freed = 0;
   [[nodiscard]] bool operator==(const RadiusShrink &) const = default;
 };
 
-enum class RadiusChange : std::uint8_t { kHeld, kGrown, kCleared };
-
-struct RadiusGrowth {
-  std::optional<BudgetRadius> radius;
-  RadiusChange change = RadiusChange::kHeld;
-  [[nodiscard]] bool operator==(const RadiusGrowth &) const = default;
+struct RadiusUnchanged {
+  BudgetRadius radius;
+  [[nodiscard]] bool operator==(const RadiusUnchanged &) const = default;
 };
+
+struct RadiusGrown {
+  BudgetRadius radius;
+  [[nodiscard]] bool operator==(const RadiusGrown &) const = default;
+};
+
+struct RadiusCleared {
+  [[nodiscard]] bool operator==(const RadiusCleared &) const = default;
+};
+
+using RadiusGrowth = std::variant<RadiusUnchanged, RadiusGrown, RadiusCleared>;
 
 [[nodiscard]] bool LimitsDistance(float a_evictDistance) noexcept;
 [[nodiscard]] float

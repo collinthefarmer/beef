@@ -61,7 +61,7 @@ RenderOutput::DrawnBy(const std::shared_ptr<RenderInstance> &a_render) const {
     return nullptr;
   }
   return std::make_unique<RenderOutput>(
-      a_render, result_, a_render->Side(stack->requirements.side), animated_);
+      a_render, result_, a_render->SizeAt(stack->requirements.side), animated_);
 }
 
 TextureSize RenderOutput::Size() const noexcept { return size_; }

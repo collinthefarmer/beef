@@ -74,7 +74,7 @@ constexpr std::array kTable{
                 "Draw an NPC's effects at a lower resolution when it covers a "
                 "small part of the screen. The player always draws at full "
                 "resolution.",
-                &Settings::screenResolution, 0, 1, W::kCheckbox, false},
+                &Settings::sizeByScreen, 0, 1, W::kCheckbox, false},
     SettingDesc{"General", "RenderTargetBudgetMiB", "Render target budget",
                 "The most memory in MiB that the effects' render targets may "
                 "use. The plugin also stays inside the free video memory. "

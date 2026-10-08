@@ -48,16 +48,17 @@ bound geometry of the actor shares that `RenderInstance` through
 its step of the plan. A plan failure writes its text into every request's
 `PlacedOutput::problem` through `FailStackOutputs`. A request that the plan
 does not lower gets the problem `stack was not lowered`.
-`PlaceInstances` keeps the full-resolution sides of the stacks in
-`LiveActor::fullSides`. `Manager::InstallBoundOf` gives the finest level of
+`PlaceInstances` keeps the full-resolution sizes of the stacks in
+`LiveActor::fullSizes`. `Manager::InstallBoundOf` gives the finest level of
 the install and the budget's headroom. For a reinstall, the finest level is
-the tracked level. `SyncActor` reads the actor's planned bytes
+the target level. `SyncActor` reads the actor's planned bytes
 (`PlannedBytesOf`) before `RetireActor`, and the headroom counts them as
 freed. `BuildActorRender` chooses the level
 after it has the plan (`ChooseInstallLevel`, `ActorBudget.h`). `PlaceInstances`
-keeps that level in `LiveActor::resolution` and `TrackedActor::resolution`
-(`KeepInstallLevel`). It takes the replaced bytes off `Manager::budget_` and
-adds its own bytes.
+keeps that level in `LiveActor::appliedResolution` and
+`TrackedActor::targetResolution` (`KeepInstallLevel`). It takes the replaced
+bytes off `Manager::budget_` (`Released`) and charges its own bytes
+(`Charged`). A render that is not built (`NoRender`) records no level.
 
 **Plan builds on a worker.** On a plan cache miss, `BuildActorRender` submits
 the plan build to one worker thread and does not build the plan in the sync
@@ -82,27 +83,27 @@ uncacheable key and a full queue build the plan in the sync.
 **Resolution resize.** A change of resolution level rebuilds only the actor's
 `RenderInstance` (`ActorResize.h`). It does not reinstall the actor, so
 pieces, recipe instances, shells, materials, lights, signals and clocks stay.
-`Manager::UpdateResolution` records the finer level as a **pending resize**
+`Manager::RequestStepUp` records the finer level as a **pending resize**
 on the `LiveActor` (`RequestResize`). `Manager::AdvanceResizes` runs at the
-start of each tick. It first swaps each finished build (`FinishResize`). It
-then starts at most one build across all actors (`NextBuild`,
+start of each tick. It first swaps each finished resize (`FinishResize`). It
+then starts at most one resize across all actors (`NextResize`,
 `planners/ResolutionResize.h`). The pending actor with the largest screen
-fraction builds first. `StartResize` creates the new instance from the current
-instance's plan, `GeometryInputs` and graphs at the new sides
-(`RenderInstance::AtSides`). It gives each stack output of the actor a
+fraction resizes first. `StartResize` creates the new instance
+(`ResizeInFlight`) from the current instance's plan, `GeometryInputs` and
+graphs at the new sizes (`RenderInstance::AtSizes`). It gives each stack output of the actor a
 `RenderOutput` on the new instance (`RenderOutput::DrawnBy`). `DrawResize`
 runs in `Manager::DrawHidden` after the actor loop of each tick, for an actor
 in view. It draws each stack of the new instance once, with no hidden layers
 and no preceding stack. It shares the tick's hidden draw budget with the first
 draws.
-The old instance stays attached and visible during the build.
+The old instance stays attached and visible during the resize.
 `FinishResize` swaps when every stack has drawn once, when the actor is out of
-view, or 60 frames after the build began (`SwapDue`). In one call it moves
+view, or 60 frames after the resize began (`SwapDue`). In one call it moves
 each new `RenderOutput` into its `PlacedOutput` or `MergedSlotStack`, sets
-`GeometryInputs::render` on each geometry that held the old instance, and sets
-`LiveActor::resolution`. The old instance goes when the last geometry lets
-go. When the actor's stack outputs no longer match the build, the build goes
-back to pending. A reinstall replaces the `LiveActor`, so it drops a pending
+`GeometryInputs::render` on each geometry that held the old instance
+(`SwapRender`), and sets `LiveActor::appliedResolution`. The old instance
+goes when the last geometry lets go. When the actor's stack outputs no longer
+match the resize, the resize goes back to pending. A reinstall replaces the `LiveActor`, so it drops a pending
 or in-flight resize; `RetireActorEffects` drops it too. Each swap emits the
 trace event `resolution_swap`.
 
@@ -116,7 +117,7 @@ does not report its applications. The actor enters
 clears the frame's figure and then runs the waiting installs in order
 (`RunWaitingInstalls`, `NextInstall`, `ApplicationService::SyncNow`): an
 entry that waited 1 s or more, then the player, then actors in view by screen
-fraction, then the others by age. A deferred install adds no bytes to the
+fraction, then the others by age. A deferred install is not charged to the
 budget until it runs.
 
 **Hidden first draw.** `KeepActorRender` starts a first draw on every
@@ -139,19 +140,22 @@ once a second. `SampleBudget` reads the DXGI local segment through
 **pressure** with the pure functions of `planners/RenderBudget.h`. Each
 pressure start and end writes one `info` line. Under pressure,
 `RelieveBudget` builds one `BudgetActor` per rendered actor
-(`BudgetActorOf`, `ActorBudget.h`) and applies the `BudgetResponse`. An actor
+(`BudgetActorOf`, `ActorBudget.h`) and applies the `BudgetResponse`: its
+releases, then its next step (`Enough`, `AwaitResize`, `StepDown` or
+`Exhausted`). Each release and step down names the actor by FormID. An actor
 out of view releases its intermediate targets (`ReleaseIntermediates`). One
 NPC steps down one level through the resize (`StepDownForBudget`). When
 neither is left, `ShrinkBudgetRadius` sets or lowers the **budget radius**
-(`Manager::budgetRadius_`) so that the farthest rendered NPC loses its effect.
+(`Manager::budgetRadius_`) so that the farthest rendered NPC is evicted.
 It marks that actor stale, so the next sync evicts it. Each heartbeat,
-`GrowBudgetRadius` grows or clears the radius after the pressure ends. When the
+`GrowBudgetRadius` grows or clears the radius after the pressure ends
+(`RadiusUnchanged`, `RadiusGrown`, `RadiusCleared`). When the
 radius has no candidate either, one `warning` names the largest holdings.
 `EvictDistanceNow` gives the distance that `DecideActor` passes to `Advance`
 and that `MarkRecheckStale` passes to `RangeChanged`.
-`UpdateResolution` admits each step up through `AdmitStepUp`. A blocked step
+`RequestStepUp` admits each step up through `AdmitStepUp`. A blocked step
 up waits and emits the trace event `resolution_blocked` once per blocked
-episode (`LiveActor::blockedAt`). An episode ends when the actor's level
+episode (`LiveActor::stepUpBlockedFrom`). An episode ends when the actor's level
 changes. When the DXGI reading is unknown, the plugin writes one warning and
 the budget does nothing.
 
@@ -385,9 +389,9 @@ below the material's native size.
 | `Manager::SampleBudget`, `Manager::UpdateBudget`, `Manager::RelieveBudget`, `Manager::StepDownForBudget`, `Manager::AdmitStepUp` | Read the DXGI memory and the cap, update the pressure, apply the responses, step one NPC down, and admit or block one step up. | `ManagerTick.cpp` |
 | `Manager::budgetRadius_`, `BudgetRadius` | The optional budget radius. No record means no radius. | `Manager.h`, `planners/BudgetRadius.h` |
 | `Manager::ShrinkBudgetRadius`, `Manager::GrowBudgetRadius`, `Manager::FarthestTrackedDistance`, `Manager::EvictDistanceNow` | Lower the radius past the farthest rendered NPC, grow or clear it after the dwell, give the distance of the farthest tracked actor, and give the eviction distance with the radius applied. | `ManagerTick.cpp` |
-| `PlanLevelCost`, `LevelCostOf`, `BudgetActorOf`, `HeldNow`, `InstancesOf`, `PlannedBytesOf`, `ReleaseIntermediates` | The held and stack bytes of a plan at one level (`TargetsOf`), the same for the actor's attached plan (cached in `LiveActor::levelCosts`), the actor's facts for the budget with its distance to the player, the targets that the estimate counts for the actor, the actor's render instances with a resize build, the bytes that the estimate counts for the actor (0 before its first render), and the release of its intermediates. | `ActorBudget.h` |
-| `InstallLevelChoice`, `ChooseInstallLevel` | The level of an install and the bytes it adds to the budget. `ChooseInstallLevel` prices the levels from the bound's finest level to eighth and calls `FittingLevel`. | `ActorBudget.h` |
-| `Manager::InstallBoundOf`, `Manager::KeepInstallLevel` | The `InstallBound` of an install: the player's level without headroom, the tracked level with the headroom, or the ideal level with the headroom. The headroom counts the replaced bytes as freed. Then the level that the install built, kept on the tracked actor. | `ManagerApply.cpp` |
+| `LevelCostOf`, `CachedLevelCost`, `BudgetActorOf`, `HeldNow`, `InstancesOf`, `PlannedBytesOf`, `ReleaseIntermediates` | The bytes of a plan at one level with intermediates and with stacks only (`TargetsOf`), the same for the actor's attached plan (cached in `LiveActor::levelCosts`), the actor's facts for the budget with its distance to the player, the targets that the planned figure counts for the actor, the actor's render instances with a resize in flight, the bytes that the planned figure counts for the actor (0 before its first render), and the release of its intermediates. | `ActorBudget.h` |
+| `InstallLevelChoice`, `ChooseInstallLevel` | The level of an install and the bytes charged to the budget (`chargedBytes`). `ChooseInstallLevel` prices the levels from the bound's finest level to eighth and calls `FittingLevel`. | `ActorBudget.h` |
+| `Manager::InstallBoundOf`, `Manager::KeepInstallLevel` | The `InstallBound` of an install: the player's level without headroom, the target level with the headroom, or the ideal level with the headroom. The headroom counts the replaced bytes as freed. Then the level that the install built, kept on the tracked actor. | `ManagerApply.cpp` |
 
 ### Actor and worn-piece state
 
@@ -399,11 +403,11 @@ without the manager.
 
 | Record | Description |
 |---|---|
-| `LiveActor` | One applied actor: its handle, the `RecipeCatalog` it was planned against, its `ActorMatches`, its pieces, instances and **placements**, and the `ApplicationToken`s of its in-flight applications. It also holds its resolution level, its full-resolution sides (`fullSides`), its `LiveResize` and its optional `FirstDraw`. `awaitedPlan` names the worker job whose plan the actor waits for. For the render target budget it holds the bytes of its plan per level (`levelCosts`), whether its intermediates are released (`intermediates`), and the level at which a step up is blocked (`blockedAt`). `RecipesOf` returns the catalog's recipes. |
-| `LiveResize` | The resize state of one actor: `ResizeIdle`, `ResizePending` (the level) or `ResizeBuild`. |
-| `ResizeBuild` | A resize in flight: its `ResizeProgress` (the old level, the new level and the frame the build began), the new `RenderInstance`, and one `ResizedStack` per stack output of the actor. |
+| `LiveActor` | One applied actor: its handle, the `RecipeCatalog` it was planned against, its `ActorMatches`, its pieces, instances and **placements**, and the `ApplicationToken`s of its in-flight applications. It also holds its applied resolution level (`appliedResolution`), its full-resolution sizes (`fullSizes`), its `LiveResize` and its optional `FirstDraw`. `awaitedPlan` names the worker job whose plan the actor waits for. For the render target budget it holds the bytes of its plan per level (`levelCosts`), whether its intermediates are released (`intermediates`), and the level at which a step up is blocked (`stepUpBlockedFrom`). `RecipesOf` returns the catalog's recipes. |
+| `LiveResize` | The resize state of one actor: `ResizeIdle`, `ResizePending` (the level) or `ResizeInFlight`. |
+| `ResizeInFlight` | A resize in flight: its `ResizeProgress` (the old level, the new level and the frame the resize began), the new `RenderInstance`, and one `ResizedStack` per stack output of the actor. |
 | `ResizedStack` | One stack output on the new instance and whether it has drawn once. |
-| `ResizeSwap` | What `FinishResize` reports: the two levels, the frames from build to swap, the stack count, the drawn count and the `TargetCost` of the new instance. |
+| `ResizeSwap` | What `FinishResize` reports: the two levels, the frames from the start of the resize to the swap, the stack count, the drawn count and the `TargetCost` of the new instance. |
 | `FirstDraw` | A first draw in progress: the frame it began, the ticks in which the actor drew a stack, and one `HiddenSlot` per slot. |
 | `HiddenSlot` | One slot of a first draw: its piece, geometry and slot indices, and whether it has drawn once. |
 | `LivePiece` | One worn armor clone: its `Actors::PieceRef` (`ref`), its `ModelToken` (`model`), the armor form id and name, the optional addon `FormKey`, the enchantment form id and its `LiveGeometry`s. |
@@ -428,19 +432,19 @@ write it to the material.
 | `LocatedStackOutput` | One slot contribution resolved to its placement, recipe, `RecipeGraph`, `SurfaceOutput` and `PlacedOutput`. | `ManagerApply.cpp` |
 | `ActorStackRequest` | One `StackTextureRequest` with its geometry and located output. | `ManagerApply.cpp` |
 | `ActorStacks` | Every stack request of one actor, with the per-geometry `GeometryInputs` and bound geometries. `BuildActorRender` reads it. | `ManagerApply.cpp` |
-| `ActorRender` | The result of `BuildActorRender`: the chosen `InstallLevelChoice`, or the `PlanAwaited` job. | `ManagerApply.cpp` |
+| `ActorRender`, `NoRender` | The result of `BuildActorRender`: the chosen `InstallLevelChoice`, the `PlanAwaited` job, or `NoRender` when no request or no plan gave a render instance. | `ManagerApply.cpp` |
 | `PlanAwaited` | The worker job whose plan the actor waits for. | `PlanJobs.h` |
 | `JobQueue`, `JobId`, `JobDone`, `JobRefusal`, `JobTiming` | The generic worker queue, a job's id, a finished job with its result or error text, the reason a job was refused (`kFull`, `kNoWorker`), and the queue wait and work time. | `JobQueue.h` |
 | `PlanQueue`, `kPlanJobCapacity` | The plan build queue and its bound of 16 unfinished jobs. | `PlanJobs.h` |
 | `OpenPlanJob`, `PlanJobBook`, `OpenJobFor`, `Opened`, `Closed` | The open plan jobs with their keys, graphs and submitting actor; the job for a key; the book with a job added or removed. | `PlanJobs.h` |
-| `PlanArrival`, `AwaiterStep`, `ArrivalOf`, `StepFor` | The stale rule: a result is built, failed or stale, and a live actor ignores it, rebuilds from the cache, or fails its outputs. | `PlanJobs.h` |
+| `PlanArrival`, `AwaiterStep`, `ArrivalOf`, `StepFor` | The stale rule: a result is built, failed or stale (`ArrivalOf` takes the closed job, if the book had one, and the job's result), and a live actor ignores it, rebuilds from the cache, or fails its outputs. | `PlanJobs.h` |
 | `TickFrame` | The settings, view, time and resume flag of one tick. | `ManagerTick.cpp` |
 | `SlotRenderView` | The view, whether any **layer** is hidden, and `Settings::publishEffects`. | `ManagerTick.cpp` |
 | `SlotChain` | The rendered outputs of one slot: their `SurfaceOutput`s, resolved values, the final texture, a shown flag, and a pending flag when a stack returned `kPending`. | `ManagerTick.cpp` |
 | `FrameSyncs`, `InstallMayStart`, `Synced` | The sync time and the install count of the current frame, and the rule that starts an install. | `planners/InstallPacing.h` |
 | `WaitingInstall`, `NextInstall`, `Deferred`, `Removed`, `WaitedMS` | A deferred install with its role, view, screen fraction and first deferral time; the next entry to run; the list with an entry added or removed; the wait of an entry. | `planners/InstallPacing.h` |
 | `DrawPace`, `MayDrawStack`, `Drew` | The hidden draw time and stack count of the current tick, and the rule that draws another stack. | `planners/DrawPacing.h` |
-| `HiddenDrawCandidate`, `HiddenDrawOrder` | An actor that draws hidden, by role and screen fraction, and the order of the draws. | `planners/DrawPacing.h` |
+| `HiddenDrawCandidate`, `HiddenDrawOrder` | An actor that draws hidden, by FormID, role and screen fraction, and the order of the draws as FormIDs. | `planners/DrawPacing.h` |
 | `FirstDrawProgress`, `FirstDrawEnd`, `FirstDrawDone` | The drawing ticks, slots and drawn slots of a first draw, and the rule that ends it. | `planners/DrawPacing.h` |
 | `SlotWrite` | The texture, scalars and colour that `WriteSlot` writes to one `SlotTarget`. | `ManagerTick.cpp` |
 
@@ -551,7 +555,7 @@ Manager::Tick                                                   ManagerTick.cpp
   │   not Loaded3D: ForgetActor
   │   ClaimLostGeometries; TickInstance per LiveInstance
   ▼
-AdvanceResizes: FinishResize, NextBuild, StartResize              ActorResize.cpp
+AdvanceResizes: FinishResize, NextResize, StartResize              ActorResize.cpp
   ▼
 RenderPieces ──▶ RenderGeometry                                 ManagerTick.cpp
   │   RenderInstance::BeginFrame, UpdateRenderInputs
@@ -586,7 +590,7 @@ Recipe from LoadedRecipes()
 | Concern | Key files |
 |---|---|
 | Event sinks and hooks | `Events.h`/`.cpp` (equip, object-loaded, hit and node-update sinks), `PluginEvents.h`/`.cpp` (the inter-plugin message contract and parser), `Hooks.h`/`.cpp` (the `PlayerCharacter::Update` hook), `AnimationSubscriptions.h`/`.cpp` (animation-graph observation) |
-| The manager | `Manager.h`, `Manager.cpp` (construction, queue calls, `Clear`, load, the menu's idle-camera hold), `PhaseTrace.h` (`PhaseTrace`: times named phases with `Measure` and emits one metrics or application trace event), `ManagerApply.cpp` (`SyncStale`, `SyncActor`, `InstallActor`, `DecideActor`, `RetireActor`, `ForgetActor`, live pieces from observation, placement, `BuildActorRender`, lights), `ManagerApplication.cpp` (`ChangeAndRebuildActors`, application bookkeeping), `ManagerTick.cpp` (`OnFrame`, `RunWaitingInstalls`, `DrainPlanJobs` call, `MarkWaitingStale`, `MarkRecheckStale`, `Tick`, `DrawHidden`, `AttachFirstDraw`, `UpdateResolution`, `AdvanceResizes`, `ClaimLostGeometries`, `RenderGeometry`, slot writes, `UpdateLights`), `ActorResize.h`/`.cpp` (the resolution resize and the hidden first draw of one actor), `ActorBudget.h`/`.cpp` (the render target budget's facts and release for one actor), `JobQueue.h` (the generic worker queue), `PlanJobs.h`/`.cpp` (the plan job book and the stale rule), `ManagerAnimation.cpp` (animation events), `ManagerEvents.cpp` (`Fire`, `FireAt`, `QueueEvent`, `QueueBroadcast`), `ManagerInspection.cpp` (`RequestMesh`), `ManagerSnapshot.cpp` (`GetStatus`, `BuildSnapshot`, `PublishSnapshot`, `Watch`), `LogOnce.h`/`.cpp` (`LogOnce`: a fault line once per text, through a `WarningHistory`) |
+| The manager | `Manager.h`, `Manager.cpp` (construction, queue calls, `Clear`, load, the menu's idle-camera hold), `PhaseTrace.h` (`PhaseTrace`: times named phases with `Measure` and emits one metrics or application trace event), `ManagerApply.cpp` (`SyncStale`, `SyncActor`, `InstallActor`, `DecideActor`, `RetireActor`, `ForgetActor`, live pieces from observation, placement, `BuildActorRender`, lights), `ManagerApplication.cpp` (`ChangeAndRebuildActors`, application bookkeeping), `ManagerTick.cpp` (`OnFrame`, `RunWaitingInstalls`, `DrainPlanJobs` call, `MarkWaitingStale`, `MarkRecheckStale`, `Tick`, `DrawHidden`, `AttachFirstDraw`, `RequestStepUp`, `AdvanceResizes`, `ClaimLostGeometries`, `RenderGeometry`, slot writes, `UpdateLights`), `ActorResize.h`/`.cpp` (the resolution resize and the hidden first draw of one actor), `ActorBudget.h`/`.cpp` (the render target budget's facts and release for one actor), `JobQueue.h` (the generic worker queue), `PlanJobs.h`/`.cpp` (the plan job book and the stale rule), `ManagerAnimation.cpp` (animation events), `ManagerEvents.cpp` (`Fire`, `FireAt`, `QueueEvent`, `QueueBroadcast`), `ManagerInspection.cpp` (`RequestMesh`), `ManagerSnapshot.cpp` (`GetStatus`, `BuildSnapshot`, `PublishSnapshot`, `Watch`), `LogOnce.h`/`.cpp` (`LogOnce`: a fault line once per text, through a `WarningHistory`) |
 | Application and session bookkeeping | `ApplicationService.h`/`.cpp` (token tracking, rejection handling, history pruning), `SessionQueue.h`/`.cpp` (per-actor task serialisation) |
 | Actor and worn-piece state | `ActorObservation.h`/`.cpp` (`ObserveActor`, `ModelTable`, `ModelOf`, `MaterialLayout`), `LiveActor.h`/`.cpp` (live records, `RetireGeometry`, `ResolvePlacement`), `Environment.h`/`.cpp` (`ActorEnvironment`), `WornKeys.h`/`.cpp` (`WornKeysOf`), `EnchantmentEffects.h`/`.cpp` (`EnchantmentValueFor`), `InstanceTime.h`/`.cpp` (`CarriedTimes`) |
 | Recipe CRUD | `RecipeStore.h`/`.cpp` (load, publish, mutate, save, `RefreshRecipeDerivedState`), `RecipeFiles.h`/`.cpp` (checked read, write, rename and delete), `RecipeOperations.h` (the operation journal and task guards), `RecipeEditor.h`/`.cpp` (gestures, edits, undo, paint, view) |

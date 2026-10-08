@@ -27,18 +27,18 @@ std::vector<bool> ReachedSteps(const RenderPlan &a_plan) {
 
 void Add(TargetCost &a_cost, const HeldTarget &a_target) {
   ++a_cost.targets;
-  a_cost.bytes += TargetBytes(a_target.side, a_target.format);
-  ++a_cost.targetsBySide[a_target.side.Pixels()];
+  a_cost.bytes += TargetBytes(a_target.size, a_target.format);
+  ++a_cost.targetsBySize[a_target.size.Pixels()];
 }
 }
 
-std::uint64_t TargetBytes(TextureSize a_side, TextureFormat a_format) noexcept {
-  const auto side = static_cast<std::uint64_t>(a_side.Pixels());
-  const std::uint64_t mipped = side * side * 4 * 4 / 3;
+std::uint64_t TargetBytes(TextureSize a_size, TextureFormat a_format) noexcept {
+  const auto pixels = static_cast<std::uint64_t>(a_size.Pixels());
+  const std::uint64_t mipped = pixels * pixels * 4 * 4 / 3;
   return a_format == TextureFormat::kRgba32Float ? mipped * 4 : mipped;
 }
 
-PlanTargets TargetsOf(const RenderPlan &a_plan, const PlanSides &a_sides) {
+PlanTargets TargetsOf(const RenderPlan &a_plan, const PlanSizes &a_sizes) {
   const std::vector<bool> reached = ReachedSteps(a_plan);
   PlanTargets targets;
   for (RenderStepId step = 0; step < a_plan.steps.size(); ++step) {
@@ -48,11 +48,12 @@ PlanTargets TargetsOf(const RenderPlan &a_plan, const PlanSides &a_sides) {
     if (!reached[step] || !requirements || !Draws(planned.kind)) {
       continue;
     }
-    const HeldTarget held{SideOf(a_sides, requirements->side),
-                          requirements->format, SharedKeyOf(planned, a_sides)};
-    targets.held.push_back(held);
+    const HeldTarget target{SizeOf(a_sizes, requirements->side),
+                            requirements->format,
+                            SharedKeyOf(planned, a_sizes)};
+    targets.withIntermediates.push_back(target);
     if (Is<CompositeStackStep>(planned.kind)) {
-      targets.stacks.push_back(held);
+      targets.stacks.push_back(target);
     }
   }
   return targets;

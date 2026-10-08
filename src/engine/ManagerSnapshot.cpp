@@ -412,7 +412,8 @@ Manager::Status Manager::GetStatus() const {
   Status s;
   s.emissivePath = emissivePathEnabled_;
   s.layoutVerified = materialLayout_ == MaterialLayout::kVerified;
-  s.textureLab = TextureLab::GetSingleton()->Available();
+  const TextureLab *lab = TextureLab::GetSingleton();
+  s.textureLab = lab && lab->Available();
   s.actors = static_cast<std::uint32_t>(live_.size());
   for (const auto &[id, state] : live_) {
     AccumulateStatus(s, state);
