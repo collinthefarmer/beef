@@ -244,7 +244,7 @@ private:
   struct TrackedActor {
     std::optional<Actors::ActorState> state;
     ModelTable models;
-    std::optional<LevelHistory> resolution;
+    std::optional<ResolutionLevel> resolution;
     bool resizing = false;
   };
   std::unordered_map<RE::FormID, TrackedActor> tracked_;

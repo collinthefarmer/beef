@@ -989,7 +989,7 @@ bool Manager::UpdateResolution(RE::FormID a_actorID, RE::Actor &a_actor,
   if (tracked == tracked_.end() || !tracked->second.resolution) {
     return false;
   }
-  LevelHistory &history = *tracked->second.resolution;
+  ResolutionLevel &level = *tracked->second.resolution;
   const ActorRole role =
       a_actor.IsPlayerRef() ? ActorRole::kPlayer : ActorRole::kOther;
   const float fraction =
@@ -997,17 +997,17 @@ bool Manager::UpdateResolution(RE::FormID a_actorID, RE::Actor &a_actor,
           ? a_screenFraction
           : 1.0f;
   const std::optional<ResolutionLevel> next =
-      LevelChange(history, fraction, role, tickNowMS_);
+      LevelChange(level, fraction, role);
   if (!next || !applications_.MarkReinstall(a_actorID)) {
     return false;
   }
   Trace::EmitSafely(Trace::Event::kMetrics,
                     {{"action", "resolution_level"},
                      {"actor", std::to_string(a_actorID)},
-                     {"from", std::string{LevelName(history.level)}},
+                     {"from", std::string{LevelName(level)}},
                      {"to", std::string{LevelName(*next)}},
                      {"screen_fraction", Fraction(a_screenFraction)}});
-  history = LevelHistory{*next, tickNowMS_};
+  level = *next;
   tracked->second.resizing = true;
   return true;
 }

@@ -17,44 +17,41 @@ void IdealLevelHalvesWithScreenSize() {
         "each halving of the screen size halves the side, down to an eighth");
 }
 
-void CoarserLevelsWaitForTheBand() {
-  Check(SteadyLevel(0.24f, ResolutionLevel::kHalf) == ResolutionLevel::kHalf,
-        "just under a threshold an actor keeps its finer level");
-  Check(SteadyLevel(0.19f, ResolutionLevel::kHalf) == ResolutionLevel::kQuarter,
-        "below the band an actor steps down");
-  Check(SteadyLevel(0.26f, ResolutionLevel::kQuarter) == ResolutionLevel::kHalf,
-        "crossing a threshold upward steps up at once");
-  Check(SteadyLevel(0.05f, ResolutionLevel::kFull) == ResolutionLevel::kEighth,
-        "a large drop skips the levels between");
-}
-
-void ChangesAreHeldApart() {
-  const LevelHistory fresh{ResolutionLevel::kFull, std::nullopt};
-  Check(LevelChange(fresh, 0.05f, ActorRole::kOther, 0) ==
-            ResolutionLevel::kEighth,
-        "an actor with no change yet moves at once");
-  const LevelHistory recent{ResolutionLevel::kEighth, 1000};
-  Check(!LevelChange(recent, 0.9f, ActorRole::kOther, 2500),
-        "a second change within the hold waits");
-  Check(LevelChange(recent, 0.9f, ActorRole::kOther, 3000) ==
-            ResolutionLevel::kFull,
-        "after the hold the change goes ahead");
-  Check(!LevelChange(fresh, 0.6f, ActorRole::kOther, 0),
+void LevelsOnlyStepUp() {
+  Check(LevelChange(ResolutionLevel::kEighth, 0.26f, ActorRole::kOther) ==
+            ResolutionLevel::kHalf,
+        "a larger screen size steps up at once, skipping the levels between");
+  Check(!LevelChange(ResolutionLevel::kHalf, 0.24f, ActorRole::kOther),
+        "just under a threshold an actor keeps its level");
+  Check(!LevelChange(ResolutionLevel::kFull, 0.05f, ActorRole::kOther),
+        "a smaller screen size never steps down");
+  Check(!LevelChange(ResolutionLevel::kHalf, 0.3f, ActorRole::kOther),
         "an actor at its level asks for nothing");
 }
 
+void BackAndForthChangesOnce() {
+  ResolutionLevel level = ResolutionLevel::kQuarter;
+  std::size_t changes = 0;
+  for (const float fraction : {0.26f, 0.24f, 0.51f, 0.39f, 0.52f, 0.1f, 0.6f}) {
+    if (const std::optional<ResolutionLevel> next =
+            LevelChange(level, fraction, ActorRole::kOther)) {
+      level = *next;
+      ++changes;
+    }
+  }
+  Check(changes == 2 && level == ResolutionLevel::kFull,
+        "walking to and from an actor steps up once per boundary");
+}
+
 void UnknownSizeKeepsTheLevel() {
-  const LevelHistory half{ResolutionLevel::kHalf, std::nullopt};
-  Check(!LevelChange(half, 0.0f, ActorRole::kOther, 0),
+  Check(!LevelChange(ResolutionLevel::kEighth, 0.0f, ActorRole::kOther),
         "a screen fraction of zero changes nothing");
 }
 
 void PlayerStaysFull() {
-  const LevelHistory full{ResolutionLevel::kFull, std::nullopt};
-  Check(!LevelChange(full, 0.01f, ActorRole::kPlayer, 0),
+  Check(!LevelChange(ResolutionLevel::kFull, 0.01f, ActorRole::kPlayer),
         "the player stays full however small");
-  const LevelHistory reduced{ResolutionLevel::kQuarter, std::nullopt};
-  Check(LevelChange(reduced, 0.0f, ActorRole::kPlayer, 0) ==
+  Check(LevelChange(ResolutionLevel::kQuarter, 0.0f, ActorRole::kPlayer) ==
             ResolutionLevel::kFull,
         "a player below full returns to full");
 }
@@ -74,8 +71,8 @@ void SidesScaleAndStopAtTheMinimum() {
 
 int main() {
   IdealLevelHalvesWithScreenSize();
-  CoarserLevelsWaitForTheBand();
-  ChangesAreHeldApart();
+  LevelsOnlyStepUp();
+  BackAndForthChangesOnce();
   UnknownSizeKeepsTheLevel();
   PlayerStaysFull();
   SidesScaleAndStopAtTheMinimum();

@@ -193,8 +193,8 @@ A plan names texture sizes by **side reference** (`SideRef`, in `TextureDemand.h
 | `SideOf` | The pixels of one side reference, or 64 for an unknown one. |
 | `SharedKeyOf` | A step's content key with the pixels of its sides in front. The step output cache and `CostOf` use it. |
 | `ResolutionLevel` | `kFull`, `kHalf`, `kQuarter` or `kEighth` of every side. |
-| `IdealLevel`, `SteadyLevel` | The level for a screen fraction, and the level with the 0.8 band for a coarser step. |
-| `LevelHistory`, `LevelChange` | An actor's level and the time of its last change; the next level, held 2 s after a change. The player is always full. |
+| `IdealLevel` | The level for a screen fraction. |
+| `LevelChange` | The finer level that a screen fraction needs, or no change. A smaller fraction never gives a coarser level. The player is always full. |
 | `AtLevel` | The `PlanSides` divided by a level, with 64 as the floor. |
 
 `RenderMemory.h` turns the counts into the render-target log lines.
@@ -430,7 +430,7 @@ PSGeneratedStack, or PSStack until the compile finishes     render/GeneratedShad
 | `RenderPlanKey.h`/`.cpp`, `RenderPlanCache.h`/`.cpp` | Render planning | `RenderPlanKeyOf`, `RenderPlanKeyHash`, `GraphsNamedBy`; `RenderPlanCache`. |
 | `RenderMemory.h`/`.cpp` | Render planning | `NextHoldingLevel`, `HoldingsOf`, `LargestHoldings`, `IsBurst`, `SpreadOf`, `HoldingLine`, `BurstLine`. |
 | `TargetCost.h`/`.cpp` | Render planning | `HeldTarget`, `PlanTargets`, `TargetCost`, `TargetBytes`, `TargetsOf`, `CostOf`. |
-| `PlanSides.h`/`.cpp`, `ResolutionLevel.h`/`.cpp` | Render planning | `PlanSides`, `SidesFor`, `SideOf`, `SharedKeyOf`; `ResolutionLevel`, `IdealLevel`, `SteadyLevel`, `LevelChange`, `AtLevel`, `LevelName`. |
+| `PlanSides.h`/`.cpp`, `ResolutionLevel.h`/`.cpp` | Render planning | `PlanSides`, `SidesFor`, `SideOf`, `SharedKeyOf`; `ResolutionLevel`, `IdealLevel`, `LevelChange`, `AtLevel`, `LevelName`. |
 | `FieldInlining.h`/`.cpp` | Render planning | `AsProgramLike` and `InlineFields`. |
 | `RenderExecution.h` | Render planning | `RenderExecution` and its state records. |
 | `RenderFirings.h` | Render planning | `RenderFiring` and `RenderFirings`. |

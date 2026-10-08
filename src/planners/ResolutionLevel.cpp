@@ -4,8 +4,6 @@
 namespace BetterEnchantmentEffects {
 namespace {
 constexpr float kFullLevelFraction = 0.5f;
-constexpr float kCoarserBand = 0.8f;
-constexpr std::uint64_t kLevelHoldMS = 2000;
 
 constexpr unsigned Step(ResolutionLevel a_level) noexcept {
   return static_cast<unsigned>(a_level);
@@ -25,32 +23,16 @@ ResolutionLevel IdealLevel(float a_screenFraction) noexcept {
   return ResolutionLevel::kEighth;
 }
 
-ResolutionLevel SteadyLevel(float a_screenFraction,
-                            ResolutionLevel a_current) noexcept {
-  const ResolutionLevel finer = IdealLevel(a_screenFraction);
-  if (Step(finer) < Step(a_current)) {
-    return finer;
-  }
-  const ResolutionLevel coarser = IdealLevel(a_screenFraction / kCoarserBand);
-  return Step(coarser) > Step(a_current) ? coarser : a_current;
-}
-
-std::optional<ResolutionLevel> LevelChange(const LevelHistory &a_history,
+std::optional<ResolutionLevel> LevelChange(ResolutionLevel a_current,
                                            float a_screenFraction,
-                                           ActorRole a_role,
-                                           std::uint64_t a_nowMS) noexcept {
+                                           ActorRole a_role) noexcept {
   if (a_role != ActorRole::kPlayer && !(a_screenFraction > 0.0f)) {
     return std::nullopt;
   }
-  const ResolutionLevel wanted =
-      a_role == ActorRole::kPlayer
-          ? ResolutionLevel::kFull
-          : SteadyLevel(a_screenFraction, a_history.level);
-  if (wanted == a_history.level) {
-    return std::nullopt;
-  }
-  if (a_history.changedMS && a_nowMS >= *a_history.changedMS &&
-      a_nowMS - *a_history.changedMS < kLevelHoldMS) {
+  const ResolutionLevel wanted = a_role == ActorRole::kPlayer
+                                     ? ResolutionLevel::kFull
+                                     : IdealLevel(a_screenFraction);
+  if (Step(wanted) >= Step(a_current)) {
     return std::nullopt;
   }
   return wanted;

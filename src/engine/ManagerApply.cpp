@@ -1342,17 +1342,16 @@ ResolutionLevel Manager::InstallLevel(RE::FormID a_actorID, RE::Actor &a_actor,
   if (tracked == tracked_.end()) {
     return ResolutionLevel::kFull;
   }
-  std::optional<LevelHistory> &history = tracked->second.resolution;
-  if (!history) {
+  std::optional<ResolutionLevel> &level = tracked->second.resolution;
+  if (!level) {
     const float fraction = ScreenFraction(a_actor);
     const bool full =
         a_actor.IsPlayerRef() ||
         !RegressionScreenResolution().value_or(a_settings.screenResolution) ||
         !(fraction > 0.0f);
-    history = LevelHistory{full ? ResolutionLevel::kFull : IdealLevel(fraction),
-                           std::nullopt};
+    level = full ? ResolutionLevel::kFull : IdealLevel(fraction);
   }
-  return history->level;
+  return *level;
 }
 
 std::size_t Manager::PlaceGeometries(LiveActor &a_state,

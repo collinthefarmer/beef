@@ -2355,18 +2355,26 @@ cancel by the user instead of the load.
   emissive, fuzz, glint, coat and subsurface at a quarter and diffuse and
   rmaos at a half (`DefaultSlotResolution`). The player is always full, and
   the setting `ScreenResolution` off makes every actor full.
-- An actor steps to a finer level as soon as it crosses a threshold. It steps
-  to a coarser level only below 0.8 of the threshold (`kCoarserBand`), as
-  `EvictionFor` does for distance. A screen fraction of 0 (no camera, or the
-  camera inside the actor's bound) changes nothing.
+- An NPC steps to a finer level as soon as its screen fraction crosses a
+  threshold, and it goes straight to the level that fraction needs
+  (render-performance 7c-1, 2026-10-08). It never steps to a coarser level
+  because its fraction falls; only the render target budget (7d) will step it
+  down. Before 7c-1, a coarser step came below 0.8 of a threshold with a 2 s
+  hold between changes. In the session of 2026-10-08 that policy changed one
+  NPC's level 45 times in about 7 minutes while the player walked to and from
+  it. A screen fraction of 0 (no camera, or an orthographic one) changes
+  nothing.
+- `ScreenFraction` clamps the fraction to 1. A fraction of exactly 1.000 means
+  the actor's bounding sphere is as tall as the screen or taller, which
+  happens when the camera is close to the actor.
 - A level change reinstalls the actor (`Manager::UpdateResolution`,
   `MarkReinstall`), so it rebuilds materials, shells and lights as well as the
-  render instance. One actor changes at most once per 2 s (`kLevelHoldMS`).
-  At most two actors change per tick (`kLevelChangesPerTick`), because a
-  camera zoom changes every actor's fraction at once. The sync log names such
-  a reinstall `resized`, and the trace event `resolution_level` gives the
-  levels and the fraction. The trace event `resolution_levels`, written with
-  the heartbeat, counts the live actors at each level.
+  render instance. At most two actors change per tick
+  (`kLevelChangesPerTick`), because a camera zoom changes every actor's
+  fraction at once. The sync log names such a reinstall `resized`, and the
+  trace event `resolution_level` gives the levels and the fraction. The trace
+  event `resolution_levels`, written with the heartbeat, counts the live
+  actors at each level.
 - The first install takes the level from the actor's screen fraction at that
   moment (`Manager::InstallLevel`), so a new actor is not built at full and
   rebuilt one tick later. `TrackedActor::resolution` keeps the level across
