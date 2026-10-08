@@ -438,7 +438,7 @@ Work:
 |---|---|---|
 | 7a | Done 2026-10-07: the holding and burst lines (`Manager::ReportRenderMemory`, `planners/RenderMemory.h`), sync kinds (`actors/SyncLog.h`), and screen fractions in the heartbeat. In `soak-fight-orbit --quick 60` (run 20261007T183514-2) bursts of 200 to 680 MiB came every 5 to 10 s with no sync; they rose and fell with the hundreds of step releases and restores per second as the orbiting camera moved actors in and out of view. Diagnostics written with diagnostics off: live target bytes per actor and per recipe when the total crosses a threshold; each burst of target creation with the syncs and reinstalls that caused it; each rendered actor's projected screen size. | The bug report's questions "which actors?" and "why the bursts?" can be answered from the plain log, and a soak reports the screen size of its actors. |
 | 7b | Done 2026-10-07. Two causes. (1) Idle release used wall time, so an actor back in view released and restored its intermediates; the render clock (`AdvancedRenderClock`) counts only rendered time. (2) A hidden stack layer let its static chain (a mask and its mesh bakes) idle out, and showing it again restored the chain; static outputs now stay until the instance goes, and 7d releases them under pressure. Orbit window of `soak-fight-orbit --quick 60`: created 10 059 → 5609 → 3051 MiB, restores 4998 → 1360 → 0; memory in use +9 % there and +18 % in `soak-enchanted`. The render clock alone took the worst frame from 89 to 52 ms. | The cause is named with trace evidence, and a fight soak shows no repeated rebuilds of an actor whose equipment did not change. |
-| 7c | Resolution from screen coverage. Each actor gets a resolution level (full, 1/2, 1/4, 1/8 of the base side) from its projected size; the player stays at full. A level changes with hysteresis and at a limited rate, because a change rebuilds the actor's plan. | A crowd soak holds a fraction of today's bytes with no visible difference at play distance, which the user checks in game. |
+| 7c | Implemented 2026-10-07; the in-game check is open. Plans hold side references, not pixels (`planners/PlanSides.h`), so one cached plan serves every level. Each NPC gets a level (full, 1/2, 1/4, 1/8) from its screen fraction (`planners/ResolutionLevel.h`): full at 0.5 of the screen height or more, a coarser step only below 0.8 of a threshold, at most one change per actor per 2 s and two per tick. The player is always full; the setting `ScreenResolution` turns levels off. A change reinstalls the actor (sync kind `resized`). A lower level also lowers the armor's own texture detail, because a stack replaces the base map. Native tests show that a plan at base 2048 and level 1/2 holds the same targets as a fresh plan at base 1024. `soak-distance --quick 60` (2026-10-08): live targets 1188 MB with levels on (run 20261008T003148-1: 3 full, 3 half, 5 quarter, 1 eighth) against 2561 MB off (run 20261008T003540-1); steady plugin time 523 against 548 µs, inside run-to-run variation. In game on 2026-10-08 the user saw no texture difference between levels. Open: walking to and from one NPC changed its level 11 times in 80 s, one change per 2 s hold; each change reinstalled the actor (sync 91 to 120 ms, of which 64 to 84 ms was the plan rebuild of `VerifyRenderPlanCache=true`) and created 0.25 to 1.2 GiB of targets over the next 2 to 3 frames of 40 to 60 ms. | A crowd soak holds a fraction of today's bytes with no visible difference at play distance, which the user checks in game. |
 | 7d | A budget from DXGI headroom (`QueryVideoMemoryInfo`: budget minus current use, with a margin), not a fixed constant, so it follows other processes. Under pressure: hidden actors release their intermediate targets, then the farthest actors step down a level, then the farthest actors lose their effect. `TargetsOf` prices each option. | A soak with an artificially small budget stays under it and names the degraded actors in the log. |
 | 7e | The idle pool keeps released targets for a time within the budget, if 7b leaves churn that is not a defect. | A rebuild of one NPC creates no new targets in a soak. |
 
@@ -460,3 +460,30 @@ Stage 1 decides the order. The candidates known now:
 - Draw animated intermediates at a lower resolution. This changes the image,
   so it is a model decision.
 - Reduce the CPU apply cost at equip.
+- Share static step outputs across resolution levels. The shared key holds
+  the side pixels (`SharedKeyOf`), so two actors at different levels share no
+  target. In `soak-distance` (2026-10-08, runs 20261008T003148-1 with
+  `ScreenResolution` on and 20261008T003540-1 with it off) the crowd held 300
+  live targets (1188 MB) with levels on and 200 (2561 MB) with levels off.
+  That soak gives member `i` cuirass `i % 6` and row `i % 4`, so the two
+  wearers of a cuirass always stand at different levels; the figure is the
+  worst case. The proposed change: a coarser actor looks up a published output
+  of the same content key whose side is 2^k times larger and reads it through
+  a view that starts at mip `k`. Every full-screen draw already generates the
+  mip chain. Open points: `TextureView` has no mip offset; a side clamped by
+  `TextureSize::kMin` needs its own target; a finer output published after
+  the coarser one is not picked up; a borrowed target stays alive after its
+  owner goes, which 7d must count. First measure the cost on a layout where
+  the wearers of a cuirass share a row.
+- Measure screen size per geometry. `ScreenFraction`
+  (`engine/ActorObservation.cpp`) projects the bounding sphere of the actor's
+  third-person root, which encloses the body, all worn armor and weapons. One
+  level therefore applies to every geometry of the actor: a gauntlet steps
+  down with the cuirass, and a drawn weapon or cloak enlarges the sphere and
+  keeps the actor at a finer level. The proposed change: project each worn
+  geometry's own `worldBound` and give each geometry its own level. It costs
+  one projection per geometry per tick in place of one per actor. Open points:
+  `LevelHistory` (`planners/ResolutionLevel.h`) and the hold of 2 s are per
+  actor, and a level change reinstalls the whole actor (`UpdateResolution`),
+  so a per-geometry level needs a per-geometry history and a reinstall that
+  touches only the changed geometry.

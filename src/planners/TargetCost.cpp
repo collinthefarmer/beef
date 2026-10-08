@@ -25,21 +25,20 @@ std::vector<bool> ReachedSteps(const RenderPlan &a_plan) {
   return reached;
 }
 
-void Add(TargetCost &a_cost, const TextureRequirements &a_requirements) {
+void Add(TargetCost &a_cost, const HeldTarget &a_target) {
   ++a_cost.targets;
-  a_cost.bytes += TargetBytes(a_requirements);
-  ++a_cost.targetsBySide[a_requirements.size.Pixels()];
+  a_cost.bytes += TargetBytes(a_target.side, a_target.format);
+  ++a_cost.targetsBySide[a_target.side.Pixels()];
 }
 }
 
-std::uint64_t TargetBytes(const TextureRequirements &a_requirements) noexcept {
-  const auto side = static_cast<std::uint64_t>(a_requirements.size.Pixels());
+std::uint64_t TargetBytes(TextureSize a_side, TextureFormat a_format) noexcept {
+  const auto side = static_cast<std::uint64_t>(a_side.Pixels());
   const std::uint64_t mipped = side * side * 4 * 4 / 3;
-  return a_requirements.format == TextureFormat::kRgba32Float ? mipped * 4
-                                                              : mipped;
+  return a_format == TextureFormat::kRgba32Float ? mipped * 4 : mipped;
 }
 
-PlanTargets TargetsOf(const RenderPlan &a_plan) {
+PlanTargets TargetsOf(const RenderPlan &a_plan, const PlanSides &a_sides) {
   const std::vector<bool> reached = ReachedSteps(a_plan);
   PlanTargets targets;
   for (RenderStepId step = 0; step < a_plan.steps.size(); ++step) {
@@ -49,7 +48,8 @@ PlanTargets TargetsOf(const RenderPlan &a_plan) {
     if (!reached[step] || !requirements || !Draws(planned.kind)) {
       continue;
     }
-    const HeldTarget held{*requirements, planned.contentKey};
+    const HeldTarget held{SideOf(a_sides, requirements->side),
+                          requirements->format, SharedKeyOf(planned, a_sides)};
     targets.held.push_back(held);
     if (Is<CompositeStackStep>(planned.kind)) {
       targets.stacks.push_back(held);
@@ -62,8 +62,8 @@ TargetCost CostOf(std::span<const HeldTarget> a_targets) {
   std::set<std::string> counted;
   TargetCost cost;
   for (const HeldTarget &target : a_targets) {
-    if (!target.contentKey || counted.insert(*target.contentKey).second) {
-      Add(cost, target.requirements);
+    if (!target.sharedKey || counted.insert(*target.sharedKey).second) {
+      Add(cost, target);
     }
   }
   return cost;

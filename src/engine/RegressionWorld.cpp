@@ -12,8 +12,10 @@
 #include "render/PBRMaterial.h"
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
+#include <format>
 #include <string_view>
 
 namespace BetterEnchantmentEffects {
@@ -40,6 +42,8 @@ inline constexpr float kWorkOpacity = 0.5f;
 inline constexpr float kCrowdRadius = 300.0f;
 inline constexpr float kBehindDistance = 1200.0f;
 inline constexpr float kBehindSpacing = 120.0f;
+inline constexpr std::array<float, 4> kAheadDistances{150.0f, 400.0f, 800.0f,
+                                                      1600.0f};
 inline constexpr float kHalfTurn = 3.14159265f;
 inline constexpr RE::FormID kQASmoke = 0x32AE7;
 inline constexpr float kMovedDistance = 32.0f;
@@ -499,6 +503,49 @@ RE::NiPoint3 BehindSpot(const RE::PlayerCharacter &a_player,
                       centre.z};
 }
 
+RE::NiPoint3 AheadSpot(const RE::PlayerCharacter &a_player,
+                       std::uint32_t a_index, std::uint32_t a_count) {
+  const RE::NiPoint3 away = AwayFromView(a_player);
+  const RE::NiPoint3 forward{-away.x, -away.y, 0.0f};
+  const RE::NiPoint3 right{forward.y, -forward.x, 0.0f};
+  const std::uint32_t rows = static_cast<std::uint32_t>(kAheadDistances.size());
+  const std::uint32_t columns = (a_count + rows - 1) / rows;
+  const float distance = kAheadDistances[a_index % rows];
+  const float across = (static_cast<float>(a_index / rows) -
+                        static_cast<float>(columns - 1) / 2.0f) *
+                       kBehindSpacing;
+  const RE::NiPoint3 centre = a_player.GetPosition();
+  return RE::NiPoint3{centre.x + forward.x * distance + right.x * across,
+                      centre.y + forward.y * distance + right.y * across,
+                      centre.z};
+}
+
+RE::NiPoint3 CrowdSpot(const RE::PlayerCharacter &a_player,
+                       Regression::Spot a_spot, std::uint32_t a_index,
+                       std::uint32_t a_count) {
+  switch (a_spot) {
+  case Regression::Spot::kBehind:
+    return BehindSpot(a_player, a_index, a_count);
+  case Regression::Spot::kAhead:
+    return AheadSpot(a_player, a_index, a_count);
+  case Regression::Spot::kRing:
+    break;
+  }
+  return RingSpot(a_player.GetPosition(), a_index, a_count);
+}
+
+std::string_view CrowdPlacement(Regression::Spot a_spot) {
+  switch (a_spot) {
+  case Regression::Spot::kBehind:
+    return "behind the view";
+  case Regression::Spot::kAhead:
+    return "in rows ahead of the view";
+  case Regression::Spot::kRing:
+    break;
+  }
+  return "on a ring";
+}
+
 RE::NiPointer<RE::TESObjectREFR> PlaceAt(RE::PlayerCharacter &a_player,
                                          RE::TESBoundObject &a_base,
                                          const RE::NiPoint3 &a_spot) {
@@ -530,8 +577,8 @@ void SpawnCrowdActors(RunWorld &a_world,
   DressCuirasses(a_world, a_spawn.dress);
   const RE::NiPoint3 centre = player->GetPosition();
   const std::uint32_t count = std::min(a_spawn.count, Regression::kMaxCrowd);
-  if (a_spawn.spot == Regression::Spot::kBehind) {
-    LogView("crowd behind the view", *player);
+  if (a_spawn.spot != Regression::Spot::kRing) {
+    LogView(std::format("crowd {}", CrowdPlacement(a_spawn.spot)), *player);
   }
   const bool inArena =
       a_spawn.body != Regression::Body::kMannequin && InQASmoke(*player);
@@ -540,10 +587,9 @@ void SpawnCrowdActors(RunWorld &a_world,
     player->SetPosition(kArenaViewpoint, true);
   }
   for (std::uint32_t index = 0; index < count; ++index) {
-    const RE::NiPoint3 spot = inArena ? ArenaSpot(index, count)
-                              : a_spawn.spot == Regression::Spot::kBehind
-                                  ? BehindSpot(*player, index, count)
-                                  : RingSpot(centre, index, count);
+    const RE::NiPoint3 spot =
+        inArena ? ArenaSpot(index, count)
+                : CrowdSpot(*player, a_spawn.spot, index, count);
     const RE::NiPointer<RE::TESObjectREFR> placed =
         PlaceAt(*player, *base, spot);
     RE::Actor *actor = placed ? placed->As<RE::Actor>() : nullptr;
@@ -561,9 +607,7 @@ void SpawnCrowdActors(RunWorld &a_world,
   logger::info("regression: crowd of {} placed {} around ({:.0f}, {:.0f}, "
                "{:.0f})",
                a_world.crowd.size(),
-               inArena                                     ? "on the arena grid"
-               : a_spawn.spot == Regression::Spot::kBehind ? "behind the view"
-                                                           : "on a ring",
+               inArena ? "on the arena grid" : CrowdPlacement(a_spawn.spot),
                centre.x, centre.y, centre.z);
 }
 

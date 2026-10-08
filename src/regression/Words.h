@@ -28,8 +28,8 @@ enum class Dress : std::uint8_t {
 };
 inline constexpr std::size_t kDressCount = 3;
 
-enum class Spot : std::uint8_t { kRing, kBehind };
-inline constexpr std::size_t kSpotCount = 2;
+enum class Spot : std::uint8_t { kRing, kBehind, kAhead };
+inline constexpr std::size_t kSpotCount = 3;
 
 enum class Camera : std::uint8_t { kFirstPerson, kThirdPerson };
 inline constexpr std::size_t kCameraCount = 2;
@@ -78,8 +78,8 @@ inline constexpr Named<Dress> kDresses[]{
     {Dress::kEnchantedCuirasses, "enchanted-cuirasses"}};
 static_assert(Complete(kDresses, kDressCount));
 
-inline constexpr Named<Spot> kSpots[]{{Spot::kRing, "ring"},
-                                      {Spot::kBehind, "behind"}};
+inline constexpr Named<Spot> kSpots[]{
+    {Spot::kRing, "ring"}, {Spot::kBehind, "behind"}, {Spot::kAhead, "ahead"}};
 static_assert(Complete(kSpots, kSpotCount));
 
 inline constexpr Named<Camera> kCameras[]{

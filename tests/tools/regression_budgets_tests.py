@@ -215,6 +215,27 @@ class RegressionBudgetTests(unittest.TestCase):
         self.assertEqual(measured['plugin_frame_us_mean'], 1000.0)
         self.assertEqual(measured['plugin_share_pct'], 2.0)
 
+    def test_resolution_levels_count_at_the_window_end(self):
+        def at(time_ms, fields):
+            return {'unix_ms': time_ms, 'fields': fields}
+        events = [
+            at(0, {'action': 'regression.window', 'case': 'soak-distance',
+                   'window': 'steady', 'edge': 'begin'}),
+            at(200, {'action': 'resolution_levels', 'full': '12', 'half': '0',
+                     'quarter': '0', 'eighth': '0'}),
+            at(300, {'action': 'resolution_level', 'from': 'full', 'to': 'half'}),
+            at(400, {'action': 'resolution_level', 'from': 'full', 'to': 'eighth'}),
+            at(1000, {'action': 'heartbeat', 'frames': '10',
+                      'screen_fraction_median': '0.214'}),
+            at(1000, {'action': 'resolution_levels', 'full': '3', 'half': '3',
+                      'quarter': '3', 'eighth': '3'}),
+            at(1000, {'action': 'regression.window', 'case': 'soak-distance',
+                      'window': 'steady', 'edge': 'end'})]
+        measured = budgets.measurements(events)[('soak-distance', 'steady')]
+        self.assertEqual([measured[f'{level}_end'] for level in budgets.LEVELS], [3, 3, 3, 3])
+        self.assertEqual(measured['level_changes'], 2)
+        self.assertEqual(measured['screen_fraction_median_end'], 0.214)
+
     def test_heartbeats_without_the_cost_fields_are_reported(self):
         events = [
             {'unix_ms': 0, 'fields': {'action': 'regression.window', 'case': 'soak',

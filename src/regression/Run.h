@@ -89,6 +89,7 @@ struct StartLine {
   std::string_view source;
   std::string_view trace;
   std::optional<std::uint32_t> measuredSeconds;
+  bool screenResolution = true;
 };
 
 struct Advanced {

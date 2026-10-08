@@ -16,6 +16,7 @@ struct RunFile {
   CaseList suite;
   bool verifyRenderPlans = false;
   std::optional<std::uint32_t> measuredSeconds;
+  std::optional<bool> screenResolution;
 };
 
 inline constexpr std::size_t kMaxSuiteCases = 64;

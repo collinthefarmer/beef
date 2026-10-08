@@ -50,7 +50,7 @@ StackKeyRequest Request(const RecipeGraph &a_graph, std::string a_item) {
                          PlacementId{0},
                          GeometryId{0},
                          1,
-                         TextureSize{512},
+                         SideRef{0},
                          "material",
                          std::string{"mesh:1"},
                          ItemBindings(std::move(a_item))};
@@ -78,7 +78,7 @@ void EachFieldSeparatesKeys() {
   StackKeyRequest geometry = base;
   geometry.geometry = GeometryId{1};
   StackKeyRequest size = base;
-  size.size = TextureSize{1024};
+  size.side = SideRef{1};
   StackKeyRequest material = base;
   material.material = "other material";
   StackKeyRequest mesh = base;

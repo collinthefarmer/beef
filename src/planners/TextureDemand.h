@@ -1,17 +1,25 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #pragma once
 
-#include "mesh/TextureSize.h"
 #include "planners/ActorMatches.h"
 #include "planners/FieldProgram.h"
 #include "planners/ValueIdentity.h"
+
+#include <compare>
+#include <cstdint>
 
 namespace BetterEnchantmentEffects {
 enum class TextureFormat { kRgba8, kRgba32Float };
 enum class MipPolicy { kGenerate, kNone };
 inline constexpr std::size_t kMaxIdentityBytes = std::size_t{8} * 1024 * 1024;
+struct SideRef {
+  std::uint32_t index = 0;
+  [[nodiscard]] bool operator==(const SideRef &) const = default;
+  [[nodiscard]] std::strong_ordering
+  operator<=>(const SideRef &) const = default;
+};
 struct TextureRequirements {
-  TextureSize size{TextureSize::kMin};
+  SideRef side;
   TextureFormat format = TextureFormat::kRgba8;
   MipPolicy mipPolicy = MipPolicy::kGenerate;
   [[nodiscard]] bool operator==(const TextureRequirements &) const = default;

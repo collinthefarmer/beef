@@ -215,7 +215,7 @@ GeneratedPlan Generate(Random &random) {
     if (Chance(random, 0.25)) {
       const auto field = Choose(random, textures);
       const auto submission = step(SubmitReductionStep{
-          ReductionKind::kMean, field, ValueType::kScalar, {64, 64}});
+          ReductionKind::kMean, field, ValueType::kScalar, SideRef{0}});
       generated.measurements.push_back(
           input(ValueType::kScalar, ReadbackBinding{submission.step}));
       scalars.push_back(RenderInputRef{generated.measurements.back()});
@@ -226,7 +226,7 @@ GeneratedPlan Generate(Random &random) {
       compose.components.push_back(Chance(random, 0.5)
                                        ? Choose(random, scalars)
                                        : Choose(random, textures));
-    compose.requirements = {TextureSize{64}};
+    compose.requirements = {SideRef{0}};
     textures.push_back(step(std::move(compose)));
   }
   for (std::size_t s = 0, n = 1 + Pick(random, 3); s < n; ++s) {
@@ -238,7 +238,7 @@ GeneratedPlan Generate(Random &random) {
     CompositeStackStep stack{RenderInputRef{generated.bases.back()},
                              RenderInputRef{generated.visibilities.back()},
                              {},
-                             {TextureSize{64}},
+                             {SideRef{0}},
                              Slot::kEmissive};
     for (std::size_t l = 0, layers = 1 + Pick(random, 4); l < layers; ++l) {
       PlannedLayer layer{Choose(random, textures),

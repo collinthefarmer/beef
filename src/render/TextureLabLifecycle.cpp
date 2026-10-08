@@ -40,7 +40,7 @@ ComPtr<ID3DBlob> CompileEntry(const char *a_entry, const char *a_target) {
 }
 
 std::uint64_t TextureLab::RenderTarget::Bytes() const noexcept {
-  return TargetBytes({TextureSize{size}, format});
+  return TargetBytes(TextureSize{size}, format);
 }
 
 TextureLab::RenderTarget::~RenderTarget() {

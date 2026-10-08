@@ -8,9 +8,9 @@ namespace BetterEnchantmentEffects {
 std::strong_ordering TextureKey::operator<=>(const TextureKey &other) const {
   if (const auto order = identity <=> other.identity; order != 0)
     return order;
-  return std::tuple{requirements.size.Pixels(), requirements.format,
+  return std::tuple{requirements.side, requirements.format,
                     requirements.mipPolicy} <=>
-         std::tuple{other.requirements.size.Pixels(), other.requirements.format,
+         std::tuple{other.requirements.side, other.requirements.format,
                     other.requirements.mipPolicy};
 }
 namespace {

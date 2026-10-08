@@ -6,11 +6,10 @@ using test::Check;
 int main() {
   RenderPlan plan;
   plan.inputs.push_back({RenderResourceType::kTexture, TextureValue{}});
-  plan.steps.push_back({SubmitReductionStep{ReductionKind::kMean,
-                                            RenderInputRef{0},
-                                            ValueType::kScalar,
-                                            {64, 64}},
-                        "mean"});
+  plan.steps.push_back(
+      {SubmitReductionStep{ReductionKind::kMean, RenderInputRef{0},
+                           ValueType::kScalar, SideRef{0}},
+       "mean"});
   plan.steps.push_back({ConstantRenderStep{1.0f}, "independent"});
   RenderExecution<int> execution{plan};
   int measured = 0, constants = 0;
@@ -76,11 +75,10 @@ int main() {
   Check(!execution.Evaluate(StepOutputRef{0, 1}, execute, same, select),
         "invalid output handle is rejected");
   RenderPlan cycle;
-  cycle.steps.push_back({SubmitReductionStep{ReductionKind::kMean,
-                                             StepOutputRef{0, 0},
-                                             ValueType::kScalar,
-                                             {64, 64}},
-                         "cycle"});
+  cycle.steps.push_back(
+      {SubmitReductionStep{ReductionKind::kMean, StepOutputRef{0, 0},
+                           ValueType::kScalar, SideRef{0}},
+       "cycle"});
   Check(!ValidateRenderPlan(cycle), "cyclic producer reference is rejected");
   RenderPlan hidden;
   hidden.inputs = {{RenderResourceType::kStack, StackInputBinding{}},
@@ -92,7 +90,7 @@ int main() {
       RenderInputRef{0},
       RenderInputRef{1},
       {{RenderInputRef{2}, RenderInputRef{3}, {}, {}, Blend{}, ChannelSet{}}},
-      {TextureSize{64}},
+      {SideRef{0}},
       Slot::kEmissive};
   hidden.steps.push_back({stack, "stack"});
   RenderExecution<int> visible{hidden};
@@ -151,18 +149,18 @@ int main() {
         {EvaluateProgramStep{FieldProgram::Sample(ValueType::kScalar),
                              {previous},
                              {},
-                             {TextureSize{64}}},
+                             {SideRef{0}}},
          "left"});
     const StepOutputRef right{diamond.steps.size(), 0};
     diamond.steps.push_back(
         {EvaluateProgramStep{FieldProgram::Sample(ValueType::kScalar),
                              {previous},
                              {},
-                             {TextureSize{64}}},
+                             {SideRef{0}}},
          "right"});
     previous = StepOutputRef{diamond.steps.size(), 0};
     diamond.steps.push_back(
-        {ComposeVectorStep{{left, right}, {TextureSize{64}}}, "join"});
+        {ComposeVectorStep{{left, right}, {SideRef{0}}}, "join"});
   }
   RenderExecution<int> shared{diamond};
   Check(shared.SetInput(0, 1, true).has_value(), "bind shared diamond graph");

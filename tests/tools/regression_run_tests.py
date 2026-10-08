@@ -43,6 +43,14 @@ class RegressionRunTests(unittest.TestCase):
         quick = host.run_file('r', 'BEEFRegression', ['soak'], 1000.5, False, 60)
         self.assertEqual(quick['measuredSeconds'], 60)
         self.assertNotIn('verifyRenderPlans', quick)
+        self.assertNotIn('screenResolution', quick)
+        unscaled = host.run_file('r', 'BEEFRegression', ['soak'], 1000.5, False, None, False)
+        self.assertIs(unscaled['screenResolution'], False)
+
+    def test_screen_resolution_choice(self):
+        self.assertIsNone(host.screen_resolution_of(None))
+        self.assertIs(host.screen_resolution_of('on'), True)
+        self.assertIs(host.screen_resolution_of('off'), False)
 
     def test_quick_seconds_are_bounded(self):
         self.assertEqual(host.quick_seconds('60'), 60)

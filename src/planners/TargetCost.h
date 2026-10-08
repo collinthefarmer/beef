@@ -1,6 +1,8 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #pragma once
 
+#include "mesh/TextureSize.h"
+#include "planners/PlanSides.h"
 #include "planners/RenderPlan.h"
 #include "planners/TextureDemand.h"
 
@@ -14,8 +16,9 @@
 
 namespace BetterEnchantmentEffects {
 struct HeldTarget {
-  TextureRequirements requirements;
-  std::optional<std::string> contentKey;
+  TextureSize side;
+  TextureFormat format = TextureFormat::kRgba8;
+  std::optional<std::string> sharedKey;
   [[nodiscard]] bool operator==(const HeldTarget &) const = default;
 };
 
@@ -32,8 +35,9 @@ struct TargetCost {
   [[nodiscard]] bool operator==(const TargetCost &) const = default;
 };
 
-[[nodiscard]] std::uint64_t
-TargetBytes(const TextureRequirements &a_requirements) noexcept;
-[[nodiscard]] PlanTargets TargetsOf(const RenderPlan &a_plan);
+[[nodiscard]] std::uint64_t TargetBytes(TextureSize a_side,
+                                        TextureFormat a_format) noexcept;
+[[nodiscard]] PlanTargets TargetsOf(const RenderPlan &a_plan,
+                                    const PlanSides &a_sides);
 [[nodiscard]] TargetCost CostOf(std::span<const HeldTarget> a_targets);
 }

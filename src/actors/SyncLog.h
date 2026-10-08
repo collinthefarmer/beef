@@ -23,7 +23,8 @@ enum class SyncKind : std::uint8_t {
   kChanged,
   kClaimed,
   kEvicted,
-  kForgotten
+  kForgotten,
+  kResized
 };
 
 struct SyncRecord {

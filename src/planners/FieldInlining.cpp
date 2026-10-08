@@ -111,7 +111,7 @@ bool InlineOneProgram(RenderPlan &plan) {
 
 struct StoredField {
   LayerField field;
-  TextureSize size;
+  SideRef side;
 };
 
 std::optional<StoredField> AsStoredField(const RenderPlan &plan,
@@ -125,7 +125,7 @@ std::optional<StoredField> AsStoredField(const RenderPlan &plan,
     return std::nullopt;
   return StoredField{LayerField{StepOutputRef{producer, 0}, std::move(*stored),
                                 program->inputs, program->lookups},
-                     program->requirements.size};
+                     program->requirements.side};
 }
 
 bool Reads(RenderValueRef operand, RenderStepId producer) {
@@ -189,7 +189,7 @@ std::size_t InlineField(RenderPlan &plan, RenderStepId producer,
             [&](RenderValueRef operand) { return Reads(operand, producer); }))
       continue;
     const auto *stack = Get<CompositeStackStep>(plan.steps[step].kind);
-    if (!stack || stack->requirements.size != stored->size ||
+    if (!stack || stack->requirements.side != stored->side ||
         !InlinesFor(uses, producer, step))
       return 0;
     auto candidate = *stack;

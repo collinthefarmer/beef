@@ -53,6 +53,14 @@ void ParsesValidRunFile() {
       kNow);
   test::Check(quick && quick->measuredSeconds == 60u,
               "a run can ask for quick measured windows");
+  test::Check(!parsed->screenResolution,
+              "a run keeps the screen resolution setting unless it asks");
+  const auto unscaled = ParseRunFile(
+      RunFileText(
+          R"("suite":["soak"],"notAfter":1800000600,"screenResolution":false)"),
+      kNow);
+  test::Check(unscaled && unscaled->screenResolution == false,
+              "a run can turn screen resolution off");
 }
 
 struct BadRunFile {
@@ -98,6 +106,9 @@ void RefusesBadRunFiles() {
       {RunFileText(
            R"("suite":["soak"],"notAfter":1800000600,"measuredSeconds":"60")"),
        "measuredSeconds that is not a number"},
+      {RunFileText(
+           R"("suite":["soak"],"notAfter":1800000600,"screenResolution":"off")"),
+       "screenResolution that is not a boolean"},
       {"[1,2,3]", "not an object"},
       {"{\"format\":1", "truncated"},
       {std::string(200, '[') + std::string(200, ']'), "deep nesting"},
@@ -1061,10 +1072,16 @@ void ResultLinesAreJson() {
                           R"("window":"churn-2","edge":"begin"})"},
               "window line names its case and cycle");
   test::Equal(
-      StartLineJson({"r", "b", "s", "t.jsonl", 60}),
+      StartLineJson({"r", "b", "s", "t.jsonl", 60, true}),
       std::string{R"({"kind":"start","run":"r","build":"b","source":"s",)"
-                  R"("trace":"t.jsonl","measuredSeconds":60})"},
+                  R"("trace":"t.jsonl","measuredSeconds":60,)"
+                  R"("screenResolution":true})"},
       "a quick run's start line records its measured seconds");
+  test::Equal(
+      StartLineJson({"r", "b", "s", "t.jsonl", std::nullopt, false}),
+      std::string{R"({"kind":"start","run":"r","build":"b","source":"s",)"
+                  R"("trace":"t.jsonl","screenResolution":false})"},
+      "the start line records whether screen resolution was on");
   test::Equal(ResultLineJson(RunEnd{Outcome::kPass, {}}),
               std::string{R"({"kind":"end","outcome":"PASS","reason":""})"},
               "end line");

@@ -31,11 +31,6 @@ enum class RenderResourceType {
   kSubmission
 };
 using RenderValueType = std::variant<ValueType, RenderResourceType>;
-struct ReductionDomain {
-  std::uint32_t width = 0;
-  std::uint32_t height = 0;
-  [[nodiscard]] bool operator==(const ReductionDomain &) const = default;
-};
 struct StackInputBinding {
   PlacementId placement{};
   std::size_t output = 0;
@@ -105,7 +100,7 @@ struct SubmitReductionStep {
   ReductionKind kind;
   RenderValueRef value;
   ValueType type;
-  ReductionDomain domain;
+  SideRef domain;
   [[nodiscard]] bool operator==(const SubmitReductionStep &) const = default;
 };
 struct LookupArgument {

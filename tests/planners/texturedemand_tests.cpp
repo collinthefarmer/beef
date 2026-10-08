@@ -71,8 +71,8 @@ int main() {
   Check(Identity(graph, "mask") != Identity(changedInput, "result"),
         "dependency values participate in identity");
   std::vector<TextureDemand> demands;
-  const TextureRequirements small{TextureSize{64}};
-  const TextureRequirements large{TextureSize{1024}};
+  const TextureRequirements small{SideRef{0}};
+  const TextureRequirements large{SideRef{1}};
   const TextureUse use{PlacementId{1}, 0, 0, TextureUseInput::kSource};
   const TextureUse secondUse{PlacementId{2}, 3, 1, TextureUseInput::kMask};
   auto a = CollectTextureDemand(

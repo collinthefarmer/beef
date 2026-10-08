@@ -37,8 +37,8 @@ int main() {
   surface.stack.push_back(layer);
   recipe.outputs.push_back(surface);
   const auto graph = RecipeGraph::Compile(recipe);
-  const std::array requests{RenderStackRequest{
-      &graph, &surface, 1, PlacementId{0}, 0, {TextureSize{64}}}};
+  const std::array requests{
+      RenderStackRequest{&graph, &surface, 1, PlacementId{0}, 0, {SideRef{0}}}};
   const auto plan = LowerRenderPlan({}, requests, Bindings());
   if (!plan)
     std::cerr << plan.error() << '\n';
@@ -71,11 +71,11 @@ int main() {
               plan->steps.front().producedKey->identity ==
                   renamed->steps.front().producedKey->identity),
         "the compared plans differ in their identity strings");
-  const std::array larger{RenderStackRequest{
-      &graph, &surface, 1, PlacementId{0}, 0, {TextureSize{128}}}};
-  const auto resized = LowerRenderPlan({}, larger, Bindings());
+  const std::array otherSide{
+      RenderStackRequest{&graph, &surface, 1, PlacementId{0}, 0, {SideRef{1}}}};
+  const auto resized = LowerRenderPlan({}, otherSide, Bindings());
   Check(resized && !SameStructure(*plan, *resized),
-        "a different texture size changes the plan's structure");
+        "a different side reference changes the plan's structure");
   {
     const auto downstream = DownstreamStepsOf(*plan);
     std::size_t readbacks = 0, followed = 0;
@@ -144,7 +144,7 @@ int main() {
   recipe.outputs.push_back(surface);
   const auto vectorGraph = RecipeGraph::Compile(recipe);
   const std::array vectorRequests{RenderStackRequest{
-      &vectorGraph, &surface, 1, PlacementId{0}, 0, {TextureSize{64}}}};
+      &vectorGraph, &surface, 1, PlacementId{0}, 0, {SideRef{0}}}};
   const auto vectorPlan = BuildRenderPlan({}, vectorRequests, Bindings());
   if (!vectorPlan)
     std::cerr << vectorPlan.error() << '\n';
@@ -245,7 +245,7 @@ int main() {
   clusterRecipe.outputs.push_back(clusterSurface);
   const auto clusterGraph = RecipeGraph::Compile(clusterRecipe);
   const std::array clusterRequests{RenderStackRequest{
-      &clusterGraph, &clusterSurface, 1, PlacementId{0}, 0, {TextureSize{64}}}};
+      &clusterGraph, &clusterSurface, 1, PlacementId{0}, 0, {SideRef{0}}}};
   const auto clusterPlan = BuildRenderPlan({}, clusterRequests, Bindings());
   Check(clusterPlan.has_value(), "material clusters lower into a plan");
   if (clusterPlan) {
@@ -277,7 +277,7 @@ int main() {
   pickRecipe.outputs.push_back(pickSurface);
   const auto pickGraph = RecipeGraph::Compile(pickRecipe);
   const std::array pickRequests{RenderStackRequest{
-      &pickGraph, &pickSurface, 1, PlacementId{0}, 0, {TextureSize{64}}}};
+      &pickGraph, &pickSurface, 1, PlacementId{0}, 0, {SideRef{0}}}};
   const auto pickPlan = BuildRenderPlan({}, pickRequests, Bindings());
   Check(pickPlan.has_value() &&
             std::ranges::any_of(pickPlan->steps,
@@ -306,7 +306,7 @@ int main() {
   hiddenRecipe.outputs.push_back(hiddenSurface);
   const auto hiddenGraph = RecipeGraph::Compile(hiddenRecipe);
   const std::array hiddenRequests{RenderStackRequest{
-      &hiddenGraph, &hiddenSurface, 1, PlacementId{0}, 0, {TextureSize{64}}}};
+      &hiddenGraph, &hiddenSurface, 1, PlacementId{0}, 0, {SideRef{0}}}};
   const auto hiddenPlan = BuildRenderPlan({}, hiddenRequests, Bindings());
   Check(hiddenPlan.has_value(),
         "invalid branch has a typed unavailable producer instead of rejecting "
@@ -321,7 +321,7 @@ int main() {
   uniformRecipe.outputs.push_back(uniformSurface);
   const auto uniformGraph = RecipeGraph::Compile(uniformRecipe);
   const std::array uniformRequests{RenderStackRequest{
-      &uniformGraph, &uniformSurface, 1, PlacementId{0}, 0, {TextureSize{64}}}};
+      &uniformGraph, &uniformSurface, 1, PlacementId{0}, 0, {SideRef{0}}}};
   Check(BuildRenderPlan({}, uniformRequests, Bindings()).has_value(),
         "uniform scalar masks materialize as fields for stack consumers");
   Recipe rippleRecipe;
@@ -342,7 +342,7 @@ int main() {
   rippleRecipe.outputs.push_back(rippleSurface);
   const auto rippleGraph = RecipeGraph::Compile(rippleRecipe);
   const std::array rippleRequests{RenderStackRequest{
-      &rippleGraph, &rippleSurface, 1, PlacementId{0}, 0, {TextureSize{64}}}};
+      &rippleGraph, &rippleSurface, 1, PlacementId{0}, 0, {SideRef{0}}}};
   const auto ripplePlan = BuildRenderPlan({}, rippleRequests, Bindings());
   Check(ripplePlan.has_value(), "ripple prerequisites lower explicitly");
   if (ripplePlan) {
@@ -356,7 +356,7 @@ int main() {
   const auto PositionBakeKey =
       [&](const RecipeGraph &graph) -> std::optional<std::string> {
     const std::array requests{RenderStackRequest{
-        &graph, &rippleSurface, 1, PlacementId{0}, 0, {TextureSize{64}}}};
+        &graph, &rippleSurface, 1, PlacementId{0}, 0, {SideRef{0}}}};
     const auto plan = BuildRenderPlan({}, requests, Bindings());
     if (!plan)
       return std::nullopt;
@@ -396,7 +396,7 @@ int main() {
   for (const auto &binding : graph.OutputBindings())
     if (binding.property == LayerWhere(0, 0) + " source") {
       const TextureValue value{&graph, binding.value, 1};
-      Check(CollectTextureDemand(demands, {value, {TextureSize{64}}, use},
+      Check(CollectTextureDemand(demands, {value, {SideRef{0}}, use},
                                  Bindings()(value, GeometryId{}))
                 .has_value(),
             "collect mapped arguments and measured field prerequisites");

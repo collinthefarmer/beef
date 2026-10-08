@@ -378,11 +378,8 @@ struct PlanBuilder {
     if (!sampleType)
       return Fail(label + ": reduction requires a numeric field");
     const RenderValueRef submission =
-        Step(SubmitReductionStep{operation.kind,
-                                 field,
-                                 *sampleType,
-                                 {request.requirements.size.Pixels(),
-                                  request.requirements.size.Pixels()}},
+        Step(SubmitReductionStep{operation.kind, field, *sampleType,
+                                 request.requirements.side},
              label + " submission");
     const auto *submitted = Get<StepOutputRef>(submission);
     if (!submitted)
@@ -538,7 +535,7 @@ struct PlanBuilder {
     if (operation.areaBias) {
       draw.areaBias = BuildOperand(*operation.areaBias, request, depth);
     }
-    return Step(std::move(draw), label);
+    return Step(draw, label);
   }
   RenderValueRef LowerRippleOperation(const RippleOperation &operation,
                                       const LoweringSite &site,

@@ -16,6 +16,7 @@
 #include "engine/RecipeEditor.h"
 #include "planners/ActorPlanning.h"
 #include "planners/RenderPlanCache.h"
+#include "planners/ResolutionLevel.h"
 #include "recipe/Recipe.h"
 #include "regression/Run.h"
 #include "render/TextureRef.h"
@@ -188,6 +189,12 @@ private:
   [[nodiscard]] std::optional<std::size_t>
   InstanceFor(LiveActor &a_state, InstanceId a_matchedInstance,
               RE::FormID a_enchantment, const Settings &a_settings);
+  [[nodiscard]] ResolutionLevel InstallLevel(RE::FormID a_actorID,
+                                             RE::Actor &a_actor,
+                                             const Settings &a_settings);
+  [[nodiscard]] bool UpdateResolution(RE::FormID a_actorID, RE::Actor &a_actor,
+                                      float a_screenFraction,
+                                      const Settings &a_settings);
   void PlaceInstances(LiveActor &a_state, RE::FormID a_actorID,
                       const Settings &a_settings);
   [[nodiscard]] std::size_t PlaceGeometries(LiveActor &a_state,
@@ -236,6 +243,8 @@ private:
   struct TrackedActor {
     std::optional<Actors::ActorState> state;
     ModelTable models;
+    std::optional<LevelHistory> resolution;
+    bool resizing = false;
   };
   std::unordered_map<RE::FormID, TrackedActor> tracked_;
   std::optional<IdleCameraHold> menuIdleHold_;

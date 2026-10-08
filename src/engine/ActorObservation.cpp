@@ -7,6 +7,7 @@
 #include "render/PBRMaterial.h"
 
 #include <algorithm>
+#include <cmath>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -206,6 +207,23 @@ void ObservePerson(const PersonObservation &a_person, ModelTable &a_models,
 
 bool Loaded3D(const RE::Actor &a_actor) noexcept {
   return !a_actor.IsDeleted() && a_actor.Is3DLoaded();
+}
+
+float ScreenFraction(RE::Actor &a_actor) {
+  RE::NiCamera *camera = RE::Main::WorldRootCamera();
+  RE::NiAVObject *root = a_actor.Get3D(false);
+  if (!camera || !root) {
+    return 0.0f;
+  }
+  const RE::NiFrustum &frustum = camera->GetRuntimeData2().viewFrustum;
+  const float extent = frustum.fTop - frustum.fBottom;
+  const float distance =
+      camera->world.translate.GetDistance(root->worldBound.center);
+  if (frustum.bOrtho || !(extent > 0.0f) || !(distance > 1.0f)) {
+    return 0.0f;
+  }
+  const float fraction = 2.0f * root->worldBound.radius / distance / extent;
+  return std::isfinite(fraction) ? std::clamp(fraction, 0.0f, 1.0f) : 0.0f;
 }
 
 std::optional<float> DistanceToPlayer(const RE::Actor &a_actor) {

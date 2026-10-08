@@ -53,11 +53,16 @@ void LargestHoldingsComeFirst() {
 }
 
 void SharedTargetsAreNamed() {
-  const TextureRequirements side{TextureSize{512}};
-  const std::uint64_t one = TargetBytes(side);
+  const TextureSize side{512};
+  const TextureFormat format = TextureFormat::kRgba8;
+  const std::uint64_t one = TargetBytes(side, format);
   const std::vector<ActorTargets> actors{
-      {1, "A", 0.1f, {}, {{side, "mask"}, {side, std::nullopt}}},
-      {2, "B", 0.2f, {}, {{side, "mask"}, {side, "own"}}}};
+      {1,
+       "A",
+       0.1f,
+       {},
+       {{side, format, "mask"}, {side, format, std::nullopt}}},
+      {2, "B", 0.2f, {}, {{side, format, "mask"}, {side, format, "own"}}}};
   const std::vector<ActorHolding> holdings = HoldingsOf(actors);
   Check(holdings.size() == 2 && holdings[0].bytes == 2 * one &&
             holdings[0].sharedBytes == one && holdings[1].bytes == 2 * one &&

@@ -359,9 +359,6 @@ ValidateSubmitReductionStep(const RenderPlan &plan,
       static_cast<unsigned>(step.type) >
           static_cast<unsigned>(ValueType::kVec3))
     return std::unexpected("invalid reduction operation");
-  if (!step.domain.width || !step.domain.height || step.domain.width > 4096 ||
-      step.domain.height > 4096)
-    return std::unexpected("invalid reduction domain");
   return {};
 }
 std::expected<void, std::string>
@@ -668,7 +665,7 @@ std::vector<RenderValueRef> StepDependencies(const RenderPlan &plan,
 
 namespace {
 std::string RequirementsText(const TextureRequirements &requirements) {
-  return std::format("{}|{}|{}", requirements.size.Pixels(),
+  return std::format("{}|{}|{}", requirements.side.index,
                      static_cast<int>(requirements.format),
                      static_cast<int>(requirements.mipPolicy));
 }

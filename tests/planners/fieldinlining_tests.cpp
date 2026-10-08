@@ -242,7 +242,7 @@ int main() {
     recipe.outputs.push_back(surface);
     const auto graph = RecipeGraph::Compile(recipe);
     const std::array requests{RenderStackRequest{
-        &graph, &surface, 1, PlacementId{0}, 0, {TextureSize{64}}}};
+        &graph, &surface, 1, PlacementId{0}, 0, {SideRef{0}}}};
     const auto plan = LowerRenderPlan({}, requests, PerGeometryMesh());
     if (!plan)
       continue;
@@ -276,7 +276,7 @@ int main() {
   shared.outputs.push_back(twoLayers);
   const auto sharedGraph = RecipeGraph::Compile(shared);
   const std::array sharedRequests{RenderStackRequest{
-      &sharedGraph, &twoLayers, 1, PlacementId{0}, 0, {TextureSize{64}}}};
+      &sharedGraph, &twoLayers, 1, PlacementId{0}, 0, {SideRef{0}}}};
   if (const auto plan =
           LowerRenderPlan({}, sharedRequests, PerGeometryMesh())) {
     const auto inlined = InlineFields(*plan);
@@ -305,7 +305,7 @@ int main() {
   twice.outputs.push_back(twiceSurface);
   const auto twiceGraph = RecipeGraph::Compile(twice);
   const std::array twiceRequests{RenderStackRequest{
-      &twiceGraph, &twiceSurface, 1, PlacementId{0}, 0, {TextureSize{64}}}};
+      &twiceGraph, &twiceSurface, 1, PlacementId{0}, 0, {SideRef{0}}}};
   if (const auto plan = LowerRenderPlan({}, twiceRequests, PerGeometryMesh())) {
     const auto inlined = InlineFields(*plan);
     std::size_t stackFields = 0;
@@ -350,7 +350,7 @@ int main() {
   still.outputs.push_back(stillSurface);
   const auto stillGraph = RecipeGraph::Compile(still);
   const std::array stillRequests{RenderStackRequest{
-      &stillGraph, &stillSurface, 1, PlacementId{0}, 0, {TextureSize{64}}}};
+      &stillGraph, &stillSurface, 1, PlacementId{0}, 0, {SideRef{0}}}};
   if (const auto plan = LowerRenderPlan({}, stillRequests, PerGeometryMesh())) {
     const auto inlined = InlineFields(*plan);
     test::Equal(inlined.programsInlined + inlined.layerFieldReads,
@@ -369,7 +369,7 @@ int main() {
   pulsing.outputs = {pulsingSurface};
   const auto pulsingGraph = RecipeGraph::Compile(pulsing);
   const std::array pulsingRequests{RenderStackRequest{
-      &pulsingGraph, &pulsingSurface, 1, PlacementId{0}, 0, {TextureSize{64}}}};
+      &pulsingGraph, &pulsingSurface, 1, PlacementId{0}, 0, {SideRef{0}}}};
   if (const auto plan =
           LowerRenderPlan({}, pulsingRequests, PerGeometryMesh())) {
     const auto inlined = InlineFields(*plan);
@@ -401,7 +401,7 @@ int main() {
                           r + 1,
                           PlacementId{static_cast<std::uint32_t>(r)},
                           o,
-                          {TextureSize{512}},
+                          {SideRef{0}},
                           GeometryId{g}});
   if (const auto plan = LowerRenderPlan({}, demo, PerGeometryMesh())) {
     const auto inlined = InlineFields(*plan);

@@ -70,6 +70,14 @@ def number(fields: dict, name: str) -> int:
         return 0
 
 
+def fraction(fields: dict, name: str) -> float:
+    try:
+        return float(fields.get(name, 0))
+    except (TypeError, ValueError):
+        return 0.0
+
+
+LEVELS = ('full', 'half', 'quarter', 'eighth')
 PHASES = ('signals', 'render', 'render_inputs', 'render_slots', 'render_shell',
           'render_evaluate', 'cull', 'lights',
           'previews', 'sweep', 'snapshot', 'sync')
@@ -95,6 +103,8 @@ def measure(events: list[dict], window: Window) -> dict[str, float]:
                  if span.get('span') == 'RenderTick')
     ticks = inside(events, window, 'gpu_ticks')
     plugin_us = total('frame_us') + total('sync_us')
+    levels = inside(events, window, 'resolution_levels')
+    last_levels = levels[-1] if levels else {}
     return {
         'heartbeats': len(beats),
         'seconds': round(seconds, 1),
@@ -129,6 +139,9 @@ def measure(events: list[dict], window: Window) -> dict[str, float]:
         'scratch_bytes_end': number(last, 'scratch_bytes'),
         'live_targets_end': live('targets', 'targets'),
         'live_target_bytes_end': live('target_bytes', 'bytes'),
+        **{f'{level}_end': number(last_levels, level) for level in LEVELS},
+        'level_changes': len(inside(events, window, 'resolution_level')),
+        'screen_fraction_median_end': fraction(last, 'screen_fraction_median'),
     }
 
 
@@ -151,10 +164,13 @@ SPIKE_MEASURES = ('frame_max_us', 'tick_max_us', 'sync_max_us', 'readback_max_us
 MEMORY_MEASURES = ('targets_end', 'target_bytes_end', 'target_bytes_peak', 'pool_targets_end',
                    'pool_bytes_end', 'scratch_targets_end', 'scratch_bytes_end',
                    'live_targets_end', 'live_target_bytes_end')
-MEASURES = COST_MEASURES + SPIKE_MEASURES + MEMORY_MEASURES
+RESOLUTION_MEASURES = (*(f'{level}_end' for level in LEVELS), 'level_changes',
+                       'screen_fraction_median_end')
+MEASURES = COST_MEASURES + SPIKE_MEASURES + MEMORY_MEASURES + RESOLUTION_MEASURES
 TABLES = (('cost per frame and second', COST_MEASURES),
           ('spikes and hitches', SPIKE_MEASURES),
-          ('render targets', MEMORY_MEASURES))
+          ('render targets', MEMORY_MEASURES),
+          ('screen resolution', RESOLUTION_MEASURES))
 LIMIT_KINDS = ('_over_baseline_max', '_growth_max', '_ratio_min', '_max')
 
 

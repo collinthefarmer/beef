@@ -984,7 +984,7 @@ reproduced in game.
 `RenderPlanCache` (`planners/RenderPlanCache.h`) reuses an actor's render plan
 for every actor whose stack requests give the same `RenderPlanKey`
 (`planners/RenderPlanKey.h`): per request the graph pointer, output index,
-placement, geometry and instance ids, texture size, `MaterialIdentityOf` and
+placement, geometry and instance ids, side reference, `MaterialIdentityOf` and
 the mesh hash, plus the identities of the graph's external inputs that do not
 change (`StaticExternalSources`), plus the slot chains. A plan stores
 `GeometryId` and `PlacementId` indices and `const RecipeGraph *` pointers, so
@@ -1602,8 +1602,9 @@ keeps two steps from matching when their outputs could differ:
 
 | Key part | What it carries | Why |
 | --- | --- | --- |
-| Produced key (`RenderStep::producedKey`, set in lowering) | The produced value's `TextureKey`: its canonical identity and the requested size, format and mip policy | Two values with one identity can be requested at different sizes |
-| Step kind and requirements | `StepKindName` and the step's own size, format and mip policy | Lowering can give one value different step requirements |
+| Produced key (`RenderStep::producedKey`, set in lowering) | The produced value's `TextureKey`: its canonical identity and the requested side reference, format and mip policy | Two values with one identity can be requested at different sides |
+| Step kind and requirements | `StepKindName` and the step's own side reference, format and mip policy | Lowering can give one value different step requirements |
+| Resolved sides | The pixels of every side the step names, put before the content key by `SharedKeyOf` (`planners/PlanSides.h`) at execution (the **shared key**) | A plan holds side references, not pixels, and one plan runs at several resolution levels |
 | Geometry identity | The mesh content (`mesh:<hash>:<parts>`) when the mesh cache can read it, and the geometry pointer otherwise. `MeshData::hash` covers the vertex and index bytes and, through `HashPartitionsAndBound`, each partition's slot and bone names and the model bound | The partition, bone-weight and position bakes read them |
 | Material identity | Each texture's pointer, generation and name (`TextureIdentity` in `render/TextureRef.h`) | A freed address reused while a cache entry lives cannot match a different texture |
 | State and signal identity | `graph:context:actor` from the geometry's `ApplicationScope`. The actor is the form ID that keys the manager's `live_` map | State and signals never match across actors |
@@ -2317,6 +2318,35 @@ cancel by the user instead of the load.
 
 ## planners (`planners/ActorMatches.h`, `planners/TargetPool.h`, `planners/StackPlan.h`, `planners/BindingPlan.h`, `planners/ActorPlanning.h`, `planners/TextureIdentity.h`)
 
+- `ResolutionLevel` (`planners/ResolutionLevel.h`) divides every side of an
+  NPC's plan by 1, 2, 4 or 8 from its screen fraction (render-performance 7c,
+  2026-10-07). An actor of half the screen height or more is full
+  (`kFullLevelFraction` 0.5); each halving of the fraction halves the side.
+  The threshold is 0.5 and not 1.0 because the slot defaults already draw
+  emissive, fuzz, glint, coat and subsurface at a quarter and diffuse and
+  rmaos at a half (`DefaultSlotResolution`). The player is always full, and
+  the setting `ScreenResolution` off makes every actor full.
+- An actor steps to a finer level as soon as it crosses a threshold. It steps
+  to a coarser level only below 0.8 of the threshold (`kCoarserBand`), as
+  `EvictionFor` does for distance. A screen fraction of 0 (no camera, or the
+  camera inside the actor's bound) changes nothing.
+- A level change reinstalls the actor (`Manager::UpdateResolution`,
+  `MarkReinstall`), so it rebuilds materials, shells and lights as well as the
+  render instance. One actor changes at most once per 2 s (`kLevelHoldMS`).
+  At most two actors change per tick (`kLevelChangesPerTick`), because a
+  camera zoom changes every actor's fraction at once. The sync log names such
+  a reinstall `resized`, and the trace event `resolution_level` gives the
+  levels and the fraction. The trace event `resolution_levels`, written with
+  the heartbeat, counts the live actors at each level.
+- The first install takes the level from the actor's screen fraction at that
+  moment (`Manager::InstallLevel`), so a new actor is not built at full and
+  rebuilt one tick later. `TrackedActor::resolution` keeps the level across
+  reinstalls; `LiveActor::resolution` is the level the current instance uses.
+- The level divides the side after `Compositor::StackSize`, which raises a
+  stack to its slot's base map. A stack draws over the armor's own map and
+  replaces it in the material, so a lower level also lowers the armor's own
+  texture detail, not only the effect's. That is invisible only while the
+  GPU would sample a mip at or below the level's size.
 - `EvictionFor` restores an evicted actor only inside 80% of the eviction
   radius. This hysteresis prevents repeated retire/reapply near the boundary;
   a non-positive radius disables distance eviction.
@@ -2338,6 +2368,25 @@ cancel by the user instead of the load.
   runs 20261007T175741-1 and 20261007T193002-2); the fill template holds
   69.3 MiB per plan at a 2048² base instead of 58.7 MiB. Render-performance
   7d releases static outputs under memory pressure.
+- A plan holds no pixel sizes (render-performance 7c, 2026-10-07). Each
+  `TextureRequirements` and each reduction domain holds a **side reference**
+  (`SideRef`): an index into the list of distinct stack sides that the engine
+  collects (`SideFor`, `engine/ManagerApply.cpp`). Two stacks get one side
+  reference only when their sides are equal at full resolution. The instance
+  gets the pixels as a `PlanSides` list (`planners/PlanSides.h`), and
+  `SidesFor` refuses a list that does not cover every side the plan names.
+- Planning compares sides only for equality: demand merging
+  (`TextureKey::operator<=>`), field inlining (`InlineField`) and chain merging
+  (`MergeSlotChains`). No lowering decision reads a side's pixels. One plan
+  therefore serves every resolution level, and the render plan key holds the
+  side reference, not the pixels. When the 64-pixel floor
+  (`TextureSize::kMin`) makes two sides equal, the plan keeps the steps that a
+  fresh plan at that size would merge. That costs targets but draws the same
+  result.
+- The step output cache and `CostOf` use the shared key (`SharedKeyOf`), not
+  the content key, because the content key holds side references. Without
+  the pixels, an instance at a lower level would read a full-size output that
+  another instance published.
 - A layer that reads a field program runs that program inside the stack draw.
   The mask step that the field names is then not reached, and only a studio
   layer preview (`RenderOutput::LayerTexture`) runs it. The fill template has
@@ -2832,6 +2881,19 @@ must show at least one trace; an actor at baseline shows none.
 record reached `kRendered` while the actor's state renders the fixture.
 `AwaitRendered` compares it with the revision seen when the last step that
 moved that actor started, so an earlier render cannot satisfy a later wait.
+
+A crowd at `Spot::kAhead` (`soak-distance`) stands in four rows at 150, 400,
+800 and 1600 units in front of the player, along the camera's direction.
+Member `i` stands in row `i % 4`; the members of a row stand 120 units apart.
+The screen fraction is the bound's diameter over the camera distance over the
+frustum height (`ScreenFraction`), and the third-person camera sits behind the
+player, so the rows are meant to reach the half, quarter and eighth levels. It
+is not yet verified in game which level each row gets; the report's
+*screen resolution* table gives the counts. The run file's
+`screenResolution` replaces the setting at both level decisions
+(`Manager::InstallLevel` and `Manager::UpdateResolution`) until the run ends,
+so `--screen-resolution on` and `off` runs of one case give the A/B
+comparison.
 
 An `Expect…` step checks a state that the steps before it should already have
 produced. It waits up to `kExpectDeadlineFrames` (600) only so the

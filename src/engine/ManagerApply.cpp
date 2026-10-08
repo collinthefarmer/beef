@@ -361,10 +361,12 @@ struct ActorStackRequest {
   StackTextureRequest texture;
   GeometryId geometry;
   LocatedStackOutput located;
+  SideRef side;
 };
 struct ActorStacks {
   RE::FormID actor = 0;
   std::vector<ActorStackRequest> requests;
+  std::vector<TextureSize> sides;
   std::vector<SlotChainRequest> chains;
   std::vector<GeometryInputs> geometries;
   std::vector<LiveGeometry *> bound;
@@ -461,6 +463,15 @@ void RecordGeometry(ActorStacks &a_stacks, LiveGeometry &a_bound,
   a_stacks.bound[index] = &a_bound;
 }
 
+SideRef SideFor(ActorStacks &a_stacks, TextureSize a_size) {
+  const auto found = std::ranges::find(a_stacks.sides, a_size);
+  if (found != a_stacks.sides.end()) {
+    return {static_cast<std::uint32_t>(found - a_stacks.sides.begin())};
+  }
+  a_stacks.sides.push_back(a_size);
+  return {static_cast<std::uint32_t>(a_stacks.sides.size() - 1)};
+}
+
 void CollectChainStacks(LiveActor &a_state, const LocatedGeometry &a_geometry,
                         const Settings &a_settings, ActorStacks &a_stacks) {
   LiveGeometry &bound = a_geometry.bound;
@@ -488,11 +499,13 @@ void CollectChainStacks(LiveActor &a_state, const LocatedGeometry &a_geometry,
       inputs.enchantment = located->enchantment;
       const TextureSize stackSize =
           compositor->StackSize(located->surface, inputs, slotSize, maxSize);
+      const SideRef side = SideFor(a_stacks, stackSize);
       a_stacks.requests.push_back(
           {{&located->recipe, &located->graph, &located->surface,
             contribution.output, located->placement, inputs, stackSize},
            a_geometry.id,
-           *located});
+           *located,
+           side});
       chain.links.push_back({located->placement, contribution.output});
     }
     if (chain.links.size() > 1) {
@@ -533,7 +546,7 @@ RenderStackRequests(const ActorStacks &a_stacks) {
                       texture.inputs.scope.context,
                       texture.placement,
                       texture.outputIndex,
-                      {texture.size},
+                      {request.side},
                       request.geometry});
   }
   return stacks;
@@ -581,7 +594,7 @@ void CollectLayerRoleDemands(std::vector<TextureDemand> &a_demands,
     const auto collected = CollectTextureDemand(
         a_demands,
         {{texture.graph, binding.value, texture.inputs.scope.context},
-         {texture.size},
+         {a_request.side},
          {texture.placement, texture.outputIndex, a_role.layer, a_role.role},
          a_request.geometry},
         TextureValueBindings(*texture.graph, texture.inputs));
@@ -648,7 +661,7 @@ void AttachStackOutputs(ActorStacks &a_stacks,
     if (const std::optional<StepOutputRef> result =
             StackOutputFor(a_render->Plan(), texture, request.geometry)) {
       placed.stack = std::make_unique<RenderOutput>(
-          a_render, *result, texture.size,
+          a_render, *result, a_render->Side(request.side),
           IsAnimated(*texture.graph, Output{*texture.output}));
     }
     const LiveGeometry *bound = BoundAt(a_stacks, request.geometry);
@@ -679,9 +692,9 @@ void AttachMergedSlots(const ActorStacks &a_stacks,
     bound->mergedSlots.push_back(
         {merged.surface, merged.slot, merged.links, merged.layerStarts,
          merged.layerCount,
-         std::make_unique<RenderOutput>(a_render, merged.result,
-                                        stack->requirements.size,
-                                        slot && slot->animated)});
+         std::make_unique<RenderOutput>(
+             a_render, merged.result, a_render->Side(stack->requirements.side),
+             slot && slot->animated)});
   }
 }
 
@@ -696,7 +709,7 @@ std::optional<RenderPlanKey> PlanKeyOf(const ActorStacks &a_stacks) {
     inputs.scope.actor = 0;
     requests.push_back(
         {texture.graph, texture.outputIndex, texture.placement,
-         request.geometry, inputs.scope.context, texture.size,
+         request.geometry, inputs.scope.context, request.side,
          MaterialIdentityOf(inputs.material), MeshHashIdentityOf(inputs),
          texture.graph ? TextureValueBindings(*texture.graph, inputs)
                        : ValueBindings{}});
@@ -781,6 +794,7 @@ RenderPlanFor(const LiveActor &a_state, const ActorStacks &a_stacks,
 void BuildActorRender(const LiveActor &a_state, ActorStacks &a_stacks,
                       const Settings &a_settings, WarningHistory &a_warnings,
                       RenderPlanCache &a_cache) {
+  const PlanSides full{a_stacks.sides};
   AttachRender(a_stacks, nullptr);
   for (LiveGeometry *bound : a_stacks.bound) {
     if (bound) {
@@ -798,9 +812,16 @@ void BuildActorRender(const LiveActor &a_state, ActorStacks &a_stacks,
     FailStackOutputs(a_stacks, plan.error());
     return;
   }
+  std::expected<PlanSides, std::string> sides =
+      SidesFor(*plan, AtLevel(full, a_state.resolution).pixels);
+  if (!sides) {
+    FailStackOutputs(a_stacks, sides.error());
+    return;
+  }
   phases.Measure("attach_us", [&] {
     const std::shared_ptr<RenderInstance> render =
-        std::make_shared<RenderInstance>(std::move(*plan), a_stacks.geometries,
+        std::make_shared<RenderInstance>(std::move(*plan), std::move(*sides),
+                                         a_stacks.geometries,
                                          LiveGraphs(a_state));
     AttachRender(a_stacks, render);
     AttachStackOutputs(a_stacks, render, a_settings, a_warnings);
@@ -1041,7 +1062,11 @@ Manager::ActorDecision Manager::DecideActor(RE::Actor &a_actor,
     return Actors::Advance({tracked.state, facts, planned.plan, NowMS(),
                             a_settings.evictDistance, reinstall});
   });
-  const Actors::SyncKind kind = Actors::KindOf(tracked.state, next, reinstall);
+  Actors::SyncKind kind = Actors::KindOf(tracked.state, next, reinstall);
+  if (tracked.resizing && kind == Actors::SyncKind::kReinstalled) {
+    kind = Actors::SyncKind::kResized;
+  }
+  tracked.resizing = false;
   const std::optional<Actors::ActorState> &state = next.state;
   KeepModels(tracked.models, state ? state->installed : Actors::ActorPlan{},
              observedAt);
@@ -1205,6 +1230,9 @@ void Manager::PlaceInstances(LiveActor &a_state, RE::FormID a_actorID,
       instance.signals->Tick(*instance.environment, {0.0f, 0.0f});
     }
   }
+  if (const RE::NiPointer<RE::Actor> actor = a_state.actor.get()) {
+    a_state.resolution = InstallLevel(a_actorID, *actor, a_settings);
+  }
   PhaseTrace phases{Trace::Event::kMetrics, "actor_place", a_actorID};
   ActorStacks stacks{.actor = a_actorID};
   const std::size_t geometries = phases.Measure("geometry_us", [&] {
@@ -1214,7 +1242,27 @@ void Manager::PlaceInstances(LiveActor &a_state, RE::FormID a_actorID,
     BuildActorRender(a_state, stacks, a_settings, stackWarnings_, renderPlans_);
   });
   phases.Add("geometries", std::to_string(geometries));
+  phases.Add("level", std::string{LevelName(a_state.resolution)});
   phases.Emit();
+}
+
+ResolutionLevel Manager::InstallLevel(RE::FormID a_actorID, RE::Actor &a_actor,
+                                      const Settings &a_settings) {
+  const auto tracked = tracked_.find(a_actorID);
+  if (tracked == tracked_.end()) {
+    return ResolutionLevel::kFull;
+  }
+  std::optional<LevelHistory> &history = tracked->second.resolution;
+  if (!history) {
+    const float fraction = ScreenFraction(a_actor);
+    const bool full =
+        a_actor.IsPlayerRef() ||
+        !RegressionScreenResolution().value_or(a_settings.screenResolution) ||
+        !(fraction > 0.0f);
+    history = LevelHistory{full ? ResolutionLevel::kFull : IdealLevel(fraction),
+                           std::nullopt};
+  }
+  return history->level;
 }
 
 std::size_t Manager::PlaceGeometries(LiveActor &a_state,

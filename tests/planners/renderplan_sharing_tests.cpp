@@ -71,7 +71,7 @@ struct LoadedRecipe {
 
 std::vector<RenderStackRequest>
 StackRequests(const std::vector<LoadedRecipe> &recipes,
-              std::span<const TextureSize> sizes) {
+              std::span<const SideRef> sizes) {
   std::vector<RenderStackRequest> requests;
   for (std::size_t r = 0; r < recipes.size(); ++r)
     for (std::size_t o = 0; o < recipes[r].recipe.outputs.size(); ++o)
@@ -90,7 +90,7 @@ StackRequests(const std::vector<LoadedRecipe> &recipes,
 
 void ContentKeysMarkOnlyStaticTextureSteps(
     const std::vector<LoadedRecipe> &recipes) {
-  const std::array size{TextureSize{512}};
+  const std::array size{SideRef{0}};
   const auto plan =
       BuildRenderPlan({}, StackRequests(recipes, size), Bindings());
   Check(plan.has_value(), "the demo recipes lower for content keys");
@@ -172,8 +172,8 @@ void CacheKeysCarryOperandValues() {
 std::optional<RenderPlan> SingleStackPlan(const Recipe &recipe,
                                           const RecipeGraph &graph) {
   const auto *surface = Get<SurfaceOutput>(recipe.outputs.front());
-  const std::array requests{RenderStackRequest{
-      &graph, surface, 1, PlacementId{0}, 0, {TextureSize{64}}}};
+  const std::array requests{
+      RenderStackRequest{&graph, surface, 1, PlacementId{0}, 0, {SideRef{0}}}};
   auto plan = BuildRenderPlan({}, requests, Bindings());
   Check(plan.has_value(), "the synthetic recipe lowers");
   return plan ? std::optional{std::move(*plan)} : std::nullopt;
@@ -310,7 +310,7 @@ std::size_t LiveAnimatedPrograms(const RenderPlan &plan) {
 }
 
 void TextureReadsAreSampledDirectly(const std::vector<LoadedRecipe> &recipes) {
-  const std::array size{TextureSize{512}};
+  const std::array size{SideRef{0}};
   const auto plan =
       BuildRenderPlan({}, StackRequests(recipes, size), Bindings());
   Check(plan.has_value(), "the demo recipes lower together");
@@ -382,7 +382,7 @@ Recipe StaticEmissive() {
 void StaticLinksKeepTheirFieldsInAnimatedChains() {
   const std::vector<LoadedRecipe> recipes =
       Loaded({StaticEmissive(), EmissiveLayers(1, "time")});
-  const std::array size{TextureSize{512}};
+  const std::array size{SideRef{0}};
   const std::array chains{SlotChainRequest{
       GeometryId{0},
       Surface::kMaterial,
@@ -430,7 +430,7 @@ Recipe ImageFields(const std::string &a_prefix,
 }
 
 std::size_t MergedPassesOver(const std::vector<LoadedRecipe> &recipes) {
-  const std::array size{TextureSize{512}};
+  const std::array size{SideRef{0}};
   const std::array chains{SlotChainRequest{
       GeometryId{0},
       Surface::kMaterial,
@@ -462,7 +462,7 @@ void MergesNeverAddPasses() {
 void SlotChainsMergeIntoOnePass() {
   const std::vector<LoadedRecipe> recipes =
       Loaded({EmissiveLayers(2, "time"), EmissiveLayers(3, "time * 2")});
-  const std::array size{TextureSize{512}};
+  const std::array size{SideRef{0}};
   const std::array chains{SlotChainRequest{
       GeometryId{0},
       Surface::kMaterial,
@@ -576,11 +576,11 @@ int main() {
   StaticLinksKeepTheirFieldsInAnimatedChains();
   CacheKeysCarryOperandValues();
   RandMasksAreStatic();
-  const std::array oneSize{TextureSize{512}};
+  const std::array oneSize{SideRef{0}};
   const auto single =
       BuildRenderPlan({}, StackRequests(recipes, oneSize), Bindings());
   Check(single.has_value(), "the demo recipes lower into one geometry plan");
-  const std::array twoSizes{TextureSize{512}, TextureSize{1024}};
+  const std::array twoSizes{SideRef{0}, SideRef{1}};
   const auto mixed =
       BuildRenderPlan({}, StackRequests(recipes, twoSizes), Bindings());
   Check(mixed.has_value(), "the demo recipes lower at two stack sizes");
@@ -621,7 +621,7 @@ int main() {
                           1,
                           PlacementId{0},
                           0,
-                          {TextureSize{64}},
+                          {SideRef{0}},
                           GeometryId{g}});
     return BuildRenderPlan({}, requests, PerGeometryMesh());
   };

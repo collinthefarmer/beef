@@ -28,6 +28,7 @@
 namespace BetterEnchantmentEffects {
 namespace {
 inline constexpr std::size_t kFirstRendersPerTick = 1;
+inline constexpr std::size_t kLevelChangesPerTick = 2;
 
 class SectionTimer {
 public:
@@ -61,23 +62,6 @@ bool InCameraView(RE::Actor &a_actor) {
       RE::NiPoint3{position.x, position.y, position.z + kViewCentreHeight},
       radius * kViewRadiusScale + kViewRadiusPadding};
   return RE::NiCamera::BoundInFrustum(padded, camera);
-}
-
-float ScreenFraction(RE::Actor &a_actor) {
-  RE::NiCamera *camera = RE::Main::WorldRootCamera();
-  RE::NiAVObject *root = a_actor.Get3D(false);
-  if (!camera || !root) {
-    return 0.0f;
-  }
-  const RE::NiFrustum &frustum = camera->GetRuntimeData2().viewFrustum;
-  const float extent = frustum.fTop - frustum.fBottom;
-  const float distance =
-      camera->world.translate.GetDistance(root->worldBound.center);
-  if (frustum.bOrtho || !(extent > 0.0f) || !(distance > 1.0f)) {
-    return 0.0f;
-  }
-  const float fraction = 2.0f * root->worldBound.radius / distance / extent;
-  return std::isfinite(fraction) ? std::clamp(fraction, 0.0f, 1.0f) : 0.0f;
 }
 
 bool ShownThisTick(RE::Actor &a_actor, const Settings &a_settings,
@@ -693,6 +677,22 @@ RenderedActorTargets(const std::unordered_map<RE::FormID, LiveActor> &a_live) {
 
 std::string Fraction(float a_value) { return std::format("{:.3f}", a_value); }
 
+void EmitLevelCounts(const std::unordered_map<RE::FormID, LiveActor> &a_live) {
+  std::array<std::size_t, kResolutionLevelCount> counts{};
+  for (const auto &[actor, state] : a_live) {
+    const auto index = static_cast<std::size_t>(state.resolution);
+    if (index < counts.size()) {
+      ++counts[index];
+    }
+  }
+  Trace::EmitSafely(Trace::Event::kMetrics,
+                    {{"action", "resolution_levels"},
+                     {"full", std::to_string(counts[0])},
+                     {"half", std::to_string(counts[1])},
+                     {"quarter", std::to_string(counts[2])},
+                     {"eighth", std::to_string(counts[3])}});
+}
+
 void EmitMetricsHeartbeat(const Metrics::Snapshot &a_measured,
                           const TargetCost &a_estimate,
                           const ScreenSpread &a_screen) {
@@ -761,6 +761,7 @@ void Manager::FlushMetricsHeartbeat() {
   lastMetricsMS_ = now;
   const Metrics::Snapshot measured = Metrics::Drain();
   EmitMetricsHeartbeat(measured, EstimateTargets(live_), ScreenSpreadOf(live_));
+  EmitLevelCounts(live_);
   ReportRenderMemory(measured, intervalMs);
 }
 
@@ -890,6 +891,7 @@ void Manager::Tick(std::uint32_t a_nowMS, const Settings &a_settings) {
   frozenLastTick_ = view.freeze;
   const std::optional<RE::FormID> inspected = InspectedActor(a_nowMS);
   std::size_t firstRenders = 0;
+  std::size_t levelChanges = 0;
   for (auto it = live_.begin(); it != live_.end();) {
     LiveActor &state = it->second;
     const auto actor = state.actor.get();
@@ -915,6 +917,10 @@ void Manager::Tick(std::uint32_t a_nowMS, const Settings &a_settings) {
     }
     state.inView = ShownThisTick(*actor, a_settings, inspected == it->first);
     state.screenFraction = ScreenFraction(*actor);
+    if (levelChanges < kLevelChangesPerTick &&
+        UpdateResolution(it->first, *actor, state.screenFraction, a_settings)) {
+      ++levelChanges;
+    }
     const bool render = state.inView && AdmitRender(state, firstRenders);
     std::vector<bool> hidden;
     if (render) {
@@ -971,6 +977,36 @@ void Manager::TickInstance(LiveInstance &a_instance, float a_time,
     a_delta = a_time;
   }
   a_instance.signals->Tick(*a_instance.environment, {a_time, a_delta});
+}
+
+bool Manager::UpdateResolution(RE::FormID a_actorID, RE::Actor &a_actor,
+                               float a_screenFraction,
+                               const Settings &a_settings) {
+  const auto tracked = tracked_.find(a_actorID);
+  if (tracked == tracked_.end() || !tracked->second.resolution) {
+    return false;
+  }
+  LevelHistory &history = *tracked->second.resolution;
+  const ActorRole role =
+      a_actor.IsPlayerRef() ? ActorRole::kPlayer : ActorRole::kOther;
+  const float fraction =
+      RegressionScreenResolution().value_or(a_settings.screenResolution)
+          ? a_screenFraction
+          : 1.0f;
+  const std::optional<ResolutionLevel> next =
+      LevelChange(history, fraction, role, tickNowMS_);
+  if (!next || !applications_.MarkReinstall(a_actorID)) {
+    return false;
+  }
+  Trace::EmitSafely(Trace::Event::kMetrics,
+                    {{"action", "resolution_level"},
+                     {"actor", std::to_string(a_actorID)},
+                     {"from", std::string{LevelName(history.level)}},
+                     {"to", std::string{LevelName(*next)}},
+                     {"screen_fraction", Fraction(a_screenFraction)}});
+  history = LevelHistory{*next, tickNowMS_};
+  tracked->second.resizing = true;
+  return true;
 }
 
 void Manager::ClaimLostGeometries(RE::FormID a_actorID, LiveActor &a_state) {

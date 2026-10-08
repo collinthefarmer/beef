@@ -1,7 +1,6 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #pragma once
 
-#include "mesh/TextureSize.h"
 #include "planners/ActorMatches.h"
 #include "planners/RenderPlan.h"
 #include "planners/ValueIdentity.h"
@@ -22,7 +21,7 @@ struct StackKeyRequest {
   PlacementId placement{};
   GeometryId geometry{};
   std::size_t context = 0;
-  TextureSize size{TextureSize::kMin};
+  SideRef side;
   std::string material;
   std::optional<std::string> meshHash;
   ValueBindings bindings;
@@ -34,7 +33,7 @@ struct StackKey {
   PlacementId placement{};
   GeometryId geometry{};
   std::size_t context = 0;
-  std::uint32_t pixels = 0;
+  SideRef side;
   std::string material;
   std::string meshHash;
   std::vector<std::string> staticInputs;

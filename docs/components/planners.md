@@ -138,7 +138,6 @@ binding tables connect consumers to results but hold no runtime values.
 | `RenderInput` | One imported input: its type, a binding (`TextureValue`, `StackInputBinding` or `ReadbackBinding`) and its geometry. |
 | `StackInputBinding` | The placement, output and geometry of a stack whose result is an input. |
 | `ReadbackBinding` | The submission step whose result the input receives one to three frames later. |
-| `ReductionDomain` | The width and height a reduction measures. |
 | `RenderStep` | One step: a `RenderStepKind` and a `displayName`. |
 | `RenderValueBinding` | A graph value, the reference that holds its result, and its geometry. `RenderPlan::values` keeps these for inspection. |
 | `TextureUseBinding` | A `TextureUse` and the texture it reads. |
@@ -155,7 +154,7 @@ another actor. `RenderPlanCache.h` holds the reused plans.
 
 | Type or function | Description |
 |---|---|
-| `StackKeyRequest` | What the engine supplies for one stack: the graph, output, placement, geometry, context, texture size, material identity, mesh hash and the `ValueBindings` with the actor left out. |
+| `StackKeyRequest` | What the engine supplies for one stack: the graph, output, placement, geometry, context, side reference, material identity, mesh hash and the `ValueBindings` with the actor left out. |
 | `StackKey`, `ChainKey`, `RenderPlanKey` | The **render plan key**: per stack the request's fields and `staticInputs`, the identities of the graph's external inputs that do not change; per slot chain the geometry, surface, slot and links. Equality is exact. `RenderPlanKeyHash` hashes it. |
 | `RenderPlanKeyOf` | Returns the key, or none when a request has no graph, its graph reads a node position, its mesh has no hash, or a static input's identity fails. |
 | `GraphsNamedBy` | The live graphs that a key's stacks name, once each. |
@@ -175,12 +174,28 @@ bytes. The heartbeat compares the count with the measured holdings.
 
 | Type or function | Description |
 |---|---|
-| `HeldTarget` | One target: its requirements and its content key, if it has one. |
+| `HeldTarget` | One target: its side in pixels, its format and its shared key, if it has one. |
 | `PlanTargets` | The targets one plan holds (`held`: every drawing step a rendered root reaches) and the stacks among them (`stacks`). A static output is kept until the instance goes; only animated outputs are released when idle. |
 | `TargetCost` | The number of targets, their bytes, and the count per side length. |
 | `TargetBytes` | The bytes of one target: side² × 4 × 4/3 for the full mip chain, ×4 for `kRgba32Float`. `TextureLab::RenderTarget::Bytes` uses it. |
-| `TargetsOf` | The `PlanTargets` of a plan. |
-| `CostOf` | The cost of a list of held targets, with one target per content key. |
+| `TargetsOf` | The `PlanTargets` of a plan at the given `PlanSides`. |
+| `CostOf` | The cost of a list of held targets, with one target per shared key. |
+
+### Sides and resolution levels
+
+A plan names texture sizes by **side reference** (`SideRef`, in `TextureDemand.h`). The instance resolves them to pixels.
+
+| Type or function | Description |
+|---|---|
+| `SideRef` | An index into the plan's list of distinct stack sides. `TextureRequirements::side` and `SubmitReductionStep::domain` hold one. |
+| `PlanSides` | The pixels of each side reference. |
+| `SidesFor` | Returns the `PlanSides`, or an error when the list lacks a side that the plan names. |
+| `SideOf` | The pixels of one side reference, or 64 for an unknown one. |
+| `SharedKeyOf` | A step's content key with the pixels of its sides in front. The step output cache and `CostOf` use it. |
+| `ResolutionLevel` | `kFull`, `kHalf`, `kQuarter` or `kEighth` of every side. |
+| `IdealLevel`, `SteadyLevel` | The level for a screen fraction, and the level with the 0.8 band for a coarser step. |
+| `LevelHistory`, `LevelChange` | An actor's level and the time of its last change; the next level, held 2 s after a change. The player is always full. |
+| `AtLevel` | The `PlanSides` divided by a level, with 64 as the floor. |
 
 `RenderMemory.h` turns the counts into the always-on log lines.
 
@@ -415,6 +430,7 @@ PSGeneratedStack, or PSStack until the compile finishes     render/GeneratedShad
 | `RenderPlanKey.h`/`.cpp`, `RenderPlanCache.h`/`.cpp` | Render planning | `RenderPlanKeyOf`, `RenderPlanKeyHash`, `GraphsNamedBy`; `RenderPlanCache`. |
 | `RenderMemory.h`/`.cpp` | Render planning | `NextHoldingLevel`, `HoldingsOf`, `LargestHoldings`, `IsBurst`, `SpreadOf`, `HoldingLine`, `BurstLine`. |
 | `TargetCost.h`/`.cpp` | Render planning | `HeldTarget`, `PlanTargets`, `TargetCost`, `TargetBytes`, `TargetsOf`, `CostOf`. |
+| `PlanSides.h`/`.cpp`, `ResolutionLevel.h`/`.cpp` | Render planning | `PlanSides`, `SidesFor`, `SideOf`, `SharedKeyOf`; `ResolutionLevel`, `IdealLevel`, `SteadyLevel`, `LevelChange`, `AtLevel`, `LevelName`. |
 | `FieldInlining.h`/`.cpp` | Render planning | `AsProgramLike` and `InlineFields`. |
 | `RenderExecution.h` | Render planning | `RenderExecution` and its state records. |
 | `RenderFirings.h` | Render planning | `RenderFiring` and `RenderFirings`. |

@@ -11,6 +11,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <mutex>
@@ -40,6 +41,17 @@ std::mutex runLock;
 std::optional<ActiveRun> activeRun;
 std::atomic_bool runPresent{false};
 std::atomic_bool verifyRenderPlans{false};
+
+enum class ResolutionOverride : std::uint8_t { kNone, kOn, kOff };
+std::atomic<ResolutionOverride> screenResolution{ResolutionOverride::kNone};
+
+ResolutionOverride OverrideOf(std::optional<bool> a_screenResolution) {
+  if (!a_screenResolution) {
+    return ResolutionOverride::kNone;
+  }
+  return *a_screenResolution ? ResolutionOverride::kOn
+                             : ResolutionOverride::kOff;
+}
 
 void AppendLine(const std::filesystem::path &a_path, std::string_view a_line) {
   std::ofstream file{a_path, std::ios::app | std::ios::binary};
@@ -134,6 +146,7 @@ void EndRunEarly(ActiveRun &a_run, std::string a_reason) {
   activeRun.reset();
   runPresent.store(false);
   verifyRenderPlans.store(false);
+  screenResolution.store(ResolutionOverride::kNone);
   QuitGame();
 }
 
@@ -190,10 +203,12 @@ std::int64_t UnixSeconds() {
 void StartResults(const ActiveRun &a_run, const RunSetup &a_setup) {
   const std::filesystem::path trace = Trace::Get().FirstSegment();
   const std::string traceName = trace.filename().string();
-  AppendLine(a_run.results,
-             Regression::StartLineJson({a_run.request.run, a_setup.build,
-                                        a_setup.source, traceName,
-                                        a_run.request.measuredSeconds}));
+  AppendLine(
+      a_run.results,
+      Regression::StartLineJson(
+          {a_run.request.run, a_setup.build, a_setup.source, traceName,
+           a_run.request.measuredSeconds,
+           a_run.request.screenResolution.value_or(a_setup.screenResolution)}));
 }
 }
 
@@ -236,6 +251,7 @@ void ReadRegressionRun(const RunSetup &a_setup) {
       *directory / Identity::RegressionResultsFileName(request->run);
   const std::lock_guard lock{runLock};
   verifyRenderPlans.store(request->verifyRenderPlans);
+  screenResolution.store(OverrideOf(request->screenResolution));
   activeRun = ActiveRun{std::move(*request), std::move(results)};
   StartResults(*activeRun, a_setup);
   if (!a_setup.effectsEnabled) {
@@ -316,10 +332,23 @@ void AdvanceRegressionRun() {
     activeRun.reset();
     runPresent.store(false);
     verifyRenderPlans.store(false);
+    screenResolution.store(ResolutionOverride::kNone);
   }
 }
 
 bool RegressionVerifiesRenderPlans() noexcept {
   return verifyRenderPlans.load();
+}
+
+std::optional<bool> RegressionScreenResolution() noexcept {
+  switch (screenResolution.load()) {
+  case ResolutionOverride::kOn:
+    return true;
+  case ResolutionOverride::kOff:
+    return false;
+  case ResolutionOverride::kNone:
+    break;
+  }
+  return std::nullopt;
 }
 }

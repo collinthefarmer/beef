@@ -44,10 +44,9 @@ std::optional<StackKey> StackKeyOf(const StackKeyRequest &a_request) {
   if (!inputs) {
     return std::nullopt;
   }
-  return StackKey{
-      a_request.graph,    a_request.output,    a_request.placement,
-      a_request.geometry, a_request.context,   a_request.size.Pixels(),
-      a_request.material, *a_request.meshHash, std::move(*inputs)};
+  return StackKey{a_request.graph,    a_request.output,    a_request.placement,
+                  a_request.geometry, a_request.context,   a_request.side,
+                  a_request.material, *a_request.meshHash, std::move(*inputs)};
 }
 }
 
@@ -60,7 +59,7 @@ RenderPlanKeyHash::operator()(const RenderPlanKey &a_key) const noexcept {
     Mix(hash, IndexOf(stack.placement));
     Mix(hash, IndexOf(stack.geometry));
     Mix(hash, stack.context);
-    Mix(hash, stack.pixels);
+    Mix(hash, stack.side.index);
     MixText(hash, stack.material);
     MixText(hash, stack.meshHash);
     for (const std::string &input : stack.staticInputs) {

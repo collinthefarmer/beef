@@ -39,8 +39,8 @@ HoldersByKey(std::span<const ActorTargets> a_actors) {
   for (const ActorTargets &actor : a_actors) {
     std::set<std::string> keys;
     for (const HeldTarget &target : actor.held) {
-      if (target.contentKey && keys.insert(*target.contentKey).second) {
-        ++holders[*target.contentKey];
+      if (target.sharedKey && keys.insert(*target.sharedKey).second) {
+        ++holders[*target.sharedKey];
       }
     }
   }
@@ -89,7 +89,7 @@ std::vector<ActorHolding> HoldingsOf(std::span<const ActorTargets> a_actors) {
     std::vector<HeldTarget> shared;
     for (const HeldTarget &target : actor.held) {
       const auto found =
-          target.contentKey ? holders.find(*target.contentKey) : holders.end();
+          target.sharedKey ? holders.find(*target.sharedKey) : holders.end();
       if (found != holders.end() && found->second > 1) {
         shared.push_back(target);
       }

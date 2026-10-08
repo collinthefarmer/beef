@@ -42,6 +42,7 @@ struct ObserveRequest {
 
 [[nodiscard]] bool Loaded3D(const RE::Actor &a_actor) noexcept;
 [[nodiscard]] std::optional<float> DistanceToPlayer(const RE::Actor &a_actor);
+[[nodiscard]] float ScreenFraction(RE::Actor &a_actor);
 [[nodiscard]] Actors::ActorFacts ObserveActor(const ObserveRequest &a_request,
                                               ModelTable &a_models,
                                               MaterialLayout &a_layout);

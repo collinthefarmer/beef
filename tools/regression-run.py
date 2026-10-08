@@ -75,13 +75,16 @@ def read_settings(environ: dict[str, str], local: dict[str, str]) -> Settings | 
 
 
 def run_file(run: str, save: str, suite: list[str], now: float,
-             verify_render_plans: bool = False, measured_seconds: int | None = None) -> dict:
+             verify_render_plans: bool = False, measured_seconds: int | None = None,
+             screen_resolution: bool | None = None) -> dict:
     request = {'format': 1, 'run': run, 'save': save, 'suite': suite,
                'notAfter': int(now) + RUN_FILE_LIFETIME_SECONDS}
     if verify_render_plans:
         request['verifyRenderPlans'] = True
     if measured_seconds is not None:
         request['measuredSeconds'] = measured_seconds
+    if screen_resolution is not None:
+        request['screenResolution'] = screen_resolution
     return request
 
 
@@ -225,6 +228,9 @@ def main() -> int:
                         help='hold each measured window (steady, fight, orbit) this long and '
                              f'baseline and recovery at most {QUICK_EDGE_SECONDS} s; for '
                              'comparisons only, the full soak is the checkpoint gate')
+    parser.add_argument('--screen-resolution', choices=('on', 'off'),
+                        help='turn ScreenResolution on or off for this run in place of the '
+                             'INI value; the start line records the value used')
     parser.add_argument('--manual', action='store_true',
                         help='write the run file and wait; start the game yourself')
     args = parser.parse_args()
@@ -262,10 +268,15 @@ def main() -> int:
         if index > 0:
             time.sleep(BETWEEN_LAUNCHES_SECONDS)
         passed.append(launch(settings, f'{stamp}-{index + 1}', cases, args.save, args.timeout,
-                             args.manual, tasklist, args.verify_render_plans, args.quick))
+                             args.manual, tasklist, args.verify_render_plans, args.quick,
+                             screen_resolution_of(args.screen_resolution)))
     if len(passed) > 1:
         print(f'launches passed: {sum(passed)} of {len(passed)}')
     return 0 if all(passed) else 1
+
+
+def screen_resolution_of(choice: str | None) -> bool | None:
+    return None if choice is None else choice == 'on'
 
 
 def start_game(settings: Settings) -> None:
@@ -277,13 +288,16 @@ def start_game(settings: Settings) -> None:
 
 def launch(settings: Settings, run: str, cases: list[str], save: str, timeout: float,
            manual: bool, tasklist: str, verify_render_plans: bool = False,
-           measured_seconds: int | None = None) -> bool:
-    request = run_file(run, save, cases, time.time(), verify_render_plans, measured_seconds)
+           measured_seconds: int | None = None, screen_resolution: bool | None = None) -> bool:
+    request = run_file(run, save, cases, time.time(), verify_render_plans, measured_seconds,
+                       screen_resolution)
     (settings.log_dir / RUN_FILE).write_text(json.dumps(request) + '\n', encoding='utf-8')
     print(f'run {run}: {" ".join(cases)} from save {save}')
     if measured_seconds is not None:
         print(f'quick run: measured windows {measured_seconds} s, baseline and recovery '
               f'{QUICK_EDGE_SECONDS} s; the full soak is the checkpoint gate')
+    if screen_resolution is not None:
+        print(f'ScreenResolution {"on" if screen_resolution else "off"} for this run')
     start = (lambda: print('start the game through MO2 now')) if manual \
         else (lambda: start_game(settings))
     start()

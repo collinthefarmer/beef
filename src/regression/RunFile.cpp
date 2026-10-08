@@ -127,6 +127,8 @@ std::expected<RunFile, std::string> ParseRunFile(std::string_view a_text,
   const std::optional<bool> verifyRenderPlans =
       reader.Boolean("verifyRenderPlans");
   const std::optional<int> measuredSeconds = reader.Integer("measuredSeconds");
+  const std::optional<bool> screenResolution =
+      reader.Boolean("screenResolution");
   reader.Finish();
   if (!problems.empty()) {
     return std::unexpected(problems.front().message);
@@ -159,9 +161,12 @@ std::expected<RunFile, std::string> ParseRunFile(std::string_view a_text,
   if (!measured) {
     return std::unexpected(measured.error());
   }
-  return RunFile{std::move(*checkedRun), std::move(*checkedSave),
-                 std::move(*suite), verifyRenderPlans.value_or(false),
-                 *measured};
+  return RunFile{std::move(*checkedRun),
+                 std::move(*checkedSave),
+                 std::move(*suite),
+                 verifyRenderPlans.value_or(false),
+                 *measured,
+                 screenResolution};
 }
 
 std::string StartLineJson(const StartLine &a_start) {
@@ -174,6 +179,7 @@ std::string StartLineJson(const StartLine &a_start) {
   if (a_start.measuredSeconds) {
     line["measuredSeconds"] = *a_start.measuredSeconds;
   }
+  line["screenResolution"] = a_start.screenResolution;
   return line.dump(-1, ' ', false, json::error_handler_t::replace);
 }
 

@@ -8,6 +8,7 @@
 #include "planners/ActorMatches.h"
 #include "planners/BindingPlan.h"
 #include "planners/RenderPlan.h"
+#include "planners/ResolutionLevel.h"
 #include "planners/StackPlan.h"
 #include "recipe/Merge.h"
 #include "recipe/Recipe.h"
@@ -96,6 +97,7 @@ struct LiveActor {
   bool firstRenderAdmitted = false;
   bool inView = true;
   float screenFraction = 0.0f;
+  ResolutionLevel resolution = ResolutionLevel::kFull;
   std::uint64_t renderedFrame = 0;
   std::shared_ptr<const RecipeCatalog> catalog;
   ActorMatches matches;

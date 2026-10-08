@@ -183,6 +183,8 @@ inline constexpr SpawnCrowd kMannequinsInVanilla{kCrowdSize, Body::kMannequin,
                                                  Dress::kVanillaCuirasses};
 inline constexpr SpawnCrowd kMannequinsEnchanted{kCrowdSize, Body::kMannequin,
                                                  Dress::kEnchantedCuirasses};
+inline constexpr SpawnCrowd kMannequinsEnchantedAhead{
+    kCrowdSize, Body::kMannequin, Dress::kEnchantedCuirasses, Spot::kAhead};
 inline constexpr SpawnCrowd kIdleNpcs{kCrowdSize, Body::kIdleNpc};
 inline constexpr SpawnCrowd kFighters{kCrowdSize, Body::kFighter};
 
@@ -215,6 +217,8 @@ inline constexpr std::array kSoakVanilla =
     Soak(kSoloCircuit, kMannequinsInVanilla, 120);
 inline constexpr std::array kSoakEnchanted =
     Soak(kShowAll, kMannequinsEnchanted, 120);
+inline constexpr std::array kSoakDistance =
+    Soak(kShowAll, kMannequinsEnchantedAhead, 120);
 inline constexpr std::array kSoakIdle = Soak(kSoloCircuit, kIdleNpcs, 120);
 inline constexpr std::array kSoakFight =
     Joined(CrowdArrives(kDemoSet, kFighters),
@@ -292,6 +296,7 @@ inline constexpr std::array kCatalog{
     Case{"soak-churn", kSoakChurn, kCleanup},
     Case{"soak-vanilla", kSoakVanilla, kCleanup},
     Case{"soak-enchanted", kSoakEnchanted, kCleanup},
+    Case{"soak-distance", kSoakDistance, kCleanup},
     Case{"soak-idle", kSoakIdle, kCleanup},
     Case{"soak-fight", kSoakFight, kCleanup},
     Case{"soak-orbit", kSoakOrbit, kCleanup},

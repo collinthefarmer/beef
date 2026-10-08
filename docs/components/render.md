@@ -76,7 +76,8 @@ finished readbacks. A step whose input has no value yet while its readback is
 in flight makes the stack `StackPending`, not failed (`AwaitingFirstReadback`).
 
 A step with a **content key** (`RenderStep::contentKey`) runs through
-`ExecuteCached`. It looks the key up in the Compositor's step output cache
+`ExecuteCached`. It looks the shared key (`SharedKeyOf`: the content key with
+the pixels of the step's sides) up in the Compositor's step output cache
 (`FindStepOutput`) first: a hit
 returns the cached texture with no GPU work and no new target. A miss renders
 into a fresh target, never one reused in place, and publishes the result. The
