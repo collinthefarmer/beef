@@ -4,6 +4,7 @@
 #include "planners/RenderMemory.h"
 #include "planners/ResolutionLevel.h"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -52,6 +53,15 @@ struct LevelCost {
   [[nodiscard]] bool operator==(const LevelCost &) const = default;
 };
 
+using LevelBytes =
+    std::array<std::optional<std::uint64_t>, kResolutionLevelCount>;
+
+struct InstallBound {
+  ResolutionLevel finest = ResolutionLevel::kFull;
+  std::optional<std::uint64_t> headroom;
+  [[nodiscard]] bool operator==(const InstallBound &) const = default;
+};
+
 enum class IntermediateHolding : std::uint8_t { kHeld, kReleased };
 
 struct StepDownOption {
@@ -69,6 +79,8 @@ struct BudgetActor {
   float screenFraction = 0.0f;
   std::uint64_t releasable = 0;
   std::optional<StepDownOption> stepDown;
+  std::uint64_t held = 0;
+  std::optional<float> distance;
 };
 
 struct StepDown {
@@ -96,6 +108,13 @@ AllowanceOf(const BudgetSample &a_sample) noexcept;
                                     std::uint64_t a_added) noexcept;
 [[nodiscard]] BudgetState Admitted(BudgetState a_state,
                                    std::uint64_t a_added) noexcept;
+[[nodiscard]] BudgetState Released(BudgetState a_state,
+                                   std::uint64_t a_freed) noexcept;
+[[nodiscard]] std::optional<std::uint64_t>
+HeadroomOf(const BudgetState &a_state, std::uint64_t a_replaced) noexcept;
+[[nodiscard]] ResolutionLevel
+FittingLevel(ResolutionLevel a_finest, const LevelBytes &a_bytes,
+             std::optional<std::uint64_t> a_headroom) noexcept;
 [[nodiscard]] std::uint64_t HeldBytes(const LevelCost &a_cost,
                                       IntermediateHolding a_holding) noexcept;
 [[nodiscard]] std::optional<StepDownOption>

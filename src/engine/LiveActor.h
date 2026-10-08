@@ -5,6 +5,7 @@
 #include "actors/Actor.h"
 #include "engine/ApplicationService.h"
 #include "engine/Environment.h"
+#include "engine/JobQueue.h"
 #include "planners/ActorMatches.h"
 #include "planners/BindingPlan.h"
 #include "planners/PlanSides.h"
@@ -122,7 +123,8 @@ struct LiveActor {
   LiveResize resize;
   std::array<std::optional<LevelCost>, kResolutionLevelCount> levelCosts;
   IntermediateHolding intermediates = IntermediateHolding::kHeld;
-  std::optional<ResolutionLevel> blockedLevel;
+  std::optional<ResolutionLevel> blockedAt;
+  std::optional<JobId> awaitedPlan;
   std::uint64_t renderedFrame = 0;
   std::shared_ptr<const RecipeCatalog> catalog;
   ActorMatches matches;

@@ -7,6 +7,7 @@
 #include "mesh/Mesh.h"
 #include "mesh/MeshFacts.h"
 #include "mesh/TextureSize.h"
+#include "planners/IdentityFacts.h"
 #include "planners/RenderPlan.h"
 #include "planners/RetainedCache.h"
 #include "planners/StackPlan.h"
@@ -201,6 +202,8 @@ private:
   std::uint32_t lastSweepMS_ = 0;
 };
 
+[[nodiscard]] IdentityFacts IdentityFactsOf(const RecipeGraph &graph,
+                                            const GeometryInputs &inputs);
 [[nodiscard]] ValueBindings TextureValueBindings(const RecipeGraph &graph,
                                                  const GeometryInputs &inputs);
 [[nodiscard]] std::string MaterialIdentityOf(const MaterialInputs &material);

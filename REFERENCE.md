@@ -922,7 +922,8 @@ the displacement mean, a blocking GPU readback observation does not need.
 `actor_decide` traces the observe, plan and advance times. An install then
 traces `actor_install` (live actor, placement, lights, report),
 `actor_place` (geometry bindings, render), `actor_render` (plan, attach) and,
-on a plan cache miss, `render_plan_build` (demand collection, lowering). A
+on a plan build, `render_plan_build` (demand collection, lowering; `thread`
+names the main thread or the plan worker). A
 2026-10-05 Vigilant sync spent about 1 ms observing and planning, 10 ms
 installing seven bindings and 23 ms on a plan miss, so these split the
 remainder. A rebuild's `rebuild_state` lists only its target recipe's
@@ -940,8 +941,13 @@ only inside 0.8 × `EvictDistance`; before 2026-10-07 it got them inside 1.0 ×.
 Every `kRecheckMs` (1 s) `RangeChanged` reads each tracked actor's distance
 (`DistanceToPlayer`) and marks it stale only when `InRange` differs from
 "anything installed". It skips an actor with neither a plan nor anything
-installed. Every actor is in range when eviction is off (`EvictDistance` 0),
-so turning eviction off restores an evicted actor. `Advance` returns no state
+installed. Every actor is in range when eviction is off (`EvictDistance` 0
+or less) and no budget radius is set, so turning eviction off restores an
+evicted actor. The distance that `Advance` and `RangeChanged` use is
+`Manager::EvictDistanceNow`: the smaller of `EvictDistance` and the budget
+radius (`EffectiveEvictDistance`). A budget radius applies also when
+`EvictDistance` is 0 or less. Both callers read the same value, so a range
+check and the sync it triggers agree. `Advance` returns no state
 when the plan, the installed plan, the pending models and the claims are all
 empty, and the sync forgets the actor; its next equip event tracks it again.
 
@@ -1447,6 +1453,89 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
   ticks, and answers zero for anything it cannot reach. `av` readings:
   current = max - damage; `damage` is the damage modifier negated; `max` is
   permanent plus the temporary modifier.
+
+### Plan builds on a worker thread (`engine/JobQueue.h`, `engine/PlanJobs.*`, `planners/RenderPlanJob.*`, `planners/IdentityFacts.*`)
+
+- On 2026-10-08, with five Vigilants of Stendarr spawning, each plan cache
+  miss cost 36 to 100 ms on the main thread inside the sync. Of that,
+  `lower_us` was 36 to 84 ms and `demand_us` was 2 to 10 ms. A spawn burst
+  gave 8 misses in 2 s.
+- On a miss, the sync submits the demand collection and the lowering as one
+  job (`BuildPlanFrom`) to one worker thread. The sync still places the
+  geometry, and the actor runs without a render instance until the job ends.
+- The job input is a value (`PlanBuildInput`). This table lists what the plan
+  build reads and how each input crosses to the worker:
+
+| Input | Crosses | How, and why it is safe |
+|---|---|---|
+| `StackTextureRequest::graph` | Yes | `shared_ptr<const RecipeGraph>` from the `LiveInstance`. A graph has no `mutable` member and no lazy cache, so reads from two threads do not race. |
+| `StackTextureRequest::recipe` and `output` | Yes | `shared_ptr<const SurfaceOutput>` that aliases the instance's `shared_ptr<const Recipe>` snapshot, so the job owns the recipe it reads. The recipe id is copied for warnings. |
+| Geometry, root, material textures, mesh (`GeometryInputs`) | No | The main thread turns them into `IdentityFacts` (`IdentityFactsOf`): the instance string, the mesh identity, the material identity, the geometry and root addresses as numbers, the item hash and the enchantment fields. The worker formats identities from these copies. `MeshIdentityOf` reads the compositor's mesh cache and `MaterialIdentityOf` reads engine textures, so both stay on the main thread. |
+| Mesh data (`MeshEntry`) | No | Lowering reads a mesh only through its identity string. |
+| `BindingResolverFor` closure and `ValueBindings` | Rebuilt | The worker builds its resolver and bindings from the owned requests (`IdentityBindings`). The old closure captured `ActorStacks` and `GeometryInputs` by reference. |
+| Slot chains (`SlotChainRequest`) | Copied | Plain values. |
+| `LiveGeometry`, `PlacedOutput`, `WarningHistory`, the plan cache | No | Only the main thread touches them. The worker returns warnings as text, and the drain writes them through `LogOnce`. |
+
+- `render/CompositorDemand.cpp` builds every `ValueBindings` from
+  `IdentityFacts`, on both threads. One formatting path keeps the plan key, a
+  synchronous plan and a worker plan in agreement. The facts are computed when
+  the bindings are made, not when an identity is read. `PlanKeyOf` already
+  read the mesh and material identities of every request, so the cost moved
+  and did not grow.
+- `JobQueue` takes a function pointer, not a closure, so a job cannot capture
+  the manager or engine state.
+- The queue holds at most 16 unfinished jobs (`kPlanJobCapacity`): queued,
+  running, or finished and not yet drained. A full queue refuses a job, and
+  the sync builds the plan on the main thread as before 2026-10-08. A spawn
+  burst gave 8 misses, and equal plan keys share one job.
+- The worker starts at the first submission, so no thread exists before
+  `kDataLoaded`. A thread that cannot start makes every later submission
+  build on the main thread.
+- The worker catches every exception of a job and returns it as an error
+  result. An exception that escapes a thread function ends the process.
+  When the worker loop itself fails, the worker stops, the queue refuses new
+  jobs, and the next drain fails every stranded job, so no actor waits for a
+  job that will not run.
+- The worker thread is detached, as in `render/GeneratedShaders`, and owns
+  the shared queue state through a `shared_ptr`. The queue's destructor sets
+  an atomic stop flag and notifies the worker without taking the lock. At
+  process exit Windows ends every other thread before it runs the DLL's
+  static destructors, and a thread that ended while it held the lock would
+  leave the lock held forever; a destructor that locked or joined could then
+  hang the game's exit. A worker that misses the stop notice stays blocked on
+  state it owns, which frees nothing it reads.
+- A game load (`Manager::Clear`) empties the job book and drops the queued
+  jobs. A rebuild that clears the plan cache (`RebuildAll`) empties the job
+  book.
+- A job result is **stale** when the book no longer holds its job. A stale
+  result is not stored, and `render_plan_job` traces it as `dropped`.
+- An actor accepts a result only when its `LiveActor::awaitedPlan` names that
+  job (`StepFor`). A reinstall makes a new `LiveActor`, and a retire removes
+  it, so neither can accept an older job's plan.
+- An actor whose job built or went stale collects its stacks again
+  (`CollectActorStacks`) and runs `BuildActorRender`. A built plan is in the
+  cache by then, so the build is a cache hit when the stacks still give the
+  job's key. Stacks with another key get a new job. A stale job therefore
+  makes its actors ask again and never leaves them waiting.
+- An actor whose job failed records the problem on every stack output
+  (`FailStackOutputs`), as a synchronous failure does.
+- The book entry of an open job holds the graphs its key names. The cache
+  entry takes them when the plan is stored, so no graph address in a stored
+  key can be freed and reused while the plan lives.
+- The sync releases the replaced actor's planned bytes from the budget. The
+  install level is chosen when the plan arrives (`ChooseInstallLevel`), with
+  the headroom of that tick and no replaced bytes.
+- While an actor waits, its stack outputs have no `RenderOutput` and no
+  problem. `WriteSlots` then writes no texture and zero strength, and a
+  material slot writes back its original texture with the feature off
+  (`SlotWriter::WriteTexture`), so a material keeps the vanilla look. A shell
+  would still be posed with its recipe opacity, so `RenderGeometry` hides
+  shells while the actor waits. `ObserveApplication` reports the outputs as
+  waiting (`prepared`), not as failed. `UpdateResolution` skips the actor,
+  because it has no instance to resize.
+- `VerifyRenderPlanCache`, a run file's `verifyRenderPlans`, a disabled plan
+  cache and an uncacheable key keep the synchronous build. Verification
+  compares a reused plan with a fresh build in the same sync.
 
 ### The text log (`engine/LogOnce.h`, `ManagerApply.cpp`, `ManagerTick.cpp`)
 
@@ -2420,22 +2509,26 @@ cancel by the user instead of the load.
   log writes one line per swap, `actor … resized: drawn at <level>
   resolution`. The trace event `resolution_levels`, written with the
   heartbeat, counts the live actors at each level.
-- The first install takes the level from the actor's screen fraction at that
-  moment (`Manager::InstallLevel`), so a new actor is not built at full and
-  rebuilt one tick later. `TrackedActor::resolution` keeps the level across
-  reinstalls; `LiveActor::resolution` is the level the current instance uses.
+- The first install bounds the level by the actor's screen fraction at that
+  moment (`Manager::InstallBoundOf`), so a new actor is not built at full and
+  rebuilt one tick later. The render target budget can take a coarser level
+  at that install. `TrackedActor::resolution` keeps the level that the install
+  built across reinstalls. `LiveActor::resolution` is the level the current
+  instance uses.
 - The level divides the side after `Compositor::StackSize`, which raises a
   stack to its slot's base map. A stack draws over the armor's own map and
   replaces it in the material, so a lower level also lowers the armor's own
   texture detail, not only the effect's. That is invisible only while the
   GPU would sample a mip at or below the level's size.
 - `EvictionFor` restores an evicted actor only inside 80% of the eviction
-  radius. This hysteresis prevents repeated retire/reapply near the boundary;
-  a non-positive radius disables distance eviction.
+  radius (`kRestoreFraction`). This hysteresis prevents repeated
+  retire/reapply near the boundary; a non-positive radius disables distance
+  eviction. The radius is `EvictDistance` or the smaller budget radius.
 - The **render target budget** limits the bytes of the plugin's render
   targets (render-performance 7d, 2026-10-08; `planners/RenderBudget.h`,
-  `engine/ActorBudget.h`, `render/VideoMemory.h`). The pure decisions are in
-  `planners/RenderBudget.h` and are native-tested. The engine gathers the
+  `planners/BudgetRadius.h`, `engine/ActorBudget.h`, `render/VideoMemory.h`).
+  The pure decisions are in `planners/RenderBudget.h` and
+  `planners/BudgetRadius.h` and are native-tested. The engine gathers the
   facts, calls them and acts.
 - The budget reads the DXGI local segment once per heartbeat (1 s), in
   `Manager::FlushMetricsHeartbeat`. `VideoMemoryProbe` gets the device from
@@ -2483,14 +2576,50 @@ cancel by the user instead of the load.
   the swap. An admitted step up adds its bytes to the planned figure at once
   (`Admitted`), so a second step up in the same second sees the first. The
   player is always admitted. A blocked step up writes the trace event
-  `resolution_blocked` once per wanted level, not a log line, because it
-  repeats every tick.
-- New installs are not admitted by the budget. An install follows an equip
-  change or a load, and holding it back needs an actor state with a plan but
-  no install, which the actor lifecycle (`actors/Lifecycle.h`) does not have.
-  An install builds at its ideal level (`InstallLevel`). The next heartbeat
-  counts it, and the responses step down other NPCs first when they are
-  finer than their screen fraction needs.
+  `resolution_blocked`, not a log line, because it repeats every tick.
+- `LiveActor::blockedAt` keeps the level at which a step up of the actor is
+  blocked. A blocked step up writes `resolution_blocked` only when the actor
+  is not yet blocked at its current level. The event gives the first wanted
+  level of the episode. An admitted step up clears `blockedAt`. A step down
+  clears `blockedAt`. A wanted level that changes with the screen fraction
+  does not start a new episode. A reinstall builds a new `LiveActor`, so it
+  starts with no episode.
+- **Install level.** The first install of an NPC takes the finest level, no
+  finer than its ideal level, whose held bytes fit the **headroom**
+  (`FittingLevel`). A reinstall of an NPC takes the finest level, no finer
+  than its tracked level, whose held bytes fit the headroom. An equip change
+  causes a reinstall. A spawned NPC equips piece by piece just after it
+  appears, so its first reinstalls follow its first install within a second.
+- The headroom is the allowance less the planned bytes, with the
+  **replaced holding** subtracted from the planned bytes first (`HeadroomOf`).
+  The replaced holding is the bytes that the planned figure counts for the
+  actor just before the reinstall retires it (`PlannedBytesOf`). It uses the
+  rule of `EstimateTargets`, so an actor that has not rendered replaces 0
+  bytes. Without the credit, an actor that fits is pushed down by its own
+  bytes. Under pressure the headroom is the replaced holding, so a reinstall
+  does not grow. A first install replaces 0 bytes, so under pressure it takes
+  eighth. An unknown allowance gives no headroom, and the install takes its
+  bound level.
+- The install prices its levels after it has the plan and before it sizes the
+  sides (`ChooseInstallLevel` in `BuildActorRender`). The level reaches only
+  `SidesFor`, so one plan prices every level (`PlanLevelCost`). Before the
+  plan, `Manager::InstallBoundOf` gives the finest level and the headroom.
+- When no level fits, the install takes eighth. Installs are not held back. An
+  install follows an equip change or a load, and holding it back needs an
+  actor state with a plan but no install, which the actor lifecycle
+  (`actors/Lifecycle.h`) does not have. The responses and the exhaustion
+  warning then act on the next heartbeat.
+- An install takes the replaced holding off the planned bytes (`Released`) and
+  adds its held bytes at once (`Admitted`), so a second install in the same
+  second sees the first. The next heartbeat
+  replaces the planned bytes with `EstimateTargets`, which counts an actor
+  only after its first render.
+- The player takes its level without the budget and adds no bytes. A first
+  install without a positive screen fraction or with
+  `ScreenResolution=false` takes full without the budget and adds no bytes.
+- The trace event `actor_place` gives the built `level` and the bound
+  `finest_level`. When the budget chose the level, it also gives
+  `replaced_bytes`, `headroom_bytes` and `admitted_bytes`.
 - `kResizesInFlight` stays 1. The budget admits each step-up build by its
   bytes and starts no step down while any resize is pending or in flight.
 - **Response 1: hidden actors release their intermediates.** An actor out of
@@ -2516,12 +2645,51 @@ cancel by the user instead of the load.
   <level> to <level> resolution: frees … (render target budget)`, and the
   trace event `budget_step_down`. An NPC stepped down rises again only
   through `LevelChange` and admission.
-- **Response 3 is not built.** No clean path suspends an actor's effect and
-  restores it later. Distance eviction runs inside the actor lifecycle
-  (`Actors::Advance` with `EvictDistance`), and a budget hold would need a new
-  actor state. When responses 1 and 2 have nothing left, the plugin writes
-  one `warning` per pressure episode (`render target budget: no release or
-  step down is left`) with the five largest holdings (`Pressure::kOverWarned`).
+- **Response 3: the budget radius.** When responses 1 and 2 have nothing
+  left and no resize is pending or in flight, the budget sets or lowers a
+  **budget radius** (`planners/BudgetRadius.h`, `Manager::budgetRadius_`).
+  The radius is a distance from the player. The effect of an NPC beyond it
+  goes through distance eviction. A design review chose the radius over a
+  new actor state, because the radius reuses `Advance`, the 0.8 hysteresis
+  and the `evicted` sync kind unchanged.
+- The shrink removes one NPC per heartbeat (`ShrinkRadius`). The candidate is
+  the farthest rendered NPC inside the current radius that is not resizing.
+  The player has no distance and is never a candidate. A missing, non-finite
+  or non-positive distance never counts. The new radius is 0.99 × the
+  candidate's distance (`kRadiusShrinkFactor`), raised to the distance of the
+  next nearer actor. `EvictionFor` evicts past 1.0 × the radius, so it evicts
+  the candidate and keeps every nearer actor. Actors at the same distance
+  leave together. A resizing actor beyond the candidate stops the shrink. An
+  installed actor that has not rendered yet is not in the list and leaves
+  with the candidate when it stands beyond the new radius.
+- The shrink marks the actor stale, so its sync runs at once and writes the
+  `evicted` sync kind. An actor beyond the current radius is already
+  leaving, and the next shrink skips it.
+- Each shrink writes one `info` line, `render target budget: effects beyond
+  N units are off: <actor> (<name>) loses its effect, frees ~M MiB`, and the
+  trace event `budget_radius` with `change` `shrink`, `radius`, `actor` and
+  `freed_bytes`. The bytes are the actor's held bytes at its level
+  (`BudgetActor::held`).
+- **Growth.** Each heartbeat under pressure restarts the radius's dwell
+  (`BudgetRadius::sinceMs`). Without pressure, the radius grows by 1 / 0.8
+  once per dwell (`GrowRadius`, `kRadiusDwellMs` 10 s). The 1 / 0.8 step
+  lets every NPC inside the old radius pass the 0.8 restore rule. The dwell is
+  10 s because a pressure episode from an install ends within 1 to 2 s, and
+  the returning installs reach the estimate within one heartbeat. A 10 s
+  dwell therefore sees any pressure that a growth step causes before the
+  next step. Each growth writes `render target budget: effects return up to
+  N units` and the trace event `budget_radius` with `change` `grow`.
+- The radius clears when a growth reaches or passes `EvictDistance`. When
+  `EvictDistance` sets no limit, it clears when a growth reaches or passes
+  the farthest tracked actor with a state (`FarthestTrackedDistance`), or
+  when no such actor has a distance. The clear writes `render target budget:
+  radius cleared` and the trace event `budget_radius` with `change` `clear`.
+  Returning actors install through the usual path, so the install level
+  follows the headroom (`FittingLevel`).
+- When the radius has no candidate either, for example when only the player
+  or a resizing actor holds targets, the plugin writes one `warning` per
+  pressure episode (`render target budget: no release or step down is
+  left`) with the five largest holdings (`Pressure::kOverWarned`).
 - Each pressure start and end writes one `info` line with the planned bytes,
   the allowance, the DXGI budget and usage, the plugin's bytes and the cap,
   and the trace event `budget_pressure`. Each release writes the trace event
@@ -3042,7 +3210,7 @@ player, so the rows are meant to reach the half, quarter and eighth levels. It
 is not yet verified in game which level each row gets; the report's
 *screen resolution* table gives the counts. The run file's
 `screenResolution` replaces the setting at both level decisions
-(`Manager::InstallLevel` and `Manager::UpdateResolution`) until the run ends,
+(`Manager::InstallBoundOf` and `Manager::UpdateResolution`) until the run ends,
 so `--screen-resolution on` and `off` runs of one case give the A/B
 comparison.
 

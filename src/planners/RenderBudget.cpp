@@ -138,6 +138,39 @@ BudgetState Admitted(BudgetState a_state, std::uint64_t a_added) noexcept {
   return a_state;
 }
 
+BudgetState Released(BudgetState a_state, std::uint64_t a_freed) noexcept {
+  a_state.planned = Less(a_state.planned, a_freed);
+  return a_state;
+}
+
+std::optional<std::uint64_t> HeadroomOf(const BudgetState &a_state,
+                                        std::uint64_t a_replaced) noexcept {
+  if (!a_state.allowance) {
+    return std::nullopt;
+  }
+  if (IsOver(a_state.pressure)) {
+    return a_replaced;
+  }
+  return Less(*a_state.allowance, Less(a_state.planned, a_replaced));
+}
+
+ResolutionLevel FittingLevel(ResolutionLevel a_finest,
+                             const LevelBytes &a_bytes,
+                             std::optional<std::uint64_t> a_headroom) noexcept {
+  if (!a_headroom) {
+    return a_finest;
+  }
+  for (std::optional<ResolutionLevel> level = a_finest; level;
+       level = CoarserLevel(*level)) {
+    const auto index = static_cast<std::size_t>(*level);
+    if (index < a_bytes.size() && a_bytes[index] &&
+        *a_bytes[index] <= *a_headroom) {
+      return *level;
+    }
+  }
+  return ResolutionLevel::kEighth;
+}
+
 std::uint64_t HeldBytes(const LevelCost &a_cost,
                         IntermediateHolding a_holding) noexcept {
   return a_holding == IntermediateHolding::kReleased ? a_cost.stacks

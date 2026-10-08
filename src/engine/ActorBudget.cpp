@@ -4,9 +4,43 @@
 #include "engine/ActorResize.h"
 #include "render/RenderInstance.h"
 
+#include <algorithm>
 #include <memory>
 
 namespace BetterEnchantmentEffects {
+std::optional<LevelCost> PlanLevelCost(const RenderPlan &a_plan,
+                                       const PlanSides &a_full,
+                                       ResolutionLevel a_level) {
+  const std::expected<PlanSides, std::string> sides =
+      SidesFor(a_plan, AtLevel(a_full, a_level).pixels);
+  if (!sides) {
+    return std::nullopt;
+  }
+  const PlanTargets targets = TargetsOf(a_plan, *sides);
+  return LevelCost{CostOf(targets.held).bytes, CostOf(targets.stacks).bytes};
+}
+
+InstallLevelChoice ChooseInstallLevel(const RenderPlan &a_plan,
+                                      const PlanSides &a_full,
+                                      const InstallBound &a_bound) {
+  if (!a_bound.headroom) {
+    return {a_bound.finest, 0};
+  }
+  LevelBytes bytes;
+  for (std::optional<ResolutionLevel> level = a_bound.finest; level;
+       level = CoarserLevel(*level)) {
+    const auto index = static_cast<std::size_t>(*level);
+    const std::optional<LevelCost> cost = PlanLevelCost(a_plan, a_full, *level);
+    if (index < bytes.size() && cost) {
+      bytes[index] = cost->held;
+    }
+  }
+  const ResolutionLevel chosen =
+      FittingLevel(a_bound.finest, bytes, a_bound.headroom);
+  const auto index = static_cast<std::size_t>(chosen);
+  return {chosen, index < bytes.size() ? bytes[index].value_or(0) : 0};
+}
+
 std::optional<LevelCost> LevelCostOf(LiveActor &a_state,
                                      ResolutionLevel a_level) {
   const auto index = static_cast<std::size_t>(a_level);
@@ -21,18 +55,13 @@ std::optional<LevelCost> LevelCostOf(LiveActor &a_state,
   if (!render) {
     return std::nullopt;
   }
-  const std::expected<PlanSides, std::string> sides =
-      SidesFor(render->Plan(), AtLevel(a_state.fullSides, a_level).pixels);
-  if (!sides) {
-    return std::nullopt;
-  }
-  const PlanTargets targets = TargetsOf(render->Plan(), *sides);
-  cached = LevelCost{CostOf(targets.held).bytes, CostOf(targets.stacks).bytes};
+  cached = PlanLevelCost(render->Plan(), a_state.fullSides, a_level);
   return cached;
 }
 
 BudgetActor BudgetActorOf(LiveActor &a_state, std::uint32_t a_id,
-                          ActorRole a_role, float a_fraction) {
+                          ActorRole a_role, float a_fraction,
+                          std::optional<float> a_distance) {
   BudgetActor actor{a_id,
                     a_role,
                     a_state.inView,
@@ -40,12 +69,15 @@ BudgetActor BudgetActorOf(LiveActor &a_state, std::uint32_t a_id,
                     a_state.resolution,
                     a_fraction,
                     0,
-                    std::nullopt};
+                    std::nullopt,
+                    0,
+                    a_distance};
   const std::optional<LevelCost> current =
       LevelCostOf(a_state, a_state.resolution);
   if (!current) {
     return actor;
   }
+  actor.held = HeldBytes(*current, a_state.intermediates);
   if (a_state.intermediates == IntermediateHolding::kHeld) {
     actor.releasable =
         current->held > current->stacks ? current->held - current->stacks : 0;
@@ -64,6 +96,34 @@ const std::vector<HeldTarget> &HeldNow(const LiveActor &a_state,
   return a_state.intermediates == IntermediateHolding::kReleased
              ? a_targets.stacks
              : a_targets.held;
+}
+
+std::vector<const RenderInstance *> InstancesOf(const LiveActor &a_state) {
+  std::vector<const RenderInstance *> instances;
+  for (const LivePiece &piece : a_state.pieces) {
+    for (const LiveGeometry &geometry : piece.geometries) {
+      if (geometry.inputs.render &&
+          !std::ranges::contains(instances, geometry.inputs.render.get())) {
+        instances.push_back(geometry.inputs.render.get());
+      }
+    }
+  }
+  if (const RenderInstance *resizing = ResizingInstance(a_state)) {
+    instances.push_back(resizing);
+  }
+  return instances;
+}
+
+std::uint64_t PlannedBytesOf(const LiveActor &a_state) {
+  if (a_state.renderedFrame == 0) {
+    return 0;
+  }
+  std::vector<HeldTarget> held;
+  for (const RenderInstance *render : InstancesOf(a_state)) {
+    const std::vector<HeldTarget> &now = HeldNow(a_state, render->Targets());
+    held.insert(held.end(), now.begin(), now.end());
+  }
+  return CostOf(held).bytes;
 }
 
 std::size_t ReleaseIntermediates(LiveActor &a_state) {

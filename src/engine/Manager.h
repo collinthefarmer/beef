@@ -13,8 +13,10 @@
 #include "engine/IdleCamera.h"
 #include "engine/InstanceTime.h"
 #include "engine/LiveActor.h"
+#include "engine/PlanJobs.h"
 #include "engine/RecipeEditor.h"
 #include "planners/ActorPlanning.h"
+#include "planners/BudgetRadius.h"
 #include "planners/RenderBudget.h"
 #include "planners/RenderPlanCache.h"
 #include "planners/ResolutionLevel.h"
@@ -42,6 +44,7 @@
 
 namespace BetterEnchantmentEffects {
 struct ActorStacks;
+struct ActorRender;
 
 struct RegressionWearer {
   RE::FormID actor = 0;
@@ -164,10 +167,15 @@ private:
   void RelieveBudget(std::uint64_t a_goal, const Settings &a_settings);
   void StepDownForBudget(RE::FormID a_actorID, LiveActor &a_state,
                          const StepDownOption &a_option);
+  [[nodiscard]] bool ShrinkBudgetRadius(std::span<const RE::FormID> a_ids,
+                                        std::span<const BudgetActor> a_actors);
+  void GrowBudgetRadius(const Settings &a_settings);
+  [[nodiscard]] std::optional<float> FarthestTrackedDistance() const;
+  [[nodiscard]] float EvictDistanceNow(const Settings &a_settings) const;
   [[nodiscard]] bool AdmitStepUp(RE::FormID a_actorID, LiveActor &a_state,
                                  ResolutionLevel a_from, ResolutionLevel a_to);
   void InstallActor(RE::Actor &a_actor, ActorDecision a_decision,
-                    const Settings &a_settings);
+                    std::uint64_t a_replaced, const Settings &a_settings);
   [[nodiscard]] ActorDecision DecideActor(RE::Actor &a_actor,
                                           const Settings &a_settings);
   void NoteMaterialLayout(MaterialLayout a_before);
@@ -202,14 +210,24 @@ private:
   [[nodiscard]] std::optional<std::size_t>
   InstanceFor(LiveActor &a_state, InstanceId a_matchedInstance,
               RE::FormID a_enchantment, const Settings &a_settings);
-  [[nodiscard]] ResolutionLevel InstallLevel(RE::FormID a_actorID,
-                                             RE::Actor &a_actor,
-                                             const Settings &a_settings);
+  [[nodiscard]] InstallBound InstallBoundOf(RE::FormID a_actorID,
+                                            RE::Actor &a_actor,
+                                            std::uint64_t a_replaced,
+                                            const Settings &a_settings) const;
+  void KeepInstallLevel(RE::FormID a_actorID, ResolutionLevel a_level);
   void UpdateResolution(RE::FormID a_actorID, RE::Actor &a_actor,
                         LiveActor &a_state, const Settings &a_settings);
   void AdvanceResizes(const Settings &a_settings);
   void PlaceInstances(LiveActor &a_state, RE::FormID a_actorID,
-                      const Settings &a_settings);
+                      std::uint64_t a_replaced, const Settings &a_settings);
+  void KeepActorRender(RE::FormID a_actorID, LiveActor &a_state,
+                       const ActorRender &a_render);
+  void DrainPlanJobs(const Settings &a_settings);
+  void RebuildAwaitedRender(RE::FormID a_actorID, LiveActor &a_state,
+                            JobId a_arrived, const Settings &a_settings);
+  void FailAwaitedRender(RE::FormID a_actorID, LiveActor &a_state,
+                         const std::string &a_problem,
+                         const Settings &a_settings);
   [[nodiscard]] std::size_t PlaceGeometries(LiveActor &a_state,
                                             const Settings &a_settings,
                                             ActorStacks &a_stacks);
@@ -251,6 +269,8 @@ private:
 
   CarriedTimes carriedTimes_;
   RenderPlanCache renderPlans_;
+  PlanJobBook planJobs_;
+  PlanQueue planQueue_{BuildPlanFrom, kPlanJobCapacity};
 
   struct TrackedActor {
     std::optional<Actors::ActorState> state;
@@ -266,6 +286,7 @@ private:
   std::uint32_t holdingLevel_ = 0;
   VideoMemoryProbe videoMemory_;
   BudgetState budget_;
+  std::optional<BudgetRadius> budgetRadius_;
   std::vector<Actors::SyncRecord> syncLog_;
   std::uint32_t lastSweepMS_ = 0;
   std::uint32_t lastRecheckMS_ = 0;

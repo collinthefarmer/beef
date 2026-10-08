@@ -2,6 +2,8 @@
 #pragma once
 
 namespace BetterEnchantmentEffects {
+inline constexpr float kRestoreFraction = 0.8f;
+
 enum class EvictionAction {
   kNone,
   kEvict,
@@ -17,7 +19,8 @@ EvictionFor(float a_distance, float a_evictDistance, bool a_applied) noexcept {
     return a_distance > a_evictDistance ? EvictionAction::kEvict
                                         : EvictionAction::kNone;
   }
-  return a_distance < a_evictDistance * 0.8f ? EvictionAction::kRestore
-                                             : EvictionAction::kNone;
+  return a_distance < a_evictDistance * kRestoreFraction
+             ? EvictionAction::kRestore
+             : EvictionAction::kNone;
 }
 }

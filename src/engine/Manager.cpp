@@ -115,6 +115,8 @@ void Manager::Clear() {
   live_.clear();
   tracked_.clear();
   renderPlans_.Clear();
+  planJobs_ = {};
+  (void)planQueue_.DropQueued();
   editor_.CancelFileOperationsForLoad();
   SweepRetiredMaterialTextures();
   editor_.CancelPaintForLoad();

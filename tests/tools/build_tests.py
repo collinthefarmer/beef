@@ -23,7 +23,7 @@ class BuildTests(unittest.TestCase):
             source = root / 'src/recipe/Value.cpp'
             source.write_text('#include "recipe/Shared.h"\nint value() { return answer; }\n')
             for name in ('SessionQueue', 'ApplicationService', 'TextFile', 'PluginEvents',
-                         'RecipeFiles', 'InstanceTime', 'MenuDependency'):
+                         'RecipeFiles', 'InstanceTime', 'MenuDependency', 'PlanJobs'):
                 (root / f'src/engine/{name}.cpp').write_text(f'int {name}() {{ return 0; }}\n')
             main = 'int value(); int main() { return value(); }\n'
             (root / 'src/validator/Main.cpp').write_text(main)

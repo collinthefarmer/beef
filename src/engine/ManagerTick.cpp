@@ -598,22 +598,6 @@ void EmitStepKinds(const Metrics::StepKindCounts &a_counts) {
   }
 }
 
-std::vector<const RenderInstance *> InstancesOf(const LiveActor &a_state) {
-  std::vector<const RenderInstance *> instances;
-  for (const LivePiece &piece : a_state.pieces) {
-    for (const LiveGeometry &geometry : piece.geometries) {
-      if (geometry.inputs.render &&
-          !std::ranges::contains(instances, geometry.inputs.render.get())) {
-        instances.push_back(geometry.inputs.render.get());
-      }
-    }
-  }
-  if (const RenderInstance *resizing = ResizingInstance(a_state)) {
-    instances.push_back(resizing);
-  }
-  return instances;
-}
-
 TargetCost
 EstimateTargets(const std::unordered_map<RE::FormID, LiveActor> &a_live) {
   std::unordered_set<const RenderInstance *> seen;
@@ -883,12 +867,13 @@ void Manager::OnFrame() {
   }
   if (now - lastRecheckMS_ >= Actors::kRecheckMs) {
     lastRecheckMS_ = now;
-    MarkRecheckStale(now, settings.evictDistance);
+    MarkRecheckStale(now, EvictDistanceNow(settings));
   }
   if (now - lastTickMS_ < settings.TickIntervalMS()) {
     return;
   }
   lastTickMS_ = now;
+  DrainPlanJobs(settings);
   {
     const SectionTimer sweepTimer{Metrics::Section::kSweep};
     Compositor::GetSingleton()->BeginTick(now);
@@ -1036,7 +1021,8 @@ void Manager::TickInstance(LiveInstance &a_instance, float a_time,
 void Manager::UpdateResolution(RE::FormID a_actorID, RE::Actor &a_actor,
                                LiveActor &a_state, const Settings &a_settings) {
   const auto tracked = tracked_.find(a_actorID);
-  if (tracked == tracked_.end() || !tracked->second.resolution) {
+  if (tracked == tracked_.end() || !tracked->second.resolution ||
+      a_state.awaitedPlan) {
     return;
   }
   ResolutionLevel &level = *tracked->second.resolution;
@@ -1045,7 +1031,6 @@ void Manager::UpdateResolution(RE::FormID a_actorID, RE::Actor &a_actor,
   const std::optional<ResolutionLevel> next =
       LevelChange(level, LevelFraction(a_state, a_settings), role);
   if (!next) {
-    a_state.blockedLevel.reset();
     return;
   }
   if (role != ActorRole::kPlayer &&
@@ -1104,11 +1089,11 @@ bool Manager::AdmitStepUp(RE::FormID a_actorID, LiveActor &a_state,
   const Admission admission = AdmitGrowth(budget_, added);
   if (admission == Admission::kAdmitted) {
     budget_ = Admitted(budget_, added);
-    a_state.blockedLevel.reset();
+    a_state.blockedAt.reset();
     return true;
   }
-  if (a_state.blockedLevel != a_to) {
-    a_state.blockedLevel = a_to;
+  if (a_state.blockedAt != a_from) {
+    a_state.blockedAt = a_from;
     Trace::EmitSafely(
         Trace::Event::kMetrics,
         {{"action", "resolution_blocked"},
@@ -1162,6 +1147,7 @@ void Manager::UpdateBudget(const BudgetSample &a_sample,
   if (isOver && budget_.allowance) {
     RelieveBudget(PressureGoal(*budget_.allowance), a_settings);
   }
+  GrowBudgetRadius(a_settings);
 }
 
 void Manager::RelieveBudget(std::uint64_t a_goal, const Settings &a_settings) {
@@ -1177,8 +1163,9 @@ void Manager::RelieveBudget(std::uint64_t a_goal, const Settings &a_settings) {
     const ActorRole role =
         actor->IsPlayerRef() ? ActorRole::kPlayer : ActorRole::kOther;
     ids.push_back(id);
-    actors.push_back(
-        BudgetActorOf(state, id, role, LevelFraction(state, a_settings)));
+    actors.push_back(BudgetActorOf(state, id, role,
+                                   LevelFraction(state, a_settings),
+                                   DistanceToPlayer(*actor)));
   }
   const BudgetResponse response =
       RespondToPressure(budget_.planned, a_goal, actors, resizeBusy);
@@ -1201,7 +1188,8 @@ void Manager::RelieveBudget(std::uint64_t a_goal, const Settings &a_settings) {
       StepDownForBudget(found->first, found->second, response.stepDown->option);
     }
   }
-  if (response.exhausted && budget_.pressure == Pressure::kOver) {
+  if (response.exhausted && !ShrinkBudgetRadius(ids, actors) &&
+      budget_.pressure == Pressure::kOver) {
     budget_.pressure = Pressure::kOverWarned;
     logger::warn(
         "{}",
@@ -1209,6 +1197,76 @@ void Manager::RelieveBudget(std::uint64_t a_goal, const Settings &a_settings) {
                       LargestHoldings(HoldingsOf(RenderedActorTargets(live_)),
                                       kReportedHoldings)));
   }
+}
+
+bool Manager::ShrinkBudgetRadius(std::span<const RE::FormID> a_ids,
+                                 std::span<const BudgetActor> a_actors) {
+  const std::optional<RadiusShrink> shrink =
+      ShrinkRadius(a_actors, budgetRadius_, NowMS());
+  if (!shrink || shrink->actor >= a_ids.size()) {
+    return false;
+  }
+  const RE::FormID id = a_ids[shrink->actor];
+  const auto found = live_.find(id);
+  const std::string name =
+      found != live_.end() ? NameOf(found->second) : std::string{};
+  budgetRadius_ = shrink->radius;
+  MarkStale(id);
+  logger::info(
+      "{}", RadiusShrinkLine(shrink->radius.distance, id, name, shrink->freed));
+  Trace::EmitSafely(Trace::Event::kMetrics,
+                    {{"action", "budget_radius"},
+                     {"change", "shrink"},
+                     {"radius", std::format("{:.0f}", shrink->radius.distance)},
+                     {"actor", std::to_string(id)},
+                     {"freed_bytes", std::to_string(shrink->freed)}});
+  return true;
+}
+
+void Manager::GrowBudgetRadius(const Settings &a_settings) {
+  if (!budgetRadius_) {
+    return;
+  }
+  const std::optional<float> farthest = LimitsDistance(a_settings.evictDistance)
+                                            ? std::nullopt
+                                            : FarthestTrackedDistance();
+  const RadiusGrowth growth =
+      GrowRadius(*budgetRadius_, budget_.pressure, NowMS(),
+                 a_settings.evictDistance, farthest);
+  budgetRadius_ = growth.radius;
+  if (growth.change == RadiusChange::kHeld) {
+    return;
+  }
+  const bool cleared = growth.change == RadiusChange::kCleared;
+  logger::info("{}", cleared ? RadiusClearLine()
+                             : RadiusGrowLine(growth.radius->distance));
+  Trace::EmitSafely(
+      Trace::Event::kMetrics,
+      {{"action", "budget_radius"},
+       {"change", cleared ? "clear" : "grow"},
+       {"radius", growth.radius ? std::format("{:.0f}", growth.radius->distance)
+                                : std::string{"none"}}});
+}
+
+std::optional<float> Manager::FarthestTrackedDistance() const {
+  std::optional<float> farthest;
+  for (const auto &[id, tracked] : tracked_) {
+    if (!tracked.state) {
+      continue;
+    }
+    const auto *actor = RE::TESForm::LookupByID<RE::Actor>(id);
+    const std::optional<float> distance =
+        actor ? DistanceToPlayer(*actor) : std::nullopt;
+    if (distance && std::isfinite(*distance) &&
+        (!farthest || *distance > *farthest)) {
+      farthest = distance;
+    }
+  }
+  return farthest;
+}
+
+float Manager::EvictDistanceNow(const Settings &a_settings) const {
+  return EffectiveEvictDistance(a_settings.evictDistance, budgetRadius_);
 }
 
 void Manager::StepDownForBudget(RE::FormID a_actorID, LiveActor &a_state,
@@ -1219,6 +1277,7 @@ void Manager::StepDownForBudget(RE::FormID a_actorID, LiveActor &a_state,
   }
   const ResolutionLevel from = a_state.resolution;
   tracked->second.resolution = a_option.to;
+  a_state.blockedAt.reset();
   RequestResize(a_state, a_option.to);
   logger::info("{}", StepDownLine(a_actorID, NameOf(a_state), from, a_option));
   Trace::EmitSafely(Trace::Event::kMetrics,
@@ -1276,7 +1335,7 @@ void Manager::RenderGeometry(LiveActor &a_state, LiveGeometry &a_bound,
     const SectionTimer slotsTimer{Metrics::Section::kRenderSlots};
     WriteSlots(a_state, a_bound, slotView, a_hidden);
   }
-  if (a_hidden || !slotView.publish) {
+  if (a_hidden || !slotView.publish || a_state.awaitedPlan) {
     if (a_bound.shell) {
       a_bound.shell->SetVisible(false);
     }

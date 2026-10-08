@@ -160,6 +160,22 @@ another actor. `RenderPlanCache.h` holds the reused plans.
 | `GraphsNamedBy` | The live graphs that a key's stacks name, once each. |
 | `RenderPlanCache` | Up to 64 plans by key. It evicts the least recently used. An entry holds the graphs its key names. |
 
+### Plan builds off the main thread
+
+`RenderPlanJob.h` is the plan build that `engine/` runs on its worker thread.
+`IdentityFacts.h` gives value identities from copied facts, so the build
+reads no engine state.
+
+| Type or function | Description |
+|---|---|
+| `IdentityFacts` | The facts that identities read for one stack: the instance string, the mesh and material identities, the geometry and root addresses as numbers, the item hash and the enchantment fields. |
+| `InstanceIdentity` | The instance string: graph address, application context and actor. |
+| `IdentityBindings` | `ValueBindings` over shared `IdentityFacts`. Missing facts give empty identities. |
+| `PlanStackRequest` | One stack with owned inputs: the graph, the `SurfaceOutput` (aliasing its recipe), the recipe id, the output, placement, geometry, context, side and identity facts. |
+| `PlanBuildInput` | The stacks and slot chains of one plan build. |
+| `PlanBuildOutput`, `PlanBuildPhases` | The plan or its error, the demand warnings as text, and the demand and lowering times with the demand count. |
+| `BuildPlanFrom` | Collects the layer demands (`CollectTextureDemand`) and lowers the plan (`BuildRenderPlan`) from a `PlanBuildInput`. The sync and the worker both call it. |
+
 ### Retention and identity helpers
 
 | Function | Description |
@@ -211,10 +227,22 @@ A plan names texture sizes by **side reference** (`SideRef`, in `TextureDemand.h
 | `MarginOf`, `AllowanceOf` | The margin (the larger of 512 MiB and 5 % of the budget) and the **allowance**: live bytes plus headroom less the margin, capped. No reading, or a budget of 0, gives no allowance. |
 | `BandOf`, `PressureGoal` | The band (the larger of 256 MiB and 10 % of the allowance, at most half of it) and the allowance less the band. |
 | `Pressure`, `BudgetState`, `NextBudget`, `IsOver` | The pressure state with its hysteresis: it starts over the allowance and ends below the goal. An unknown allowance ends it. |
-| `Admission`, `AdmitGrowth`, `Admitted`, `AdmissionName` | Whether a step up of the given bytes may start, and the planned bytes after one starts. |
+| `Admission`, `AdmitGrowth`, `Admitted`, `Released`, `AdmissionName` | Whether a step up of the given bytes may start, the planned bytes after one starts, and the planned bytes after a holding goes. |
+| `InstallBound`, `LevelBytes`, `HeadroomOf`, `FittingLevel` | The finest level and the optional headroom of an install, and the held bytes per level. `HeadroomOf` gives the allowance less the planned bytes without the replaced bytes, the replaced bytes under pressure, and none when the allowance is unknown. A first install replaces 0 bytes. `FittingLevel` gives the finest level from the bound to eighth whose bytes fit the headroom, eighth when none fits, and the bound when there is no headroom. |
 | `LevelCost`, `IntermediateHolding`, `HeldBytes`, `StepDownOption`, `StepDownOf` | The held and stack bytes of a plan at one level, whether an actor's intermediates are released, and the bytes that one step down frees. |
-| `BudgetActor`, `StepDown`, `BudgetResponse`, `RespondToPressure` | One actor's facts, and the responses for one heartbeat: the hidden actors that release, at most one NPC step down, and whether nothing is left. |
+| `BudgetActor`, `StepDown`, `BudgetResponse`, `RespondToPressure` | One actor's facts, and the responses for one heartbeat: the hidden actors that release, at most one NPC step down, and whether nothing is left. The facts include the held bytes and the optional distance to the player. |
 | `PressureStartLine`, `PressureEndLine`, `StepDownLine`, `ExhaustedLine` | The text of the budget's log lines. |
+
+`BudgetRadius.h` holds the decisions of the **budget radius**, the third
+response of the budget.
+
+| Type or function | Description |
+|---|---|
+| `BudgetRadius` | The radius in game units and the time of its last change or of the last heartbeat under pressure (`sinceMs`). The manager keeps it optional; no record means no radius. |
+| `LimitsDistance`, `EffectiveEvictDistance` | Whether an `EvictDistance` sets a limit (above 0), and the distance that eviction uses: the smaller of `EvictDistance` and the radius. Without a radius it is `EvictDistance` unchanged. |
+| `RadiusShrink`, `ShrinkRadius` | The actor that loses its effect, the new radius and the bytes freed. The candidate is the farthest NPC inside the current radius that is not resizing. The new radius is 0.99 × its distance (`kRadiusShrinkFactor`), raised to the next nearer distance, so that `EvictionFor` evicts that actor alone. The player and missing, non-finite or non-positive distances never count. A resizing actor beyond the candidate stops the shrink. |
+| `RadiusChange`, `RadiusGrowth`, `GrowRadius` | One heartbeat of the radius without a shrink. Under pressure it holds and restarts the dwell. After `kRadiusDwellMs` (10 s) it grows by 1 / 0.8 (`kRestoreFraction`). It clears when the grown radius reaches `EvictDistance`, or the farthest loaded NPC when `EvictDistance` sets no limit. |
+| `RadiusShrinkLine`, `RadiusGrowLine`, `RadiusClearLine` | The text of the radius's log lines. |
 
 `RenderMemory.h` turns the counts into the render-target log lines.
 
@@ -390,7 +418,7 @@ engine handle.
 | Type | Declared in | Description |
 |---|---|---|
 | `EvictionAction` | `Eviction.h` | `kNone`, `kEvict` or `kRestore`. |
-| `EvictionFor` | `Eviction.h` | A `constexpr` function. It evicts an actor with something installed beyond the eviction distance and restores an actor with nothing installed only inside 80% of that distance. A distance of 0 or less disables eviction. `Actors::InRange` calls it. |
+| `EvictionFor`, `kRestoreFraction` | `Eviction.h` | A `constexpr` function. It evicts an actor with something installed beyond the eviction distance and restores an actor with nothing installed only inside 80% (`kRestoreFraction`) of that distance. A distance of 0 or less disables eviction. `Actors::InRange` calls it. |
 | `TransformStorage` | `TransformStorage.h` | An engine transform array's base address, `count`, `stride` and `offset`. `TransformStorageIndex` decodes a pointer into a row index. `render/SkinPalette.cpp` uses it. |
 | `ImageCacheKey`, `IsPlaceholderExtent` | `TextureIdentity.h` | `ImageCacheKey` lower-cases a path into a cache key. `IsPlaceholderExtent` reports a width or height at or under `kPlaceholderTextureExtent` (4). |
 | `RecipeTextureKey`, `RecipeTextureCache<T>` | `RecipeTextureCache.h` | A key of recipe name, texture name, pixel count and context, and a `std::map` from it to a `shared_ptr`. `FindRecipeTexture` and `LargestRecipeTexture` read it. Only `tests/planners/recipetexturecache_tests.cpp` uses it. |
@@ -447,8 +475,10 @@ PSGeneratedStack, or PSStack until the compile finishes     render/GeneratedShad
 | `RenderPlan.h`/`.cpp` | Render planning | The plan and step records, the step queries (`InputsOf`, `StepDependencies`, `ChangingSteps`, `AnimatedSteps`, `RenderedRoots`, `Draws`, `LiveConsumers`, `TypeOf`), `MarkContentKeyedSteps`, `PackLayerFields` and `ValidateRenderPlan`. |
 | `RenderPlanLowering.cpp` | Render planning | `LowerRenderPlan` and `BuildRenderPlan`. |
 | `RenderPlanKey.h`/`.cpp`, `RenderPlanCache.h`/`.cpp` | Render planning | `RenderPlanKeyOf`, `RenderPlanKeyHash`, `GraphsNamedBy`; `RenderPlanCache`. |
+| `RenderPlanJob.h`/`.cpp`, `IdentityFacts.h`/`.cpp` | Render planning | `PlanBuildInput`, `BuildPlanFrom`; `IdentityFacts`, `IdentityBindings`, `InstanceIdentity`. |
 | `RenderMemory.h`/`.cpp` | Render planning | `NextHoldingLevel`, `HoldingsOf`, `LargestHoldings`, `IsBurst`, `SpreadOf`, `HoldingLine`, `BurstLine`. |
-| `RenderBudget.h`/`.cpp` | Render planning | The render target budget: `AllowanceOf`, `NextBudget`, `AdmitGrowth`, `StepDownOf`, `RespondToPressure` and the log lines. |
+| `RenderBudget.h`/`.cpp` | Render planning | The render target budget: `AllowanceOf`, `NextBudget`, `AdmitGrowth`, `FittingLevel`, `StepDownOf`, `RespondToPressure` and the log lines. |
+| `BudgetRadius.h`/`.cpp` | Render planning | The budget radius: `EffectiveEvictDistance`, `ShrinkRadius`, `GrowRadius` and the log lines. |
 | `TargetCost.h`/`.cpp` | Render planning | `HeldTarget`, `PlanTargets`, `TargetCost`, `TargetBytes`, `TargetsOf`, `CostOf`. |
 | `PlanSides.h`/`.cpp`, `ResolutionLevel.h`/`.cpp`, `ResolutionResize.h`/`.cpp` | Render planning | `PlanSides`, `SidesFor`, `SideOf`, `SharedKeyOf`; `ResolutionLevel`, `IdealLevel`, `LevelChange`, `CoarserLevel`, `LevelGap`, `AtLevel`, `LevelName`; `DrawOf`, `SwapDue`, `NextBuild`. |
 | `FieldInlining.h`/`.cpp` | Render planning | `AsProgramLike` and `InlineFields`. |

@@ -55,13 +55,16 @@ bool Includes(const ApplicationToken &a_token, const LiveInstance &a_instance) {
 }
 
 void ObserveOutput(ApplicationObservation &a_result,
-                   const PlacedOutput &a_output, bool a_rendered) {
+                   const PlacedOutput &a_output, bool a_rendered,
+                   bool a_planAwaited) {
   if (!a_output.active) {
     return;
   }
   ++a_result.outputs;
   if (!a_output.problem.empty()) {
     a_result.problem = a_output.problem;
+  } else if (!a_output.stack && a_planAwaited) {
+    a_result.waiting = true;
   } else if (!a_output.stack) {
     a_result.problem = "the output was not prepared";
   } else if (a_rendered && a_output.renderFailed) {
@@ -90,7 +93,8 @@ ApplicationObservation ObserveApplication(const LiveActor &a_state,
     }
     for (const PlacedOutput &output :
          a_state.placements[resolved->placement].outputs) {
-      ObserveOutput(result, output, a_rendered);
+      ObserveOutput(result, output, a_rendered,
+                    a_state.awaitedPlan.has_value());
     }
   }
   for (const LiveInstance &instance : a_state.instances) {
@@ -173,6 +177,7 @@ void Manager::ChangeAndRebuildActors(std::string a_reportRecipe,
       rebuild,
       [&](const RebuildAll &) {
         renderPlans_.Clear();
+        planJobs_ = {};
         return ApplicationActors();
       },
       [&](const RebuildApplying &a_applying) {

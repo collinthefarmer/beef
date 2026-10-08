@@ -200,6 +200,95 @@ void PlayerIsNeverPicked() {
         "pressure with only the player and coarsest NPCs is exhausted");
 }
 
+void HeadroomFollowsTheState() {
+  Check(!HeadroomOf(BudgetState{}, 0).has_value(),
+        "an unknown allowance gives no headroom bound");
+  Check(HeadroomOf({1 * kGiB, 400 * kMebibyte, Pressure::kNone}, 0) ==
+            624 * kMebibyte,
+        "the headroom is the allowance less the planned bytes");
+  Check(HeadroomOf({1 * kGiB, 2 * kGiB, Pressure::kNone}, 0) == 0,
+        "planned bytes over the allowance leave no headroom");
+  Check(HeadroomOf({1 * kGiB, 100 * kMebibyte, Pressure::kOver}, 0) == 0,
+        "pressure leaves no headroom");
+  Check(HeadroomOf({1 * kGiB, 100 * kMebibyte, Pressure::kOverWarned}, 0) == 0,
+        "warned pressure leaves no headroom");
+}
+
+void InstallTakesTheFinestFittingLevel() {
+  const LevelBytes vigilant{1600 * kMebibyte, 600 * kMebibyte, 150 * kMebibyte,
+                            40 * kMebibyte};
+  Equal(FittingLevel(ResolutionLevel::kFull, vigilant, std::nullopt),
+        ResolutionLevel::kFull, "no headroom bound keeps the finest level");
+  Equal(FittingLevel(ResolutionLevel::kQuarter, vigilant, std::nullopt),
+        ResolutionLevel::kQuarter, "no headroom bound keeps an ideal quarter");
+  Equal(FittingLevel(ResolutionLevel::kFull, vigilant, 2 * kGiB),
+        ResolutionLevel::kFull, "full fits a large headroom");
+  Equal(FittingLevel(ResolutionLevel::kFull, vigilant, 1600 * kMebibyte),
+        ResolutionLevel::kFull, "a level that fits exactly is taken");
+  Equal(FittingLevel(ResolutionLevel::kFull, vigilant, 1 * kGiB),
+        ResolutionLevel::kHalf, "1 GiB of headroom takes half");
+  Equal(FittingLevel(ResolutionLevel::kFull, vigilant, 200 * kMebibyte),
+        ResolutionLevel::kQuarter, "200 MiB of headroom takes quarter");
+  Equal(FittingLevel(ResolutionLevel::kQuarter, vigilant, 2 * kGiB),
+        ResolutionLevel::kQuarter, "the ideal level bounds the install");
+  Equal(FittingLevel(ResolutionLevel::kFull, vigilant, 0),
+        ResolutionLevel::kEighth, "no headroom takes eighth");
+  Equal(FittingLevel(ResolutionLevel::kFull, vigilant, 10 * kMebibyte),
+        ResolutionLevel::kEighth, "eighth is taken even when it does not fit");
+  const LevelBytes unpriced{std::nullopt, std::nullopt, 150 * kMebibyte,
+                            std::nullopt};
+  Equal(FittingLevel(ResolutionLevel::kFull, unpriced, 1 * kGiB),
+        ResolutionLevel::kQuarter, "an unpriced level never fits");
+  Equal(FittingLevel(ResolutionLevel::kFull, LevelBytes{}, 1 * kGiB),
+        ResolutionLevel::kEighth, "no priced level takes eighth");
+  const std::uint64_t most = std::numeric_limits<std::uint64_t>::max();
+  Equal(FittingLevel(ResolutionLevel::kFull, {most, most, most, most}, most),
+        ResolutionLevel::kFull, "the largest values compare without overflow");
+}
+
+void ReinstallFitsWithItsOwnHolding() {
+  const LevelBytes vigilant{1600 * kMebibyte, 600 * kMebibyte, 150 * kMebibyte,
+                            40 * kMebibyte};
+  const BudgetState state{1 * kGiB, 900 * kMebibyte, Pressure::kNone};
+  Check(HeadroomOf(state, 500 * kMebibyte) == 624 * kMebibyte,
+        "a reinstall counts its own holding as freed");
+  Check(HeadroomOf(state, 2 * kGiB) == 1 * kGiB,
+        "a holding larger than the planned bytes frees them all");
+  Equal(FittingLevel(ResolutionLevel::kHalf, vigilant,
+                     HeadroomOf(state, 500 * kMebibyte)),
+        ResolutionLevel::kHalf,
+        "a reinstall that fits keeps its tracked level with its holding "
+        "freed");
+  Equal(FittingLevel(ResolutionLevel::kHalf, vigilant, HeadroomOf(state, 0)),
+        ResolutionLevel::kEighth,
+        "without the credit its own bytes would push it down");
+  Equal(FittingLevel(ResolutionLevel::kHalf, vigilant,
+                     HeadroomOf(state, 2 * kGiB)),
+        ResolutionLevel::kHalf, "a reinstall never builds finer than tracked");
+  const BudgetState amulet{256 * kMebibyte, 16 * kMebibyte, Pressure::kNone};
+  Equal(FittingLevel(ResolutionLevel::kFull, vigilant,
+                     HeadroomOf(amulet, 16 * kMebibyte)),
+        ResolutionLevel::kQuarter,
+        "a reinstall that grows past the headroom takes a coarser level");
+  const BudgetState over{1 * kGiB, 1200 * kMebibyte, Pressure::kOver};
+  Check(HeadroomOf(over, 600 * kMebibyte) == 600 * kMebibyte,
+        "under pressure a reinstall may keep its own holding");
+  Equal(FittingLevel(ResolutionLevel::kHalf, vigilant,
+                     HeadroomOf(over, 600 * kMebibyte)),
+        ResolutionLevel::kHalf, "under pressure an unchanged reinstall stays");
+  Equal(FittingLevel(ResolutionLevel::kFull, vigilant,
+                     HeadroomOf(over, 600 * kMebibyte)),
+        ResolutionLevel::kHalf, "under pressure a reinstall does not grow");
+  Check(!HeadroomOf(BudgetState{}, 500 * kMebibyte).has_value(),
+        "an unknown allowance keeps the tracked level");
+  Check(Released({1 * kGiB, 900 * kMebibyte, Pressure::kNone}, 500 * kMebibyte)
+                .planned == 400 * kMebibyte,
+        "a released holding leaves the planned bytes");
+  Check(Released({1 * kGiB, 100 * kMebibyte, Pressure::kNone}, 1 * kGiB)
+                .planned == 0,
+        "a release never takes the planned bytes below 0");
+}
+
 void LinesCarryTheNumbers() {
   const BudgetState state{1 * kGiB, 2 * kGiB, Pressure::kOver};
   Equal(PressureStartLine({VideoMemory{8 * kGiB, 7 * kGiB}, 2 * kGiB, kGiB},
@@ -238,6 +327,9 @@ int main() {
   HiddenActorsReleaseFirst();
   StepDownOrder();
   PlayerIsNeverPicked();
+  HeadroomFollowsTheState();
+  InstallTakesTheFinestFittingLevel();
+  ReinstallFitsWithItsOwnHolding();
   LinesCarryTheNumbers();
   return test::Finish("planners_renderbudget");
 }

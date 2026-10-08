@@ -246,7 +246,9 @@ clone.
 
 ```
 LiveActor stack requests                      engine/ManagerApply.cpp
-  │  BuildActorRender: CollectLayerDemands,
+  │  BuildActorRender: a cache hit, or BuildPlanFrom   planners/RenderPlanJob.h
+  │  on the plan worker (the sync on verification):
+  │  CollectTextureDemand, then
   │  BuildRenderPlan = LowerRenderPlan + InlineFields   planners/RenderPlanLowering.cpp
   ▼
 RenderInstance(plan, geometries, graphs)      engine/ManagerApply.cpp
@@ -298,8 +300,12 @@ places the lights, and `LightBinding::Update` sets their values each tick.
 | Bindings and material layout | `Binding.h`, `Binding.cpp`, `PBRMaterial.h`, `PBRMaterial.cpp`, `Shell.cpp`, `Light.cpp` |
 | Meshes and skin | `MeshCache.h`, `MeshCache.cpp`, `MeshReader.h`, `MeshReader.cpp`, `SkinData.h`, `SkinData.cpp`, `SkinPalette.h`, `SkinPalette.cpp` |
 
-`CompositorDemand.cpp` holds `TextureValueBindings`, which gives each graph
-value an identity from its geometry, material and recipe instance.
+`CompositorDemand.cpp` holds `IdentityFactsOf` and `TextureValueBindings`.
+`IdentityFactsOf` copies a stack's geometry, material and recipe instance
+into `IdentityFacts` (`planners/IdentityFacts.h`) on the main thread.
+`TextureValueBindings` gives each graph value an identity from those facts.
+The plan worker reads the same facts, so it touches no mesh cache and no
+engine texture.
 `SourceSampling.cpp` holds `MaterialTexture` and `IsNonPlaceholderTexture`.
 
 ## See also
