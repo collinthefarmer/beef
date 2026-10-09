@@ -41,16 +41,18 @@ void Compositor::SweepMeshes(std::uint32_t a_nowMS,
 
 void Compositor::ClearMeshes() noexcept { meshes_.Clear(); }
 
+Compositor::MaterialKey
+Compositor::MaterialKeyOf(const MaterialInputs &a_material) {
+  return {TextureIdentity(a_material.rmaos),
+          TextureIdentity(a_material.diffuse)};
+}
+
 const Compositor::MaterialRecord &
 Compositor::AnalyseMaterial(const MaterialInputs &a_material) {
-  const auto key =
-      std::make_pair(a_material.rmaos.get(), a_material.diffuse.get());
-  auto &record = materials_.Get(key, nowMS_);
+  auto &record = materials_.Get(MaterialKeyOf(a_material), nowMS_);
   if (record.sample || !record.problem.empty()) {
     return record;
   }
-  record.rmaos = a_material.rmaos;
-  record.diffuse = a_material.diffuse;
   if (!RealTexture(a_material.rmaos) || !RealTexture(a_material.diffuse)) {
     record.problem =
         std::format("RMAOS {}; diffuse {}", DescribeTexture(a_material.rmaos),
@@ -88,9 +90,8 @@ Compositor::AnalyseMaterial(const MaterialInputs &a_material) {
 }
 
 const Compositor::MaterialRecord *
-Compositor::CachedMaterial(const MaterialInputs &a_material) const noexcept {
-  return materials_.Find(
-      std::make_pair(a_material.rmaos.get(), a_material.diffuse.get()));
+Compositor::CachedMaterial(const MaterialInputs &a_material) const {
+  return materials_.Find(MaterialKeyOf(a_material));
 }
 
 void Compositor::SweepMaterials(std::uint32_t a_nowMS,

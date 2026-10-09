@@ -2213,6 +2213,15 @@ them outside as separate passes.
   cached while mapping consumes the new field. Revisions describe observed input
   changes rather than frame counts. Visibility selects dependencies before they
   are evaluated; all-hidden success is distinct from an unavailable result.
+- The material analysis cache (`AnalyseMaterial`, `CachedMaterial`) keys a
+  record on the two textures' identities (`MaterialKeyOf`, `TextureIdentity`:
+  pointer, generation and name), and the record holds only the CPU sample,
+  the analysis and any problem. Before 2026-10-09 the key was the two raw
+  pointers, and the record held both textures so that a freed address could
+  not be reused by another texture while the record lived; that kept the
+  game's maps loaded for up to 30 s after use (`kMaterialMaxAgeMS`). A game
+  texture reloaded at the same address with the same name is the same file,
+  and a plugin target's generation tells a reused target apart.
 
 ## Recipe format details beyond the schema (`Recipe.h`, `RecipeRead.cpp`, `RecipeWrite.cpp`)
 

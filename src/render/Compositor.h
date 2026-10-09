@@ -164,12 +164,12 @@ public:
                    std::span<RE::BSGeometry *const> a_bound);
   void ClearMeshes() noexcept;
 
-  using MaterialKey = std::pair<RE::NiSourceTexture *, RE::NiSourceTexture *>;
+  using MaterialKey = std::pair<std::string, std::string>;
+  [[nodiscard]] static MaterialKey
+  MaterialKeyOf(const MaterialInputs &a_material);
   static constexpr std::uint32_t kMaterialMaxAgeMS = 30000;
   static constexpr std::size_t kMaxUnusedMaterials = 64;
   struct MaterialRecord {
-    TextureRef rmaos;
-    TextureRef diffuse;
     std::shared_ptr<const MaterialSample> sample;
     std::shared_ptr<const MaterialAnalysis> analysis;
     std::string problem;
@@ -177,7 +177,7 @@ public:
   [[nodiscard]] const MaterialRecord &
   AnalyseMaterial(const MaterialInputs &a_material);
   [[nodiscard]] const MaterialRecord *
-  CachedMaterial(const MaterialInputs &a_material) const noexcept;
+  CachedMaterial(const MaterialInputs &a_material) const;
   void ClearMaterials() noexcept;
   void SweepMaterials(std::uint32_t a_nowMS,
                       std::span<const MaterialKey> a_keep);

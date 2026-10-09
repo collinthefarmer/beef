@@ -463,8 +463,8 @@ void AddBoundMeshes(BoundMeshes &a_meshes, const LivePiece &a_piece) {
   for (const LiveGeometry &g : a_piece.geometries) {
     if (!g.lost) {
       a_meshes.geometries.push_back(g.geometry.get());
-      a_meshes.materials.emplace_back(g.inputs.material.rmaos.get(),
-                                      g.inputs.material.diffuse.get());
+      a_meshes.materials.push_back(
+          Compositor::MaterialKeyOf(g.inputs.material));
     }
   }
 }

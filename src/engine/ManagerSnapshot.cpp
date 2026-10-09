@@ -450,8 +450,7 @@ std::shared_ptr<const Studio::BudgetView> Manager::LatestBudgetView() const {
 }
 
 void Manager::PublishBudgetView(Studio::BudgetView a_view) {
-  auto published =
-      std::make_shared<const Studio::BudgetView>(std::move(a_view));
+  auto published = std::make_shared<const Studio::BudgetView>(a_view);
   std::scoped_lock lock{snapshotLock_};
   latestBudget_ = std::move(published);
 }
