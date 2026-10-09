@@ -142,12 +142,14 @@ Regression::RoleFacts ViewOf(RE::Actor *a_actor, WearerFacts a_facts) {
     return view;
   }
   view.present = Present(*a_actor);
+  std::vector<RE::FormID> runItems;
   for (const Named<Regression::Item> &item : Regression::kItems) {
     RE::TESObjectARMO *armor = ArmorOf(item.value);
     Regression::ItemFacts &seen = view.armor[Regression::IndexOf(item.value)];
     if (!armor) {
       continue;
     }
+    runItems.push_back(armor->GetFormID());
     const RE::TESObjectARMO *inSlot =
         a_actor->GetWornArmor(armor->GetSlotMask());
     seen.equipped = a_actor->GetWornArmor(armor->GetFormID()) != nullptr;
@@ -155,7 +157,10 @@ Regression::RoleFacts ViewOf(RE::Actor *a_actor, WearerFacts a_facts) {
     seen.carried = CountOf(*a_actor, *armor) > 0;
   }
   view.live = a_facts.live;
-  view.liveItems = static_cast<std::uint32_t>(a_facts.liveItems.size());
+  view.liveItems = static_cast<std::uint32_t>(
+      std::ranges::count_if(a_facts.liveItems, [&](RE::FormID a_item) {
+        return std::ranges::contains(runItems, a_item);
+      }));
   view.strayItems = static_cast<std::uint32_t>(
       std::ranges::count_if(a_facts.liveItems, [&](RE::FormID a_item) {
         return a_actor->GetWornArmor(a_item) == nullptr;

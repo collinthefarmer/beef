@@ -3741,3 +3741,12 @@ on missing data: a window with no heartbeat, a ratio against a zero baseline,
 a window that never closed and a window measured twice are each reported.
 The stall report names the last finished step; the run stopped in the step
 after it.
+- `RoleFacts::liveItems` counts only the run's own items with live
+  effects (`kItems`: the fixture, the plain cuirass and the paired
+  gauntlets), not every live piece of the actor (2026-10-09). The player in
+  `BEEFRegression` wears an enchanted fine hat and fine boots whose effect
+  shaders match imported recipes, and imported recipes draw since they use
+  the fill template, so counting every live piece failed `unequip-one`
+  with 4 live items where the case expects 2. Solo isolation filters what
+  is shown, not what matches, so it does not remove them.
+  `strayItems` still counts every live item that is no longer worn.
