@@ -3062,7 +3062,12 @@ cancel by the user instead of the load.
   releases only the output of an animated step (`AnimatedSteps`) that was not
   used for 500 ms of rendered time (`kReleaseAfterIdleMS`, render clock), and
   never a stack's (`Releasable`). A static step keeps its output until the
-  instance goes (render-performance 7b, 2026-10-07). Before, static outputs
+  instance goes (render-performance 7b, 2026-10-07). A bake's vertex buffers
+  (`BuildBakeBuffersStep`) are released on the same 500 ms timer whether or
+  not they animate (`IdleReleasable`, 2026-10-09), because only a bake draw
+  reads them; a later bake rebuilds them from the cached mesh when the
+  executor restores the step. They cost 20 bytes per vertex and 4 per index,
+  about 0.5 to 1 MB of CPU memory per bake. Before, static outputs
   were released on the same timer. A stack layer hidden for 500 ms then
   released a static chain (a mask and its mesh bakes), and showing the layer
   again restored the whole chain with new targets. In `soak-fight-orbit

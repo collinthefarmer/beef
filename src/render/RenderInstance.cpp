@@ -371,6 +371,11 @@ bool Releasable(const RenderStep &step, const RenderValue &value) {
 bool Animated(const std::vector<bool> &animated, RenderStepId step) {
   return step < animated.size() && animated[step];
 }
+bool IdleReleasable(const std::vector<bool> &animated, RenderStepId step,
+                    const RenderStep &planned, const RenderValue &value) {
+  return Is<std::shared_ptr<const BakeBuffers>>(value) ||
+         (Animated(animated, step) && Releasable(planned, value));
+}
 BakeBuffers BakeBuffersFor(const MeshData &mesh, const MeshAnalysis &analysis,
                            const BakeKind &kind) {
   if (Is<ComponentIdBake>(kind))
@@ -1461,7 +1466,7 @@ bool RenderInstance::BeginFrame(std::uint64_t frame, std::uint64_t nowMS) {
   Metrics::CountStepReleases(execution_.ReleaseIdle(
       kReleaseAfterIdleMS, [this](RenderStepId step, const RenderStep &planned,
                                   const RenderValue &value) {
-        return Animated(animated_, step) && Releasable(planned, value);
+        return IdleReleasable(animated_, step, planned, value);
       }));
   Metrics::CountStepRestores(execution_.Restores() - restoresReported_);
   restoresReported_ = execution_.Restores();
