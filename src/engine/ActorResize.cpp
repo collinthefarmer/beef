@@ -77,6 +77,22 @@ std::vector<bool> DrawnByMergedChains(const LiveActor &a_state) {
   return covered;
 }
 
+void ConcealStackSlots(LiveGeometry &a_geometry) {
+  for (const SlotStackPlan &slot : a_geometry.stackPlan.slots) {
+    if (SlotTarget *target = TargetFor(a_geometry, slot.surface)) {
+      target->WriteTexture(slot.slot, nullptr);
+    }
+  }
+}
+
+void ConcealStackSlots(LiveActor &a_state) {
+  for (LivePiece &piece : a_state.pieces) {
+    for (LiveGeometry &geometry : piece.geometries) {
+      ConcealStackSlots(geometry);
+    }
+  }
+}
+
 bool StacksMatch(const std::vector<StackHolder> &a_holders,
                  const std::vector<ResizedStack> &a_resized) {
   if (a_holders.size() != a_resized.size()) {
@@ -237,6 +253,9 @@ std::optional<ResizeSwap> FinishResize(LiveActor &a_state,
     *holders[i] = std::move(inFlight->stacks[i].stack);
   }
   SwapRender(a_state, current, inFlight->render);
+  if (!a_state.inView) {
+    ConcealStackSlots(a_state);
+  }
   const ResizeSwap swap{
       inFlight->progress.from,
       inFlight->progress.to,

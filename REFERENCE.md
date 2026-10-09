@@ -2756,6 +2756,19 @@ cancel by the user instead of the load.
   (`kResizeSwapAfterFrames`) swaps anyway, so a readback that never arrives
   cannot hold two instances. Its stacks that have not drawn can show nothing
   for a few frames, as a reinstall did.
+- A swap of an actor out of view writes each of its stack slots as not
+  shown (`ConcealStackSlots`, `FinishResize`): the slot gets its original
+  texture back and `written` releases the old instance's target. The
+  actor's next draw in view writes the new stacks. Before 2026-10-09 the
+  slots kept the old textures until the actor came into view, because slots
+  are written only by an in-view render. In `soak-fight` one NPC stepped
+  down from full to half out of view and its slots kept 24 full-level stack
+  targets (356 MiB) that the estimate no longer counted (`slot_only` in
+  `target_holders`). The budget steps out-of-view actors down first, so those
+  bytes stayed held while the budget counted them as freed. Until that actor
+  draws again, the estimate counts its new instance's targets, which are not
+  created yet, so the estimate runs above the live bytes (151 MiB in the
+  rerun of `soak-fight`).
 - Nothing holds a raw view of the old instance's targets. Each material and
   shell slot keeps the `TextureRef` it wrote (`SlotWriter`, `written`), which
   holds the target through a shared pointer. The target goes back to the pool
