@@ -30,6 +30,7 @@ public:
   void CollectDraws();
   void RenderPreviews();
   void ClearPreviews();
+  void CollectTargets(HolderSet &a_set);
   void InvalidatePreviews() noexcept;
 
 private:

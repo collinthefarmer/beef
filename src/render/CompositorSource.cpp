@@ -28,6 +28,13 @@ MaterialInputs MaterialInputs::From(const PbrMaterial &a_material) {
   return in;
 }
 
+void MaterialInputs::CollectTargets(HolderSet &a_set) const {
+  diffuse.CollectTarget(a_set);
+  normal.CollectTarget(a_set);
+  rmaos.CollectTarget(a_set);
+  displacement.CollectTarget(a_set);
+}
+
 std::optional<PreparedSource>
 Compositor::InspectSource(const Recipe &recipe, const RecipeGraph &graph,
                           std::string_view name,

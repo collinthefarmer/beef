@@ -120,6 +120,15 @@ std::uint64_t Compositor::ResidentTargets() const noexcept {
   return neutralHeight_ ? 1 : 0;
 }
 
+void Compositor::CollectCachedTargets(HolderSet &a_set) const {
+  stepOutputs_.CollectTargets(a_set);
+}
+
+void Compositor::CollectResidentTargets(HolderSet &a_set) const {
+  if (neutralHeight_)
+    a_set.insert(TargetId(neutralHeight_.get()));
+}
+
 std::uint64_t Compositor::ResidentBytes() const noexcept {
   return neutralHeight_ ? neutralHeight_->Bytes() : 0;
 }

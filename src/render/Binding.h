@@ -61,6 +61,7 @@ public:
   [[nodiscard]] bool StillOwned() const noexcept;
   void Restore();
   [[nodiscard]] std::vector<SlotState> Slots() const;
+  void CollectTargets(HolderSet &a_set) const;
 
 private:
   struct GroupState {
@@ -93,6 +94,7 @@ private:
   };
   static std::list<PublishedTexture> &RetiredTextures();
   friend void SweepRetiredMaterialTextures();
+  friend void CollectRetiredTextureTargets(HolderSet &a_set);
   void SetFeature(Slot a_slot, bool a_on);
   [[nodiscard]] bool HasGroup(Slot a_slot) const;
 
@@ -103,6 +105,7 @@ private:
 };
 
 void SweepRetiredMaterialTextures();
+void CollectRetiredTextureTargets(HolderSet &a_set);
 
 class MaterialBinding final : public SlotTarget {
 public:
@@ -115,6 +118,7 @@ public:
 
   [[nodiscard]] RE::BSLightingShaderProperty *Property() const noexcept;
   [[nodiscard]] bool Private() const noexcept;
+  void CollectTargets(HolderSet &a_set) const;
 
   [[nodiscard]] std::optional<Diagnostic> Problem(Slot a_slot) const override;
   void WriteTexture(Slot a_slot, const TextureRef &a_texture) override;
@@ -164,6 +168,7 @@ public:
             float a_emissive);
   void SetVisible(bool a_visible);
   [[nodiscard]] bool StillOwned() const noexcept;
+  void CollectTargets(HolderSet &a_set) const;
 
 private:
   ShellBinding() = default;

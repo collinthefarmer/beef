@@ -84,6 +84,32 @@ std::list<SlotWriter::PublishedTexture> &SlotWriter::RetiredTextures() {
   return retired.value;
 }
 
+void CollectRetiredTextureTargets(HolderSet &a_set) {
+  for (const auto &entry : SlotWriter::RetiredTextures())
+    entry.texture.CollectTarget(a_set);
+}
+
+void SlotWriter::CollectTargets(HolderSet &a_set) const {
+  for (const auto &group : groups_) {
+    if (group) {
+      group->original.CollectTarget(a_set);
+      group->written.CollectTarget(a_set);
+    }
+  }
+  for (const auto &published : published_)
+    published.texture.CollectTarget(a_set);
+}
+
+void MaterialBinding::CollectTargets(HolderSet &a_set) const {
+  if (slots_)
+    slots_->CollectTargets(a_set);
+}
+
+void ShellBinding::CollectTargets(HolderSet &a_set) const {
+  if (slots_)
+    slots_->CollectTargets(a_set);
+}
+
 void SweepRetiredMaterialTextures() {
   auto &retired = SlotWriter::RetiredTextures();
   if (retired.empty())

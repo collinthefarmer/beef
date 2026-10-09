@@ -48,6 +48,14 @@ public:
   [[nodiscard]] std::shared_ptr<RenderInstance> AtSizes(PlanSizes sizes) const;
   bool BeginFrame(std::uint64_t frame, std::uint64_t nowMS);
   std::size_t ReleaseIntermediates();
+  void CollectOutputTargets(HolderSet &a_set) const;
+  void CollectInputTargets(HolderSet &a_set) const;
+  [[nodiscard]] static std::size_t LiveCount() noexcept;
+  ~RenderInstance();
+  RenderInstance(const RenderInstance &) = delete;
+  RenderInstance &operator=(const RenderInstance &) = delete;
+  RenderInstance(RenderInstance &&) = delete;
+  RenderInstance &operator=(RenderInstance &&) = delete;
   [[nodiscard]] std::expected<void, std::string>
   Update(const RecipeGraph &graph, std::size_t instance,
          const SignalState &signals);

@@ -17,6 +17,7 @@ public:
                std::uint64_t a_nowMS);
   void Sweep(std::uint64_t a_nowMS);
   void Clear() noexcept;
+  void CollectTargets(HolderSet &a_set) const;
 
 private:
   struct Entry {

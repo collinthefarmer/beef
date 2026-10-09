@@ -12,6 +12,7 @@
 #include "planners/FieldProgram.h"
 #include "planners/GpuReduction.h"
 #include "planners/StackShader.h"
+#include "planners/TargetHolders.h"
 #include "planners/TextureDemand.h"
 #include "render/GeneratedShaders.h"
 
@@ -359,6 +360,8 @@ public:
 
   void Clear();
   void ExpireIdleTargets(std::uint64_t a_nowMs);
+  void CollectIdleTargets(HolderSet &a_set) const;
+  void CollectPreviewTargets(HolderSet &a_set);
 
   struct TargetHoldings {
     std::uint64_t idleTargets = 0;

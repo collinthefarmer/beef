@@ -39,6 +39,15 @@ public:
     return {true, it->second.generation, it->second.target.lock()};
   }
 
+  template <class Visit> void ForEachLive(const Visit &a_visit) {
+    std::scoped_lock lock{lock_};
+    for (const auto &[presenter, entry] : entries_) {
+      if (const auto live = entry.target.lock()) {
+        a_visit(*live);
+      }
+    }
+  }
+
 private:
   struct Entry {
     std::uint64_t generation = 0;

@@ -1,5 +1,6 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #include "engine/Manager.h"
+#include "engine/TargetCensus.h"
 
 #include "SettingsFile.h"
 #include "actors/Lifecycle.h"
@@ -698,16 +699,19 @@ void AddBudgetFields(std::vector<Trace::Field> &a_fields,
 
 void ReportResize(RE::FormID a_actorID, const LiveActor &a_state,
                   const ResizeSwap &a_swap, const Settings &a_settings) {
-  Trace::EmitSafely(Trace::Event::kMetrics,
-                    {{"action", "resolution_swap"},
-                     {"actor", std::to_string(a_actorID)},
-                     {"from", std::string{LevelName(a_swap.from)}},
-                     {"level", std::string{LevelName(a_swap.to)}},
-                     {"frames", std::to_string(a_swap.frames)},
-                     {"stacks", std::to_string(a_swap.stacks)},
-                     {"drawn", std::to_string(a_swap.drawn)},
-                     {"targets", std::to_string(a_swap.targets.targets)},
-                     {"target_bytes", std::to_string(a_swap.targets.bytes)}});
+  Trace::EmitSafely(
+      Trace::Event::kMetrics,
+      {{"action", "resolution_swap"},
+       {"actor", std::to_string(a_actorID)},
+       {"from", std::string{LevelName(a_swap.from)}},
+       {"level", std::string{LevelName(a_swap.to)}},
+       {"frames", std::to_string(a_swap.frames)},
+       {"stacks", std::to_string(a_swap.stacks)},
+       {"drawn", std::to_string(a_swap.drawn)},
+       {"targets", std::to_string(a_swap.targets.targets)},
+       {"target_bytes", std::to_string(a_swap.targets.bytes)},
+       {"live_targets", std::to_string(LiveTextureTargets().size())},
+       {"live_instances", std::to_string(RenderInstance::LiveCount())}});
   if (!a_settings.verboseLogging) {
     return;
   }
@@ -820,6 +824,7 @@ void Manager::FlushMetricsHeartbeat() {
   UpdateBudget(sample, planned.bytes, settings);
   EmitMetricsHeartbeat(measured, planned, ScreenSpreadOf(live_), sample,
                        budget_, waitingInstalls_.size());
+  EmitTargetHolders(live_);
   const PerLevel<std::size_t> levels = LevelCounts(live_);
   EmitLevelCounts(levels);
   PublishBudgetView(

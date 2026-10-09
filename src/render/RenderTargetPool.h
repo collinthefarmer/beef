@@ -32,6 +32,7 @@ public:
   Acquire(REX::W32::ID3D11Device *a_device, const TargetShape &a_shape,
           std::string_view a_owner);
   void ExpireIdle(std::uint64_t a_nowMs);
+  void CollectIdleTargets(HolderSet &a_set) const;
   void ClearUnused();
   [[nodiscard]] Holdings Held() const;
 

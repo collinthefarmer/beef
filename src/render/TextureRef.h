@@ -1,7 +1,10 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #pragma once
 
+#include "planners/TargetHolders.h"
 #include "render/TextureLab.h"
+
+#include <vector>
 
 namespace BetterEnchantmentEffects {
 class TextureRef {
@@ -18,6 +21,7 @@ public:
   [[nodiscard]] std::uint64_t Generation() const noexcept;
   [[nodiscard]] bool Holds(
       const std::shared_ptr<TextureLab::RenderTarget> &a_target) const noexcept;
+  void CollectTarget(HolderSet &a_set) const;
 
 private:
   std::shared_ptr<TextureLab::RenderTarget> target_;
@@ -38,4 +42,8 @@ struct TextureView {
     const std::shared_ptr<TextureLab::RenderTarget> &a_target);
 
 [[nodiscard]] std::string TextureIdentity(const TextureRef &a_texture);
+[[nodiscard]] std::uintptr_t
+TargetId(const TextureLab::RenderTarget *a_target) noexcept;
+void CollectView(const TextureView &a_view, HolderSet &a_set);
+[[nodiscard]] std::vector<LiveTarget> LiveTextureTargets();
 }

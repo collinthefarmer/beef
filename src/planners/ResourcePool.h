@@ -74,6 +74,13 @@ public:
     bytes_ = 0;
   }
   [[nodiscard]] std::size_t Size() const noexcept { return entries_.size(); }
+  template <class Visit> void ForEach(const Visit &a_visit) const {
+    for (const Entry &entry : entries_) {
+      if (entry.value) {
+        a_visit(*entry.value);
+      }
+    }
+  }
   [[nodiscard]] std::uint64_t Bytes() const noexcept { return bytes_; }
 
 private:

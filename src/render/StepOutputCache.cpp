@@ -58,4 +58,9 @@ void StepOutputCache::Sweep(std::uint64_t a_nowMS) {
 }
 
 void StepOutputCache::Clear() noexcept { entries_.clear(); }
+
+void StepOutputCache::CollectTargets(HolderSet &a_set) const {
+  for (const auto &[key, entry] : entries_)
+    CollectView(entry.view, a_set);
+}
 }

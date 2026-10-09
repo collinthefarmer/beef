@@ -3123,6 +3123,23 @@ cancel by the user instead of the load.
   reduction step keeps three 1×1 float staging textures (48 bytes).
   `TextureLab::ReductionLevelFor` keeps the reduction levels once per extent
   for the whole lab.
+- With the trace on, each heartbeat also writes `target_holders`
+  (`EmitTargetHolders`, `engine/TargetCensus.cpp`, 2026-10-09). It takes
+  every live target from the lease registry (`LiveTextureTargets`) and
+  counts it under the first holder that reaches it (`TallyHolders`): an
+  attached or resizing instance's step outputs (`instance`), a live actor's
+  stack outputs (`output`), a slot writer's written or original texture or
+  a published texture of a live binding (`slot`), a live geometry's or an
+  instance's material inputs and imported textures (`material_input`), the
+  retired-texture list (`retired`), the step output cache (`cache`),
+  previews (`preview`), the idle pool (`pool`), the neutral height
+  (`resident`), or none of these (`unreached`). It gives `<holder>_targets`
+  and `<holder>_bytes` for each, `live_targets`, the live `RenderInstance`
+  count (`live_instances`) and the instances that live actors reach
+  (`attached_instances`). `resolution_swap` carries `live_targets` and
+  `live_instances` at the swap. In the session of 2026-10-09 live targets
+  ran 120 to 136 above the estimate after resolution swaps, until the
+  1024 presenter slots ran out; the census names the holder.
 - The heartbeat reports the estimate over every live instance of a rendered
   actor (`estimated_targets`, `estimated_bytes`). The measured
   `target_bytes` minus `pool_bytes` is the figure to

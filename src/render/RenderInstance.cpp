@@ -368,6 +368,18 @@ bool Releasable(const RenderStep &step, const RenderValue &value) {
          (Is<TextureView>(value) ||
           Is<std::shared_ptr<const BakeBuffers>>(value));
 }
+std::atomic<std::size_t> &LiveInstances() {
+  static std::atomic<std::size_t> live{0};
+  return live;
+}
+void CollectValue(const RenderValue &value, HolderSet &set) {
+  if (const auto *view = Get<TextureView>(value))
+    CollectView(*view, set);
+  else if (const auto *material = Get<MaterialInputs>(value))
+    material->CollectTargets(set);
+  else if (const auto *stack = Get<StackResult>(value))
+    stack->texture.CollectTarget(set);
+}
 bool Animated(const std::vector<bool> &animated, RenderStepId step) {
   return step < animated.size() && animated[step];
 }
@@ -1124,6 +1136,26 @@ RenderInstance::RenderInstance(
       animated_(AnimatedSteps(execution_.Plan())) {
   for (auto &geometry : geometries_)
     geometry.render.reset();
+  LiveInstances().fetch_add(1, std::memory_order_relaxed);
+}
+RenderInstance::~RenderInstance() {
+  LiveInstances().fetch_sub(1, std::memory_order_relaxed);
+}
+std::size_t RenderInstance::LiveCount() noexcept {
+  return LiveInstances().load(std::memory_order_relaxed);
+}
+void RenderInstance::CollectOutputTargets(HolderSet &a_set) const {
+  for (const auto &state : execution_.Steps())
+    for (const auto &output : state.outputs)
+      if (output.value)
+        CollectValue(*output.value, a_set);
+}
+void RenderInstance::CollectInputTargets(HolderSet &a_set) const {
+  for (const auto &input : execution_.Inputs())
+    if (input.value)
+      CollectValue(*input.value, a_set);
+  for (const auto &geometry : geometries_)
+    geometry.material.CollectTargets(a_set);
 }
 const PlanTargets &RenderInstance::Targets() const noexcept { return targets_; }
 std::shared_ptr<RenderInstance> RenderInstance::AtSizes(PlanSizes sizes) const {

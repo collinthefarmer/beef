@@ -71,6 +71,31 @@ bool TextureRef::Holds(
 
 std::uint64_t TextureRef::Generation() const noexcept { return generation_; }
 
+void TextureRef::CollectTarget(HolderSet &a_set) const {
+  if (target_) {
+    a_set.insert(TargetId(target_.get()));
+  }
+}
+
+std::uintptr_t TargetId(const TextureLab::RenderTarget *a_target) noexcept {
+  return reinterpret_cast<std::uintptr_t>(a_target);
+}
+
+void CollectView(const TextureView &a_view, HolderSet &a_set) {
+  a_view.texture.CollectTarget(a_set);
+  if (a_view.target) {
+    a_set.insert(TargetId(a_view.target.get()));
+  }
+}
+
+std::vector<LiveTarget> LiveTextureTargets() {
+  std::vector<LiveTarget> live;
+  Leases().ForEachLive([&live](const TextureLab::RenderTarget &a_target) {
+    live.push_back({TargetId(&a_target), a_target.Bytes()});
+  });
+  return live;
+}
+
 std::string TextureIdentity(const TextureRef &a_texture) {
   const RE::NiSourceTexture *texture = a_texture.get();
   const char *name = texture ? texture->name.c_str() : nullptr;

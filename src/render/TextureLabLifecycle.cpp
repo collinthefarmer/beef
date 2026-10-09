@@ -288,6 +288,18 @@ void TextureLab::ExpireIdleTargets(std::uint64_t a_nowMs) {
   }
 }
 
+void TextureLab::CollectIdleTargets(HolderSet &a_set) const {
+  if (targets_) {
+    targets_->CollectIdleTargets(a_set);
+  }
+}
+
+void TextureLab::CollectPreviewTargets(HolderSet &a_set) {
+  if (previews_) {
+    previews_->CollectTargets(a_set);
+  }
+}
+
 void TextureLab::Clear() {
   ClearPreviews();
   targets_->ClearUnused();

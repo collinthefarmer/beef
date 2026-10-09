@@ -164,6 +164,15 @@ void TexturePreviews::RenderPreviews() {
   }
 }
 
+void TexturePreviews::CollectTargets(HolderSet &a_set) {
+  std::scoped_lock lock{previewLock_};
+  for (const auto &[key, entry] : previews_) {
+    entry.source.CollectTarget(a_set);
+    if (entry.target)
+      a_set.insert(TargetId(entry.target.get()));
+  }
+}
+
 void TexturePreviews::ClearPreviews() {
   std::scoped_lock lock{previewLock_};
   previews_.clear();

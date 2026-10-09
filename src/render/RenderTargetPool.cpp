@@ -254,6 +254,13 @@ RenderTargetPool::Holdings RenderTargetPool::Held() const {
   return held;
 }
 
+void RenderTargetPool::CollectIdleTargets(HolderSet &a_set) const {
+  std::scoped_lock lock{pool_->lock};
+  pool_->targets.ForEach([&a_set](const RenderTarget &a_target) {
+    a_set.insert(TargetId(&a_target));
+  });
+}
+
 void RenderTargetPool::ExpireIdle(std::uint64_t a_nowMs) {
   ResourcePool<RenderTarget>::Released released;
   {

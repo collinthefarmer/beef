@@ -45,6 +45,7 @@ struct MaterialInputs {
   bool flatDisplacement = true;
 
   [[nodiscard]] static MaterialInputs From(const PbrMaterial &a_material);
+  void CollectTargets(HolderSet &a_set) const;
 };
 
 class RenderInstance;
@@ -188,6 +189,8 @@ public:
                          std::uint64_t a_nowMS);
   void SweepStepOutputs(std::uint64_t a_nowMS);
   void ClearStepOutputs() noexcept;
+  void CollectCachedTargets(HolderSet &a_set) const;
+  void CollectResidentTargets(HolderSet &a_set) const;
 
 private:
   friend class RenderInstance;
