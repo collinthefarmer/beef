@@ -24,7 +24,7 @@ using test::Check;
 namespace {
 constexpr std::uint32_t kGuardedBaseSide = 2048;
 constexpr std::array<std::uint32_t, 3> kBaseSides{1024, 2048, 4096};
-constexpr std::uint64_t kFillTemplateHeldBytes = std::uint64_t{37} << 20;
+constexpr std::uint64_t kFillTemplateHeldBytes = std::uint64_t{34} << 20;
 
 bool ActorScoped(const ExternalSource &a_source) {
   return Is<EffectShaderInput>(a_source) || Is<EventInput>(a_source) ||

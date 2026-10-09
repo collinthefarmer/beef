@@ -1009,9 +1009,20 @@ bool TextureLab::BakeMesh(RenderTarget &a_target, const BakeBuffers &a_bake) {
   if (!buffers) {
     return false;
   }
-  DrawBakeTriangles(pass, a_target, *buffers);
-  if (!DrawDilation(pass, a_target) &&
-      a_target.mips == TargetMips::kGeneratedOnDraw) {
+  const std::shared_ptr<RenderTarget> coverage =
+      HoldsCoverage(a_target.format)
+          ? nullptr
+          : Acquire(TextureSize{a_target.size}, "bake coverage",
+                    TextureFormat::kRgba8, TargetMips::kNone);
+  RenderTarget &drawn = coverage ? *coverage : a_target;
+  DrawBakeTriangles(pass, drawn, *buffers);
+  if (DilateInto(pass, drawn, a_target)) {
+    return true;
+  }
+  if (coverage) {
+    DrawBakeTriangles(pass, a_target, *buffers);
+  }
+  if (a_target.mips == TargetMips::kGeneratedOnDraw) {
     GenerateMips(pass, a_target);
   }
   return true;
@@ -1045,22 +1056,22 @@ void TextureLab::DrawBakeTriangles(const RenderPass &a_pass,
   UnbindTarget(a_pass, kPassSrvs);
 }
 
-bool TextureLab::DrawDilation(const RenderPass &a_pass,
-                              RenderTarget &a_target) {
+bool TextureLab::DilateInto(const RenderPass &a_pass, RenderTarget &a_source,
+                            RenderTarget &a_destination) {
   const PixelPipeline *dilate =
       gpu_ && gpu_->dilate.has_value() ? &gpu_->dilate.value() : nullptr;
   const std::shared_ptr<RenderTarget> gutter =
-      dilate ? Acquire(TextureSize{a_target.size}, "dilation gutter",
-                       a_target.format, TargetMips::kNone)
+      dilate ? Acquire(TextureSize{a_source.size}, "dilation gutter",
+                       a_source.format, TargetMips::kNone)
              : nullptr;
   if (!dilate || !gutter || !gutter->rtv.Get() ||
-      gutter->size != a_target.size) {
+      gutter->size != a_source.size || a_destination.size != a_source.size) {
     return false;
   }
-  REX::W32::ID3D11ShaderResourceView *fromTarget[]{a_target.srv.Get()};
-  DrawFullScreen(a_pass, *gutter, {dilate->shader.Get(), fromTarget, {}});
+  REX::W32::ID3D11ShaderResourceView *fromSource[]{a_source.srv.Get()};
+  DrawFullScreen(a_pass, *gutter, {dilate->shader.Get(), fromSource, {}});
   REX::W32::ID3D11ShaderResourceView *fromGutter[]{gutter->srv.Get()};
-  DrawFullScreen(a_pass, a_target, {dilate->shader.Get(), fromGutter, {}});
+  DrawFullScreen(a_pass, a_destination, {dilate->shader.Get(), fromGutter, {}});
   return true;
 }
 

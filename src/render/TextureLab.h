@@ -181,6 +181,11 @@ public:
     return a_mips != TargetMips::kNone;
   }
 
+  [[nodiscard]] static constexpr bool
+  HoldsCoverage(TextureFormat a_format) noexcept {
+    return a_format != TextureFormat::kR8;
+  }
+
   [[nodiscard]] static constexpr TargetMips
   MipsFor(MipPolicy a_policy) noexcept {
     return a_policy == MipPolicy::kGenerate ? TargetMips::kGeneratedOnDraw
@@ -426,7 +431,8 @@ private:
   void UnbindTarget(const RenderPass &a_pass, std::uint32_t a_srvCount);
   void DrawBakeTriangles(const RenderPass &a_pass, RenderTarget &a_target,
                          const UploadedBakeBuffers &a_buffers);
-  bool DrawDilation(const RenderPass &a_pass, RenderTarget &a_target);
+  bool DilateInto(const RenderPass &a_pass, RenderTarget &a_source,
+                  RenderTarget &a_destination);
 
   bool CompileShaders(GpuResources &a_resources);
   bool CreateFullScreenShaders(GpuResources &a_resources);

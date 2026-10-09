@@ -164,8 +164,8 @@ disables only its own pass (`ProgramPassAvailable`, `RippleAvailable`,
 | `ClusterConstants` | The cluster pass's constant buffer: RMAOS, luma and diffuse centroids for `kMaxMaterialClusters` (8) clusters, plus weights. | `ShaderConstants.h` |
 
 `TextureLab::BakeMesh` rasterizes a mesh's triangles into UV space. It then
-calls `DrawDilation`, which draws the dilate shader twice through a gutter
-target leased from the pool for the draw, so that covered texels spread into the gutter around each UV island.
+calls `DilateInto`, which draws the dilate shader twice through a gutter
+target leased from the pool for the draw, so that covered texels spread into the gutter around each UV island. An R8 target has no alpha to mark coverage, so its triangles go into an RGBA8 coverage target leased for the draw, and the second dilation pass writes the R8 target.
 
 ### Measurements and readback
 

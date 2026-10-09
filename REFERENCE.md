@@ -1273,7 +1273,7 @@ layout, and so its out-of-view share, did not exist.
   after the pool lock is released. Targets held by active consumers,
   previews or material journals are outside this allowance.
 - A draw that needs a second target for one draw only (the layer swap of
-  `RenderLayersOneByOne`, the dilation gutter of `DrawDilation`) leases one
+  `RenderLayersOneByOne`, the dilation gutter of `DilateInto`) leases one
   from the pool and returns it when the draw ends. Before 2026-10-09 these
   were scratch targets that the pool kept per size and format until a load. Destruction occurs only after the final target lease
   returns; normal D3D resource ownership and presenter restoration still apply.
@@ -2114,14 +2114,20 @@ them outside as separate passes.
   `PSClusters`, the slope pass). Readers need no change, because every view
   of a scalar step output reads channel R (`View`), and `Pick` with channel R
   returns `.rrr`; an R8 texture samples as `(r, 0, 0, 1)`.
-- A mesh bake and a distance bake stay RGBA8 (`Rgba8`), also for a scalar.
-  `BakePS` writes alpha 1 on covered texels and `DilatePS` reads alpha to
-  find the gutter it fills; an R8 texture samples alpha as 1 everywhere, so
-  dilation would stop. The ripple's position bake holds a vec3.
-- In the fill template, R8 holds 7 of the 8 scalar targets; the chart id bake
-  stays RGBA8. A plan holds 36.3 MiB at a 2048² base, against 57.3 MiB with
-  every target RGBA8 and 69.3 MiB before the mip change. It keeps the same
-  13 targets, because inlining accepts either 8-bit format.
+- `BakePS` writes alpha 1 on covered texels, and `DilatePS` reads alpha to
+  find the gutter it fills. An R8 texture samples alpha as 1 everywhere. A
+  scalar bake into an R8 target therefore draws its triangles into an RGBA8
+  **coverage** target leased for the draw, dilates from it into a leased
+  gutter, and dilates from the gutter into the R8 target
+  (`TextureLab::BakeMesh`, `DilateInto`, `HoldsCoverage`). Without the
+  dilate pipeline it draws the triangles into the R8 target, undilated, as
+  an RGBA8 bake did. The ripple's position bake holds a vec3 and stays RGBA8
+  (`Rgba8`).
+- In the fill template, R8 holds all 8 scalar targets. A plan holds 33.3 MiB
+  at a 2048² base, against 57.3 MiB with every target RGBA8 and 69.3 MiB
+  before the mip change. It keeps the same 13 targets, because inlining
+  accepts either 8-bit format. From 2026-10-09 until the coverage target the
+  chart id bake stayed RGBA8 (36.3 MiB per plan).
 - A stack of up to 8 layers (`kMaxStackLayers`) without a legacy
   curve draws in one `PSStack` pass. The per-layer `LayerPass` and `PSStack`
   both call `ComposeLayer`, so they compute the same value per layer.
