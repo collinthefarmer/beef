@@ -262,21 +262,6 @@ PreemptionCandidate(const PreemptionRequest &a_request,
   return surplus >= a_request.shortfall ? chosen : std::nullopt;
 }
 
-std::optional<std::uint32_t> HiddenSince(bool a_inView,
-                                         std::optional<std::uint32_t> a_since,
-                                         std::uint32_t a_nowMS) noexcept {
-  if (a_inView) {
-    return std::nullopt;
-  }
-  return a_since.value_or(a_nowMS);
-}
-
-bool HiddenReleaseDue(std::optional<std::uint32_t> a_since,
-                      std::uint32_t a_nowMS) noexcept {
-  return a_since && a_nowMS >= *a_since &&
-         a_nowMS - *a_since >= kHiddenReleaseMS;
-}
-
 BudgetResponse RespondToPressure(std::uint64_t a_planned, std::uint64_t a_goal,
                                  std::span<const BudgetActor> a_actors,
                                  bool a_resizeBusy) {

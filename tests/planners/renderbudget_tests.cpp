@@ -302,19 +302,6 @@ void PreemptionNeedsEnoughSurplus() {
         "an unknown allowance has no shortfall");
 }
 
-void HiddenActorsReleaseAfterTheDelay() {
-  Check(!HiddenSince(true, 1000, 5000), "an actor in view has no hidden time");
-  Check(HiddenSince(false, std::nullopt, 5000) == 5000u,
-        "the hidden time starts when the actor leaves the view");
-  Check(HiddenSince(false, 1000, 5000) == 1000u,
-        "the hidden time keeps its start while the actor stays out of view");
-  Check(!HiddenReleaseDue(std::nullopt, 9000), "an actor in view is never due");
-  Check(!HiddenReleaseDue(1000, 1000 + kHiddenReleaseMS - 1) &&
-            HiddenReleaseDue(1000, 1000 + kHiddenReleaseMS),
-        "a hidden actor is due once it has been out of view for the delay");
-  Check(!HiddenReleaseDue(9000, 1000), "a clock behind the start is not due");
-}
-
 void HeadroomFollowsTheState() {
   Check(!HeadroomOf(BudgetState{}, 0).has_value(),
         "an unknown allowance gives no headroom bound");
@@ -456,7 +443,6 @@ int main() {
   WidestGapThenMostFreedStepsDownFirst();
   PlayerIsNeverPicked();
   OutOfViewActorsStepDownFirst();
-  HiddenActorsReleaseAfterTheDelay();
   PreemptionTakesFromSmallerOrHiddenActors();
   PreemptionNeedsEnoughSurplus();
   HeadroomFollowsTheState();

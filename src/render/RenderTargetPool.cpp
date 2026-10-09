@@ -172,12 +172,10 @@ RenderTargetPool::Acquire(ID3D11Device *a_device, const TargetShape &a_shape,
   std::unique_ptr<RenderTarget> target;
   {
     std::scoped_lock lock{pool_->lock};
-    target = pool_->targets.Take([&](const RenderTarget &a_target) {
-      return a_target.size == a_shape.size.Pixels() &&
-             a_target.format == a_shape.format &&
-             TextureLab::HasChain(a_target.mips) ==
-                 TextureLab::HasChain(a_shape.mips);
-    });
+    if (std::optional<std::unique_ptr<RenderTarget>> idle =
+            pool_->targets.Take(ShapeOf(a_shape))) {
+      target = std::move(*idle);
+    }
   }
   if (!target) {
     target = std::make_unique<RenderTarget>();
@@ -234,10 +232,14 @@ void RenderTargetPool::Recycle(const std::weak_ptr<Pool> &a_pool,
                        {"generation", std::to_string(target->generation_)},
                        {"presenter", Trace::Pointer(target->presenter.get())}});
     const std::uint64_t bytes = target->Bytes();
-    ResourcePool<RenderTarget>::Released released;
+    const IdleShape shape = ShapeOf(*target);
+    std::optional<std::unique_ptr<RenderTarget>> rejected;
+    IdleTargets::Evicted evicted;
     {
       std::scoped_lock lock{pool->lock};
-      released = pool->targets.Retain(std::move(target), bytes);
+      rejected =
+          pool->targets.Insert(shape, std::move(target), bytes, pool->now);
+      evicted = pool->targets.Sweep(pool->now, KeepNone{});
     }
   } catch (...) {
     target.reset();
@@ -256,24 +258,39 @@ RenderTargetPool::Holdings RenderTargetPool::Held() const {
 
 void RenderTargetPool::CollectIdleTargets(HolderSet &a_set) const {
   std::scoped_lock lock{pool_->lock};
-  pool_->targets.ForEach([&a_set](const RenderTarget &a_target) {
-    a_set.insert(TargetId(&a_target));
-  });
+  pool_->targets.ForEach(
+      [&a_set](const std::unique_ptr<RenderTarget> &a_target) {
+        if (a_target) {
+          a_set.insert(TargetId(a_target.get()));
+        }
+      });
 }
 
 void RenderTargetPool::ExpireIdle(std::uint64_t a_nowMs) {
-  ResourcePool<RenderTarget>::Released released;
+  IdleTargets::Evicted evicted;
   {
     std::scoped_lock lock{pool_->lock};
-    released = pool_->targets.Expire(a_nowMs, kMaxIdleMs);
+    pool_->now = a_nowMs;
+    evicted = pool_->targets.Sweep(a_nowMs, KeepNone{});
   }
 }
 
 void RenderTargetPool::ClearUnused() {
-  ResourcePool<RenderTarget> unused{kMaxIdleTargets, kMaxIdleBytes};
+  IdleTargets::Evicted evicted;
   {
     std::scoped_lock lock{pool_->lock};
-    std::swap(unused, pool_->targets);
+    evicted = pool_->targets.Clear();
   }
+}
+
+RenderTargetPool::IdleShape
+RenderTargetPool::ShapeOf(const RenderTarget &a_target) noexcept {
+  return {a_target.size, a_target.format, TextureLab::HasChain(a_target.mips)};
+}
+
+RenderTargetPool::IdleShape
+RenderTargetPool::ShapeOf(const TargetShape &a_shape) noexcept {
+  return {a_shape.size.Pixels(), a_shape.format,
+          TextureLab::HasChain(a_shape.mips)};
 }
 }

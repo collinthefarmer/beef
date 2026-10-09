@@ -86,6 +86,17 @@ constexpr std::array kTable{
                 &Settings::renderTargetBudgetMiB, 0,
                 static_cast<float>(kMaxRenderTargetBudgetMiB), W::kBudgetCap,
                 false},
+    SettingDesc{"General", "StepDownHoldSeconds", "Step-down hold",
+                "Seconds an NPC must stay small on screen before its effects "
+                "step down to a lower resolution.",
+                &Settings::stepDownHoldSeconds, 0.0f, kMaxStepDownHoldSeconds,
+                W::kSlider, false},
+    SettingDesc{"General", "HiddenReleaseSeconds", "Hidden release hold",
+                "Seconds an NPC must stay out of view before its effects "
+                "release their intermediate textures. They are drawn again "
+                "when the NPC comes back into view.",
+                &Settings::hiddenReleaseSeconds, 0.0f, kMaxHiddenReleaseSeconds,
+                W::kSlider, false},
     SettingDesc{"General", "AnimationFPS", "Animation FPS",
                 "Animation update rate.", &Settings::animationFPS,
                 kMinAnimationFPS, kMaxAnimationFPS, W::kIntSlider, false},

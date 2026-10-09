@@ -203,9 +203,10 @@ the target again.
 |---|---|---|
 | `TextureLab::RenderTarget` | One D3D11 texture with its views, size, `TextureFormat`, `TargetMips` (`kNone`, `kGeneratedOnDraw` or `kGeneratedByCaller`), generation and presenter. It cannot be copied or moved. | `TextureLab.h` |
 | `VideoMemoryProbe` | Reads the DXGI budget and usage of the local segment for the render target budget. It reaches `IDXGIAdapter3` from the game's D3D11 device once and keeps it. It keeps a failure too, and `Sample` then returns the failure text. | `VideoMemory.h` |
-| `RenderTargetPool` | Owns the idle targets (at most 16 and 64 MiB; the oldest go when a returned target does not fit, and any target idle 5 s goes at the next `ExpireIdle`), and `kPresenterCount` (512) presenter slots. `Acquire` takes a `TargetShape` (size, format, mips), creates it as `DXGI_FORMAT_R8_UNORM`, `R8G8B8A8_UNORM`, `R32_FLOAT` or `R32G32B32A32_FLOAT`, reuses an idle target only with the same chain, and returns a shared target, and `Recycle` returns a released target to the pool. | `RenderTargetPool.h` |
+| `RenderTargetPool` | Owns the idle targets in a `RetainedStore` keyed by `IdleShape` (pixels, format and mip chain) under `kIdleTargets`: at most 16 targets and 64 MiB, and 5 s idle. When a returned target does not fit, the oldest idle targets go. `ExpireIdle` evicts every target idle 5 s. The pool destroys evicted targets after it releases its lock. It also owns `kPresenterCount` (512) presenter slots. `Acquire` takes a `TargetShape` (size, format, mips), creates it as `DXGI_FORMAT_R8_UNORM`, `R8G8B8A8_UNORM`, `R32_FLOAT` or `R32G32B32A32_FLOAT`, reuses an idle target only with the same chain, and returns a shared target, and `Recycle` returns a released target to the pool. | `RenderTargetPool.h` |
 | `TextureRef` | A generated target or a static engine texture. `get()` returns the presenter or the engine texture. `Valid()` and `Generation()` tell a live target from a stale one. | `TextureRef.h` |
 | `TextureIdentity` | The engine texture's address, generation and name as text. `CompositorDemand.cpp` uses it in material identities. It differs from `ImageCacheKey` (`planners/TextureIdentity.h`), which identifies a file by its path. | `TextureRef.h` |
+| `IdentityShape<RE::NiSourceTexture>`, `IdentityShape<RE::BSGeometry>` | The identity shapes of engine textures (`NamedTexture`) and geometries (`MeshInstall`) for `Identity<T>` in `planners/References.h`. No code uses them yet. | `Identities.h` |
 | `TexturePreviews` | The studio's live preview requests, keyed by source texture, channel and context. It re-renders the dynamic entries each generation and expires the unused ones. | `TexturePreviews.h` |
 | `TextureLab::PreviewSampling` | The sampling and normalization of one sampled preview. | `TextureLab.h` |
 
@@ -304,7 +305,7 @@ places the lights, and `LightBinding::Update` sets their values each tick.
 | Generated shaders | `GeneratedShaders.h`, `GeneratedShaders.cpp` |
 | Plan execution | `RenderInstance.h`, `RenderInstance.cpp` |
 | Compositor entry points and caches | `Compositor.h`, `Compositor.cpp`, `CompositorSource.cpp`, `CompositorBake.cpp`, `CompositorDemand.cpp`, `SourceSampling.h`, `SourceSampling.cpp` |
-| Targets, presenters and previews | `RenderTargetPool.h`, `RenderTargetPool.cpp`, `TextureRef.h`, `TextureRef.cpp`, `TexturePreviews.h`, `TexturePreviews.cpp` |
+| Targets, presenters and previews | `RenderTargetPool.h`, `RenderTargetPool.cpp`, `TextureRef.h`, `TextureRef.cpp`, `TexturePreviews.h`, `TexturePreviews.cpp`, `Identities.h` |
 | Video memory | `VideoMemory.h`, `VideoMemory.cpp` |
 | Bindings and material layout | `Binding.h`, `Binding.cpp`, `PBRMaterial.h`, `PBRMaterial.cpp`, `Shell.cpp`, `Light.cpp` |
 | Meshes and skin | `MeshCache.h`, `MeshCache.cpp`, `MeshReader.h`, `MeshReader.cpp`, `SkinData.h`, `SkinData.cpp`, `SkinPalette.h`, `SkinPalette.cpp` |

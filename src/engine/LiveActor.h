@@ -8,6 +8,7 @@
 #include "engine/JobQueue.h"
 #include "planners/ActorMatches.h"
 #include "planners/BindingPlan.h"
+#include "planners/Hold.h"
 #include "planners/PlanSizes.h"
 #include "planners/RenderBudget.h"
 #include "planners/RenderPlan.h"
@@ -136,8 +137,8 @@ struct LiveActor {
   PerLevel<std::optional<LevelCost>> levelCosts;
   IntermediateHolding intermediates = IntermediateHolding::kHeld;
   std::optional<ResolutionLevel> stepUpBlockedFrom;
-  std::optional<std::uint32_t> smallSinceMS;
-  std::optional<std::uint32_t> hiddenSinceMS;
+  Hold smallOnScreen;
+  Hold outOfView;
   std::optional<JobId> awaitedPlan;
   std::uint64_t renderedFrame = 0;
   std::shared_ptr<const RecipeCatalog> catalog;

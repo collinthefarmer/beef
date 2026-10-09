@@ -1,4 +1,5 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
+#include "planners/Hold.h"
 #include "planners/ResolutionLevel.h"
 #include "test_support.h"
 
@@ -27,16 +28,17 @@ ActorSight Unseen(float a_fraction) {
   return {a_fraction, false, ActorRole::kOther};
 }
 
-constexpr std::uint32_t kNow = 100000;
+constexpr Millis kNow = 100000;
+constexpr Millis kHoldMS = 2000;
 
 void InViewStepsUpAtOnce() {
-  Check(NextLevelStep(ResolutionLevel::kEighth, Seen(0.26f), std::nullopt,
-                      kNow) == LevelStep{StepUpTo{ResolutionLevel::kHalf}},
+  Check(NextLevelStep(ResolutionLevel::kEighth, Seen(0.26f), false) ==
+            LevelStep{StepUpTo{ResolutionLevel::kHalf}},
         "a larger screen size steps up at once, skipping the levels between");
-  Check(NextLevelStep(ResolutionLevel::kHalf, Seen(0.24f), std::nullopt,
-                      kNow) == LevelStep{KeepLevel{}},
+  Check(NextLevelStep(ResolutionLevel::kHalf, Seen(0.24f), false) ==
+            LevelStep{KeepLevel{}},
         "just under a threshold an actor keeps its level");
-  Check(NextLevelStep(ResolutionLevel::kHalf, Seen(0.3f), std::nullopt, kNow) ==
+  Check(NextLevelStep(ResolutionLevel::kHalf, Seen(0.3f), false) ==
             LevelStep{KeepLevel{}},
         "an actor at its level asks for nothing");
 }
@@ -44,11 +46,11 @@ void InViewStepsUpAtOnce() {
 void OutOfViewNeverStepsUp() {
   Check(WantedLevel(Unseen(0.9f)) == ResolutionLevel::kEighth,
         "an actor out of view wants the coarsest level");
-  Check(NextLevelStep(ResolutionLevel::kEighth, Unseen(0.9f), std::nullopt,
-                      kNow) == LevelStep{KeepLevel{}},
+  Check(NextLevelStep(ResolutionLevel::kEighth, Unseen(0.9f), false) ==
+            LevelStep{KeepLevel{}},
         "an actor out of view never steps up");
-  Check(NextLevelStep(ResolutionLevel::kFull, Unseen(0.9f), std::nullopt,
-                      kNow) == LevelStep{KeepLevel{}},
+  Check(NextLevelStep(ResolutionLevel::kFull, Unseen(0.9f), false) ==
+            LevelStep{KeepLevel{}},
         "a large actor out of view keeps its level");
 }
 
@@ -61,43 +63,47 @@ void SmallActorsStepDownAfterTheHold() {
             SmallFor(0.09f, ResolutionLevel::kQuarter),
         "each level is small below 0.8 of its own threshold");
   Check(!SmallFor(0.0f, ResolutionLevel::kEighth), "eighth is never small");
-  const std::optional<std::uint32_t> since =
-      SmallSince(ResolutionLevel::kFull, 0.3f, std::nullopt, kNow);
-  Check(since == kNow, "the hold starts when the actor becomes small");
-  Check(SmallSince(ResolutionLevel::kFull, 0.3f, since, kNow + 500) == kNow,
+  const Hold small =
+      Hold{}.Update(SmallFor(0.3f, ResolutionLevel::kFull), kNow);
+  Check(small.since == kNow, "the hold starts when the actor becomes small");
+  Check(small.Update(SmallFor(0.3f, ResolutionLevel::kFull), kNow + 500) ==
+            small,
         "the hold keeps its start while the actor stays small");
-  Check(!SmallSince(ResolutionLevel::kFull, 0.45f, since, kNow + 500),
-        "the hold clears when the actor grows past the band");
-  Check(NextLevelStep(ResolutionLevel::kFull, Seen(0.3f), since,
-                      kNow + kStepDownHoldMS - 1) == LevelStep{KeepLevel{}},
+  Check(
+      !small.Update(SmallFor(0.45f, ResolutionLevel::kFull), kNow + 500).since,
+      "the hold clears when the actor grows past the band");
+  Check(NextLevelStep(ResolutionLevel::kFull, Seen(0.3f),
+                      small.Due(kNow + kHoldMS - 1, kHoldMS)) ==
+            LevelStep{KeepLevel{}},
         "no step down before the hold ends");
-  Check(NextLevelStep(ResolutionLevel::kFull, Seen(0.05f), since,
-                      kNow + kStepDownHoldMS) ==
+  Check(NextLevelStep(ResolutionLevel::kFull, Seen(0.05f),
+                      small.Due(kNow + kHoldMS, kHoldMS)) ==
             LevelStep{StepDownTo{ResolutionLevel::kHalf}},
         "after the hold an actor steps down one level, however small");
-  Check(NextLevelStep(ResolutionLevel::kFull, Unseen(0.3f), since,
-                      kNow + kStepDownHoldMS) ==
+  Check(NextLevelStep(ResolutionLevel::kFull, Unseen(0.3f),
+                      small.Due(kNow + kHoldMS, kHoldMS)) ==
             LevelStep{StepDownTo{ResolutionLevel::kHalf}},
         "an actor out of view steps down by its size alone");
 }
 
 void WalkingAwayAndBackSettles() {
   ResolutionLevel level = ResolutionLevel::kQuarter;
-  std::optional<std::uint32_t> since;
-  std::uint32_t now = kNow;
+  Hold small;
+  Millis now = kNow;
   std::size_t changes = 0;
   for (const float fraction :
        {0.26f, 0.24f, 0.51f, 0.45f, 0.42f, 0.41f, 0.52f, 0.45f, 0.41f}) {
     for (int tick = 0; tick < 30; ++tick, now += 100) {
-      since = SmallSince(level, fraction, since, now);
-      const LevelStep step = NextLevelStep(level, Seen(fraction), since, now);
+      small = small.Update(SmallFor(fraction, level), now);
+      const LevelStep step =
+          NextLevelStep(level, Seen(fraction), small.Due(now, kHoldMS));
       if (const auto *up = std::get_if<StepUpTo>(&step)) {
         level = up->level;
-        since.reset();
+        small = {};
         ++changes;
       } else if (const auto *down = std::get_if<StepDownTo>(&step)) {
         level = down->level;
-        since.reset();
+        small = {};
         ++changes;
       }
     }
@@ -109,21 +115,21 @@ void WalkingAwayAndBackSettles() {
 void UnmeasuredSizeKeepsTheLevel() {
   const ActorSight unmeasured{std::nullopt, true, ActorRole::kOther};
   Check(!WantedLevel(unmeasured), "an unmeasured actor wants nothing");
-  Check(!SmallSince(ResolutionLevel::kFull, std::nullopt, std::nullopt, kNow),
+  Check(!SmallFor(std::nullopt, ResolutionLevel::kFull),
         "an unmeasured actor never starts the hold");
-  Check(NextLevelStep(ResolutionLevel::kEighth, unmeasured, std::nullopt,
-                      kNow) == LevelStep{KeepLevel{}},
+  Check(NextLevelStep(ResolutionLevel::kEighth, unmeasured, false) ==
+            LevelStep{KeepLevel{}},
         "an unmeasured actor keeps its level");
 }
 
 void PlayerStaysFull() {
   const ActorSight player{0.01f, true, ActorRole::kPlayer};
-  Check(NextLevelStep(ResolutionLevel::kFull, player, kNow,
-                      kNow + 10 * kStepDownHoldMS) == LevelStep{KeepLevel{}},
+  Check(NextLevelStep(ResolutionLevel::kFull, player, true) ==
+            LevelStep{KeepLevel{}},
         "the player stays full however small");
   Check(NextLevelStep(ResolutionLevel::kQuarter,
-                      {std::nullopt, false, ActorRole::kPlayer}, std::nullopt,
-                      kNow) == LevelStep{StepUpTo{ResolutionLevel::kFull}},
+                      {std::nullopt, false, ActorRole::kPlayer},
+                      false) == LevelStep{StepUpTo{ResolutionLevel::kFull}},
         "a player below full returns to full");
 }
 

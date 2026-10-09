@@ -936,7 +936,7 @@ void Manager::Tick(std::uint32_t a_nowMS, const Settings &a_settings) {
     if (state.inView) {
       state.intermediates = IntermediateHolding::kHeld;
     }
-    ReleaseWhileHidden(it->first, state);
+    ReleaseWhileHidden(it->first, state, a_settings);
     RequestLevelStep(it->first, *actor, state, a_settings);
     std::vector<bool> hidden;
     if (state.inView) {
@@ -1079,11 +1079,11 @@ void Manager::TickInstance(LiveInstance &a_instance, float a_time,
   a_instance.signals->Tick(*a_instance.environment, {a_time, a_delta});
 }
 
-void Manager::ReleaseWhileHidden(RE::FormID a_actorID, LiveActor &a_state) {
-  a_state.hiddenSinceMS =
-      HiddenSince(a_state.inView, a_state.hiddenSinceMS, tickNowMS_);
+void Manager::ReleaseWhileHidden(RE::FormID a_actorID, LiveActor &a_state,
+                                 const Settings &a_settings) {
+  a_state.outOfView = a_state.outOfView.Update(!a_state.inView, tickNowMS_);
   if (a_state.intermediates != IntermediateHolding::kHeld ||
-      !HiddenReleaseDue(a_state.hiddenSinceMS, tickNowMS_) ||
+      !a_state.outOfView.Due(tickNowMS_, a_settings.HiddenReleaseMS()) ||
       !Is<ResizeIdle>(a_state.resize) || a_state.firstDraw) {
     return;
   }
@@ -1103,10 +1103,11 @@ void Manager::RequestLevelStep(RE::FormID a_actorID, RE::Actor &a_actor,
   }
   ResolutionLevel &level = *tracked->second.targetResolution;
   const ActorSight sight = SightOf(a_state, a_actor, a_settings);
-  a_state.smallSinceMS =
-      SmallSince(level, sight.screenFraction, a_state.smallSinceMS, tickNowMS_);
-  const LevelStep step =
-      NextLevelStep(level, sight, a_state.smallSinceMS, tickNowMS_);
+  a_state.smallOnScreen = a_state.smallOnScreen.Update(
+      SmallFor(sight.screenFraction, level), tickNowMS_);
+  const LevelStep step = NextLevelStep(
+      level, sight,
+      a_state.smallOnScreen.Due(tickNowMS_, a_settings.StepDownHoldMS()));
   std::optional<ResolutionLevel> next;
   if (const StepUpTo *up = Get<StepUpTo>(step)) {
     if (sight.role != ActorRole::kPlayer &&
@@ -1129,7 +1130,7 @@ void Manager::RequestLevelStep(RE::FormID a_actorID, RE::Actor &a_actor,
        {"reason", "screen"},
        {"screen_fraction", FractionText(a_state.screenFraction)}});
   level = *next;
-  a_state.smallSinceMS.reset();
+  a_state.smallOnScreen = {};
   RequestResize(a_state, *next);
 }
 
@@ -1475,7 +1476,7 @@ void Manager::StepDownForBudget(RE::FormID a_actorID, LiveActor &a_state,
   const ResolutionLevel from = a_state.appliedResolution;
   tracked->second.targetResolution = a_option.to;
   a_state.stepUpBlockedFrom.reset();
-  a_state.smallSinceMS.reset();
+  a_state.smallOnScreen = {};
   RequestResize(a_state, a_option.to);
   logger::info("{}", StepDownLine({a_actorID, NameOf(a_state), from, a_option,
                                    a_preemptedBy}));

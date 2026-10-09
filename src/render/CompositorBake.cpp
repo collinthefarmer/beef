@@ -96,10 +96,17 @@ Compositor::CachedMaterial(const MaterialInputs &a_material) const {
 
 void Compositor::SweepMaterials(std::uint32_t a_nowMS,
                                 std::span<const MaterialKey> a_keep) {
-  materials_.Sweep(a_nowMS, kMaterialMaxAgeMS, kMaxUnusedMaterials, a_keep);
+  const RetainedStore<MaterialKey, MaterialRecord>::Evicted evicted =
+      materials_.Sweep(
+          a_nowMS, [a_keep](const MaterialKey &a_key, const MaterialRecord &) {
+            return std::ranges::contains(a_keep, a_key);
+          });
 }
 
-void Compositor::ClearMaterials() noexcept { materials_.Clear(); }
+void Compositor::ClearMaterials() {
+  const RetainedStore<MaterialKey, MaterialRecord>::Evicted evicted =
+      materials_.Clear();
+}
 
 std::optional<TextureView> Compositor::FindStepOutput(const std::string &a_key,
                                                       std::uint64_t a_nowMS) {

@@ -1,4 +1,4 @@
-Status: active (2026-10-09); decisions D1 to D8 made. Stage 0 is done: `engine/SlotWrites.*` is committed after `camera cull isolation`, `soak-fight`, `soak-fight-orbit`, `soak-orbit` and `soak-distance` passed 5 of 5 with the census clean. Stage 1 is next. Raised by the leak fixes of 2026-10-08 and 2026-10-09 and by three read-only audits on 2026-10-09.
+Status: active (2026-10-09); decisions D1 to D8 made. Stages 0 and 1 are done. Stage 1 passed the full suite (16 of 16) and `soak-hour --quick 600` with the census clean; it put the reference types in `planners/References.h` and the engine-type identity shapes in `render/Identities.h`, and `NextLevelStep` takes whether the step-down hold is due. Stage 2 is next.
 
 # Ownership model
 

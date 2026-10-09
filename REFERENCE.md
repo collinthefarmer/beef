@@ -1257,17 +1257,22 @@ layout, and so its out-of-view share, did not exist.
   of the lost surface and remain until their instance retires.
 
 - Cache maintenance is driven by `Manager::OnFrame` every five seconds even
-  without applied actors. Material records protect active texture pairs, expire
-  unused entries after 30 seconds, and retain at most 64 unused pairs per pass.
-  These provisional retention values mirror the mesh grace period and preserve
-  short rebuild reuse; they are not measured alpha workload limits. Shared target
-  caches prune expired keys both on adoption and during maintenance.
+  without applied actors. Material records live in a `RetainedStore` under
+  `Compositor::kMaterialRecords`: the sweep keeps and renews the texture pairs
+  that bound geometries use, evicts other records after 30 seconds, and keeps
+  at most 64 of them. These provisional retention values mirror the mesh grace
+  period and preserve short rebuild reuse; they are not measured alpha
+  workload limits.
 - The render-target idle pool retains at most 16 targets and 64 MiB
-  (`ResourcePool`). When a returned target does not fit, the pool lets its
-  oldest idle targets go, not the returned one, because a newer shape is the
-  likelier to be asked for again. Each tick, `TextureLab::ExpireIdleTargets`
-  lets go every target idle for 5 s (`kMaxIdleMs`), counted from the first
-  sweep that saw it idle. Before 2026-10-09 the pool refused new targets when
+  (`RenderTargetPool::kIdleTargets`, a `RetainedStore` keyed by
+  `IdleShape`: pixels, format and mip chain). When a returned target does not
+  fit, the pool lets its oldest idle targets go, not the returned one, because
+  a newer shape is the likelier to be asked for again. Each tick,
+  `TextureLab::ExpireIdleTargets` lets go every target idle for 5 s, counted
+  from the time of the last `ExpireIdle` before the target returned
+  (`Pool::now`), because the deleter that returns a target has no clock of
+  its own. Before 2026-10-09 the count started at the first sweep that saw
+  the target idle. Before 2026-10-09 the pool refused new targets when
   full and kept old ones until a load, so shapes from earlier resizes could
   hold the pool. The pool returns what it lets go, and the caller destroys it
   after the pool lock is released. Targets held by active consumers,
@@ -1926,7 +1931,7 @@ length-prefixes both parts like every other identity, because it reads nothing b
 every rebuild and every actor drew its own (2026-10-05: 28 `BakeMesh` passes
 per edit for three Vigilants in the same armor). The compositor's step output cache keeps an entry while something else holds
 its target, renewing its time, and evicts it 500 ms after the last holder lets
-go (`StepOutputRetention`, `kStepOutputIdleMs` in `planners/RetainedCache.h`;
+go (`StepOutputRetention`, `kStepOutputIdleMs` in `planners/RetainedStore.h`;
 `StepOutputCache::Sweep` applies it). Plan lowering memoizes each value's identity per
 build (`IdentitySite`: graph, output, instance, geometry), since the binding
 resolver depends on exactly those, and `InlineLayerFields` recounts consumers
@@ -2236,7 +2241,7 @@ them outside as separate passes.
   the analysis and any problem. Before 2026-10-09 the key was the two raw
   pointers, and the record held both textures so that a freed address could
   not be reused by another texture while the record lived; that kept the
-  game's maps loaded for up to 30 s after use (`kMaterialMaxAgeMS`). A game
+  game's maps loaded for up to 30 s after use (`kMaterialRecords`). A game
   texture reloaded at the same address with the same name is the same file,
   and a plugin target's generation tells a reused target apart.
 
@@ -2665,6 +2670,23 @@ cancel by the user instead of the load.
 
 ## planners (`planners/ActorMatches.h`, `planners/TargetPool.h`, `planners/StackPlan.h`, `planners/BindingPlan.h`, `planners/ActorPlanning.h`, `planners/TextureIdentity.h`)
 
+- Retention helpers (`planners/Hold.h`, `planners/RetainedStore.h`,
+  ownership-model stage 1, 2026-10-09). `RetainedStore` returns what it
+  evicts and never destroys a value itself, because a render target's
+  destructor restores the presenter's renderer data and must run outside the
+  pool's lock. A store's count and byte bounds apply only to the entries the
+  sweep's keep rule does not keep, so the material records' 64 counts unused
+  pairs, as before. `Get` adds an entry without applying the bounds; the next
+  sweep applies them.
+- `Hold` and `RetainedStore` restart a timer when the clock is behind its
+  start. `NowMS` is 32-bit and wraps after 49.7 days; widened to `Millis`
+  (64-bit), a wrap looks like a clock going backwards, and a timer that kept
+  its old start would never be due again.
+- The identity shapes for engine types (`IdentityShape<RE::NiSourceTexture>`,
+  `IdentityShape<RE::BSGeometry>`) are in `render/Identities.h`, not in
+  `planners/References.h`, because the gate rejects an `RE::` name in an
+  engine-free layer (`tools/gate.py`, `ENGINE_SYMBOL`).
+
 - `ResolutionLevel` (`planners/ResolutionLevel.h`) divides every side of an
   NPC's plan by 1, 2, 4 or 8 from its screen fraction (render-performance 7c,
   2026-10-07). An actor of half the screen height or more is full
@@ -2683,11 +2705,12 @@ cancel by the user instead of the load.
   level does not fall because it left the view. It keeps the detail it has
   when the camera turns back to it.
 - An NPC steps down one level when its screen fraction stays below 0.8 of the
-  lower threshold of its level for 2 s (`kStepDownBand`, `kStepDownHoldMS`,
-  `SmallFor`, `SmallSince`). The cutoffs are 0.4 for full, 0.2 for half and
-  0.1 for quarter. The step-down rule reads the fraction in and out of view,
-  so a camera turn does not start the hold. `LiveActor::smallSinceMS` keeps
-  the start of the hold. A fraction above the cutoff clears it. A level
+  lower threshold of its level for 2 s (`kStepDownBand`, `SmallFor`, the
+  setting `StepDownHoldSeconds`). The cutoffs are 0.4 for full, 0.2 for half
+  and 0.1 for quarter. The step-down rule reads the fraction in and out of
+  view, so a camera turn does not start the hold. `LiveActor::smallOnScreen`
+  is a `Hold` that keeps the start of the hold, and `NextLevelStep` takes
+  whether it is due. A fraction above the cutoff clears it. A level
   change clears it.
 - The cutoffs are 0.8 of the step-up thresholds, so an NPC near a threshold
   does not change level back and forth. The 2 s hold is continuous: a
@@ -2971,8 +2994,8 @@ cancel by the user instead of the load.
   42 ms, against 17 µs for a 1024 mask program, 3 to 36 µs for a cluster
   draw and 2 to 17 µs for a slope. A restored bake would also re-read a
   trimmed mesh and rebuild its vertex buffers.
-- An actor out of view for 5 s (`kHiddenReleaseMS`, `HiddenSince`,
-  `HiddenReleaseDue`, `LiveActor::hiddenSinceMS`) releases the same
+- An actor out of view for 5 s (the setting `HiddenReleaseSeconds`, the
+  `Hold` `LiveActor::outOfView`) releases the same
   intermediates without pressure (`Manager::ReleaseWhileHidden`, trace event
   `hidden_release`), unless a resize or a first draw is in flight. The delay
   keeps a camera turn from releasing and restoring. When the actor is in
@@ -3741,7 +3764,7 @@ first application lands; the `settle` window after it holds that cost, and
 section) and idle release (in the compositor section) bound the burst's
 memory. A heartbeat's `targets` and
 `target_bytes` include the targets idle in the reuse pool (at most 16 and 64
-MiB, `RenderTargetPool::kMaxIdleTargets` and `kMaxIdleBytes`).
+MiB, `RenderTargetPool::kIdleTargets`).
 
 The heartbeat is emitted before `OnFrame` starts its frame timer, so its own
 trace writes stay out of `frame_us` and the 8 ms spike count. A load returns

@@ -44,7 +44,6 @@ template <class T> struct PerLevel {
 };
 
 inline constexpr float kStepDownBand = 0.8f;
-inline constexpr std::uint32_t kStepDownHoldMS = 2000;
 
 struct ActorSight {
   std::optional<float> screenFraction;
@@ -73,14 +72,9 @@ using LevelStep = std::variant<KeepLevel, StepUpTo, StepDownTo>;
 WantedLevel(const ActorSight &a_sight) noexcept;
 [[nodiscard]] bool SmallFor(std::optional<float> a_screenFraction,
                             ResolutionLevel a_current) noexcept;
-[[nodiscard]] std::optional<std::uint32_t>
-SmallSince(ResolutionLevel a_current, std::optional<float> a_screenFraction,
-           std::optional<std::uint32_t> a_since,
-           std::uint32_t a_nowMS) noexcept;
 [[nodiscard]] LevelStep NextLevelStep(ResolutionLevel a_current,
                                       const ActorSight &a_sight,
-                                      std::optional<std::uint32_t> a_smallSince,
-                                      std::uint32_t a_nowMS) noexcept;
+                                      bool a_stepDownDue) noexcept;
 [[nodiscard]] bool LargerOnScreen(std::optional<float> a_left,
                                   std::optional<float> a_right) noexcept;
 [[nodiscard]] std::optional<ResolutionLevel>

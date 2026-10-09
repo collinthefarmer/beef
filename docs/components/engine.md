@@ -145,8 +145,9 @@ pressure start and end writes one `info` line. Under pressure,
 releases, then its next step (`Enough`, `AwaitResize`, `StepDown` or
 `Exhausted`). Each release and step down names the actor by FormID. An actor
 out of view releases its intermediate targets except the mesh bakes
-(`ReleaseIntermediates`). Without pressure, an actor out of view for 5 s
-releases them too (`ReleaseWhileHidden`). One
+(`ReleaseIntermediates`). Without pressure, an actor out of view for
+`HiddenReleaseSeconds` (5 s by default) releases them too
+(`ReleaseWhileHidden`). One
 NPC steps down one level through the resize (`StepDownForBudget`). When
 neither is left, `ShrinkBudgetRadius` sets or lowers the **budget radius**
 (`Manager::budgetRadius_`) so that the farthest rendered NPC is evicted.
@@ -399,6 +400,8 @@ below the material's native size.
 | `DefaultSlotResolution`, `ResolutionDivisor` | The per-slot default `Resolution` and its divisor (`kFull` 1, `kHalf` 2, `kQuarter` 4). | `recipe/Recipe.h` |
 | `SurfaceOutput::resolution` | An optional `Resolution` that overrides `DefaultSlotResolution` for that output's slot. | `recipe/Recipe.h` |
 | `Settings::renderTargetBudgetMiB` | The cap on the render target allowance in MiB. 0 sets no cap. `kMaxRenderTargetBudgetMiB` (65536) caps it. A regression run can replace it (`RegressionRenderTargetBudgetMiB`). | `Settings.h` |
+| `Settings::stepDownHoldSeconds`, `Settings::StepDownHoldMS` | How long an NPC stays small on screen before `RequestLevelStep` steps it down, in seconds (INI `StepDownHoldSeconds`, default 2, at most `kMaxStepDownHoldSeconds` 30). `LiveActor::smallOnScreen` holds the start. | `Settings.h` |
+| `Settings::hiddenReleaseSeconds`, `Settings::HiddenReleaseMS` | How long an NPC stays out of view before `ReleaseWhileHidden` releases its intermediates, in seconds (INI `HiddenReleaseSeconds`, default 5, at most `kMaxHiddenReleaseSeconds` 60). `LiveActor::outOfView` holds the start. | `Settings.h` |
 | `Manager::budget_`, `BudgetState` | The last allowance, the planned bytes and the `Pressure`: `kNone`, `kOver`, or `kOverWarned` after the exhaustion warning of the episode. | `Manager.h`, `planners/RenderBudget.h` |
 | `Manager::SampleBudget`, `Manager::UpdateBudget`, `Manager::RelieveBudget`, `Manager::StepDownForBudget`, `Manager::AdmitStepUp` | Read the DXGI memory and the cap, update the pressure, apply the responses, step one NPC down, and admit or block one step up. | `ManagerTick.cpp` |
 | `Manager::budgetRadius_`, `BudgetRadius` | The optional budget radius. No record means no radius. | `Manager.h`, `planners/BudgetRadius.h` |
