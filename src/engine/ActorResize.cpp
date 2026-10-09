@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <format>
 #include <memory>
+#include <set>
 #include <utility>
 #include <vector>
 
@@ -36,6 +37,44 @@ std::vector<StackHolder> StackHolders(LiveActor &a_state) {
     }
   }
   return holders;
+}
+
+using MergedLink = std::pair<std::size_t, std::size_t>;
+
+void AddMergedLinks(const LiveActor &a_state, const LiveGeometry &a_geometry,
+                    std::set<MergedLink> &a_links, std::size_t &a_stacks) {
+  for (const MergedSlotStack &merged : a_geometry.mergedSlots) {
+    if (!merged.stack) {
+      continue;
+    }
+    ++a_stacks;
+    for (const ChainLink &link : merged.links) {
+      if (const auto resolved = ResolvePlacement(a_state, link.placement)) {
+        a_links.insert({resolved->placement, link.output});
+      }
+    }
+  }
+}
+
+std::vector<bool> DrawnByMergedChains(const LiveActor &a_state) {
+  std::set<MergedLink> links;
+  std::size_t mergedStacks = 0;
+  for (const LivePiece &piece : a_state.pieces) {
+    for (const LiveGeometry &geometry : piece.geometries) {
+      AddMergedLinks(a_state, geometry, links, mergedStacks);
+    }
+  }
+  std::vector<bool> covered;
+  for (std::size_t p = 0; p < a_state.placements.size(); ++p) {
+    const std::vector<PlacedOutput> &outputs = a_state.placements[p].outputs;
+    for (std::size_t o = 0; o < outputs.size(); ++o) {
+      if (outputs[o].stack) {
+        covered.push_back(links.contains({p, o}));
+      }
+    }
+  }
+  covered.insert(covered.end(), mergedStacks, false);
+  return covered;
 }
 
 bool StacksMatch(const std::vector<StackHolder> &a_holders,
@@ -126,13 +165,17 @@ std::expected<void, std::string> StartResize(LiveActor &a_state,
       return std::unexpected(sizes.error());
     }
     inFlight.render = current->AtSizes(std::move(*sizes));
-    for (const StackHolder holder : StackHolders(a_state)) {
-      std::unique_ptr<RenderOutput> stack = (*holder)->DrawnBy(inFlight.render);
+    const std::vector<StackHolder> holders = StackHolders(a_state);
+    const std::vector<bool> covered = DrawnByMergedChains(a_state);
+    for (std::size_t i = 0; i < holders.size(); ++i) {
+      std::unique_ptr<RenderOutput> stack =
+          (*holders[i])->DrawnBy(inFlight.render);
       if (!stack) {
         a_state.resize = ResizeIdle{};
         return std::unexpected("a stack output names no stack of the plan");
       }
-      inFlight.stacks.push_back({std::move(stack), false});
+      inFlight.stacks.push_back(
+          {std::move(stack), i < covered.size() && covered[i]});
     }
   }
   a_state.resize = std::move(inFlight);

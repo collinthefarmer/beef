@@ -2725,6 +2725,16 @@ cancel by the user instead of the load.
   actor does not keep after placement. `LiveActor::fullSizes` keeps the
   full-resolution sizes, because with the 64-pixel floor the sizes of a
   coarser level do not give back the full sizes.
+- The resize rebinds every stack holder to the new instance but draws only
+  the stacks the actor renders: a placement output that a merged slot chain
+  covers starts as drawn (`DrawnByMergedChains`), as a first draw does,
+  because the merged pass draws in its place. Before 2026-10-09 the hidden
+  draw also drew each covered link. A stack's output is never released, so
+  each resize of an actor with merged chains kept 25 to 40 extra 1024²
+  targets for good. In the session of 2026-10-09 they reached 168 targets
+  (896 MiB) outside the estimate, and in an earlier session they used up the
+  1024 presenter slots. The census (`target_holders`, `unplanned`) showed
+  them as `CompositeStack` outputs of attached instances.
 - The new instance draws hidden, before it is attached. It holds its own copy
   of every input, so it needs no attached geometry. `DrawResize` draws each
   stack with no hidden layers and an empty base. Since 7h it shares the
@@ -3137,7 +3147,10 @@ cancel by the user instead of the load.
   and `<holder>_bytes` for each, `live_targets`, the live `RenderInstance`
   count (`live_instances`) and the instances that live actors reach
   (`attached_instances`). `resolution_swap` carries `live_targets` and
-  `live_instances` at the swap. In the session of 2026-10-09 live targets
+  `live_instances` at the swap. `unplanned` lists, by step kind, format and size, the
+  step outputs that hold a target outside the steps `TargetsOf` prices
+  (`unplanned`), and priced steps whose targets differ from the price
+  (`mispriced`, with the bytes over the price). In the session of 2026-10-09 live targets
   ran 120 to 136 above the estimate after resolution swaps, until the
   1024 presenter slots ran out; the census names the holder.
 - The heartbeat reports the estimate over every live instance of a rendered
