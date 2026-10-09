@@ -112,8 +112,8 @@ the new ones again when the request fails.
 |---|---|
 | `ValueIdentity` | A `canonical` string that `IdentifyValue` encodes from a graph value's structure, external bindings and state owner. |
 | `ValueBindings` | The two callbacks `IdentifyValue` uses: `external` names an `ExternalSource`, and `state` names a node's state owner. |
-| `TextureFormat` | `kRgba8`, `kRgba32Float` or `kR8`. A scalar field uses `kR8`, a reduction operand `kRgba32Float`, a mesh bake and every other value `kRgba8`. |
-| `IsUnorm8`, `BytesPerTexel`, `FormatName` | Whether a format has 8 bits per channel (R8 or RGBA8); its bytes per texel (1, 4 or 16); its name in traces and listings. |
+| `TextureFormat` | `kRgba8`, `kRgba32Float`, `kR8` or `kR32Float`. A scalar field uses `kR8`, or `kR32Float` under a reduction; any other value `kRgba8`, or `kRgba32Float` under a reduction. |
+| `IsUnorm8`, `FormatFor`, `BytesPerTexel`, `FormatName` | Whether a format has 8 bits per channel; the format for a scalar or vector at a precision (8-bit or float); its bytes per texel (1, 4 or 16); its name in traces and listings. |
 | `MipPolicy` | `kGenerate` or `kNone`. |
 | `TextureRequirements` | A `TextureSize`, a `TextureFormat` and a `MipPolicy`. |
 | `TextureKey` | A `ValueIdentity` and the `TextureRequirements`. Equal keys are one demand. |

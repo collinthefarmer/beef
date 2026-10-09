@@ -183,7 +183,8 @@ public:
 
   [[nodiscard]] static constexpr bool
   HoldsCoverage(TextureFormat a_format) noexcept {
-    return a_format != TextureFormat::kR8;
+    return a_format == TextureFormat::kRgba8 ||
+           a_format == TextureFormat::kRgba32Float;
   }
 
   [[nodiscard]] static constexpr TargetMips

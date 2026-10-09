@@ -19,6 +19,8 @@ DXGI_FORMAT DxgiFormatOf(TextureFormat a_format) {
     return DXGI_FORMAT_R8_UNORM;
   case TextureFormat::kRgba8:
     return DXGI_FORMAT_R8G8B8A8_UNORM;
+  case TextureFormat::kR32Float:
+    return DXGI_FORMAT_R32_FLOAT;
   case TextureFormat::kRgba32Float:
     return DXGI_FORMAT_R32G32B32A32_FLOAT;
   }

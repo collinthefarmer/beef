@@ -1013,7 +1013,7 @@ bool TextureLab::BakeMesh(RenderTarget &a_target, const BakeBuffers &a_bake) {
       HoldsCoverage(a_target.format)
           ? nullptr
           : Acquire(TextureSize{a_target.size}, "bake coverage",
-                    TextureFormat::kRgba8, TargetMips::kNone);
+                    FormatFor(false, a_target.format), TargetMips::kNone);
   RenderTarget &drawn = coverage ? *coverage : a_target;
   DrawBakeTriangles(pass, drawn, *buffers);
   if (DilateInto(pass, drawn, a_target)) {

@@ -48,11 +48,8 @@ LoweringRequest OperandRequest(const LoweringRequest &request,
 }
 TextureFormat StoredFormat(const GraphValueType &type,
                            TextureFormat inherited) {
-  if (!IsUnorm8(inherited))
-    return inherited;
   const ValueType *value = Get<ValueType>(type);
-  return value && *value == ValueType::kScalar ? TextureFormat::kR8
-                                               : TextureFormat::kRgba8;
+  return FormatFor(value && *value == ValueType::kScalar, inherited);
 }
 LoweringRequest Stored(const LoweringRequest &request,
                        const GraphValueType &type) {
@@ -69,9 +66,8 @@ TextureRequirements KeyRequirementsOf(const RecipeGraph &graph,
   requirements.format = StoredFormat(type, requirements.format);
   return requirements;
 }
-TextureRequirements Rgba8(TextureRequirements requirements) {
-  if (IsUnorm8(requirements.format))
-    requirements.format = TextureFormat::kRgba8;
+TextureRequirements VectorStorage(TextureRequirements requirements) {
+  requirements.format = FormatFor(false, requirements.format);
   return requirements;
 }
 bool IsUniformNumeric(const LoweringSite &site,
@@ -569,7 +565,7 @@ struct PlanBuilder {
         Step(BuildBakeBuffersStep{mesh, BakeKind{PositionBake{}}},
              label + " position buffers");
     const RenderValueRef positions =
-        Step(BakeMeshStep{buffers, Rgba8(request.requirements)},
+        Step(BakeMeshStep{buffers, VectorStorage(request.requirements)},
              label + " positions");
     KeyPositionBake(positions, operation.geometry, request);
     std::vector<RenderValueRef> inputs;
@@ -589,7 +585,7 @@ struct PlanBuilder {
     if (!mesh)
       return;
     RecordValueKey(TextureKey{PositionBakeIdentity(mesh->key.identity),
-                              Rgba8(request.requirements)},
+                              VectorStorage(request.requirements)},
                    positions);
   }
   RenderValueRef LowerUnsupported(const LoweringSite &site,

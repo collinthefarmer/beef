@@ -11,6 +11,8 @@ std::string_view FormatName(TextureFormat a_format) noexcept {
     return "r8";
   case TextureFormat::kRgba8:
     return "rgba8";
+  case TextureFormat::kR32Float:
+    return "r32f";
   case TextureFormat::kRgba32Float:
     return "f32";
   }

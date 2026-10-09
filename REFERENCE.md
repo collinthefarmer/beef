@@ -2105,10 +2105,13 @@ them outside as separate passes.
   stored field had 8 bits per channel. A texel-centre read returns the stored
   texel exactly, so the inlined program computes the same value.
 - A scalar field is stored as R8 (`StoredFormat`, `RenderPlanLowering.cpp`,
-  2026-10-09). The lowering sets each node's format from its own type: a
-  scalar gets R8 and any other value RGBA8, unless the request is
-  `kRgba32Float` (a reduction operand), which stays. An operand therefore
-  gets its own format, not its reader's. Writers need no change, because a
+  2026-10-09). The lowering sets each node's format from its own type and
+  the request's precision (`FormatFor`): a scalar gets R8, or R32F under a
+  reduction, and any other value gets RGBA8, or RGBA32F under a reduction.
+  An operand therefore gets its own format, not its reader's. A scalar
+  reduction field was RGBA32F before 2026-10-09: 64 MiB at 2048², now
+  16 MiB. `PSReduce` reads only the components of the field's type, and the
+  non-finite flag lives in the reduction levels, not the field. Writers need no change, because a
   pixel shader's `float4` result stores only `.r` in an R8 target and every
   scalar writer returns the value in `.r` (`PSProgram`, `PSRipple`,
   `PSClusters`, the slope pass). Readers need no change, because every view
@@ -2119,7 +2122,8 @@ them outside as separate passes.
   scalar bake into an R8 target therefore draws its triangles into an RGBA8
   **coverage** target leased for the draw, dilates from it into a leased
   gutter, and dilates from the gutter into the R8 target
-  (`TextureLab::BakeMesh`, `DilateInto`, `HoldsCoverage`). Without the
+  (`TextureLab::BakeMesh`, `DilateInto`, `HoldsCoverage`). An R32F bake uses
+  an RGBA32F coverage target, so dilation keeps its precision. Without the
   dilate pipeline it draws the triangles into the R8 target, undilated, as
   an RGBA8 bake did. The ripple's position bake holds a vec3 and stays RGBA8
   (`Rgba8`).

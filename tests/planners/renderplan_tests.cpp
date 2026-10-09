@@ -102,7 +102,7 @@ int main() {
     Check(readbacks > 0 && followed == readbacks,
           "an input that dirties a readback submission dirties its reader");
   }
-  std::size_t reductions = 0, lookups = 0, maps = 0;
+  std::size_t reductions = 0, lookups = 0, maps = 0, scalarFields = 0;
   for (std::size_t i = 0; i < plan->steps.size(); ++i) {
     const auto &kind = plan->steps[i].kind;
     if (const auto *reduction = Get<SubmitReductionStep>(kind)) {
@@ -113,9 +113,16 @@ int main() {
       if (producer && producer->step < plan->steps.size()) {
         const auto *field =
             Get<EvaluateProgramStep>(plan->steps[producer->step].kind);
-        Check(field &&
-                  field->requirements.format == TextureFormat::kRgba32Float,
-              "measurement expression uses a float target");
+        Check(field && field->requirements.format ==
+                           FormatFor(reduction->type == ValueType::kScalar,
+                                     TextureFormat::kRgba32Float),
+              "measurement expression uses a float target, one channel for "
+              "a scalar");
+        scalarFields +=
+            reduction->type == ValueType::kScalar && field &&
+                    field->requirements.format == TextureFormat::kR32Float
+                ? 1
+                : 0;
       }
     }
     if (const auto *lookup = Get<BuildLookupStep>(kind)) {
@@ -137,6 +144,8 @@ int main() {
     }
     maps += Is<MapFieldStep>(kind);
   }
+  Check(scalarFields == reductions,
+        "every scalar measurement field is stored as R32F");
   Check(reductions == 1 && lookups == 1 && maps == 1,
         "scalar mapping lowers once per operation");
   recipe.outputs.clear();
