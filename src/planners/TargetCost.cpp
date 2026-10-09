@@ -27,30 +27,44 @@ std::vector<bool> ReachedSteps(const RenderPlan &a_plan) {
 
 void Add(TargetCost &a_cost, const HeldTarget &a_target) {
   ++a_cost.targets;
-  a_cost.bytes += TargetBytes(a_target.size, a_target.format);
+  a_cost.bytes += TargetBytes(a_target.size, a_target.format, a_target.mips);
   ++a_cost.targetsBySize[a_target.size.Pixels()];
 }
 }
 
-std::uint64_t TargetBytes(TextureSize a_size, TextureFormat a_format) noexcept {
+std::uint64_t TargetBytes(TextureSize a_size, TextureFormat a_format,
+                          MipPolicy a_mips) noexcept {
   const auto pixels = static_cast<std::uint64_t>(a_size.Pixels());
-  const std::uint64_t mipped = pixels * pixels * 4 * 4 / 3;
-  return a_format == TextureFormat::kRgba32Float ? mipped * 4 : mipped;
+  const std::uint64_t level = pixels * pixels * 4;
+  const std::uint64_t texels =
+      a_mips == MipPolicy::kGenerate ? level * 4 / 3 : level;
+  return a_format == TextureFormat::kRgba32Float ? texels * 4 : texels;
+}
+
+std::vector<RenderStepId> HeldSteps(const RenderPlan &a_plan) {
+  const std::vector<bool> reached = ReachedSteps(a_plan);
+  std::vector<RenderStepId> held;
+  for (RenderStepId step = 0; step < a_plan.steps.size(); ++step) {
+    const RenderStepKind &kind = a_plan.steps[step].kind;
+    if (reached[step] && RequirementsOf(kind) && Draws(kind)) {
+      held.push_back(step);
+    }
+  }
+  return held;
 }
 
 PlanTargets TargetsOf(const RenderPlan &a_plan, const PlanSizes &a_sizes) {
-  const std::vector<bool> reached = ReachedSteps(a_plan);
   PlanTargets targets;
-  for (RenderStepId step = 0; step < a_plan.steps.size(); ++step) {
+  for (const RenderStepId step : HeldSteps(a_plan)) {
     const RenderStep &planned = a_plan.steps[step];
     const std::optional<TextureRequirements> requirements =
         RequirementsOf(planned.kind);
-    if (!reached[step] || !requirements || !Draws(planned.kind)) {
+    if (!requirements) {
       continue;
     }
     const HeldTarget target{SizeOf(a_sizes, requirements->side),
-                            requirements->format,
-                            SharedKeyOf(planned, a_sizes)};
+                            requirements->format, SharedKeyOf(planned, a_sizes),
+                            requirements->mipPolicy};
     targets.withIntermediates.push_back(target);
     if (Is<CompositeStackStep>(planned.kind)) {
       targets.stacks.push_back(target);

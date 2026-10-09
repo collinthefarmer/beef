@@ -201,9 +201,9 @@ the target again.
 
 | Type | Description | Declared in |
 |---|---|---|
-| `TextureLab::RenderTarget` | One D3D11 texture with its views, size, `TextureFormat`, `MipPolicy`, generation and presenter. It cannot be copied or moved. | `TextureLab.h` |
+| `TextureLab::RenderTarget` | One D3D11 texture with its views, size, `TextureFormat`, `TargetMips` (`kNone`, `kGeneratedOnDraw` or `kGeneratedByCaller`), generation and presenter. It cannot be copied or moved. | `TextureLab.h` |
 | `VideoMemoryProbe` | Reads the DXGI budget and usage of the local segment for the render target budget. It reaches `IDXGIAdapter3` from the game's D3D11 device once and keeps it. It keeps a failure too, and `Sample` then returns the failure text. | `VideoMemory.h` |
-| `RenderTargetPool` | Owns the idle targets (at most 16 and 64 MiB), the scratch targets per size and format, and `kPresenterCount` (512) presenter slots. `Acquire` returns a shared target, `Scratch` returns a reused one, and `Recycle` returns a released target to the pool. | `RenderTargetPool.h` |
+| `RenderTargetPool` | Owns the idle targets (at most 16 and 64 MiB), the scratch targets per size, format and chain, and `kPresenterCount` (512) presenter slots. `Acquire` takes a `TargetShape` (size, format, mips), reuses an idle target only with the same chain, and returns a shared target, `Scratch` returns a reused one, and `Recycle` returns a released target to the pool. | `RenderTargetPool.h` |
 | `TextureRef` | A generated target or a static engine texture. `get()` returns the presenter or the engine texture. `Valid()` and `Generation()` tell a live target from a stale one. | `TextureRef.h` |
 | `TextureIdentity` | The engine texture's address, generation and name as text. `CompositorDemand.cpp` uses it in material identities. It differs from `ImageCacheKey` (`planners/TextureIdentity.h`), which identifies a file by its path. | `TextureRef.h` |
 | `TexturePreviews` | The studio's live preview requests, keyed by source texture, channel and context. It re-renders the dynamic entries each generation and expires the unused ones. | `TexturePreviews.h` |

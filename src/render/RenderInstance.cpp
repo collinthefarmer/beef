@@ -144,12 +144,13 @@ TextureView StampedView(std::shared_ptr<TextureLab::RenderTarget> target,
   return view;
 }
 std::shared_ptr<TextureLab::RenderTarget>
-AcquireStepTarget(StepExecution &execution, TextureRequirements requirements) {
+AcquireStepTarget(StepExecution &execution, TextureRequirements requirements,
+                  TextureLab::TargetMips mips) {
   if (const auto target = execution.scratch.target.lock())
     return target;
-  const auto target = execution.lab.Acquire(
-      SizeOf(execution.sizes, requirements.side), "render step",
-      requirements.format, requirements.mipPolicy);
+  const auto target =
+      execution.lab.Acquire(SizeOf(execution.sizes, requirements.side),
+                            "render step", requirements.format, mips);
   execution.scratch.target = target;
   return target;
 }
@@ -240,7 +241,8 @@ StepResult DrawProgram(const FieldProgram &program,
                                     operands, execution.arguments);
   if (!bindings)
     return std::unexpected(bindings.error());
-  const auto target = AcquireStepTarget(execution, requirements);
+  const auto target = AcquireStepTarget(
+      execution, requirements, TextureLab::MipsFor(requirements.mipPolicy));
   if (!target || !execution.lab.RenderProgram(*target, program, *bindings))
     return std::unexpected("program draw failed");
   return RenderValue{View(target, program.ResultType())};
@@ -412,7 +414,9 @@ StepResult ExecuteBakeMeshStep(const BakeMeshStep &step,
   const auto *buffers =
       execution.arguments.Find<std::shared_ptr<const BakeBuffers>>(
           step.buffers);
-  const auto target = AcquireStepTarget(execution, step.requirements);
+  const auto target =
+      AcquireStepTarget(execution, step.requirements,
+                        TextureLab::MipsFor(step.requirements.mipPolicy));
   if (!buffers || !*buffers || !target ||
       !execution.lab.BakeMesh(*target, **buffers))
     return std::unexpected("mesh bake failed");
@@ -434,7 +438,9 @@ StepResult ExecuteNormalSlopeStep(const NormalSlopeStep &step,
       execution.arguments.Find<MaterialInputs>(step.material);
   if (!material || !material->normal)
     return std::unexpected("normal map is unavailable");
-  const auto target = AcquireStepTarget(execution, step.requirements);
+  const auto target =
+      AcquireStepTarget(execution, step.requirements,
+                        TextureLab::MipsFor(step.requirements.mipPolicy));
   if (!target ||
       !execution.lab.Render(*target, nullptr, NormalSlopeParamsFor(*material)))
     return std::unexpected("normal slope draw failed");
@@ -486,7 +492,9 @@ StepResult ExecuteDrawClustersStep(const DrawClustersStep &step,
     if (!picked)
       return std::unexpected("the material has no cluster to pick");
   }
-  const auto target = AcquireStepTarget(execution, step.requirements);
+  const auto target =
+      AcquireStepTarget(execution, step.requirements,
+                        TextureLab::MipsFor(step.requirements.mipPolicy));
   if (!target || !execution.lab.RenderClusters(*target, material->rmaos.get(),
                                                material->diffuse.get(),
                                                **analysis, picked))
@@ -910,7 +918,9 @@ StepResult ExecuteDrawRippleStep(const DrawRippleStep &step,
   const auto pass = RipplePassFor(*ripple, operands, *positions);
   if (!pass)
     return std::unexpected(pass.error());
-  const auto target = AcquireStepTarget(execution, step.requirements);
+  const auto target =
+      AcquireStepTarget(execution, step.requirements,
+                        TextureLab::MipsFor(step.requirements.mipPolicy));
   if (!target || !execution.lab.RenderRipple(*target, *pass))
     return std::unexpected("ripple draw failed");
   scratch.holdsEmptyRipple = quiet;
@@ -937,9 +947,11 @@ StepResult ExecuteCompositeStackStep(const CompositeStackStep &step,
   const auto bound = BindLayerFields(**packed, execution.arguments);
   if (!bound)
     return std::unexpected(bound.error());
-  auto layerRequirements = step.requirements;
-  layerRequirements.mipPolicy = MipPolicy::kNone;
-  const auto target = AcquireStepTarget(execution, layerRequirements);
+  const auto target =
+      AcquireStepTarget(execution, step.requirements,
+                        step.requirements.mipPolicy == MipPolicy::kGenerate
+                            ? TextureLab::TargetMips::kGeneratedByCaller
+                            : TextureLab::TargetMips::kNone);
   if (!target)
     return std::unexpected("stack target is unavailable");
   if (!execution.lab.RenderStack(*target, base->texture.get(), *passes, *bound))
@@ -1478,12 +1490,8 @@ std::optional<TextureView> RenderInstance::Texture(RenderValueRef output) {
       ref && ref->input < execution_.Inputs().size())
     value = &execution_.Inputs()[ref->input].value;
   if (value && *value)
-    if (const auto *texture = Get<TextureView>(**value)) {
-      if (auto *lab = TextureLab::GetSingleton();
-          lab && texture->target && texture->target->Mips() == MipPolicy::kNone)
-        lab->GenerateMipsFor(*texture->target);
+    if (const auto *texture = Get<TextureView>(**value))
       return *texture;
-    }
   return std::nullopt;
 }
 std::optional<TextureView>

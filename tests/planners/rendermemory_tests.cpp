@@ -55,7 +55,7 @@ void LargestHoldingsComeFirst() {
 void SharedTargetsAreNamed() {
   const TextureSize size{512};
   const TextureFormat format = TextureFormat::kRgba8;
-  const std::uint64_t one = TargetBytes(size, format);
+  const std::uint64_t one = TargetBytes(size, format, MipPolicy::kGenerate);
   const std::vector<ActorTargets> actors{
       {1,
        "A",
@@ -88,7 +88,8 @@ void OwnBytesAddUpToThePlannedTotal() {
   for (const ActorHolding &holding : HoldingsOf(actors)) {
     own += holding.ownBytes;
   }
-  Equal(own + TargetBytes(size, format), CostOf(all).bytes,
+  Equal(own + TargetBytes(size, format, MipPolicy::kGenerate),
+        CostOf(all).bytes,
         "the actors' own bytes and each shared target once make the total");
 }
 

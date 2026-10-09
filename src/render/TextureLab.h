@@ -171,6 +171,22 @@ public:
     LayerPass layer;
   };
 
+  enum class TargetMips : std::uint8_t {
+    kNone,
+    kGeneratedOnDraw,
+    kGeneratedByCaller
+  };
+
+  [[nodiscard]] static constexpr bool HasChain(TargetMips a_mips) noexcept {
+    return a_mips != TargetMips::kNone;
+  }
+
+  [[nodiscard]] static constexpr TargetMips
+  MipsFor(MipPolicy a_policy) noexcept {
+    return a_policy == MipPolicy::kGenerate ? TargetMips::kGeneratedOnDraw
+                                            : TargetMips::kNone;
+  }
+
   class RenderTarget {
   public:
     RenderTarget() = default;
@@ -186,7 +202,7 @@ public:
     [[nodiscard]] std::uint64_t Generation() const noexcept {
       return generation_;
     }
-    [[nodiscard]] MipPolicy Mips() const noexcept { return mips; }
+    [[nodiscard]] TargetMips Mips() const noexcept { return mips; }
     [[nodiscard]] std::uint64_t Bytes() const noexcept;
 
   private:
@@ -203,7 +219,7 @@ public:
     REX::W32::ComPtr<REX::W32::ID3D11RenderTargetView> rtv;
     std::uint32_t size = 0;
     TextureFormat format = TextureFormat::kRgba8;
-    MipPolicy mips = MipPolicy::kGenerate;
+    TargetMips mips = TargetMips::kGeneratedOnDraw;
   };
 
   static_assert(!std::is_copy_constructible_v<RenderTarget>);
@@ -222,7 +238,7 @@ public:
   std::shared_ptr<RenderTarget>
   Acquire(TextureSize a_size, std::string_view a_owner,
           TextureFormat format = TextureFormat::kRgba8,
-          MipPolicy mips = MipPolicy::kGenerate);
+          TargetMips mips = TargetMips::kGeneratedOnDraw);
   void GenerateMipsFor(RenderTarget &a_target);
 
   bool Render(RenderTarget &a_target, RE::NiSourceTexture *a_source,
@@ -337,7 +353,7 @@ public:
 
   [[nodiscard]] RenderTarget *
   Scratch(TextureSize a_size, TextureFormat format = TextureFormat::kRgba8,
-          MipPolicy mips = MipPolicy::kGenerate);
+          TargetMips mips = TargetMips::kGeneratedOnDraw);
 
   void Clear();
 

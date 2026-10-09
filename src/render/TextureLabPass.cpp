@@ -608,12 +608,14 @@ void TextureLab::DrawFullScreen(const RenderPass &a_pass,
       a_draw.constants.data());
   a_pass.Context().Draw(3, 0);
   UnbindTarget(a_pass, static_cast<std::uint32_t>(a_draw.srvs.size()));
-  if (a_target.mips == MipPolicy::kGenerate)
+  if (a_target.mips == TargetMips::kGeneratedOnDraw)
     GenerateMips(a_pass, a_target);
 }
 
 void TextureLab::GenerateMips(const RenderPass &a_pass,
                               RenderTarget &a_target) {
+  if (!HasChain(a_target.mips))
+    return;
   std::optional<TimedSpan> mips;
   if (Timing())
     mips.emplace(*this, std::format("GenerateMips {}", a_target.size));
@@ -832,7 +834,7 @@ bool TextureLab::RenderLayersOneByOne(RenderTarget &a_target,
                                       std::span<const LayerPass> a_layers) {
   auto *alternate = a_layers.size() > 1
                         ? Scratch(TextureSize{a_target.size}, a_target.format,
-                                  MipPolicy::kNone)
+                                  TargetMips::kNone)
                         : nullptr;
   if (a_layers.size() > 1 && !alternate)
     return false;
@@ -866,8 +868,8 @@ TextureLab::RenderFieldsToTargets(std::span<const LayerPass> a_layers,
         SegmentCode(a_fields.pack, a_segment);
     if (!code)
       return std::nullopt;
-    auto target =
-        Acquire(a_size, "stack field", TextureFormat::kRgba8, MipPolicy::kNone);
+    auto target = Acquire(a_size, "stack field", TextureFormat::kRgba8,
+                          TargetMips::kNone);
     if (!target || !DrawProgramPass(*target, *code, a_fields.bindings))
       return std::nullopt;
     auto *texture = target->Texture();
@@ -1008,7 +1010,8 @@ bool TextureLab::BakeMesh(RenderTarget &a_target, const BakeBuffers &a_bake) {
     return false;
   }
   DrawBakeTriangles(pass, a_target, *buffers);
-  if (!DrawDilation(pass, a_target) && a_target.mips == MipPolicy::kGenerate) {
+  if (!DrawDilation(pass, a_target) &&
+      a_target.mips == TargetMips::kGeneratedOnDraw) {
     GenerateMips(pass, a_target);
   }
   return true;
@@ -1047,7 +1050,7 @@ bool TextureLab::DrawDilation(const RenderPass &a_pass,
   const PixelPipeline *dilate =
       gpu_ && gpu_->dilate.has_value() ? &gpu_->dilate.value() : nullptr;
   RenderTarget *gutter = dilate ? Scratch(TextureSize{a_target.size},
-                                          a_target.format, MipPolicy::kNone)
+                                          a_target.format, TargetMips::kNone)
                                 : nullptr;
   if (!dilate || !gutter || !gutter->rtv.Get() ||
       gutter->size != a_target.size) {

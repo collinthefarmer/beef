@@ -19,6 +19,7 @@ struct HeldTarget {
   TextureSize size;
   TextureFormat format = TextureFormat::kRgba8;
   std::optional<std::string> sharedKey;
+  MipPolicy mips = MipPolicy::kGenerate;
   [[nodiscard]] bool operator==(const HeldTarget &) const = default;
 };
 
@@ -36,7 +37,9 @@ struct TargetCost {
 };
 
 [[nodiscard]] std::uint64_t TargetBytes(TextureSize a_size,
-                                        TextureFormat a_format) noexcept;
+                                        TextureFormat a_format,
+                                        MipPolicy a_mips) noexcept;
+[[nodiscard]] std::vector<RenderStepId> HeldSteps(const RenderPlan &a_plan);
 [[nodiscard]] PlanTargets TargetsOf(const RenderPlan &a_plan,
                                     const PlanSizes &a_sizes);
 [[nodiscard]] TargetCost CostOf(std::span<const HeldTarget> a_targets);

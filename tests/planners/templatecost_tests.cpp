@@ -24,7 +24,7 @@ using test::Check;
 namespace {
 constexpr std::uint32_t kGuardedBaseSide = 2048;
 constexpr std::array<std::uint32_t, 3> kBaseSides{1024, 2048, 4096};
-constexpr std::uint64_t kFillTemplateHeldBytes = std::uint64_t{76} << 20;
+constexpr std::uint64_t kFillTemplateHeldBytes = std::uint64_t{58} << 20;
 
 bool ActorScoped(const ExternalSource &a_source) {
   return Is<EffectShaderInput>(a_source) || Is<EventInput>(a_source) ||
@@ -158,7 +158,8 @@ void OneTargetPerContentKey() {
   const HeldTarget unkeyed{size, TextureFormat::kRgba8, std::nullopt};
   const std::vector<HeldTarget> targets{keyed, keyed, unkeyed, unkeyed};
   const TargetCost cost = CostOf(targets);
-  const std::uint64_t one = TargetBytes(size, TextureFormat::kRgba8);
+  const std::uint64_t one =
+      TargetBytes(size, TextureFormat::kRgba8, MipPolicy::kGenerate);
   Check(cost.targets == 3 && cost.bytes == 3 * one &&
             one == std::uint64_t{512} * 512 * 4 * 4 / 3,
         "a content key counts once and an unkeyed target counts each time");
@@ -213,6 +214,98 @@ TargetCost CheckedCost(const Wearers &a_wearers, std::uint32_t a_base) {
   return held;
 }
 
+std::string_view TypeName(ValueType a_type) {
+  switch (a_type) {
+  case ValueType::kScalar:
+    return "scalar";
+  case ValueType::kVec2:
+    return "vec2";
+  case ValueType::kVec3:
+    return "vec3";
+  }
+  return "scalar";
+}
+
+std::string ValueTypesOf(const RenderPlan &a_plan, RenderStepId a_step) {
+  if (const auto *stack = Get<CompositeStackStep>(a_plan.steps[a_step].kind)) {
+    return std::format("{} slot", SlotName(stack->slot));
+  }
+  std::string types;
+  for (const RenderValueBinding &binding : a_plan.values) {
+    const auto *result = Get<StepOutputRef>(binding.result);
+    if (!result || result->step != a_step || !binding.value.graph) {
+      continue;
+    }
+    const std::optional<GraphValueType> type =
+        binding.value.graph->OutputType(binding.value.output);
+    const auto *value = type ? Get<ValueType>(*type) : nullptr;
+    const std::string_view name = value ? TypeName(*value) : "resource";
+    if (types.find(name) == std::string::npos) {
+      types += types.empty() ? std::string{name} : std::format("/{}", name);
+    }
+  }
+  return types.empty() ? std::string{"untyped"} : types;
+}
+
+std::vector<RenderStepId> ReadersOf(const RenderPlan &a_plan,
+                                    RenderStepId a_step) {
+  std::vector<RenderStepId> readers;
+  for (RenderStepId reader = 0; reader < a_plan.steps.size(); ++reader) {
+    for (const RenderValueRef operand : StepDependencies(a_plan, reader)) {
+      const auto *output = Get<StepOutputRef>(operand);
+      if (output && output->step == a_step &&
+          !std::ranges::contains(readers, reader)) {
+        readers.push_back(reader);
+      }
+    }
+  }
+  return readers;
+}
+
+std::string ConsumersOf(const RenderPlan &a_plan, RenderStepId a_step) {
+  if (Is<CompositeStackStep>(a_plan.steps[a_step].kind)) {
+    return "game material";
+  }
+  const std::optional<TextureRequirements> own =
+      RequirementsOf(a_plan.steps[a_step].kind);
+  std::string consumers;
+  for (const RenderStepId reader : ReadersOf(a_plan, a_step)) {
+    const std::optional<TextureRequirements> theirs =
+        RequirementsOf(a_plan.steps[reader].kind);
+    const bool otherSide = own && theirs && own->side != theirs->side;
+    consumers += std::format("{}{}#{}{}", consumers.empty() ? "" : ", ",
+                             StepKindName(a_plan.steps[reader].kind), reader,
+                             otherSide ? " (other side)" : "");
+  }
+  return consumers;
+}
+
+void ListHeldTargets(const SizedPlan &a_sized, std::uint32_t a_base) {
+  const RenderPlan &plan = a_sized.plan;
+  const std::vector<bool> animated = AnimatedSteps(plan);
+  std::cout << std::format("held targets at base {}\n", a_base);
+  for (const RenderStepId step : HeldSteps(plan)) {
+    const RenderStep &planned = plan.steps[step];
+    const std::optional<TextureRequirements> requirements =
+        RequirementsOf(planned.kind);
+    if (!requirements) {
+      continue;
+    }
+    const TextureSize size = SizeOf(a_sized.sizes, requirements->side);
+    std::cout << std::format(
+        "  #{} {} '{}' ({}): {} {} {} mips, {:.2f} MiB; {}; read by {}\n", step,
+        StepKindName(planned.kind), planned.displayName,
+        animated[step] ? "animated" : "static", size.Pixels(),
+        requirements->format == TextureFormat::kRgba32Float ? "rgba32f"
+                                                            : "rgba8",
+        requirements->mipPolicy == MipPolicy::kGenerate ? "with" : "no",
+        static_cast<double>(
+            TargetBytes(size, requirements->format, requirements->mipPolicy)) /
+            (1024.0 * 1024.0),
+        ValueTypesOf(plan, step), ConsumersOf(plan, step));
+  }
+}
+
 void LevelsMatchFreshPlans(const Recipe &a_recipe, const RecipeGraph &a_graph) {
   const RenderBindingResolver wearer = Wearer("actor-a", "1");
   for (const auto &[base, level, smaller] :
@@ -254,6 +347,9 @@ int main(int argc, char **argv) {
       return test::Finish("fill template cost");
     }
     const TargetCost held = CheckedCost(*wearers, base);
+    if (base == kGuardedBaseSide) {
+      ListHeldTargets(wearers->first, base);
+    }
     if (base == kGuardedBaseSide) {
       Check(held.bytes <= kFillTemplateHeldBytes,
             std::format("the fill template holds at most {} target bytes at "

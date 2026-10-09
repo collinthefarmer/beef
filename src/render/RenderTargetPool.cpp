@@ -95,21 +95,22 @@ bool RenderTargetPool::ValidatePresenter(std::size_t a_slot,
 }
 
 bool RenderTargetPool::CreateTarget(ID3D11Device *a_device,
-                                    RenderTarget &a_target, TextureSize a_size,
-                                    TextureFormat format) {
-  const std::uint32_t pixels = a_size.Pixels();
+                                    RenderTarget &a_target,
+                                    const TargetShape &a_shape) {
+  const bool chain = TextureLab::HasChain(a_shape.mips);
+  const std::uint32_t pixels = a_shape.size.Pixels();
   D3D11_TEXTURE2D_DESC desc{};
   desc.width = pixels;
   desc.height = pixels;
-  desc.mipLevels = 0;
+  desc.mipLevels = chain ? 0 : 1;
   desc.arraySize = 1;
-  desc.format = format == TextureFormat::kRgba32Float
+  desc.format = a_shape.format == TextureFormat::kRgba32Float
                     ? DXGI_FORMAT_R32G32B32A32_FLOAT
                     : DXGI_FORMAT_R8G8B8A8_UNORM;
   desc.sampleDesc.count = 1;
   desc.usage = D3D11_USAGE_DEFAULT;
   desc.bindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
-  desc.miscFlags = D3D11_RESOURCE_MISC_GENERATE_MIPS;
+  desc.miscFlags = chain ? D3D11_RESOURCE_MISC_GENERATE_MIPS : 0;
   if (Failed(a_device->CreateTexture2D(&desc, nullptr,
                                        a_target.texture.GetAddressOf()))) {
     logger::error("TextureLab: CreateTexture2D({}) failed", pixels);
@@ -142,14 +143,15 @@ bool RenderTargetPool::CreateTarget(ID3D11Device *a_device,
   a_target.presenter->rendererTexture =
       reinterpret_cast<RE::BSGraphics::Texture *>(a_target.ourData.get());
   a_target.size = pixels;
-  a_target.format = format;
+  a_target.format = a_shape.format;
+  a_target.mips = a_shape.mips;
   Metrics::CountTargetCreated(a_target.Bytes());
   return true;
 }
 
 std::shared_ptr<RenderTargetPool::RenderTarget>
-RenderTargetPool::Acquire(ID3D11Device *a_device, TextureSize a_size,
-                          std::string_view a_owner, TextureFormat format) {
+RenderTargetPool::Acquire(ID3D11Device *a_device, const TargetShape &a_shape,
+                          std::string_view a_owner) {
   if (!a_device) {
     return nullptr;
   }
@@ -159,15 +161,19 @@ RenderTargetPool::Acquire(ID3D11Device *a_device, TextureSize a_size,
   {
     std::scoped_lock lock{pool_->lock};
     target = pool_->targets.Take([&](const RenderTarget &a_target) {
-      return a_target.size == a_size.Pixels() && a_target.format == format;
+      return a_target.size == a_shape.size.Pixels() &&
+             a_target.format == a_shape.format &&
+             TextureLab::HasChain(a_target.mips) ==
+                 TextureLab::HasChain(a_shape.mips);
     });
   }
   if (!target) {
     target = std::make_unique<RenderTarget>();
-    if (!CreateTarget(a_device, *target, a_size, format)) {
+    if (!CreateTarget(a_device, *target, a_shape)) {
       return nullptr;
     }
   }
+  target->mips = a_shape.mips;
   if (!target->Texture()) {
     logger::error("TextureLab: target {} lost its presenter renderer",
                   target->traceID_);
@@ -203,11 +209,11 @@ RenderTargetPool::Acquire(ID3D11Device *a_device, TextureSize a_size,
 }
 
 RenderTargetPool::RenderTarget *
-RenderTargetPool::Scratch(ID3D11Device *a_device, TextureSize a_size,
-                          TextureFormat format) {
-  auto &target = scratch_[{a_size.Pixels(), format}];
+RenderTargetPool::Scratch(ID3D11Device *a_device, const TargetShape &a_shape) {
+  auto &target = scratch_[{a_shape.size.Pixels(), a_shape.format,
+                           TextureLab::HasChain(a_shape.mips)}];
   if (!target) {
-    target = Acquire(a_device, a_size, "scratch", format);
+    target = Acquire(a_device, a_shape, "scratch");
   }
   return target.get();
 }

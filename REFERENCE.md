@@ -2141,8 +2141,23 @@ them outside as separate passes.
   every value it builds, because every intermediate is read at its own size,
   where sampling uses mip 0. A stack draws its layers into targets without
   mips and generates mips once on its final result, which the game samples.
-  An inspected intermediate gets mips when inspected, because a studio
-  thumbnail minifies it. The first timing run measured mip generation at
+- A target's mips are one of three states (`TextureLab::TargetMips`):
+  `kNone` (one level), `kGeneratedOnDraw` (a chain the lab regenerates after
+  each draw) and `kGeneratedByCaller` (a chain that its owner regenerates). A
+  stack target is `kGeneratedByCaller`, because the stack draws layer by
+  layer into it and generates once at the end. `RenderTargetPool` creates a
+  `kNone` target with one level and without
+  `D3D11_RESOURCE_MISC_GENERATE_MIPS`, and it reuses an idle target only for
+  a request with the same chain. `GenerateMips` does nothing on a target
+  without a chain.
+- Before 2026-10-09 the pool gave every target a full chain, also when the
+  step asked for none, and a third of each intermediate's bytes held levels
+  that were never written. The fill template held 69.3 MiB per plan at a
+  2048² base; it now holds 57.3 MiB. The studio inspector then generated
+  mips on an inspected intermediate for its thumbnail. An intermediate now
+  has no chain, so its thumbnail samples level 0. A read above level 0 of an
+  intermediate clamps to level 0; before, it read levels that were never
+  written. The first timing run measured mip generation at
   about a third of the plugin's GPU time, from about 144 calls per tick.
 - `PublishEffects` off keeps the render plan running but writes every slot as
   not shown and hides the shell, so the draws are measured without the cost
@@ -3040,9 +3055,9 @@ cancel by the user instead of the load.
   and release nothing. A hidden actor keeps every held target.
 - `CostOf` counts one target per content key across any list of held
   targets, because `Compositor::FindStepOutput` returns one published target
-  for equal keys. `TargetBytes` adds a third for mips, because
-  `RenderTargetPool` creates every target with a full mip chain
-  (`mipLevels = 0`), also when the step asks for no mips.
+  for equal keys. `TargetBytes` adds a third for mips only for a target with
+  `MipPolicy::kGenerate`, because `RenderTargetPool` creates a full chain only
+  for those (`HeldTarget::mips`).
 - The count leaves out the sample and reduction steps, because they hold no
   per-plan target. The 64² sample target returns to the pool when its step
   ends. A sample step keeps two 64² RGBA8 staging textures (32 KiB). A

@@ -9,6 +9,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <tuple>
 #include <vector>
 
 namespace BetterEnchantmentEffects {
@@ -21,13 +22,19 @@ public:
   RenderTargetPool(const RenderTargetPool &) = delete;
   RenderTargetPool &operator=(const RenderTargetPool &) = delete;
 
+  using TargetMips = TextureLab::TargetMips;
+
+  struct TargetShape {
+    TextureSize size;
+    TextureFormat format = TextureFormat::kRgba8;
+    TargetMips mips = TargetMips::kGeneratedOnDraw;
+  };
+
   [[nodiscard]] std::shared_ptr<RenderTarget>
-  Acquire(REX::W32::ID3D11Device *a_device, TextureSize a_size,
-          std::string_view a_owner,
-          TextureFormat format = TextureFormat::kRgba8);
-  [[nodiscard]] RenderTarget *
-  Scratch(REX::W32::ID3D11Device *a_device, TextureSize a_size,
-          TextureFormat format = TextureFormat::kRgba8);
+  Acquire(REX::W32::ID3D11Device *a_device, const TargetShape &a_shape,
+          std::string_view a_owner);
+  [[nodiscard]] RenderTarget *Scratch(REX::W32::ID3D11Device *a_device,
+                                      const TargetShape &a_shape);
   void ClearScratch();
   void ClearUnused();
   [[nodiscard]] Holdings Held() const;
@@ -41,7 +48,7 @@ private:
   };
 
   bool CreateTarget(REX::W32::ID3D11Device *a_device, RenderTarget &a_target,
-                    TextureSize a_size, TextureFormat format);
+                    const TargetShape &a_shape);
   RE::NiPointer<RE::NiSourceTexture> LoadPresenter(std::size_t a_slot);
   bool ValidatePresenter(std::size_t a_slot, RE::NiSourceTexture *a_source,
                          const std::string &a_path) const;
@@ -60,7 +67,7 @@ private:
   std::array<Presenter, kPresenterCount> presenters_{};
   std::uint64_t nextGeneration_ = 0;
   std::shared_ptr<Pool> pool_ = std::make_shared<Pool>();
-  std::map<std::pair<std::uint32_t, TextureFormat>,
+  std::map<std::tuple<std::uint32_t, TextureFormat, bool>,
            std::shared_ptr<RenderTarget>>
       scratch_;
 };

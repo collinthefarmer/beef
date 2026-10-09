@@ -40,7 +40,8 @@ ComPtr<ID3DBlob> CompileEntry(const char *a_entry, const char *a_target) {
 }
 
 std::uint64_t TextureLab::RenderTarget::Bytes() const noexcept {
-  return TargetBytes(TextureSize{size}, format);
+  return TargetBytes(TextureSize{size}, format,
+                     HasChain(mips) ? MipPolicy::kGenerate : MipPolicy::kNone);
 }
 
 TextureLab::RenderTarget::~RenderTarget() {
@@ -246,13 +247,10 @@ std::optional<TextureLab::BakePipeline> TextureLab::CreateBakePipeline() {
 
 std::shared_ptr<TextureLab::RenderTarget>
 TextureLab::Acquire(TextureSize a_size, std::string_view a_owner,
-                    TextureFormat format, MipPolicy mips) {
-  auto target =
-      Init() ? targets_->Acquire(borrowedDevice_, a_size, a_owner, format)
-             : nullptr;
-  if (target)
-    target->mips = mips;
-  return target;
+                    TextureFormat format, TargetMips mips) {
+  return Init() ? targets_->Acquire(borrowedDevice_, {a_size, format, mips},
+                                    a_owner)
+                : nullptr;
 }
 
 TextureLab::TargetHoldings TextureLab::HeldTargets() const {
@@ -260,12 +258,9 @@ TextureLab::TargetHoldings TextureLab::HeldTargets() const {
 }
 
 TextureLab::RenderTarget *
-TextureLab::Scratch(TextureSize a_size, TextureFormat format, MipPolicy mips) {
-  auto *target =
-      Init() ? targets_->Scratch(borrowedDevice_, a_size, format) : nullptr;
-  if (target)
-    target->mips = mips;
-  return target;
+TextureLab::Scratch(TextureSize a_size, TextureFormat format, TargetMips mips) {
+  return Init() ? targets_->Scratch(borrowedDevice_, {a_size, format, mips})
+                : nullptr;
 }
 
 std::shared_ptr<TextureLab::RenderTarget>
