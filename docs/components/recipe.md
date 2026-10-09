@@ -98,7 +98,7 @@ tune.
 | `RampSignal` | `ramp` | A value that moves from `from` to `to` over `seconds`, then holds `to`. |
 | `EfshSignal` | `efsh` | One `EfshField` of a vanilla effect shader record: fillAlpha, fillColor, edgeAlpha, edgeColor, or scroll. |
 | `ActorValueSignal` | `av` | The wearer's actor value under one `Measure`: current, base, permanent, temporaryModifier, damage, or max. |
-| `ActorStateSignal` | `actorState` | One `ActorStateKind`: seven 0/1 flags, the scalar movementSpeed, and the vec3 positions position and target. |
+| `ActorStateSignal` | `actorState` | One `ActorStateKind`: seven 0/1 flags, the scalars movementSpeed and resolutionLevel, and the vec3 positions position and target. |
 | `EnchantmentSignal` | `enchantment` | One field of the matched enchantment and effect: `magnitude`, `cost`, `idHash` or `effectHash`. The fields are fixed for an instance, so they are static inputs. |
 | `TriggerSignal` | `trigger` | The age of the newest firing as a fraction of `lifetime`. The `TriggerOrigin` is an `EventOrigin`, a `PluginOrigin`, or a `WhenOrigin`. The row declares its `payload` type and a `TriggerAnchor`, and keeps at most `max` firings. |
 | `PayloadSignal` | `payload` | The value of the named trigger's newest firing, held between firings. |
@@ -187,6 +187,7 @@ Every load, check, and resolution step reports through one record. A
 | `PieceKey` | One key choice that a piece offers (`KeyChoicesOf`). `RecipeKeyOf` turns the chosen one into a `RecipeKey`. |
 | `Precedence` | Priority, then load order, compared as one value (`Precedence.h`). `Merge.cpp`, `Resolve.cpp`, `planners/BindingPlan.cpp`, and `studio/Selection.cpp` order recipes by it. |
 | `RecipeCatalog` | The immutable **applied set**: the recipes that are not held back, each with its content fingerprint. `RecipeCatalog::Of` builds one from `CatalogEntry` records. `At` and `FingerprintOf` take a `RecipeId` and return null and 0 past the end. `SharedRecipe` returns one recipe that keeps its catalog alive. `ContentFingerprint` hashes a recipe's serialized text (`RecipeCatalog.h`). |
+| `RecipeClass` | `kRegular` or `kDebug`, carried on each `CatalogEntry`. `ClassOfRecipePath` returns `kDebug` for a path under the top-level `debug` folder of the recipes folder. `MatchingEntries` drops the `kDebug` entries when given `DebugRecipes::kHidden` (`RecipeCatalog.h`). |
 
 ### The recipe graph (`RecipeGraph.h`, `GraphOperations.h`, `RecipeCompilation.h`)
 
@@ -323,7 +324,7 @@ EffectShaderRecord + template Recipe ──ImportEffectShader──▶ Recipe   
 | Model and words | `Recipe.h`, `Words.h`, `Vocabulary.cpp`, `Recipe.cpp` | The model, the enums and their spec tables with `Complete` asserts, the word-to-enum functions, `IsAnimated`, the sharing predicates, the `*Where` builders, and the diagnostic predicates. |
 | JSON boundary | `Binders.h`, `Binders.cpp`, `RecipeRead.cpp`, `RecipeWrite.cpp` | `Reader`, `Writer`, `ParseObjectDocument`, `FloatFrom`, `ParseRecipe`, and `SerializeRecipe`. |
 | Field checks | `Validation.cpp` | `CheckRecipeFields`: finite numbers, numeric domains, list sizes, selectors, bones, shell, and variant fields. |
-| Applied set | `RecipeCatalog.h`, `RecipeCatalog.cpp` | `RecipeId`, `CatalogEntry`, `RecipeCatalog`, `ContentFingerprint`, and `SharedRecipe`. |
+| Applied set | `RecipeCatalog.h`, `RecipeCatalog.cpp` | `RecipeId`, `RecipeClass`, `DebugRecipes`, `CatalogEntry`, `RecipeCatalog`, `ClassOfRecipePath`, `MatchingEntries`, `ContentFingerprint`, and `SharedRecipe`. |
 | Resolution | `Resolve.cpp`, `Variants.cpp`, `Precedence.h`, `DefinitionOrder.h` | `Resolve`, `GlobMatch`, `Matches`, `SamplingHash`, `KeyChoicesOf`, `VariantApplies`, `ApplyVariant`, `Precedence`, and `AppendDefinition`, which puts a redefined id at its new position. |
 | Graph compilation | `RecipeGraph.h`, `RecipeGraph.cpp`, `RecipeCompilation.h`, `RecipeGraphLowering.cpp`, `RecipeGraphAccess.cpp` | `RecipeGraph::Compile` and its `RecipeGraphBuilder` phases, `RecipeGraphLowering`, and the graph's read accessors. |
 | Graph operations | `GraphOperations.h`, `GraphOperations.cpp`, `Reduction.h`, `FunctionExecution.cpp` | The operation node types, `InputsOf`, `Stateful`, `FunctionResultTypeOf`, `ReductionKind`, and `EvaluateFunction`. |

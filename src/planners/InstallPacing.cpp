@@ -33,7 +33,7 @@ bool Precedes(const WaitingInstall &a_left, const WaitingInstall &a_right,
   }
   if (left == InstallRank::kInView &&
       a_left.screenFraction != a_right.screenFraction) {
-    return a_left.screenFraction > a_right.screenFraction;
+    return LargerOnScreen(a_left.screenFraction, a_right.screenFraction);
   }
   return WaitOf(a_left, a_nowMS) > WaitOf(a_right, a_nowMS);
 }

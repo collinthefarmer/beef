@@ -26,10 +26,13 @@ std::string HoldingText(const ActorHolding &a_holding) {
       a_holding.name.empty()
           ? std::format("{:08X}", a_holding.actor)
           : std::format("{} ({:08X})", a_holding.name, a_holding.actor);
-  return std::format("{} {} own and {} shared, {:.2f} of the screen height, "
-                     "recipes {}",
-                     actor, Mebibytes(a_holding.ownBytes),
-                     Mebibytes(a_holding.sharedBytes), a_holding.screenFraction,
+  const std::string size = a_holding.screenFraction
+                               ? std::format("{:.2f} of the screen height",
+                                             *a_holding.screenFraction)
+                               : std::string{"screen size unmeasured"};
+  return std::format("{} {} own and {} shared, {}, recipes {}", actor,
+                     Mebibytes(a_holding.ownBytes),
+                     Mebibytes(a_holding.sharedBytes), size,
                      Joined(a_holding.recipes));
 }
 

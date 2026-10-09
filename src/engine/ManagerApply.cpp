@@ -1303,7 +1303,9 @@ Manager::ActorDecision Manager::DecideActor(RE::Actor &a_actor,
                                             const Settings &a_settings) {
   const RE::FormID actorID = a_actor.GetFormID();
   TrackedActor &tracked = tracked_[actorID];
-  std::shared_ptr<const RecipeCatalog> catalog = AppliedCatalog();
+  std::shared_ptr<const RecipeCatalog> catalog =
+      AppliedCatalog(a_settings.showDebugRecipes ? DebugRecipes::kShown
+                                                 : DebugRecipes::kHidden);
   const std::span<const Recipe> recipes = catalog->Recipes();
   const std::uint32_t observedAt = NowMS();
   const MaterialLayout layoutBefore = materialLayout_;
@@ -1463,6 +1465,7 @@ std::optional<std::size_t> Manager::InstanceFor(LiveActor &a_state,
   instance.environment = std::make_unique<ActorEnvironment>(
       actor.get(), RE::TESForm::LookupByID<RE::MagicItem>(a_enchantment),
       planned->effectKey);
+  instance.environment->SetAppliedResolution(a_state.appliedResolution);
   instance.startMS = NowMS();
   CarryInstanceTime(instance, actor->GetFormID(), *recipe, a_settings);
   a_state.instances[instanceIndex] = std::move(instance);
@@ -1533,7 +1536,7 @@ void Manager::KeepActorRender(RE::FormID a_actorID, LiveActor &a_state,
   a_state.awaitedPlan.reset();
   if (const InstallLevelChoice *choice =
           Get<InstallLevelChoice>(a_render.outcome)) {
-    a_state.appliedResolution = choice->level;
+    SetAppliedResolution(a_state, choice->level);
     KeepInstallLevel(a_actorID, choice->level);
     budget_ = Charged(budget_, choice->chargedBytes);
   }
@@ -1640,14 +1643,16 @@ InstallBound Manager::InstallBoundOf(RE::FormID a_actorID, RE::Actor &a_actor,
   if (level) {
     return {*level, HeadroomOf(budget_, a_replaced)};
   }
-  const float fraction = ScreenFraction(a_actor);
-  const bool full =
-      !RegressionScreenResolution().value_or(a_settings.sizeByScreen) ||
-      !(fraction > 0.0f);
-  if (full) {
+  if (!RegressionScreenResolution().value_or(a_settings.sizeByScreen)) {
     return {};
   }
-  return {IdealLevel(fraction), HeadroomOf(budget_, a_replaced)};
+  const std::optional<ResolutionLevel> wanted = WantedLevel(
+      {ScreenFraction(a_actor),
+       !a_settings.cullOutOfView || InCameraView(a_actor), ActorRole::kOther});
+  if (!wanted) {
+    return {};
+  }
+  return {*wanted, HeadroomOf(budget_, a_replaced)};
 }
 
 void Manager::KeepInstallLevel(RE::FormID a_actorID, ResolutionLevel a_level) {

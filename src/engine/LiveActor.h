@@ -128,7 +128,7 @@ struct FirstDraw {
 struct LiveActor {
   RE::ActorHandle actor;
   bool inView = true;
-  float screenFraction = 0.0f;
+  std::optional<float> screenFraction;
   ResolutionLevel appliedResolution = ResolutionLevel::kFull;
   PlanSizes fullSizes;
   LiveResize resize;
@@ -136,6 +136,7 @@ struct LiveActor {
   PerLevel<std::optional<LevelCost>> levelCosts;
   IntermediateHolding intermediates = IntermediateHolding::kHeld;
   std::optional<ResolutionLevel> stepUpBlockedFrom;
+  std::optional<std::uint32_t> smallSinceMS;
   std::optional<JobId> awaitedPlan;
   std::uint64_t renderedFrame = 0;
   std::shared_ptr<const RecipeCatalog> catalog;
@@ -154,6 +155,7 @@ struct ResolvedPlacement {
 void RetireGeometry(LiveGeometry &a_geometry);
 void RetireGeometry(LiveActor &a_actor, LiveGeometry &a_geometry);
 void RetireActorEffects(LiveActor &a_actor);
+void SetAppliedResolution(LiveActor &a_actor, ResolutionLevel a_level);
 [[nodiscard]] std::size_t LiveInstanceCount(const LiveActor &a_actor) noexcept;
 [[nodiscard]] std::span<const Recipe>
 RecipesOf(const LiveActor &a_actor) noexcept;

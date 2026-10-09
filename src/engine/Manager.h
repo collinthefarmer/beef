@@ -27,6 +27,7 @@
 #include "regression/Run.h"
 #include "render/TextureRef.h"
 #include "render/VideoMemory.h"
+#include "studio/BudgetView.h"
 #include "studio/Intent.h"
 #include "studio/Snapshot.h"
 
@@ -136,6 +137,8 @@ public:
   void Watch(const std::optional<Studio::PieceRef> &a_request,
              std::string_view a_document = {});
   [[nodiscard]] std::shared_ptr<const Snapshot> LatestSnapshot() const;
+  [[nodiscard]] std::shared_ptr<const Studio::BudgetView>
+  LatestBudgetView() const;
 
 private:
   std::uint64_t renderFrame_ = 0;
@@ -170,9 +173,22 @@ private:
                                           const Settings &a_settings);
   void UpdateBudget(const BudgetSample &a_sample, std::uint64_t a_planned,
                     const Settings &a_settings);
+  struct BudgetActors {
+    std::vector<BudgetActor> actors;
+    bool resizeBusy = false;
+  };
+  struct BlockedStepUp {
+    RE::FormID actor = 0;
+    PreemptionRequest request;
+  };
+  [[nodiscard]] BudgetActors BudgetActorsNow(const Settings &a_settings);
+  [[nodiscard]] std::vector<BlockedStepUp>
+  BlockedStepUps(const Settings &a_settings);
+  void PreemptForBlockedStepUp(const Settings &a_settings);
   void RelieveBudget(std::uint64_t a_goal, const Settings &a_settings);
   void StepDownForBudget(RE::FormID a_actorID, LiveActor &a_state,
-                         const StepDownOption &a_option);
+                         const StepDownOption &a_option,
+                         std::optional<RE::FormID> a_preemptedBy);
   [[nodiscard]] bool ShrinkBudgetRadius(std::span<const BudgetActor> a_actors);
   void GrowBudgetRadius(const Settings &a_settings);
   void ReportRadiusGrowth(const RadiusGrowth &a_growth);
@@ -223,8 +239,8 @@ private:
                                             std::uint64_t a_replaced,
                                             const Settings &a_settings) const;
   void KeepInstallLevel(RE::FormID a_actorID, ResolutionLevel a_level);
-  void RequestStepUp(RE::FormID a_actorID, RE::Actor &a_actor,
-                     LiveActor &a_state, const Settings &a_settings);
+  void RequestLevelStep(RE::FormID a_actorID, RE::Actor &a_actor,
+                        LiveActor &a_state, const Settings &a_settings);
   void AdvanceResizes(const Settings &a_settings);
   void PlaceInstances(LiveActor &a_state, RE::FormID a_actorID,
                       std::uint64_t a_replaced, const Settings &a_settings);
@@ -268,6 +284,7 @@ private:
   [[nodiscard]] Studio::RecipeRow
   DocumentRowFor(const Recipe &a_document) const;
   void PublishSnapshot(std::uint32_t a_nowMS);
+  void PublishBudgetView(Studio::BudgetView a_view);
 
   ApplicationService applications_;
   AnimationSubscriptions animations_;
@@ -310,6 +327,7 @@ private:
 
   mutable std::mutex snapshotLock_;
   std::shared_ptr<const Snapshot> latest_ = std::make_shared<Snapshot>();
+  std::shared_ptr<const Studio::BudgetView> latestBudget_;
   std::optional<Studio::PieceRef> watch_;
   std::string watchedDocument_;
   std::uint32_t watchedMS_ = 0;

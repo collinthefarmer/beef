@@ -62,7 +62,8 @@ inline constexpr Named<ActorStateKind> kActorStates[]{
     {ActorStateKind::kMovementSpeed, "movementSpeed"},
     {ActorStateKind::kPosition, "position"},
     {ActorStateKind::kTarget, "target"},
-    {ActorStateKind::kHasTarget, "hasTarget"}};
+    {ActorStateKind::kHasTarget, "hasTarget"},
+    {ActorStateKind::kResolutionLevel, "resolutionLevel"}};
 static_assert(Complete(kActorStates, kActorStateCount));
 inline constexpr Named<EnchantmentField> kEnchantmentFields[]{
     {EnchantmentField::kMagnitude, "magnitude"},

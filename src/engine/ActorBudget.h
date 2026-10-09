@@ -26,7 +26,8 @@ ChooseInstallLevel(const RenderPlan &a_plan, const PlanSizes &a_full,
 [[nodiscard]] std::optional<LevelCost> CachedLevelCost(LiveActor &a_state,
                                                        ResolutionLevel a_level);
 [[nodiscard]] BudgetActor BudgetActorOf(LiveActor &a_state, std::uint32_t a_id,
-                                        ActorRole a_role, float a_fraction,
+                                        ActorRole a_role,
+                                        std::optional<float> a_fraction,
                                         std::optional<float> a_distance);
 [[nodiscard]] const std::vector<HeldTarget> &
 HeldNow(const LiveActor &a_state, const PlanTargets &a_targets) noexcept;

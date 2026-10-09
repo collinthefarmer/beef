@@ -2,6 +2,7 @@
 #pragma once
 
 #include "PCH.h"
+#include "planners/ResolutionLevel.h"
 #include "recipe/Efsh.h"
 #include "recipe/Signals.h"
 
@@ -24,6 +25,7 @@ public:
   [[nodiscard]] float Enchantment(EnchantmentField a_field) const override;
   [[nodiscard]] std::optional<Efsh::EffectParams>
   EffectShader(const FormRef &a_record) const override;
+  void SetAppliedResolution(ResolutionLevel a_level) noexcept;
 
 private:
   [[nodiscard]] RE::NiPointer<RE::Actor> Actor() const noexcept;
@@ -31,6 +33,7 @@ private:
   RE::ActorHandle actor_;
   RE::FormID enchantment_ = 0;
   std::optional<RecipeKey> effectKey_;
+  ResolutionLevel appliedResolution_ = ResolutionLevel::kFull;
   mutable std::unordered_map<std::string, RE::ActorValue> actorValues_;
   mutable std::unordered_map<std::string, std::optional<Efsh::EffectParams>>
       shaders_;

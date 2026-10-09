@@ -43,6 +43,7 @@ struct Settings {
   bool verifyRenderPlanCache = false;
   bool cullOutOfView = true;
   bool sizeByScreen = true;
+  bool showDebugRecipes = false;
   std::uint32_t renderTargetBudgetMiB = 0;
   std::uint32_t animationFPS = 60;
   float animationSpeed = 1.0f;
@@ -67,6 +68,7 @@ struct SettingDesc {
     kSlider,
     kIntSlider,
     kCombo,
+    kBudgetCap,
   };
 
   const char *section;

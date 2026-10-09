@@ -19,6 +19,16 @@ bool SwapDue(const ResizeProgress &a_progress, ResizeDraw a_draw,
          a_frame - a_progress.beganFrame >= kResizeSwapAfterFrames;
 }
 
+namespace {
+bool ResizesBefore(const ResizeCandidate &a_left,
+                   const ResizeCandidate &a_right) noexcept {
+  if (a_left.inView != a_right.inView) {
+    return a_left.inView;
+  }
+  return LargerOnScreen(a_left.screenFraction, a_right.screenFraction);
+}
+}
+
 std::optional<std::uint32_t>
 NextResize(std::span<const ResizeCandidate> a_candidates,
            std::size_t a_inFlight) noexcept {
@@ -28,8 +38,7 @@ NextResize(std::span<const ResizeCandidate> a_candidates,
   std::optional<std::size_t> chosen;
   for (std::size_t i = 0; i < a_candidates.size(); ++i) {
     if (a_candidates[i].pending &&
-        (!chosen || a_candidates[i].screenFraction >
-                        a_candidates[*chosen].screenFraction)) {
+        (!chosen || ResizesBefore(a_candidates[i], a_candidates[*chosen]))) {
       chosen = i;
     }
   }

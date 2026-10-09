@@ -23,7 +23,7 @@ HiddenDrawOrder(std::span<const HiddenDrawCandidate> a_candidates) {
     if (a_left.role != a_right.role) {
       return a_left.role == ActorRole::kPlayer;
     }
-    return a_left.screenFraction > a_right.screenFraction;
+    return LargerOnScreen(a_left.screenFraction, a_right.screenFraction);
   });
   std::vector<std::uint32_t> order;
   order.reserve(sorted.size());

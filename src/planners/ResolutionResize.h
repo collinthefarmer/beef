@@ -36,7 +36,8 @@ struct ResizeDrawState {
 struct ResizeCandidate {
   std::uint32_t actor = 0;
   bool pending = false;
-  float screenFraction = 0.0f;
+  bool inView = true;
+  std::optional<float> screenFraction;
 };
 
 inline constexpr std::size_t kResizesInFlight = 1;

@@ -11,6 +11,7 @@
 #include "studio/Widgets.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <optional>
 #include <span>
@@ -159,6 +160,12 @@ struct ResourceCells {
   std::optional<Value> value;
 };
 void ResourceTable(const char *a_id, std::span<const ResourceCells> a_rows);
+
+[[nodiscard]] std::optional<std::uint32_t>
+PresetSlider(const char *a_key, std::uint32_t a_value,
+             const Studio::PresetSliderSpec &a_spec, float a_scale = 1.0f);
+void ReadoutTable(const char *a_id,
+                  std::span<const Studio::ReadoutLine> a_lines);
 
 [[nodiscard]] std::optional<float> Split(const char *a_id, float a_ratio,
                                          const std::function<void()> &a_left,

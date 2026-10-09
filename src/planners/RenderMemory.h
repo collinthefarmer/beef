@@ -5,6 +5,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -28,14 +29,14 @@ struct ActorHolding {
   std::string name;
   std::uint64_t ownBytes = 0;
   std::uint64_t sharedBytes = 0;
-  float screenFraction = 0.0f;
+  std::optional<float> screenFraction;
   std::vector<std::string> recipes;
 };
 
 struct ActorTargets {
   std::uint32_t actor = 0;
   std::string name;
-  float screenFraction = 0.0f;
+  std::optional<float> screenFraction;
   std::vector<std::string> recipes;
   std::vector<HeldTarget> targets;
 };

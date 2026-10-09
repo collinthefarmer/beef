@@ -910,6 +910,67 @@ void ResourceTable(const char *a_id, std::span<const ResourceCells> a_rows) {
   table.End();
 }
 
+std::optional<std::uint32_t>
+PresetSlider(const char *a_key, std::uint32_t a_value,
+             const Studio::PresetSliderSpec &a_spec, float a_scale) {
+  constexpr std::string_view kCustom = "Custom";
+  std::optional<std::uint32_t> chosen;
+  ImGui::PushID(NonNull(a_key));
+  const std::optional<std::size_t> preset =
+      Studio::PresetIndexOf(a_spec, a_value);
+  const std::string shown = Studio::PresetValueText(a_spec, a_value);
+  float comboWidth = FitWidth(kCustom);
+  for (const Studio::Preset &option : a_spec.presets) {
+    comboWidth = (std::max)(comboWidth, FitWidth(option.label));
+  }
+  ImGui::SetNextItemWidth(comboWidth * a_scale);
+  const std::string preview = preset ? shown : std::string{kCustom};
+  if (ImGui::BeginCombo("##preset", preview.c_str())) {
+    for (std::size_t i = 0; i < a_spec.presets.size(); ++i) {
+      const Studio::Preset &option = a_spec.presets[i];
+      const std::string label{option.label};
+      if (ImGui::Selectable(label.c_str(), preset == i)) {
+        chosen = option.value;
+      }
+    }
+    ImGui::EndCombo();
+  }
+  ImGui::SameLine();
+  NextItemWidth(Studio::Width::Fill(), a_scale);
+  std::string format;
+  for (const char c : shown) {
+    format += c == '%' ? std::string{"%%"} : std::string{c};
+  }
+  int dragged = static_cast<int>((
+      std::min)(a_value,
+                static_cast<std::uint32_t>((std::numeric_limits<int>::max)())));
+  if (ImGui::SliderInt("##slider", &dragged, static_cast<int>(a_spec.min),
+                       static_cast<int>(a_spec.max), format.c_str(),
+                       ImGuiMCP::ImGuiSliderFlags_Logarithmic |
+                           ImGuiMCP::ImGuiSliderFlags_NoInput)) {
+    chosen = Studio::SliderValueOf(a_spec, dragged);
+  }
+  ImGui::PopID();
+  return chosen != a_value ? chosen : std::nullopt;
+}
+
+void ReadoutTable(const char *a_id,
+                  std::span<const Studio::ReadoutLine> a_lines) {
+  Table table = Table::Begin(
+      a_id, {{"label", Studio::Width::Fit()}, {"value", Studio::Width::Fill()}},
+      Studio::kColumnsTable);
+  if (!table.Open()) {
+    return;
+  }
+  for (const Studio::ReadoutLine &line : a_lines) {
+    table.Cell();
+    Dim(line.label);
+    table.Cell();
+    ImGui::TextUnformatted(line.value.c_str());
+  }
+  table.End();
+}
+
 std::optional<float> Split(const char *a_id, float a_ratio,
                            const std::function<void()> &a_left,
                            const std::function<void()> &a_right) {

@@ -33,6 +33,10 @@ constexpr std::array kTable{
                 "Give each worn clone its own copy of the pooled PBR material "
                 "before writing to it.",
                 &Settings::uniqueMaterial, 0, 1, W::kCheckbox, true},
+    SettingDesc{"General", "ShowDebugRecipes", "Debug recipes",
+                "Apply the recipes in the recipes/debug folder. When off, "
+                "they stay in the editor but match no armor.",
+                &Settings::showDebugRecipes, 0, 1, W::kCheckbox, true},
     SettingDesc{"General", "VerboseLogging", "Verbose logging",
                 "Add detail lines to the log: the pieces, recipes, lights and "
                 "geometries of each apply, resolution changes, retirements, "
@@ -80,7 +84,7 @@ constexpr std::array kTable{
                 "use. The plugin also stays inside the free video memory. "
                 "0 sets no limit of its own.",
                 &Settings::renderTargetBudgetMiB, 0,
-                static_cast<float>(kMaxRenderTargetBudgetMiB), W::kIntSlider,
+                static_cast<float>(kMaxRenderTargetBudgetMiB), W::kBudgetCap,
                 false},
     SettingDesc{"General", "AnimationFPS", "Animation FPS",
                 "Animation update rate.", &Settings::animationFPS,

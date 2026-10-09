@@ -150,7 +150,7 @@ Manager::SyncActor(actor) ── DecideActor                   engine/ManagerApp
   │    ActorFacts: loaded (Loaded3D), distance (DistanceToPlayer,
   │    none for the player), pieces with refs, keys, model tokens, geometries
   ▼
-  │  AppliedCatalog()  one immutable catalog per publication  engine/RecipeStore.cpp
+  │  AppliedCatalog(debug)  one immutable catalog per publication  engine/RecipeStore.cpp
   │  LiveClaims(state.claims, facts)                        actors/Lifecycle.cpp
   │  PlanActor({facts, catalog, view, claims})              actors/Planning.cpp
   │    MatchActor over the pieces that have a model ──▶ matches

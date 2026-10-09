@@ -510,5 +510,24 @@ int main() {
         "variant rows; keys, clock and the recipe itself are not");
   }
 
+  {
+    Check(std::size(kActorStates) == kActorStateCount &&
+              FromName(kActorStates, "resolutionLevel") ==
+                  ActorStateKind::kResolutionLevel,
+          "the actor state words cover every kind, resolutionLevel included");
+    for (const Named<ActorStateKind> &state : kActorStates) {
+      const std::string json = std::format(
+          R"({{"format": 1, "keys": ["default"], "signals": {{ "s": {{ "actorState": "{}" }} }}}})",
+          state.name);
+      const Recipe r = StableRoundTrip(
+          json, "state", std::format("actorState {}", state.name));
+      const Signal *signal = r.FindSignal("s");
+      const ActorStateSignal *read =
+          signal ? Get<ActorStateSignal>(signal->kind) : nullptr;
+      Check(read && read->kind == state.value,
+            std::format("actorState {} parses to its kind", state.name));
+    }
+  }
+
   return test::Finish("recipe");
 }

@@ -26,6 +26,7 @@ namespace {
 struct LoadedRecipe {
   Recipe recipe;
   std::filesystem::path path;
+  RecipeClass recipeClass = RecipeClass::kRegular;
   std::vector<Diagnostic> diagnostics;
   std::shared_ptr<const RecipeGraph> graph;
   bool dirty = false;
@@ -41,6 +42,7 @@ static_assert(std::is_nothrow_move_constructible_v<Studio::ReferenceCounts> ||
 std::vector<LoadedRecipe> g_loaded;
 std::shared_ptr<const RecipeCatalog> g_applied =
     std::make_shared<const RecipeCatalog>(RecipeCatalog::Of({}));
+std::shared_ptr<const RecipeCatalog> g_appliedWithoutDebug = g_applied;
 RecipeStoreStatus g_status;
 Studio::MaskPresets g_presets;
 
@@ -64,10 +66,19 @@ void RebuildApplied() {
     if (!loaded.fingerprint) {
       loaded.fingerprint = ContentFingerprint(loaded.recipe);
     }
-    entries.push_back({loaded.recipe, *loaded.fingerprint});
+    entries.push_back({loaded.recipe, *loaded.fingerprint, loaded.recipeClass});
   }
+  const bool anyDebug =
+      std::ranges::any_of(entries, [](const CatalogEntry &a_entry) {
+        return a_entry.recipeClass == RecipeClass::kDebug;
+      });
+  std::shared_ptr<const RecipeCatalog> withoutDebug =
+      anyDebug ? std::make_shared<const RecipeCatalog>(RecipeCatalog::Of(
+                     MatchingEntries(entries, DebugRecipes::kHidden)))
+               : nullptr;
   g_applied = std::make_shared<const RecipeCatalog>(
       RecipeCatalog::Of(std::move(entries)));
+  g_appliedWithoutDebug = withoutDebug ? withoutDebug : g_applied;
 }
 
 void LoadPresets() {
@@ -198,7 +209,7 @@ void LogDiagnostics(const std::string &a_id,
   }
 }
 
-void LoadFile(const std::filesystem::path &a_path) {
+void LoadFile(const std::filesystem::path &a_path, RecipeClass a_class) {
   const auto id = a_path.stem().string();
   const auto text = ReadText(a_path);
   if (!text || text->empty()) {
@@ -237,6 +248,7 @@ void LoadFile(const std::filesystem::path &a_path) {
   LoadedRecipe loaded;
   loaded.recipe = std::move(*result.recipe);
   loaded.path = a_path;
+  loaded.recipeClass = a_class;
   loaded.diagnostics = std::move(result.diagnostics);
   loaded.inputDiagnostics = std::move(result.inputDiagnostics);
   const auto existing = std::ranges::find(
@@ -244,6 +256,9 @@ void LoadFile(const std::filesystem::path &a_path) {
   if (existing != g_loaded.end()) {
     logger::info("recipe {}: {} replaces {}", id, a_path.string(),
                  existing->path.string());
+    if (existing->recipeClass == RecipeClass::kDebug) {
+      loaded.recipeClass = RecipeClass::kDebug;
+    }
   }
   AppendDefinition(g_loaded, std::move(loaded),
                    [](const LoadedRecipe &a_loaded) -> const std::string & {
@@ -406,6 +421,7 @@ void ImportMissing(const std::filesystem::path &a_folder) {
 RecipeStoreStatus LoadRecipes() {
   g_loaded.clear();
   g_applied = std::make_shared<const RecipeCatalog>(RecipeCatalog::Of({}));
+  g_appliedWithoutDebug = g_applied;
   g_status = {};
   const auto root = Identity::RecipeRoot();
   const auto user = Identity::UserRecipeFolder();
@@ -421,10 +437,10 @@ RecipeStoreStatus LoadRecipes() {
     (IsUnder(path, user) ? saved : shipped).push_back(path);
   }
   for (const auto &path : shipped) {
-    LoadFile(path);
+    LoadFile(path, ClassOfRecipePath(path.lexically_relative(root)));
   }
   for (const auto &path : saved) {
-    LoadFile(path);
+    LoadFile(path, RecipeClass::kRegular);
   }
   ImportMissing(Identity::ImportedRecipeFolder());
   LoadPresets();
@@ -433,10 +449,14 @@ RecipeStoreStatus LoadRecipes() {
     l.saved = l.recipe;
   }
   RebuildApplied();
-  logger::info("recipes: {} loaded, {} with errors, {} held back, {} "
+  g_status.debug = static_cast<std::size_t>(
+      std::ranges::count(g_loaded, RecipeClass::kDebug,
+                         [](const LoadedRecipe &l) { return l.recipeClass; }));
+  logger::info("recipes: {} loaded ({} debug, matched only with "
+               "ShowDebugRecipes), {} with errors, {} held back, {} "
                "unresolved editor IDs, {} imported this session, folder {}",
-               g_status.loaded, g_status.withErrors, g_status.heldBack,
-               g_status.unresolved, g_status.imported,
+               g_status.loaded, g_status.debug, g_status.withErrors,
+               g_status.heldBack, g_status.unresolved, g_status.imported,
                std::filesystem::absolute(root, ec).string());
   return g_status;
 }
@@ -447,10 +467,13 @@ std::span<const Recipe> LoadedRecipes() noexcept {
   return g_applied->Recipes();
 }
 
-std::shared_ptr<const RecipeCatalog> AppliedCatalog() noexcept {
+std::shared_ptr<const RecipeCatalog>
+AppliedCatalog(DebugRecipes a_debug) noexcept {
   static const std::shared_ptr<const RecipeCatalog> empty =
       std::make_shared<const RecipeCatalog>(RecipeCatalog::Of({}));
-  return g_applied ? g_applied : empty;
+  const std::shared_ptr<const RecipeCatalog> &catalog =
+      a_debug == DebugRecipes::kShown ? g_applied : g_appliedWithoutDebug;
+  return catalog ? catalog : empty;
 }
 
 const Studio::MaskPresets &LoadedPresets() noexcept { return g_presets; }

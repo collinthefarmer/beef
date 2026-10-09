@@ -24,6 +24,7 @@
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace BetterEnchantmentEffects {
@@ -441,6 +442,18 @@ std::optional<RE::FormID> Manager::InspectedActor(std::uint32_t a_nowMS) const {
 std::shared_ptr<const Manager::Snapshot> Manager::LatestSnapshot() const {
   std::scoped_lock lock{snapshotLock_};
   return latest_;
+}
+
+std::shared_ptr<const Studio::BudgetView> Manager::LatestBudgetView() const {
+  std::scoped_lock lock{snapshotLock_};
+  return latestBudget_;
+}
+
+void Manager::PublishBudgetView(Studio::BudgetView a_view) {
+  auto published =
+      std::make_shared<const Studio::BudgetView>(std::move(a_view));
+  std::scoped_lock lock{snapshotLock_};
+  latestBudget_ = std::move(published);
 }
 
 void Manager::PublishSnapshot(std::uint32_t a_nowMS) {

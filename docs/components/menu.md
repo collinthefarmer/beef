@@ -87,6 +87,7 @@ The functions group by what they draw.
 | `Badge`, `ModeBadge`, `BlendGlyph`, `BlendBadge` | The **badge** glyphs. `Badge` draws a `Studio::FieldKind` glyph. `ModeBadge` toggles a **field** between combo entry and typed entry. `BlendBadge` draws a `Blend` glyph and returns a new `Blend` on a click. |
 | `ValueText`, `ValueSwatch`, `SourceValueText`, `ResourceValueText`, `RecipeLabel`, `HeldLabel` | Value and label text. `RecipeLabel` marks a pinned **recipe** as `(pinned here)`. |
 | `ResourceTable`, `Thumbnail`, `ThumbnailButton` | A table of `ResourceCells` rows, and a texture thumbnail from a `Studio::ThumbnailSpec`. |
+| `PresetSlider`, `ReadoutTable` | `PresetSlider` draws a preset combo and a logarithmic slider from a `Studio::PresetSliderSpec`. It returns the new value, or `nullopt` when the value did not change. `ReadoutTable` draws `Studio::ReadoutLine`s as a two-column table. |
 | `Rule`, `RuleWithFilter`, `Banner` | The **rule** headers and the banner strip. A rule draws a title, optional buttons, and optional leading and trailing content. |
 | `Split` | Draws two panes with a drag bar. It returns the new ratio when the user drags the bar. |
 | `Toggle`, `SquareToggle`, `SoloButton`, `MuteButton`, `PeekButton`, `DetailButton`, `RemoveButton`, `CloseButton` | The buttons. `RemoveButton` takes the reference count of the row it removes. |
@@ -224,6 +225,11 @@ next tick: Manager publishes a new Snapshot; RenderStudio reads it
 - `RenderSetup` (`SetupPage.cpp`) builds no `Frame` and posts no intents.
   It changes `Settings` through `SetSettings` and `SaveSettingsToDisk`. It
   calls `Manager::ReapplyAll` after a change that needs it.
+- The row `RenderTargetBudgetMiB` has the widget kind `kBudgetCap`. It draws
+  `PresetSlider` with `Studio::kBudgetCapControl`. Under the control it draws
+  `ReadoutTable` with `Studio::BudgetReadout` of
+  `Manager::LatestBudgetView`. Before the first heartbeat it shows "no
+  reading yet".
 
 ## The files
 

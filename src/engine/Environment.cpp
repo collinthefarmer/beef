@@ -58,7 +58,14 @@ float ActorEnvironment::ActorValue(std::string_view a_name,
   return 0.0f;
 }
 
+void ActorEnvironment::SetAppliedResolution(ResolutionLevel a_level) noexcept {
+  appliedResolution_ = a_level;
+}
+
 float ActorEnvironment::ActorState(ActorStateKind a_kind) const {
+  if (a_kind == ActorStateKind::kResolutionLevel) {
+    return static_cast<float>(LevelIndex(appliedResolution_));
+  }
   const auto actor = Actor();
   if (!actor) {
     return 0.0f;
@@ -87,6 +94,7 @@ float ActorEnvironment::ActorState(ActorStateKind a_kind) const {
     return actor->GetActorRuntimeData().currentCombatTarget.get() ? 1.0f : 0.0f;
   case ActorStateKind::kPosition:
   case ActorStateKind::kTarget:
+  case ActorStateKind::kResolutionLevel:
     return 0.0f;
   }
   return 0.0f;

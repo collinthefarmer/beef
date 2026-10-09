@@ -47,6 +47,43 @@ void FingerprintFollowsContent() {
         "changed content gives a new fingerprint");
 }
 
+void ClassifiesOnlyTheTopLevelDebugFolder() {
+  Check(ClassOfRecipePath("debug/x.json") == RecipeClass::kDebug,
+        "a file in the top-level debug folder is a debug recipe");
+  Check(ClassOfRecipePath("debug/deeper/x.json") == RecipeClass::kDebug,
+        "a file nested under the top-level debug folder is a debug recipe");
+  Check(ClassOfRecipePath("Debug/x.json") == RecipeClass::kDebug,
+        "the debug folder name ignores case, as Windows does");
+  Check(ClassOfRecipePath("examples/x.json") == RecipeClass::kRegular,
+        "a file in another folder is a regular recipe");
+  Check(ClassOfRecipePath("debug.json") == RecipeClass::kRegular,
+        "a top-level file named debug.json is a regular recipe");
+  Check(ClassOfRecipePath("examples/debug/x.json") == RecipeClass::kRegular,
+        "a debug folder below another folder is not the debug folder");
+  Check(ClassOfRecipePath("") == RecipeClass::kRegular,
+        "an empty path is a regular recipe");
+}
+
+void HidesDebugEntriesOnlyWhenAsked() {
+  const std::vector<CatalogEntry> entries{
+      {Named("glow", 1), 11, RecipeClass::kRegular},
+      {Named("tint", 2), 22, RecipeClass::kDebug},
+      {Named("ring", 3), 33, RecipeClass::kRegular}};
+  const RecipeCatalog hidden =
+      RecipeCatalog::Of(MatchingEntries(entries, DebugRecipes::kHidden));
+  test::Equal(hidden.Recipes().size(), std::size_t{2},
+              "hidden debug recipes leave the matching catalog");
+  const Recipe *second = hidden.At(RecipeId{1});
+  Check(second && second->id == "ring" &&
+            hidden.FingerprintOf(RecipeId{1}) == 33,
+        "the regular recipes keep their order and fingerprints");
+  const RecipeCatalog shown =
+      RecipeCatalog::Of(MatchingEntries(entries, DebugRecipes::kShown));
+  const Recipe *tint = shown.At(RecipeId{1});
+  Check(shown.Recipes().size() == 3 && tint && tint->id == "tint",
+        "shown debug recipes stay in the matching catalog in place");
+}
+
 void SharedRecipeKeepsItsCatalog() {
   auto catalog = std::make_shared<const RecipeCatalog>(
       RecipeCatalog::Of({{Named("glow", 4), 11}}));
@@ -67,5 +104,7 @@ int main() {
   AnswersNothingPastTheEnd();
   FingerprintFollowsContent();
   SharedRecipeKeepsItsCatalog();
+  ClassifiesOnlyTheTopLevelDebugFolder();
+  HidesDebugEntriesOnlyWhenAsked();
   return test::Finish("recipe catalog");
 }

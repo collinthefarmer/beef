@@ -46,25 +46,6 @@ private:
   Metrics::Stopwatch watch_;
 };
 
-inline constexpr float kViewRadiusScale = 1.25f;
-inline constexpr float kViewRadiusPadding = 64.0f;
-inline constexpr float kViewMinRadius = 96.0f;
-inline constexpr float kViewCentreHeight = 64.0f;
-
-bool InCameraView(RE::Actor &a_actor) {
-  RE::NiCamera *camera = RE::Main::WorldRootCamera();
-  RE::NiAVObject *root = a_actor.Get3D(false);
-  if (!camera || !root) {
-    return true;
-  }
-  const RE::NiPoint3 position = a_actor.GetPosition();
-  const float radius = std::max(root->worldBound.radius, kViewMinRadius);
-  const RE::NiBound padded{
-      RE::NiPoint3{position.x, position.y, position.z + kViewCentreHeight},
-      radius * kViewRadiusScale + kViewRadiusPadding};
-  return RE::NiCamera::BoundInFrustum(padded, camera);
-}
-
 bool ShownThisTick(RE::Actor &a_actor, const Settings &a_settings,
                    bool a_inspected) {
   if (a_actor.IsPlayerRef() || !a_settings.cullOutOfView) {
@@ -637,8 +618,8 @@ ScreenSpread
 ScreenSpreadOf(const std::unordered_map<RE::FormID, LiveActor> &a_live) {
   std::vector<float> fractions;
   for (const auto &[actor, state] : a_live) {
-    if (state.inView && state.renderedFrame != 0) {
-      fractions.push_back(state.screenFraction);
+    if (state.inView && state.renderedFrame != 0 && state.screenFraction) {
+      fractions.push_back(*state.screenFraction);
     }
   }
   return SpreadOf(std::move(fractions));
@@ -679,10 +660,20 @@ RenderedActorTargets(const std::unordered_map<RE::FormID, LiveActor> &a_live) {
 
 std::string Fraction(float a_value) { return std::format("{:.3f}", a_value); }
 
-float SizingFraction(const LiveActor &a_state, const Settings &a_settings) {
+std::string FractionText(std::optional<float> a_value) {
+  return a_value ? Fraction(*a_value) : std::string{"unmeasured"};
+}
+
+std::optional<float> SizingFraction(const LiveActor &a_state,
+                                    const Settings &a_settings) {
   return RegressionScreenResolution().value_or(a_settings.sizeByScreen)
              ? a_state.screenFraction
-             : 1.0f;
+             : std::optional<float>{1.0f};
+}
+
+ActorSight SightOf(const LiveActor &a_state, RE::Actor &a_actor,
+                   const Settings &a_settings) {
+  return {SizingFraction(a_state, a_settings), a_state.inView, RoleOf(a_actor)};
 }
 
 std::string NameOf(const LiveActor &a_state) {
@@ -725,15 +716,20 @@ void ReportResize(RE::FormID a_actorID, const LiveActor &a_state,
                name.empty() ? "unnamed" : name, LevelName(a_swap.to));
 }
 
-void EmitLevelCounts(const std::unordered_map<RE::FormID, LiveActor> &a_live) {
+PerLevel<std::size_t>
+LevelCounts(const std::unordered_map<RE::FormID, LiveActor> &a_live) {
   PerLevel<std::size_t> counts;
   for (const auto &[actor, state] : a_live) {
     ++counts.At(state.appliedResolution);
   }
+  return counts;
+}
+
+void EmitLevelCounts(const PerLevel<std::size_t> &a_counts) {
   std::vector<Trace::Field> fields{{"action", "resolution_levels"}};
   for (const ResolutionLevel level : kResolutionLevels) {
     fields.push_back(
-        {std::string{LevelName(level)}, std::to_string(counts.At(level))});
+        {std::string{LevelName(level)}, std::to_string(a_counts.At(level))});
   }
   Trace::EmitSafely(Trace::Event::kMetrics, fields);
 }
@@ -826,7 +822,10 @@ void Manager::FlushMetricsHeartbeat() {
   UpdateBudget(sample, planned.bytes, settings);
   EmitMetricsHeartbeat(measured, planned, ScreenSpreadOf(live_), sample,
                        budget_, waitingInstalls_.size());
-  EmitLevelCounts(live_);
+  const PerLevel<std::size_t> levels = LevelCounts(live_);
+  EmitLevelCounts(levels);
+  PublishBudgetView(
+      Studio::BudgetViewOf(sample, budget_, budgetRadius_, levels));
   ReportRenderMemory(measured, planned, intervalMs);
 }
 
@@ -992,7 +991,7 @@ void Manager::Tick(std::uint32_t a_nowMS, const Settings &a_settings) {
     if (state.inView) {
       state.intermediates = IntermediateHolding::kHeld;
     }
-    RequestStepUp(it->first, *actor, state, a_settings);
+    RequestLevelStep(it->first, *actor, state, a_settings);
     std::vector<bool> hidden;
     if (state.inView) {
       const SectionTimer renderTimer{Metrics::Section::kRender};
@@ -1134,31 +1133,42 @@ void Manager::TickInstance(LiveInstance &a_instance, float a_time,
   a_instance.signals->Tick(*a_instance.environment, {a_time, a_delta});
 }
 
-void Manager::RequestStepUp(RE::FormID a_actorID, RE::Actor &a_actor,
-                            LiveActor &a_state, const Settings &a_settings) {
+void Manager::RequestLevelStep(RE::FormID a_actorID, RE::Actor &a_actor,
+                               LiveActor &a_state, const Settings &a_settings) {
   const auto tracked = tracked_.find(a_actorID);
   if (tracked == tracked_.end() || !tracked->second.targetResolution ||
       a_state.awaitedPlan) {
     return;
   }
   ResolutionLevel &level = *tracked->second.targetResolution;
-  const ActorRole role = RoleOf(a_actor);
-  const std::optional<ResolutionLevel> next =
-      StepUpFor(level, SizingFraction(a_state, a_settings), role);
+  const ActorSight sight = SightOf(a_state, a_actor, a_settings);
+  a_state.smallSinceMS =
+      SmallSince(level, sight.screenFraction, a_state.smallSinceMS, tickNowMS_);
+  const LevelStep step =
+      NextLevelStep(level, sight, a_state.smallSinceMS, tickNowMS_);
+  std::optional<ResolutionLevel> next;
+  if (const StepUpTo *up = Get<StepUpTo>(step)) {
+    if (sight.role != ActorRole::kPlayer &&
+        !AdmitStepUp(a_actorID, a_state, level, up->level)) {
+      return;
+    }
+    next = up->level;
+  } else if (const StepDownTo *down = Get<StepDownTo>(step)) {
+    next = down->level;
+  }
   if (!next) {
     return;
   }
-  if (role != ActorRole::kPlayer &&
-      !AdmitStepUp(a_actorID, a_state, level, *next)) {
-    return;
-  }
-  Trace::EmitSafely(Trace::Event::kMetrics,
-                    {{"action", "resolution_level"},
-                     {"actor", std::to_string(a_actorID)},
-                     {"from", std::string{LevelName(level)}},
-                     {"to", std::string{LevelName(*next)}},
-                     {"screen_fraction", Fraction(a_state.screenFraction)}});
+  Trace::EmitSafely(
+      Trace::Event::kMetrics,
+      {{"action", "resolution_level"},
+       {"actor", std::to_string(a_actorID)},
+       {"from", std::string{LevelName(level)}},
+       {"to", std::string{LevelName(*next)}},
+       {"reason", "screen"},
+       {"screen_fraction", FractionText(a_state.screenFraction)}});
   level = *next;
+  a_state.smallSinceMS.reset();
   RequestResize(a_state, *next);
 }
 
@@ -1176,7 +1186,7 @@ void Manager::AdvanceResizes(const Settings &a_settings) {
     }
     candidates.push_back({id,
                           Is<ResizePending>(state.resize) && !state.firstDraw,
-                          state.screenFraction});
+                          state.inView, state.screenFraction});
   }
   const std::optional<std::uint32_t> next = NextResize(candidates, inFlight);
   if (!next) {
@@ -1259,25 +1269,85 @@ void Manager::UpdateBudget(const BudgetSample &a_sample,
   }
   if (isOver && budget_.allowance) {
     RelieveBudget(PressureGoal(*budget_.allowance), a_settings);
+  } else if (budget_.allowance) {
+    PreemptForBlockedStepUp(a_settings);
   }
   GrowBudgetRadius(a_settings);
 }
 
-void Manager::RelieveBudget(std::uint64_t a_goal, const Settings &a_settings) {
-  std::vector<BudgetActor> actors;
-  bool resizeBusy = false;
+Manager::BudgetActors Manager::BudgetActorsNow(const Settings &a_settings) {
+  BudgetActors now;
   for (auto &[id, state] : live_) {
-    resizeBusy = resizeBusy || !Is<ResizeIdle>(state.resize);
+    now.resizeBusy = now.resizeBusy || !Is<ResizeIdle>(state.resize);
     const RE::NiPointer<RE::Actor> actor = state.actor.get();
     if (!actor || state.renderedFrame == 0) {
       continue;
     }
-    actors.push_back(BudgetActorOf(state, id, RoleOf(*actor),
-                                   SizingFraction(state, a_settings),
-                                   DistanceToPlayer(*actor)));
+    now.actors.push_back(BudgetActorOf(state, id, RoleOf(*actor),
+                                       SizingFraction(state, a_settings),
+                                       DistanceToPlayer(*actor)));
   }
+  return now;
+}
+
+std::vector<Manager::BlockedStepUp>
+Manager::BlockedStepUps(const Settings &a_settings) {
+  std::vector<BlockedStepUp> blocked;
+  for (auto &[id, state] : live_) {
+    const auto tracked = tracked_.find(id);
+    const RE::NiPointer<RE::Actor> actor = state.actor.get();
+    if (!state.stepUpBlockedFrom || !actor || tracked == tracked_.end() ||
+        !tracked->second.targetResolution) {
+      continue;
+    }
+    const ActorSight sight = SightOf(state, *actor, a_settings);
+    const std::optional<ResolutionLevel> wanted = WantedLevel(sight);
+    if (!sight.inView || !wanted ||
+        LevelGap(*wanted, *tracked->second.targetResolution) <= 0) {
+      continue;
+    }
+    const std::optional<LevelCost> cost = CachedLevelCost(state, *wanted);
+    const std::uint64_t added = cost ? cost->withIntermediates : 0;
+    blocked.push_back({id, {sight, ShortfallOf(budget_, added)}});
+  }
+  std::ranges::stable_sort(
+      blocked, [](const BlockedStepUp &a_left, const BlockedStepUp &a_right) {
+        return LargerOnScreen(a_left.request.sight.screenFraction,
+                              a_right.request.sight.screenFraction);
+      });
+  return blocked;
+}
+
+void Manager::PreemptForBlockedStepUp(const Settings &a_settings) {
+  const std::vector<BlockedStepUp> blocked = BlockedStepUps(a_settings);
+  if (blocked.empty()) {
+    return;
+  }
+  const BudgetActors now = BudgetActorsNow(a_settings);
+  if (now.resizeBusy) {
+    return;
+  }
+  for (const BlockedStepUp &requester : blocked) {
+    const std::optional<std::size_t> chosen =
+        PreemptionCandidate(requester.request, now.actors);
+    if (!chosen) {
+      continue;
+    }
+    const BudgetActor &victim = now.actors[*chosen];
+    const auto found = live_.find(victim.actor);
+    if (found != live_.end() && victim.stepDown) {
+      StepDownForBudget(found->first, found->second, *victim.stepDown,
+                        requester.actor);
+    }
+    return;
+  }
+}
+
+void Manager::RelieveBudget(std::uint64_t a_goal, const Settings &a_settings) {
+  const BudgetActors now = BudgetActorsNow(a_settings);
+  const std::vector<BudgetActor> &actors = now.actors;
   const BudgetResponse response =
-      RespondToPressure(budget_.planned, a_goal, actors, resizeBusy);
+      RespondToPressure(budget_.planned, a_goal, actors, now.resizeBusy);
   for (const BudgetRelease &release : response.release) {
     const auto found = live_.find(release.actor);
     if (found == live_.end()) {
@@ -1293,7 +1363,8 @@ void Manager::RelieveBudget(std::uint64_t a_goal, const Settings &a_settings) {
   if (const StepDown *stepDown = Get<StepDown>(response.next)) {
     const auto found = live_.find(stepDown->actor);
     if (found != live_.end()) {
-      StepDownForBudget(found->first, found->second, stepDown->option);
+      StepDownForBudget(found->first, found->second, stepDown->option,
+                        std::nullopt);
     }
   }
   if (Is<Exhausted>(response.next) && !ShrinkBudgetRadius(actors) &&
@@ -1438,7 +1509,8 @@ float Manager::EvictDistanceNow(const Settings &a_settings) const {
 }
 
 void Manager::StepDownForBudget(RE::FormID a_actorID, LiveActor &a_state,
-                                const StepDownOption &a_option) {
+                                const StepDownOption &a_option,
+                                std::optional<RE::FormID> a_preemptedBy) {
   const auto tracked = tracked_.find(a_actorID);
   if (tracked == tracked_.end() || !tracked->second.targetResolution) {
     return;
@@ -1446,15 +1518,21 @@ void Manager::StepDownForBudget(RE::FormID a_actorID, LiveActor &a_state,
   const ResolutionLevel from = a_state.appliedResolution;
   tracked->second.targetResolution = a_option.to;
   a_state.stepUpBlockedFrom.reset();
+  a_state.smallSinceMS.reset();
   RequestResize(a_state, a_option.to);
-  logger::info("{}", StepDownLine(a_actorID, NameOf(a_state), from, a_option));
-  Trace::EmitSafely(Trace::Event::kMetrics,
-                    {{"action", "budget_step_down"},
-                     {"actor", std::to_string(a_actorID)},
-                     {"from", std::string{LevelName(from)}},
-                     {"to", std::string{LevelName(a_option.to)}},
-                     {"freed_bytes", std::to_string(a_option.freed)},
-                     {"reason", "render target budget"}});
+  logger::info("{}", StepDownLine({a_actorID, NameOf(a_state), from, a_option,
+                                   a_preemptedBy}));
+  std::vector<Trace::Field> fields{
+      {"action", "budget_step_down"},
+      {"actor", std::to_string(a_actorID)},
+      {"from", std::string{LevelName(from)}},
+      {"to", std::string{LevelName(a_option.to)}},
+      {"freed_bytes", std::to_string(a_option.freed)},
+      {"reason", a_preemptedBy ? "preempted" : "render target budget"}};
+  if (a_preemptedBy) {
+    fields.push_back({"for_actor", std::to_string(*a_preemptedBy)});
+  }
+  Trace::EmitSafely(Trace::Event::kMetrics, fields);
 }
 
 void Manager::ClaimLostGeometries(RE::FormID a_actorID, LiveActor &a_state) {

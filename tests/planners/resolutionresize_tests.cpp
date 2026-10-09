@@ -41,12 +41,19 @@ void SwapWaitsForTheDraw() {
 
 void OneResizeAtATimeLargestFirst() {
   const std::vector<ResizeCandidate> candidates{
-      {1, false, 0.9f}, {2, true, 0.2f}, {3, true, 0.6f}, {4, true, 0.4f}};
+      {1, false, true, 0.9f},  {2, true, true, 0.2f},
+      {3, true, true, 0.6f},   {4, true, true, 0.4f},
+      {5, true, false, 0.95f}, {6, true, true, std::nullopt}};
   Check(NextResize(candidates, 0) == std::optional<std::uint32_t>{3},
-        "the pending actor largest on screen resizes first");
+        "the pending actor largest on screen resizes first, before actors "
+        "out of view or unmeasured");
+  Check(NextResize(std::vector<ResizeCandidate>{{5, true, false, 0.95f},
+                                                {6, true, true, std::nullopt}},
+                   0) == std::optional<std::uint32_t>{6},
+        "an actor in view resizes before one out of view");
   Check(!NextResize(candidates, kResizesInFlight),
         "no resize starts while one is in flight");
-  Check(!NextResize(std::vector<ResizeCandidate>{{1, false, 1.0f}}, 0),
+  Check(!NextResize(std::vector<ResizeCandidate>{{1, false, true, 1.0f}}, 0),
         "an actor without a pending level does not resize");
   Check(!NextResize({}, 0), "no actors start no resize");
 }

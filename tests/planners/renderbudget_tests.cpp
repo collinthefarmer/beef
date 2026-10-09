@@ -21,6 +21,7 @@ BudgetActor Npc(ResolutionLevel a_level, float a_fraction,
   if (const std::optional<ResolutionLevel> coarser = CoarserLevel(a_level)) {
     actor.stepDown = StepDownOption{*coarser, a_freed};
   }
+  actor.surplusBytes = a_freed;
   return actor;
 }
 
@@ -60,6 +61,27 @@ void AllowanceIsFreeVideoMemoryLessMargin() {
   capped.capBytes = 100 * kGiB;
   Check(AllowanceOf(capped) == AllowanceOf(sample),
         "a cap above the allowance changes nothing");
+}
+
+void AllowanceNamesItsLimit() {
+  const BudgetSample sample{VideoMemory{8 * kGiB, 6 * kGiB}, 1 * kGiB, 0};
+  const std::uint64_t fromMemory = 3 * kGiB - kMinBudgetMargin;
+  Check(LimitedAllowanceOf(sample) ==
+            LimitedAllowance{fromMemory, AllowanceLimit::kFreeVideoMemory},
+        "without a cap, free video memory sets the allowance");
+  BudgetSample capped = sample;
+  capped.capBytes = 1 * kGiB;
+  Check(LimitedAllowanceOf(capped) ==
+            LimitedAllowance{1 * kGiB, AllowanceLimit::kCap},
+        "a cap under the free video memory sets the allowance");
+  capped.capBytes = 100 * kGiB;
+  Check(LimitedAllowanceOf(capped) ==
+            LimitedAllowance{fromMemory, AllowanceLimit::kFreeVideoMemory},
+        "a cap over the free video memory does not set the allowance");
+  Check(!LimitedAllowanceOf({std::nullopt, 1 * kGiB, 1 * kGiB}),
+        "an unknown reading has no allowance, even with a cap");
+  Equal(FreeVideoMemory({2 * kGiB, 5 * kGiB}), std::uint64_t{0},
+        "usage over the budget leaves no free video memory");
 }
 
 void UnknownBudgetDoesNothing() {
@@ -216,6 +238,70 @@ void PlayerIsNeverPicked() {
         "pressure with only the player and coarsest NPCs is exhausted");
 }
 
+void OutOfViewActorsStepDownFirst() {
+  BudgetActor behind = Npc(ResolutionLevel::kFull, 0.6f, 1 * kGiB);
+  behind.inView = false;
+  const std::vector<BudgetActor> actors =
+      Numbered({Npc(ResolutionLevel::kFull, 0.3f, 4 * kGiB), behind});
+  const StepDown *stepDown =
+      Get<StepDown>(RespondToPressure(10 * kGiB, 1 * kGiB, actors, false).next);
+  Check(stepDown && stepDown->actor == 2,
+        "a large actor out of view steps down before a visible one that "
+        "frees more");
+}
+
+void PreemptionTakesFromSmallerOrHiddenActors() {
+  const PreemptionRequest requester{{0.6f, true, ActorRole::kOther},
+                                    1 * kMebibyte};
+  BudgetActor behind = Npc(ResolutionLevel::kFull, 0.7f, 1 * kGiB);
+  behind.inView = false;
+  const std::vector<BudgetActor> actors =
+      Numbered({Npc(ResolutionLevel::kFull, 0.5f, 4 * kGiB),
+                Npc(ResolutionLevel::kFull, 0.3f, 2 * kGiB), behind});
+  Check(PreemptionCandidate(requester, actors) == 2u,
+        "an actor out of view gives up its level first");
+  const std::vector<BudgetActor> visible(actors.begin(), actors.begin() + 2);
+  Check(PreemptionCandidate(requester, visible) == 1u,
+        "a visible actor gives way only below 0.8 of the requester's size");
+  Check(!PreemptionCandidate(requester, std::span{visible}.first(1)),
+        "an actor of about the requester's size keeps its level");
+  Check(!PreemptionCandidate(
+            requester, Numbered({Npc(ResolutionLevel::kHalf, 0.3f, 1 * kGiB)})),
+        "an actor at the level its size wants keeps it");
+  Check(!PreemptionCandidate({{0.6f, false, ActorRole::kOther}, 1 * kMebibyte},
+                             actors),
+        "a requester out of view takes nothing");
+  BudgetActor player = Npc(ResolutionLevel::kFull, 0.01f, 9 * kGiB);
+  player.role = ActorRole::kPlayer;
+  BudgetActor resizing = Npc(ResolutionLevel::kFull, 0.01f, 9 * kGiB);
+  resizing.resizing = true;
+  Check(!PreemptionCandidate(requester, Numbered({player, resizing})),
+        "the player and a resizing actor are never taken from");
+}
+
+void PreemptionNeedsEnoughSurplus() {
+  BudgetActor karita = Npc(ResolutionLevel::kFull, 0.2f, 1 * kMebibyte);
+  karita.inView = false;
+  karita.surplusBytes = 1398101;
+  BudgetActor thoring = karita;
+  const std::vector<BudgetActor> actors = Numbered({karita, thoring});
+  Check(!PreemptionCandidate({{0.6f, true, ActorRole::kOther}, 32 * kMebibyte},
+                             actors),
+        "no actor gives way when all the surplus cannot cover the shortfall");
+  Check(PreemptionCandidate({{0.6f, true, ActorRole::kOther}, 2 * kMebibyte},
+                            actors)
+            .has_value(),
+        "an actor gives way when the surplus together covers the shortfall");
+  Check(!PreemptionCandidate({{0.6f, true, ActorRole::kOther}, 0}, actors),
+        "a step up that fits takes nothing");
+  Equal(ShortfallOf({64 * kMebibyte, 20 * kMebibyte, Pressure::kNone},
+                    80 * kMebibyte),
+        std::uint64_t{36 * kMebibyte},
+        "the shortfall is the planned and added bytes over the allowance");
+  Equal(ShortfallOf(BudgetState{}, 80 * kMebibyte), std::uint64_t{0},
+        "an unknown allowance has no shortfall");
+}
+
 void HeadroomFollowsTheState() {
   Check(!HeadroomOf(BudgetState{}, 0).has_value(),
         "an unknown allowance gives no headroom bound");
@@ -317,12 +403,24 @@ void LinesCarryTheNumbers() {
         std::string{"render target budget: pressure ends: planned 512 MiB is "
                     "under the allowance 1024 MiB less the band 256 MiB"},
         "the end line gives the numbers");
-  Equal(StepDownLine(0x1A2B, "Vigilant of Stendarr", ResolutionLevel::kFull,
-                     {ResolutionLevel::kHalf, 600 * kMebibyte}),
+  Equal(StepDownLine({0x1A2B,
+                      "Vigilant of Stendarr",
+                      ResolutionLevel::kFull,
+                      {ResolutionLevel::kHalf, 600 * kMebibyte},
+                      std::nullopt}),
         std::string{"actor 00001A2B (Vigilant of Stendarr) steps down from "
                     "full to half resolution: frees 600 MiB (render target "
                     "budget)"},
         "the step down line names the actor, the levels and the bytes");
+  Equal(StepDownLine({0x1A2B,
+                      "",
+                      ResolutionLevel::kHalf,
+                      {ResolutionLevel::kQuarter, 6 * kMebibyte},
+                      0x14}),
+        std::string{"actor 00001A2B (unnamed) steps down from half to quarter "
+                    "resolution: frees 6 MiB (render target budget, for actor "
+                    "00000014)"},
+        "a preempted step down names the actor it makes room for");
   const std::vector<ActorHolding> largest{
       {0x14, "Prisoner", 300 * kMebibyte, 0, 0.2f, {}}};
   Equal(ExhaustedLine(state, largest),
@@ -335,6 +433,7 @@ void LinesCarryTheNumbers() {
 
 int main() {
   AllowanceIsFreeVideoMemoryLessMargin();
+  AllowanceNamesItsLimit();
   UnknownBudgetDoesNothing();
   GarbageReadingsStayBounded();
   PressureHasABand();
@@ -343,6 +442,9 @@ int main() {
   HiddenActorsReleaseFirst();
   WidestGapThenMostFreedStepsDownFirst();
   PlayerIsNeverPicked();
+  OutOfViewActorsStepDownFirst();
+  PreemptionTakesFromSmallerOrHiddenActors();
+  PreemptionNeedsEnoughSurplus();
   HeadroomFollowsTheState();
   InstallTakesTheFinestFittingLevel();
   ReinstallFitsWithItsOwnHolding();

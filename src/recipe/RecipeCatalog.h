@@ -5,6 +5,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
 #include <memory>
 #include <span>
 #include <vector>
@@ -12,9 +13,13 @@
 namespace BetterEnchantmentEffects {
 enum class RecipeId : std::size_t {};
 
+enum class RecipeClass { kRegular, kDebug };
+enum class DebugRecipes { kHidden, kShown };
+
 struct CatalogEntry {
   Recipe recipe;
   std::uint64_t fingerprint = 0;
+  RecipeClass recipeClass = RecipeClass::kRegular;
 };
 
 class RecipeCatalog {
@@ -30,6 +35,10 @@ private:
   std::vector<std::uint64_t> fingerprints_;
 };
 
+[[nodiscard]] RecipeClass
+ClassOfRecipePath(const std::filesystem::path &a_relative);
+[[nodiscard]] std::vector<CatalogEntry>
+MatchingEntries(std::vector<CatalogEntry> a_entries, DebugRecipes a_debug);
 [[nodiscard]] std::uint64_t ContentFingerprint(const Recipe &a_recipe);
 [[nodiscard]] std::shared_ptr<const Recipe>
 SharedRecipe(const std::shared_ptr<const RecipeCatalog> &a_catalog,

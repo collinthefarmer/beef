@@ -202,7 +202,7 @@ std::optional<ResizeSwap> FinishResize(LiveActor &a_state,
       drawn,
       inFlight->render ? CostOf(inFlight->render->Targets().withIntermediates)
                        : TargetCost{}};
-  a_state.appliedResolution = inFlight->progress.to;
+  SetAppliedResolution(a_state, inFlight->progress.to);
   a_state.resize = ResizeIdle{};
   return swap;
 }

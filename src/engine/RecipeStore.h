@@ -24,13 +24,15 @@ struct RecipeStoreStatus {
   std::size_t heldBack = 0;
   std::size_t unresolved = 0;
   std::size_t imported = 0;
+  std::size_t debug = 0;
 };
 
 RecipeStoreStatus LoadRecipes();
 [[nodiscard]] RecipeStoreStatus GetRecipeStoreStatus() noexcept;
 
 [[nodiscard]] std::span<const Recipe> LoadedRecipes() noexcept;
-[[nodiscard]] std::shared_ptr<const RecipeCatalog> AppliedCatalog() noexcept;
+[[nodiscard]] std::shared_ptr<const RecipeCatalog>
+AppliedCatalog(DebugRecipes a_debug) noexcept;
 [[nodiscard]] const Studio::MaskPresets &LoadedPresets() noexcept;
 
 struct RecipeOrigin {

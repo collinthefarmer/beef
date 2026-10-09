@@ -657,6 +657,21 @@ int main() {
 
   {
     std::vector<Signal> signals{
+        Signal{"level", ActorStateSignal{ActorStateKind::kResolutionLevel},
+               std::nullopt}};
+    const auto graph = CompileSignals(signals);
+    Check(graph.TypeOf("level") == ValueType::kScalar,
+          "actorState resolutionLevel is a scalar");
+    SignalState state{graph};
+    FakeEnvironment environment;
+    environment.state = 2.0f;
+    state.Tick(environment, TickInputs{0.0f, 0.0f});
+    Check(Near(state.Scalar("level"), 2.0f),
+          "resolutionLevel reads the environment's level");
+  }
+
+  {
+    std::vector<Signal> signals{
         Signal{"target", ActorStateSignal{ActorStateKind::kTarget},
                std::nullopt},
         Signal{"has", ActorStateSignal{ActorStateKind::kHasTarget},

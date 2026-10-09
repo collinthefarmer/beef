@@ -1,6 +1,10 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #include "recipe/RecipeCatalog.h"
 
+#include "Core.h"
+
+#include <algorithm>
+#include <iterator>
 #include <utility>
 
 namespace BetterEnchantmentEffects {
@@ -27,6 +31,26 @@ const Recipe *RecipeCatalog::At(RecipeId a_recipe) const noexcept {
 std::uint64_t RecipeCatalog::FingerprintOf(RecipeId a_recipe) const noexcept {
   const std::size_t index = IndexOf(a_recipe);
   return index < fingerprints_.size() ? fingerprints_[index] : 0;
+}
+
+RecipeClass ClassOfRecipePath(const std::filesystem::path &a_relative) {
+  const std::filesystem::path normal = a_relative.lexically_normal();
+  const auto first = normal.begin();
+  if (first == normal.end() || std::next(first) == normal.end()) {
+    return RecipeClass::kRegular;
+  }
+  return Lower(first->string()) == "debug" ? RecipeClass::kDebug
+                                           : RecipeClass::kRegular;
+}
+
+std::vector<CatalogEntry> MatchingEntries(std::vector<CatalogEntry> a_entries,
+                                          DebugRecipes a_debug) {
+  if (a_debug == DebugRecipes::kHidden) {
+    std::erase_if(a_entries, [](const CatalogEntry &a_entry) {
+      return a_entry.recipeClass == RecipeClass::kDebug;
+    });
+  }
+  return a_entries;
 }
 
 std::uint64_t ContentFingerprint(const Recipe &a_recipe) {

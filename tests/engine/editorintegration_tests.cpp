@@ -77,10 +77,12 @@ void SnapshotLifecycle(const std::filesystem::path &root,
   Start(root, "snapshots", fixture);
   Manager manager;
   RecipeEditor editor{manager};
-  const std::shared_ptr<const RecipeCatalog> before = AppliedCatalog();
+  const std::shared_ptr<const RecipeCatalog> before =
+      AppliedCatalog(DebugRecipes::kShown);
   const std::shared_ptr<const Recipe> held = SharedRecipe(before, RecipeId{0});
   Edit(editor, manager, 31);
-  const std::shared_ptr<const RecipeCatalog> after = AppliedCatalog();
+  const std::shared_ptr<const RecipeCatalog> after =
+      AppliedCatalog(DebugRecipes::kShown);
   const Recipe *edited = after->At(RecipeId{0});
   Check(before != after && edited && edited->priority == 31,
         "an edit publishes a new catalog with the edited recipe");
@@ -89,6 +91,28 @@ void SnapshotLifecycle(const std::filesystem::path &root,
   Check(before->FingerprintOf(RecipeId{0}) != after->FingerprintOf(RecipeId{0}),
         "the edited recipe has a new fingerprint");
   Check(!after->At(RecipeId{1}), "a recipe past the applied set is absent");
+}
+
+void DebugRecipesMatchOnlyWhenShown(const std::filesystem::path &root,
+                                    const Recipe &fixture) {
+  const auto userPath = Start(root, "debug_recipes", fixture);
+  const auto debugPath = Identity::RecipeRoot() / "debug" / (kID + ".json");
+  std::filesystem::create_directories(debugPath.parent_path());
+  std::filesystem::rename(userPath, debugPath);
+  const RecipeStoreStatus status = LoadRecipes();
+  Check(status.loaded == 1 && status.debug == 1,
+        "a recipe in the debug folder loads as a debug recipe");
+  Check(LoadedRecipes().size() == 1,
+        "a debug recipe stays in the loaded list for the editor pages");
+  Check(AppliedCatalog(DebugRecipes::kHidden)->Recipes().empty(),
+        "hidden debug recipes are absent from the matching catalog");
+  Check(AppliedCatalog(DebugRecipes::kShown)->Recipes().size() == 1,
+        "shown debug recipes are in the matching catalog");
+  Check(WriteText(userPath, SerializeRecipe(fixture)),
+        "write a user copy of the debug recipe");
+  Check(LoadRecipes().debug == 1 &&
+            AppliedCatalog(DebugRecipes::kHidden)->Recipes().empty(),
+        "a user copy that replaces a debug recipe stays a debug recipe");
 }
 
 void GestureHold(const std::filesystem::path &root, const Recipe &fixture) {
@@ -1556,6 +1580,7 @@ int main() {
   Check(parsed.recipe.has_value(), "integration fixture decodes");
   if (parsed.recipe) {
     SnapshotLifecycle(root, *parsed.recipe);
+    DebugRecipesMatchOnlyWhenShown(root, *parsed.recipe);
     GestureHold(root, *parsed.recipe);
     GestureIdleExpiry(root, *parsed.recipe);
     FailedRevert(root, *parsed.recipe);

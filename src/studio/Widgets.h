@@ -6,7 +6,10 @@
 #include "studio/Snapshot.h"
 
 #include <cstddef>
+#include <cstdint>
+#include <optional>
 #include <span>
+#include <string>
 #include <string_view>
 
 namespace BetterEnchantmentEffects::Studio {
@@ -146,4 +149,30 @@ struct ThumbnailSpec {
   bool dynamic = false;
   float size = 0.0f;
 };
+
+struct Preset {
+  std::string_view label;
+  std::uint32_t value = 0;
+};
+
+struct PresetSliderSpec {
+  std::span<const Preset> presets;
+  std::uint32_t min = 0;
+  std::uint32_t max = 0;
+  std::uint32_t step = 1;
+  std::string_view unit;
+};
+
+struct ReadoutLine {
+  std::string label;
+  std::string value;
+  [[nodiscard]] bool operator==(const ReadoutLine &) const = default;
+};
+
+[[nodiscard]] std::optional<std::size_t>
+PresetIndexOf(const PresetSliderSpec &a_spec, std::uint32_t a_value) noexcept;
+[[nodiscard]] std::string PresetValueText(const PresetSliderSpec &a_spec,
+                                          std::uint32_t a_value);
+[[nodiscard]] std::uint32_t SliderValueOf(const PresetSliderSpec &a_spec,
+                                          std::int64_t a_dragged) noexcept;
 }

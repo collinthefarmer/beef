@@ -194,8 +194,9 @@ enum class ActorStateKind {
   kPosition,
   kTarget,
   kHasTarget,
+  kResolutionLevel,
 };
-inline constexpr std::size_t kActorStateCount = 10;
+inline constexpr std::size_t kActorStateCount = 11;
 struct ActorStateSignal {
   ActorStateKind kind = ActorStateKind::kInCombat;
   [[nodiscard]] bool operator==(const ActorStateSignal &) const = default;

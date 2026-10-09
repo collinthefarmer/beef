@@ -8,6 +8,14 @@ constexpr float kFullLevelFraction = 0.5f;
 constexpr unsigned Halvings(ResolutionLevel a_level) noexcept {
   return static_cast<unsigned>(LevelIndex(a_level));
 }
+
+float LowerBound(ResolutionLevel a_level) noexcept {
+  float bound = kFullLevelFraction;
+  for (unsigned i = 0; i < Halvings(a_level); ++i) {
+    bound /= 2.0f;
+  }
+  return bound;
+}
 }
 
 ResolutionLevel IdealLevel(float a_screenFraction) noexcept {
@@ -23,19 +31,60 @@ ResolutionLevel IdealLevel(float a_screenFraction) noexcept {
   return ResolutionLevel::kEighth;
 }
 
-std::optional<ResolutionLevel> StepUpFor(ResolutionLevel a_current,
-                                         float a_screenFraction,
-                                         ActorRole a_role) noexcept {
-  if (a_role != ActorRole::kPlayer && !(a_screenFraction > 0.0f)) {
+std::optional<ResolutionLevel> WantedLevel(const ActorSight &a_sight) noexcept {
+  if (a_sight.role == ActorRole::kPlayer) {
+    return ResolutionLevel::kFull;
+  }
+  if (!a_sight.screenFraction) {
     return std::nullopt;
   }
-  const ResolutionLevel wanted = a_role == ActorRole::kPlayer
-                                     ? ResolutionLevel::kFull
-                                     : IdealLevel(a_screenFraction);
-  if (Halvings(wanted) >= Halvings(a_current)) {
+  if (!a_sight.inView) {
+    return ResolutionLevel::kEighth;
+  }
+  return IdealLevel(*a_sight.screenFraction);
+}
+
+bool SmallFor(std::optional<float> a_screenFraction,
+              ResolutionLevel a_current) noexcept {
+  if (!a_screenFraction || a_current == ResolutionLevel::kEighth) {
+    return false;
+  }
+  return *a_screenFraction < kStepDownBand * LowerBound(a_current);
+}
+
+std::optional<std::uint32_t> SmallSince(ResolutionLevel a_current,
+                                        std::optional<float> a_screenFraction,
+                                        std::optional<std::uint32_t> a_since,
+                                        std::uint32_t a_nowMS) noexcept {
+  if (!SmallFor(a_screenFraction, a_current)) {
     return std::nullopt;
   }
-  return wanted;
+  return a_since.value_or(a_nowMS);
+}
+
+LevelStep NextLevelStep(ResolutionLevel a_current, const ActorSight &a_sight,
+                        std::optional<std::uint32_t> a_smallSince,
+                        std::uint32_t a_nowMS) noexcept {
+  if (const std::optional<ResolutionLevel> wanted = WantedLevel(a_sight);
+      wanted && Halvings(*wanted) < Halvings(a_current)) {
+    return StepUpTo{*wanted};
+  }
+  if (a_sight.role == ActorRole::kPlayer || !a_smallSince ||
+      a_nowMS - *a_smallSince < kStepDownHoldMS) {
+    return KeepLevel{};
+  }
+  if (const std::optional<ResolutionLevel> coarser = CoarserLevel(a_current)) {
+    return StepDownTo{*coarser};
+  }
+  return KeepLevel{};
+}
+
+bool LargerOnScreen(std::optional<float> a_left,
+                    std::optional<float> a_right) noexcept {
+  if (!a_left || !a_right) {
+    return a_left.has_value() && !a_right.has_value();
+  }
+  return *a_left > *a_right;
 }
 
 std::optional<ResolutionLevel> CoarserLevel(ResolutionLevel a_level) noexcept {

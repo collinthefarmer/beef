@@ -205,6 +205,31 @@ to the logger alongside the file sink at plugin load.
   rebuild, so the worst case is one full catalog per publication that a live
   actor still holds. The size of a `Recipe` in memory was not measured
   (2026-10-06).
+- A **debug recipe** is a file under the top-level `recipes/debug` folder
+  (`ClassOfRecipePath`). The folder name ignores case, because Windows
+  folder names do. A `debug` folder below another folder, and a top-level
+  file named `debug.json`, are regular. `LoadRecipes` classifies each
+  shipped file once and keeps the class on `LoadedRecipe::recipeClass`. A
+  file under `recipes/user` is regular, but a user file that replaces a
+  debug recipe of the same id stays debug, because saving a debug recipe
+  in the editor writes it to `recipes/user/<id>.json`.
+- `RebuildApplied` publishes two catalogs: one with every applied recipe,
+  and one without the debug recipes (`MatchingEntries`). When no debug
+  recipe is loaded, both are the same object, so the second costs nothing.
+  `LoadedRecipes()` reads the full catalog, so the Recipes and Studio pages
+  list and edit debug recipes. `DecideActor` reads
+  `AppliedCatalog(DebugRecipes)` with the `ShowDebugRecipes` setting, so a
+  hidden debug recipe never matches a piece. The filter sits at the catalog
+  and not in `MatchActor`, because a `RecipeId` indexes the catalog an actor
+  was planned against, and a smaller catalog keeps every planner unchanged.
+- `ShowDebugRecipes` is a `reapply` setting. The Setup page calls
+  `ReapplyAll`, which rebuilds every actor through
+  `ChangeAndRebuildActors` (`RebuildAll`); each actor's `DecideActor` then
+  reads the catalog for the new value, so actors gain or lose debug
+  recipes without a reload. An INI edit takes effect at the next reapply.
+- The inspector's per-geometry selections (`Resolve` over `LoadedRecipes()`
+  in `ManagerSnapshot.cpp`) list every loaded recipe, so they can show a
+  hidden debug recipe as selected for a key it would match.
 
 ## The recipe language (`Expression.h`, `Expression.cpp`)
 
@@ -1133,12 +1158,27 @@ layout, and so its out-of-view share, did not exist.
 
 - `actorState` splits its return by selector: the flags (`inCombat`,
   `sneaking`, `weaponDrawn`, `swimming`, `sprinting`, `mounted`,
-  `hasTarget`) and the scalar `movementSpeed` go through `ActorState`,
-  while `position` and `target` go through a separate `ActorVector`
-  returning a vec3, because the interface is typed per method.
-  `VectorValued` (`Recipe.h`) names the vec3 selectors once; the signal
-  evaluator and type inference both read it. The pattern mirrors
-  `efsh`, whose field also decides scalar/vec2/vec3.
+  `hasTarget`) and the scalars `movementSpeed` and `resolutionLevel` go
+  through `ActorState`, while `position` and `target` go through a
+  separate `ActorVector` returning a vec3, because the interface is
+  typed per method. `VectorValued` (`Recipe.h`) names the vec3
+  selectors once; the signal evaluator and type inference both read
+  it. The pattern mirrors `efsh`, whose field also decides
+  scalar/vec2/vec3.
+
+- `resolutionLevel` reads the wearer's `appliedResolution` as
+  `LevelIndex`: 0 full, 1 half, 2 quarter, 3 eighth. An actor with no
+  render yet reads 0, because `appliedResolution` starts at full. The
+  environment keeps its own copy of the level instead of reading the
+  `LiveActor`, because the `LiveActor` owns the environment and the
+  environment holds no pointer back to it. `SetAppliedResolution`
+  (`LiveActor.cpp`) is the only writer of `appliedResolution`; it
+  copies the level into every instance's environment. Its two callers
+  are the install (`KeepActorRender`) and the resize swap
+  (`FinishResize`), and a budget step down reaches the swap through
+  `RequestResize`. A new instance takes the actor's current level when
+  `InstanceFor` builds its environment. The read is one field load
+  per tick.
 
 - `toRoot` converts a world-space position into the wearer's root space
   through `WorldToRoot` (`Environment.cpp`), which applies
@@ -1532,7 +1572,7 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
   (`SlotWriter::WriteTexture`), so a material keeps the vanilla look. A shell
   would still be posed with its recipe opacity, so `RenderGeometry` hides
   shells while the actor waits. `ObserveApplication` reports the outputs as
-  waiting (`prepared`), not as failed. `RequestStepUp` skips the actor,
+  waiting (`prepared`), not as failed. `RequestLevelStep` skips the actor,
   because it has no instance to resize.
 - `VerifyRenderPlanCache`, a run file's `verifyRenderPlans`, a disabled plan
   cache and an uncacheable key keep the synchronous build. Verification
@@ -2554,15 +2594,37 @@ cancel by the user instead of the load.
   emissive, fuzz, glint, coat and subsurface at a quarter and diffuse and
   rmaos at a half (`DefaultSlotResolution`). The player is always full, and
   the setting `ScreenResolution` off makes every actor full.
-- An NPC steps to a finer level as soon as its screen fraction crosses a
-  threshold, and it goes straight to the level that fraction needs
-  (render-performance 7c-1, 2026-10-08). It never steps to a coarser level
-  because its fraction falls; only the render target budget (7d) steps it
-  down. Before 7c-1, a coarser step came below 0.8 of a threshold with a 2 s
-  hold between changes. In the session of 2026-10-08 that policy changed one
-  NPC's level 45 times in about 7 minutes while the player walked to and from
-  it. A screen fraction of 0 (no camera, or an orthographic one) changes
-  nothing.
+- `Manager::RequestLevelStep` asks `NextLevelStep` for each actor each tick
+  (render-performance 7c-3, 2026-10-08). `NextLevelStep` reads an
+  `ActorSight`: the screen fraction, `LiveActor::inView` and the role.
+- An NPC in view steps to a finer level as soon as its screen fraction
+  crosses a threshold. It goes straight to the level that the fraction needs
+  (`WantedLevel`).
+- An NPC out of view wants eighth (`WantedLevel`), so it never steps up. Its
+  level does not fall because it left the view. It keeps the detail it has
+  when the camera turns back to it.
+- An NPC steps down one level when its screen fraction stays below 0.8 of the
+  lower threshold of its level for 2 s (`kStepDownBand`, `kStepDownHoldMS`,
+  `SmallFor`, `SmallSince`). The cutoffs are 0.4 for full, 0.2 for half and
+  0.1 for quarter. The step-down rule reads the fraction in and out of view,
+  so a camera turn does not start the hold. `LiveActor::smallSinceMS` keeps
+  the start of the hold. A fraction above the cutoff clears it. A level
+  change clears it.
+- The cutoffs are 0.8 of the step-up thresholds, so an NPC near a threshold
+  does not change level back and forth. The 2 s hold is continuous: a
+  fraction that rises above the cutoff starts the hold again.
+- 7c-1 (2026-10-08) let only the budget step an NPC down. In that policy an
+  NPC far away kept the finest level it reached until it was evicted, and the
+  budget held its bytes. 7c-3 reverses that rule. A level change is now a
+  hidden redraw and a swap of 1 to 2 frames (7c-2), not a reinstall. Before
+  7c-1, a coarser step came below 0.8 of a threshold with a 2 s hold between
+  changes, and each change reinstalled the actor. In the session of
+  2026-10-08 that policy changed one NPC's level 45 times in about 7 minutes
+  while the player walked to and from it.
+- `ScreenFraction` returns no value when the camera or the actor's 3D is
+  missing, when the camera is orthographic, when the actor is 1 unit or less
+  from the camera, and when the result is not finite. An **unmeasured** actor
+  wants no level and never starts the hold, so it keeps its level.
 - `ScreenFraction` clamps the fraction to 1. A fraction of exactly 1.000 means
   the actor's bounding sphere is as tall as the screen or taller, which
   happens when the camera is close to the actor.
@@ -2574,14 +2636,16 @@ cancel by the user instead of the load.
   such reinstall of an NPC with 2 recipes on 7 shelled geometries took about
   26 ms of sync and about 36 ms of plugin time on the next frame, and it
   restarted the effect.
-- `Manager::RequestStepUp` records the new level as a pending resize on the
-  `LiveActor` and emits the trace event `resolution_level` with the levels and
-  the fraction. The target level (`TrackedActor::targetResolution`) changes at
+- `Manager::RequestLevelStep` records the new level as a pending resize on
+  the `LiveActor` and emits the trace event `resolution_level` with the
+  levels, the fraction and `reason: screen`. The target level (`TrackedActor::targetResolution`) changes at
   once, so a reinstall during the resize builds at the new level.
 - One resize runs at a time across all actors (`kResizesInFlight`), because
   a camera zoom changes every actor's fraction at once and a resize holds the
   old and the new targets together. The pending actor with the largest screen
-  fraction resizes first (`NextResize`). Before 7c-2 the limit was two level changes per tick
+  fraction resizes first (`NextResize`). An actor in view resizes before an
+  actor out of view, and an unmeasured actor resizes last (`LargerOnScreen`).
+  Before 7c-2 the limit was two level changes per tick
   (`kLevelChangesPerTick`).
 - The new instance copies the plan, the `GeometryInputs` and the graphs of the
   current instance (`RenderInstance::AtSizes`). A copy of the plan equals a
@@ -2675,6 +2739,23 @@ cancel by the user instead of the load.
 - The setting `RenderTargetBudgetMiB` caps the allowance; 0 sets no cap. The
   run file field `renderTargetBudgetMiB` replaces the setting for one
   regression run. The cap applies only while the DXGI reading is known.
+- The Setup page sets the cap with a preset combo and a logarithmic slider
+  (`Studio::kBudgetCapControl`). The presets are Automatic (0), 512, 1024,
+  2048 and 4096 MiB. The slider goes from 128 to 8192 MiB in steps of 32 MiB.
+  The INI still accepts 0 to 65536 MiB. A stored value outside the slider
+  range shows as stored and stays until the user moves the control. A change
+  takes effect at the next heartbeat, because `SampleBudget` reads the
+  settings each heartbeat. A change does not reapply actors.
+- **Budget readout.** Each heartbeat, `FlushMetricsHeartbeat` builds a
+  `Studio::BudgetView` after `UpdateBudget` (`BudgetViewOf`). It publishes the
+  view as a `shared_ptr<const BudgetView>` under `snapshotLock_`
+  (`PublishBudgetView`). The heartbeat runs on the game thread. The menu
+  draws on the render thread and copies the pointer under the same lock
+  (`LatestBudgetView`). The view is immutable after publication. The view
+  does not depend on the watch window that gates the snapshot. The
+  measured bytes are `BudgetSample::pluginBytes`, the figure the allowance
+  uses. The pressure and radius are the values after `UpdateBudget`,
+  `RelieveBudget` and `GrowBudgetRadius` of the same heartbeat.
 - **Pressure** starts when the planned bytes (`PlannedTargets`) exceed the
   allowance. It ends only when the planned bytes fall below the allowance
   less a **band** (`NextBudget`, `PressureGoal`). The band is the larger of
@@ -2684,7 +2765,7 @@ cancel by the user instead of the load.
   half-allowance limit lets a small cap end its pressure. Under pressure, the
   responses aim below the band, not below the allowance, so that the episode
   ends.
-- **Admission.** A step up from `StepUpFor` waits under pressure. It also
+- **Admission.** A step up from `NextLevelStep` waits under pressure. It also
   waits when the planned bytes plus the bytes of the new instance exceed the
   allowance (`AdmitGrowth`). The new instance counts in full on top of the
   current holding, because a resize holds the old and the new targets until
@@ -2699,6 +2780,40 @@ cancel by the user instead of the load.
   down clears it. A wanted level that changes with the screen fraction
   does not start a new episode. A reinstall builds a new `LiveActor`, so it
   starts with no episode.
+- **Preemption.** Admission blocks a step up at the allowance, and pressure
+  starts only over the allowance. Without preemption a blocked step up waited
+  until an eviction or an unload freed bytes. In the session of 2026-10-08
+  two NPCs stayed blocked for more than 4 minutes while NPCs farther away
+  held full.
+- Each heartbeat without pressure, `PreemptForBlockedStepUp` lists the
+  blocked NPCs in view that still want a finer level, largest screen
+  fraction first (`BlockedStepUps`). For each, it asks `PreemptionCandidate`
+  for one NPC to step down, and it acts on the first answer. A candidate holds a level finer than it wants. It
+  is out of view, or its fraction is under 0.8 of the requester's. The 0.8
+  keeps two NPCs of about the same size from taking bytes from each other.
+  Candidates rank as in response 2 (`BetterStepDown`), so an NPC out of view
+  comes first.
+- A preemption starts only when it can make room. The **shortfall** is the
+  planned bytes plus the bytes of the requester's new instance, less the
+  allowance (`ShortfallOf`). Each candidate's **surplus** is the bytes it
+  frees when it steps down to the level it wants
+  (`BudgetActor::surplusBytes`). When the surplus of all candidates together
+  is under the shortfall, no candidate is chosen.
+- Without that rule, an NPC that could not fit took levels for nothing. In
+  the session of 2026-10-08 an NPC with 24 stacks at eighth needed 79.8 MB
+  for quarter against an allowance of 67.1 MB. Preemption stepped two
+  one-stack NPCs out of view from full to eighth, freeing about 1.3 MB each.
+  When they came into view they stepped up by screen size, and preemption
+  took them down again: 21 step downs in 64 s, and the requester was never
+  admitted. After a requester is admitted, its bytes are in the planned
+  figure, so a victim that returns to view is blocked and does not take its
+  level back.
+- A preemption starts no step down while a resize is pending or in flight.
+  It steps down one NPC per heartbeat through `StepDownForBudget`. The
+  requester stays blocked until the swap frees the bytes and admission
+  passes. The log line ends `(render target budget, for actor <FormID>)`,
+  and the trace event `budget_step_down` has `reason: preempted` and
+  `for_actor`.
 - **Install level.** The first install of an NPC takes the finest level, no
   finer than its ideal level, whose bytes with intermediates fit the
   **headroom**
@@ -2706,6 +2821,9 @@ cancel by the user instead of the load.
   than its target level, whose bytes with intermediates fit the headroom. An equip change
   causes a reinstall. A spawned NPC equips piece by piece just after it
   appears, so its first reinstalls follow its first install within a second.
+- An NPC out of view at its first install has an ideal level of eighth
+  (`WantedLevel`). An unmeasured NPC takes full, as before 7c-3. Before
+  7c-3 an NPC behind the camera installed at the level of its distance.
 - The headroom is the allowance less the planned bytes, with the
   **replaced holding** subtracted from the planned bytes first (`HeadroomOf`).
   The replaced holding is the bytes that the planned figure counts for the
@@ -2756,7 +2874,9 @@ cancel by the user instead of the load.
   `LiveActor::intermediates`). From the tick that the actor is in view, the
   estimate counts all its held targets again.
 - **Response 2: one NPC steps down one level.** The candidate is the NPC whose
-  level is finest against `IdealLevel` of its screen fraction (`LevelGap`).
+  level is finest against its `WantedLevel` (`LevelGap`). An NPC out of view
+  wants eighth, so it comes first. An unmeasured NPC counts as at its wanted
+  level.
   The most bytes freed breaks a tie. The player is never a candidate, and
   neither is an actor with a resize. `TargetsOf` prices the current and the
   coarser level (`CachedLevelCost`, cached per level on the `LiveActor`). The step
@@ -2764,7 +2884,7 @@ cancel by the user instead of the load.
   heartbeat. Each step down writes one `info` line, `actor … steps down from
   <level> to <level> resolution: frees … (render target budget)`, and the
   trace event `budget_step_down`. An NPC stepped down rises again only
-  through `StepUpFor` and admission.
+  through `NextLevelStep` and admission.
 - **Response 3: the budget radius.** When responses 1 and 2 have nothing
   left (`Exhausted`) and no resize is pending or in flight, the budget sets or lowers a
   **budget radius** (`planners/BudgetRadius.h`, `Manager::budgetRadius_`).
@@ -2960,7 +3080,7 @@ cancel by the user instead of the load.
   an interval can be shorter than a second. The thresholds of the holding and
   burst lines are fixed. The render target budget (render-performance 7d)
   reads the DXGI budget separately.
-- `ScreenFraction` (`ManagerTick.cpp`) is the actor's bound diameter over its
+- `ScreenFraction` (`ActorObservation.cpp`) is the actor's bound diameter over its
   distance from the camera, divided by the frustum's height at unit distance
   (`NiCamera::GetRuntimeData2().viewFrustum`, `fTop - fBottom`), clamped to
   0..1. The heartbeat reports the least, median and most over the rendered
@@ -3389,7 +3509,7 @@ player, so the rows are meant to reach the half, quarter and eighth levels. It
 is not yet verified in game which level each row gets; the report's
 *screen resolution* table gives the counts. The run file's
 `screenResolution` replaces the setting at both level decisions
-(`Manager::InstallBoundOf` and `Manager::RequestStepUp`) until the run ends,
+(`Manager::InstallBoundOf` and `Manager::RequestLevelStep`) until the run ends,
 so `--screen-resolution on` and `off` runs of one case give the A/B
 comparison.
 

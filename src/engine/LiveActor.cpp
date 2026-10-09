@@ -65,6 +65,15 @@ void RetireActorEffects(LiveActor &a_actor) {
   a_actor.pieces.clear();
 }
 
+void SetAppliedResolution(LiveActor &a_actor, ResolutionLevel a_level) {
+  a_actor.appliedResolution = a_level;
+  for (LiveInstance &instance : a_actor.instances) {
+    if (instance.environment) {
+      instance.environment->SetAppliedResolution(a_level);
+    }
+  }
+}
+
 SlotTarget *TargetFor(LiveGeometry &a_bound, Surface a_surface) {
   if (a_surface == Surface::kShell) {
     return a_bound.shell.get();

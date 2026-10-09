@@ -7,6 +7,7 @@
 #include "SettingsFile.h"
 #include "engine/Manager.h"
 #include "menu/MenuWidgets.h"
+#include "studio/BudgetView.h"
 #include "studio/MenuState.h"
 #include "studio/Selection.h"
 #include "studio/Snapshot.h"
@@ -15,6 +16,8 @@
 #include <algorithm>
 #include <cstdint>
 #include <format>
+#include <memory>
+#include <optional>
 #include <ranges>
 #include <string>
 #include <string_view>
@@ -86,8 +89,9 @@ void MarkReapply(bool a_changed) {
   return changed;
 }
 
-void Widget(Settings &a_settings, const SettingDesc &a_desc,
-            const char *a_label) {
+[[nodiscard]] bool StandardWidget(Settings &a_settings,
+                                  const SettingDesc &a_desc,
+                                  const char *a_label) {
   bool changed = false;
   Match(a_desc.member, [&](auto a_member) {
     using T = std::remove_cvref_t<decltype(a_settings.*a_member)>;
@@ -108,6 +112,44 @@ void Widget(Settings &a_settings, const SettingDesc &a_desc,
       }
     }
   });
+  return changed;
+}
+
+[[nodiscard]] bool BudgetCapWidget(Settings &a_settings,
+                                   const SettingDesc &a_desc,
+                                   const char *a_label) {
+  const auto *member = Get<std::uint32_t Settings::*>(a_desc.member);
+  if (!member) {
+    return false;
+  }
+  const std::optional<std::uint32_t> chosen =
+      PresetSlider(a_label, a_settings.**member, Studio::kBudgetCapControl);
+  if (!chosen) {
+    return false;
+  }
+  a_settings.**member = *chosen;
+  return true;
+}
+
+void DrawBudgetReadout() {
+  const Manager *manager = Manager::GetSingleton();
+  const std::shared_ptr<const Studio::BudgetView> view =
+      manager ? manager->LatestBudgetView() : nullptr;
+  if (!view) {
+    Dim("no reading yet");
+    return;
+  }
+  ReadoutTable("budget-readout", Studio::BudgetReadout(*view));
+}
+
+void Widget(Settings &a_settings, const SettingDesc &a_desc,
+            const char *a_label) {
+  bool changed = false;
+  if (a_desc.widget == SettingDesc::Widget::kBudgetCap) {
+    changed = BudgetCapWidget(a_settings, a_desc, a_label);
+  } else {
+    changed = StandardWidget(a_settings, a_desc, a_label);
+  }
   if (changed) {
     a_settings = NormalizeSettings(a_settings);
     SetSettings(a_settings);
@@ -192,6 +234,9 @@ void DrawValueTable(Settings &a_settings) {
     table.Cell();
     NextItemWidth(Studio::Width::Fill());
     Widget(a_settings, desc, "##value");
+    if (desc.widget == SettingDesc::Widget::kBudgetCap) {
+      DrawBudgetReadout();
+    }
     ImGui::PopID();
   }
   table.End();

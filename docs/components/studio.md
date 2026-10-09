@@ -219,6 +219,11 @@ it draws.
 | `RuleAction` | The ten rule-button actions (`kNew`, `kRename`, `kUndo`, and others). `kRuleActions` gives each its label. | `Widgets.h` |
 | `RowMove` | One drag reorder: from index and to index. | `Widgets.h` |
 | `ThumbnailSpec` | One preview image: a `TextureHandle`, a `ShaderChannel`, a dynamic flag, and a size. | `Widgets.h` |
+| `Preset`, `PresetSliderSpec` | One named value, and a slider with presets: the presets, the slider range, the step and the unit. `PresetIndexOf` finds the preset of a value. `PresetValueText` gives the preset label or the value with its unit. `SliderValueOf` clamps a dragged value to the range and rounds it to the step. | `Widgets.h` |
+| `ReadoutLine` | One read-only line: a label and a value text. | `Widgets.h` |
+| `BudgetView`, `MemoryReading` | The render target budget at one heartbeat: the DXGI reading with its `LimitedAllowance`, the planned bytes, the measured bytes, the `Pressure`, the budget radius and the actors at each level. A `MemoryReading` is absent when the probe failed. | `BudgetView.h` |
+| `BudgetViewOf`, `BudgetReadout`, `PressureText` | `BudgetViewOf` builds a `BudgetView` from a `BudgetSample`, a `BudgetState`, the budget radius and the level counts. `BudgetReadout` turns it into `ReadoutLine`s. | `BudgetView.h` |
+| `kBudgetCapControl`, `kBudgetCapPresets` | The cap control of `RenderTargetBudgetMiB`: a log slider from 128 to 8192 MiB in steps of 32 MiB, and the presets Automatic (0), 512, 1024, 2048 and 4096 MiB. | `BudgetView.h` |
 
 ### Engine-side editor records
 
@@ -299,7 +304,8 @@ path: `KeepPaint` reaches `RecipeEditor::KeepPaint`, which calls
 | Intents and recipe edits | `Intent.h`, `Edits.h/.cpp`, `EditChecks.h/.cpp`, `Relationships.h` |
 | Field checks and parsing | `FieldCheck.h/.cpp`, `FieldParsing.h/.cpp` |
 | Creation path | `Create.h/.cpp` |
-| Widget vocabulary and forms | `Widgets.h`, `Fields.h/.cpp`, `Forms.h/.cpp` |
+| Widget vocabulary and forms | `Widgets.h/.cpp`, `Fields.h/.cpp`, `Forms.h/.cpp` |
+| Budget readout | `BudgetView.h/.cpp` |
 | Menu state | `MenuState.h/.cpp`, `EditResult.h/.cpp`, `FileOperation.h` |
 | Mask editor | `Mask.h/.cpp`, `TermTemplates.h/.cpp`, `Presets.h/.cpp`, `SourcePlan.h/.cpp` |
 | Paint mode | `PaintSession.h/.cpp`, `PaintCommit.h` |

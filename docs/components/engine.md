@@ -83,8 +83,9 @@ uncacheable key and a full queue build the plan in the sync.
 **Resolution resize.** A change of resolution level rebuilds only the actor's
 `RenderInstance` (`ActorResize.h`). It does not reinstall the actor, so
 pieces, recipe instances, shells, materials, lights, signals and clocks stay.
-`Manager::RequestStepUp` records the finer level as a **pending resize**
-on the `LiveActor` (`RequestResize`). `Manager::AdvanceResizes` runs at the
+`Manager::RequestLevelStep` records the next level as a **pending resize**
+on the `LiveActor` (`RequestResize`). The next level is finer for a step up
+and one level coarser for a step down (`NextLevelStep`). `Manager::AdvanceResizes` runs at the
 start of each tick. It first swaps each finished resize (`FinishResize`). It
 then starts at most one resize across all actors (`NextResize`,
 `planners/ResolutionResize.h`). The pending actor with the largest screen
@@ -155,10 +156,15 @@ prices the ring with `EvictedActors` and `LargestReturnBytes`.
 radius has no candidate either, one `warning` names the largest holdings.
 `EvictDistanceNow` gives the distance that `DecideActor` passes to `Advance`
 and that `MarkRecheckStale` passes to `RangeChanged`.
-`RequestStepUp` admits each step up through `AdmitStepUp`. A blocked step
+`RequestLevelStep` admits each step up through `AdmitStepUp`. A step down
+needs no admission. A blocked step
 up waits and emits the trace event `resolution_blocked` once per blocked
 episode (`LiveActor::stepUpBlockedFrom`). An episode ends when the actor's level
-changes. When the DXGI reading is unknown, the plugin writes one warning and
+changes. Each heartbeat without pressure, `PreemptForBlockedStepUp` steps
+down one smaller or out-of-view NPC for the largest blocked NPC in view
+(`BlockedStepUps`, `BudgetActorsNow`), only when the candidates can cover
+the requester's shortfall. `RelieveBudget` builds its
+`BudgetActor` list with `BudgetActorsNow` too. When the DXGI reading is unknown, the plugin writes one warning and
 the budget does nothing.
 
 **The frame.** `Manager::OnFrame` runs from the hook. It returns at once while
@@ -180,7 +186,7 @@ mesh and material expiration. `ObserveRegression` runs last.
 **Culling.** Each tick, `Tick` asks `ShownThisTick` whether an actor is in
 the camera's view and stores the answer in `LiveActor::inView`. The player is
 always in view. With the setting `CullOutOfView` off, every actor is in view
-and no test runs. Otherwise `InCameraView` tests a sphere around the actor
+and no test runs. Otherwise `InCameraView` (`ActorObservation.h`) tests a sphere around the actor
 against the camera frustum (`RE::NiCamera::BoundInFrustum`). The sphere sits
 64 units above the actor's position, and its radius is the larger of the
 actor's 3D bound and 96 units, times 1.25, plus 64. The inspected actor
@@ -197,8 +203,12 @@ rebuilds. Application records report preparation and rendering separately.
 
 **Republication.** `RecipeStore` keeps mutable documents apart from the
 published **applied set**. Each republication, also on save, publishes a new
-immutable `RecipeCatalog` (`AppliedCatalog()`). `DecideActor` reads the
-catalog once. `LiveActorFor` stores it in `LiveActor::catalog` with the
+immutable `RecipeCatalog` (`AppliedCatalog`). `DecideActor` reads the
+catalog once. A **debug recipe** is a file under the top-level
+`recipes/debug` folder. `AppliedCatalog(DebugRecipes::kHidden)` leaves the
+debug recipes out, and `DecideActor` asks for it while the
+`ShowDebugRecipes` setting is off. `LoadedRecipes()` always lists them, so
+the editor pages show them. `LiveActorFor` stores it in `LiveActor::catalog` with the
 `ActorMatches` it was planned with, so each `RecipeId` indexes the catalog it
 came from. `LiveInstance::recipe` comes from `SharedRecipe` and keeps the
 catalog alive. `PlaceInstances` and `PlaceLightsOf` read `RecipesOf(state)`,
@@ -419,7 +429,7 @@ without the manager.
 | `LivePlacement` | The outputs bound onto one geometry: a `GeometryId` and one `PlacedOutput` per placed output. |
 | `PlacedOutput` | One placed output: its recipe output index, its `RenderOutput` (`stack`), its `problem` text and its `active`, `rendered` and `renderFailed` flags. |
 | `ResolvedPlacement` | The placement index and instance index that `ResolvePlacement` returns. |
-| `ActorEnvironment` | The `SignalEnvironment` a `LiveInstance` ticks against. It reads actor values, actor state, the enchantment and effect shaders from the game. |
+| `ActorEnvironment` | The `SignalEnvironment` a `LiveInstance` ticks against. It reads actor values, actor state, the enchantment and effect shaders from the game. It holds a copy of the actor's `appliedResolution`, which `SetAppliedResolution` sets, and returns it as the `resolutionLevel` actor state. |
 
 ### Per-actor render assembly
 
@@ -471,7 +481,7 @@ edit. Both report through small result records that the menu reads back.
 
 | Member | Description | Declared in |
 |---|---|---|
-| `RecipeStoreStatus` | The load counts: loaded, with errors, held back, unresolved, imported. `LoadRecipes` and `GetRecipeStoreStatus` return it. | `RecipeStore.h` |
+| `RecipeStoreStatus` | The load counts: loaded, with errors, held back, unresolved, imported, debug. `LoadRecipes` and `GetRecipeStoreStatus` return it. | `RecipeStore.h` |
 | `RecipeOrigin` | One recipe's file path and its load `Diagnostic`s. `OriginOf` returns it. | `RecipeStore.h` |
 | `RecipeEditor` | Drives gestures, edits, undo and redo, save and reload, paint sessions and view commands. | `RecipeEditor.h` |
 | `FileOperationJournal` | The mutex-guarded journal of file results, edit results and the active gesture. | `RecipeOperations.h` |
@@ -594,7 +604,7 @@ Recipe from LoadedRecipes()
 | Event sinks and hooks | `Events.h`/`.cpp` (equip, object-loaded, hit and node-update sinks), `PluginEvents.h`/`.cpp` (the inter-plugin message contract and parser), `Hooks.h`/`.cpp` (the `PlayerCharacter::Update` hook), `AnimationSubscriptions.h`/`.cpp` (animation-graph observation) |
 | The manager | `Manager.h`, `Manager.cpp` (construction, queue calls, `Clear`, load, the menu's idle-camera hold), `PhaseTrace.h` (`PhaseTrace`: times named phases with `Measure` and emits one metrics or application trace event), `ManagerApply.cpp` (`SyncStale`, `SyncActor`, `InstallActor`, `DecideActor`, `RetireActor`, `ForgetActor`, live pieces from observation, placement, `BuildActorRender`, lights), `ManagerApplication.cpp` (`ChangeAndRebuildActors`, application bookkeeping), `ManagerTick.cpp` (`OnFrame`, `RunWaitingInstalls`, `DrainPlanJobs` call, `MarkWaitingStale`, `MarkRecheckStale`, `Tick`, `DrawHidden`, `AttachFirstDraw`, `RequestStepUp`, `AdvanceResizes`, `ClaimLostGeometries`, `RenderGeometry`, slot writes, `UpdateLights`), `ActorResize.h`/`.cpp` (the resolution resize and the hidden first draw of one actor), `ActorBudget.h`/`.cpp` (the render target budget's facts and release for one actor), `JobQueue.h` (the generic worker queue), `PlanJobs.h`/`.cpp` (the plan job book and the stale rule), `ManagerAnimation.cpp` (animation events), `ManagerEvents.cpp` (`Fire`, `FireAt`, `QueueEvent`, `QueueBroadcast`), `ManagerInspection.cpp` (`RequestMesh`), `ManagerSnapshot.cpp` (`GetStatus`, `BuildSnapshot`, `PublishSnapshot`, `Watch`), `LogOnce.h`/`.cpp` (`LogOnce`: a fault line once per text, through a `WarningHistory`) |
 | Application and session bookkeeping | `ApplicationService.h`/`.cpp` (token tracking, rejection handling, history pruning), `SessionQueue.h`/`.cpp` (per-actor task serialisation) |
-| Actor and worn-piece state | `ActorObservation.h`/`.cpp` (`ObserveActor`, `ModelTable`, `ModelOf`, `MaterialLayout`), `LiveActor.h`/`.cpp` (live records, `RetireGeometry`, `ResolvePlacement`), `Environment.h`/`.cpp` (`ActorEnvironment`), `WornKeys.h`/`.cpp` (`WornKeysOf`), `EnchantmentEffects.h`/`.cpp` (`EnchantmentValueFor`), `InstanceTime.h`/`.cpp` (`CarriedTimes`) |
+| Actor and worn-piece state | `ActorObservation.h`/`.cpp` (`ObserveActor`, `ModelTable`, `ModelOf`, `MaterialLayout`), `LiveActor.h`/`.cpp` (live records, `RetireGeometry`, `SetAppliedResolution`, `ResolvePlacement`), `Environment.h`/`.cpp` (`ActorEnvironment`), `WornKeys.h`/`.cpp` (`WornKeysOf`), `EnchantmentEffects.h`/`.cpp` (`EnchantmentValueFor`), `InstanceTime.h`/`.cpp` (`CarriedTimes`) |
 | Recipe CRUD | `RecipeStore.h`/`.cpp` (load, publish, mutate, save, `RefreshRecipeDerivedState`), `RecipeFiles.h`/`.cpp` (checked read, write, rename and delete), `RecipeOperations.h` (the operation journal and task guards), `RecipeEditor.h`/`.cpp` (gestures, edits, undo, paint, view) |
 | Form and game-object lookups | `EngineForms.h`/`.cpp` (`FormKeyFor`, `LookupForm`, `ShaderFor`, `RecordFrom`), `GameObjectService.h`/`.cpp` (game-object and animation-event catalogs), `InputCatalog.h`/`.cpp` (`BuildActorValueSamples`), `Tweaks.h`/`.cpp` (`EditorIdOf`, `TweaksEditorIdsAvailable`) |
 | Regression fixture | `RegressionRequests.h`/`.cpp` (the request store and the manager's regression calls), `RegressionRequest.h` (`RegressionRequest`), `ManagerRegression.cpp` (the manager's regression observations and studio work), `RegressionRun.h`/`.cpp` (the unattended run's file, load and result lines over `regression/Run.h`), `RegressionWorld.h`/`.cpp` (its observations and commands) |

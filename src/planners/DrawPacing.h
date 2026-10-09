@@ -2,6 +2,7 @@
 #pragma once
 
 #include "planners/ActorRole.h"
+#include "planners/ResolutionLevel.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -22,7 +23,7 @@ struct DrawPace {
 struct HiddenDrawCandidate {
   std::uint32_t actor = 0;
   ActorRole role = ActorRole::kOther;
-  float screenFraction = 0.0f;
+  std::optional<float> screenFraction;
 };
 
 struct FirstDrawProgress {

@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <optional>
 #include <string_view>
+#include <variant>
 
 namespace BetterEnchantmentEffects {
 enum class ResolutionLevel : std::uint8_t { kFull, kHalf, kQuarter, kEighth };
@@ -42,10 +43,46 @@ template <class T> struct PerLevel {
   [[nodiscard]] bool operator==(const PerLevel &) const = default;
 };
 
+inline constexpr float kStepDownBand = 0.8f;
+inline constexpr std::uint32_t kStepDownHoldMS = 2000;
+
+struct ActorSight {
+  std::optional<float> screenFraction;
+  bool inView = true;
+  ActorRole role = ActorRole::kOther;
+};
+
+struct KeepLevel {
+  [[nodiscard]] bool operator==(const KeepLevel &) const = default;
+};
+
+struct StepUpTo {
+  ResolutionLevel level = ResolutionLevel::kFull;
+  [[nodiscard]] bool operator==(const StepUpTo &) const = default;
+};
+
+struct StepDownTo {
+  ResolutionLevel level = ResolutionLevel::kEighth;
+  [[nodiscard]] bool operator==(const StepDownTo &) const = default;
+};
+
+using LevelStep = std::variant<KeepLevel, StepUpTo, StepDownTo>;
+
 [[nodiscard]] ResolutionLevel IdealLevel(float a_screenFraction) noexcept;
 [[nodiscard]] std::optional<ResolutionLevel>
-StepUpFor(ResolutionLevel a_current, float a_screenFraction,
-          ActorRole a_role) noexcept;
+WantedLevel(const ActorSight &a_sight) noexcept;
+[[nodiscard]] bool SmallFor(std::optional<float> a_screenFraction,
+                            ResolutionLevel a_current) noexcept;
+[[nodiscard]] std::optional<std::uint32_t>
+SmallSince(ResolutionLevel a_current, std::optional<float> a_screenFraction,
+           std::optional<std::uint32_t> a_since,
+           std::uint32_t a_nowMS) noexcept;
+[[nodiscard]] LevelStep NextLevelStep(ResolutionLevel a_current,
+                                      const ActorSight &a_sight,
+                                      std::optional<std::uint32_t> a_smallSince,
+                                      std::uint32_t a_nowMS) noexcept;
+[[nodiscard]] bool LargerOnScreen(std::optional<float> a_left,
+                                  std::optional<float> a_right) noexcept;
 [[nodiscard]] std::optional<ResolutionLevel>
 CoarserLevel(ResolutionLevel a_level) noexcept;
 [[nodiscard]] int LevelGap(ResolutionLevel a_finer,

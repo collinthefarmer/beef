@@ -209,21 +209,43 @@ bool Loaded3D(const RE::Actor &a_actor) noexcept {
   return !a_actor.IsDeleted() && a_actor.Is3DLoaded();
 }
 
-float ScreenFraction(RE::Actor &a_actor) {
+inline constexpr float kViewRadiusScale = 1.25f;
+inline constexpr float kViewRadiusPadding = 64.0f;
+inline constexpr float kViewMinRadius = 96.0f;
+inline constexpr float kViewCentreHeight = 64.0f;
+
+bool InCameraView(RE::Actor &a_actor) {
   RE::NiCamera *camera = RE::Main::WorldRootCamera();
   RE::NiAVObject *root = a_actor.Get3D(false);
   if (!camera || !root) {
-    return 0.0f;
+    return true;
+  }
+  const RE::NiPoint3 position = a_actor.GetPosition();
+  const float radius = std::max(root->worldBound.radius, kViewMinRadius);
+  const RE::NiBound padded{
+      RE::NiPoint3{position.x, position.y, position.z + kViewCentreHeight},
+      radius * kViewRadiusScale + kViewRadiusPadding};
+  return RE::NiCamera::BoundInFrustum(padded, camera);
+}
+
+std::optional<float> ScreenFraction(RE::Actor &a_actor) {
+  RE::NiCamera *camera = RE::Main::WorldRootCamera();
+  RE::NiAVObject *root = a_actor.Get3D(false);
+  if (!camera || !root) {
+    return std::nullopt;
   }
   const RE::NiFrustum &frustum = camera->GetRuntimeData2().viewFrustum;
   const float extent = frustum.fTop - frustum.fBottom;
   const float distance =
       camera->world.translate.GetDistance(root->worldBound.center);
   if (frustum.bOrtho || !(extent > 0.0f) || !(distance > 1.0f)) {
-    return 0.0f;
+    return std::nullopt;
   }
   const float fraction = 2.0f * root->worldBound.radius / distance / extent;
-  return std::isfinite(fraction) ? std::clamp(fraction, 0.0f, 1.0f) : 0.0f;
+  if (!std::isfinite(fraction)) {
+    return std::nullopt;
+  }
+  return std::clamp(fraction, 0.0f, 1.0f);
 }
 
 std::optional<float> DistanceToPlayer(const RE::Actor &a_actor) {

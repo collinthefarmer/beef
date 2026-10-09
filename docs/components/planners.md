@@ -211,13 +211,16 @@ A plan names texture sizes by **side reference** (`SideRef`, in `TextureDemand.h
 | `ResolutionLevel` | `kFull`, `kHalf`, `kQuarter` or `kEighth` of every side. |
 | `IdealLevel` | The level for a screen fraction. |
 | `PerLevel`, `LevelIndex`, `kResolutionLevels` | One value per level, read with `At`; the index of a level; every level from full to eighth. |
-| `StepUpFor` | The finer level that a screen fraction needs, or no change. A smaller fraction never gives a coarser level. The player is always full. |
+| `ActorSight`, `WantedLevel` | One actor's optional screen fraction, whether it is in view, and its role; the level it wants: full for the player, eighth out of view, `IdealLevel` in view, and none when the fraction is unmeasured. |
+| `SmallFor`, `SmallSince`, `kStepDownBand`, `kStepDownHoldMS` | Whether a fraction is under 0.8 of the lower threshold of a level, and the start of the step-down hold, kept while the fraction stays small and cleared when it grows. |
+| `KeepLevel`, `StepUpTo`, `StepDownTo`, `LevelStep`, `NextLevelStep` | The level change for one tick: a step up straight to the wanted level, one level down after the 2 s hold, or none. The player never steps down. |
+| `LargerOnScreen` | Orders two optional fractions, larger first and unmeasured last. |
 | `AtLevel` | The `PlanSizes` divided by a level, with 64 as the floor. |
 | `CoarserLevel`, `LevelGap` | The next coarser level, if any, and the number of steps between two levels. |
 | `ResizeIdle`, `ResizePending`, `ResizeProgress` | The resize states of one actor (`ResolutionResize.h`): none, a level that waits for a resize, and a resize with its old level, new level and first frame. |
 | `ResizeDraw`, `ResizeDrawState` | What a tick saw of a resize: `kOutOfView`, `kDrawing` or `kDrawn`. `DrawOf` gives it from a `ResizeDrawState`: the view and the drawn and total stack counts. |
 | `SwapDue` | True when a resize is drawn, out of view, or `kResizeSwapAfterFrames` (60) frames old. |
-| `ResizeCandidate`, `NextResize` | One actor with its FormID, whether a level is pending, and its screen fraction; the FormID of the pending actor with the largest screen fraction, or none while `kResizesInFlight` (1) resizes are in flight. |
+| `ResizeCandidate`, `NextResize` | One actor with its FormID, whether a level is pending, whether it is in view, and its optional screen fraction; the FormID of the pending actor to resize first (in view first, then `LargerOnScreen`), or none while `kResizesInFlight` (1) resizes are in flight. |
 
 `RenderBudget.h` holds the decisions of the render target budget
 (render-performance 7d).
@@ -226,13 +229,15 @@ A plan names texture sizes by **side reference** (`SideRef`, in `TextureDemand.h
 |---|---|
 | `VideoMemory`, `BudgetSample` | The DXGI budget and usage of the local segment, and one sample: the optional reading, the plugin's target bytes (`pluginBytes`) and the cap. |
 | `MarginOf`, `AllowanceOf` | The margin (the larger of 512 MiB and 5 % of the budget) and the **allowance**: the plugin's bytes plus the **free video memory** (budget less usage) less the margin, capped. No reading, or a budget of 0, gives no allowance. |
+| `FreeVideoMemory`, `AllowanceLimit`, `LimitedAllowance`, `LimitedAllowanceOf` | The budget less the usage, and the allowance with the limit that set it. `kCap` means the cap is at or under the free-memory figure. `kFreeVideoMemory` means the free video memory less the margin is lower. `AllowanceOf` returns the bytes of `LimitedAllowanceOf`. |
 | `BandOf`, `PressureGoal` | The band (the larger of 256 MiB and 10 % of the allowance, at most half of it) and the allowance less the band. |
 | `Pressure`, `BudgetState`, `NextBudget`, `IsOver` | The pressure state with its hysteresis: it starts over the allowance and ends below the goal. An unknown allowance ends it. |
 | `Admission`, `AdmitGrowth`, `Charged`, `Released`, `AdmissionName` | Whether a step up of the given bytes may start, the planned bytes after bytes are charged, and the planned bytes after a holding goes. |
 | `InstallBound`, `LevelBytes`, `HeadroomOf`, `FittingLevel` | The finest level and the optional headroom of an install, and the bytes with intermediates per level (a `PerLevel`). `HeadroomOf` gives the allowance less the planned bytes without the replaced bytes, the replaced bytes under pressure, and none when the allowance is unknown. A first install replaces 0 bytes. `FittingLevel` gives the finest level from the bound to eighth whose bytes fit the headroom, eighth when none fits, and the bound when there is no headroom. |
 | `LevelCost`, `IntermediateHolding`, `PlannedBytes`, `IntermediateBytes`, `StepDownOption`, `StepDownOf` | The bytes of a plan at one level with intermediates (`withIntermediates`) and with stacks only (`stacksOnly`), whether an actor's intermediates are released, the bytes the planned figure counts for each case, the bytes a release frees, and the bytes that one step down frees. |
-| `BudgetActor`, `BudgetRelease`, `PressureStep`, `BudgetResponse`, `RespondToPressure` | One actor's facts, and the responses for one heartbeat: the hidden actors that release, by FormID with their bytes, and the next step: `Enough`, `AwaitResize` while a resize is pending or in flight, `StepDown` (one NPC by FormID) or `Exhausted`. The facts include the planned bytes (`plannedBytes`) and the optional distance to the player. |
-| `PressureStartLine`, `PressureEndLine`, `StepDownLine`, `ExhaustedLine` | The text of the budget's log lines. |
+| `BudgetActor`, `BudgetRelease`, `PressureStep`, `BudgetResponse`, `RespondToPressure` | One actor's facts, and the responses for one heartbeat: the hidden actors that release, by FormID with their bytes, and the next step: `Enough`, `AwaitResize` while a resize is pending or in flight, `StepDown` (one NPC by FormID) or `Exhausted`. The facts include the planned bytes (`plannedBytes`), the optional distance to the player, and the bytes freed at the wanted level (`surplusBytes`). |
+| `PreemptionRequest`, `ShortfallOf`, `PreemptionCandidate` | A blocked step up in view with its **shortfall** (planned plus added bytes over the allowance); the NPC to step down for it: one that holds a finer level than it wants and is out of view or under 0.8 of the requester's fraction, ranked as under pressure. None when the requester is out of view, when there is no shortfall, or when the candidates' `surplusBytes` together cannot cover the shortfall. |
+| `PressureStartLine`, `PressureEndLine`, `StepDownLine`, `ExhaustedLine` | The text of the budget's log lines. `StepDownLine` names the actor a preemption makes room for. |
 
 `BudgetRadius.h` holds the decisions of the **budget radius**, the third
 response of the budget.

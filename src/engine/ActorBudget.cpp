@@ -54,8 +54,22 @@ std::optional<LevelCost> CachedLevelCost(LiveActor &a_state,
   return cached;
 }
 
+namespace {
+std::uint64_t SurplusBytesOf(LiveActor &a_state, const BudgetActor &a_actor) {
+  const std::optional<ResolutionLevel> wanted =
+      WantedLevel({a_actor.screenFraction, a_actor.inView, a_actor.role});
+  if (!wanted || LevelGap(a_actor.level, *wanted) <= 0) {
+    return 0;
+  }
+  const std::optional<LevelCost> cost = CachedLevelCost(a_state, *wanted);
+  return cost ? Less(a_actor.plannedBytes,
+                     PlannedBytes(*cost, a_state.intermediates))
+              : 0;
+}
+}
+
 BudgetActor BudgetActorOf(LiveActor &a_state, std::uint32_t a_id,
-                          ActorRole a_role, float a_fraction,
+                          ActorRole a_role, std::optional<float> a_fraction,
                           std::optional<float> a_distance) {
   BudgetActor actor{a_id,
                     a_role,
@@ -82,6 +96,7 @@ BudgetActor BudgetActorOf(LiveActor &a_state, std::uint32_t a_id,
         StepDownOf(a_state.appliedResolution, *current,
                    CachedLevelCost(a_state, *coarser), a_state.intermediates);
   }
+  actor.surplusBytes = SurplusBytesOf(a_state, actor);
   return actor;
 }
 

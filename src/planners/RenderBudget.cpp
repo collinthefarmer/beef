@@ -17,16 +17,27 @@ std::uint64_t Less(std::uint64_t a_lhs, std::uint64_t a_rhs) noexcept {
 }
 
 namespace {
+ActorSight SightOf(const BudgetActor &a_actor) noexcept {
+  return {a_actor.screenFraction, a_actor.inView, a_actor.role};
+}
+
+int SurplusLevels(const BudgetActor &a_actor) noexcept {
+  return LevelGap(a_actor.level,
+                  WantedLevel(SightOf(a_actor)).value_or(a_actor.level));
+}
+
+std::uint64_t FreedBy(const BudgetActor &a_actor) noexcept {
+  return a_actor.stepDown ? a_actor.stepDown->freed : 0;
+}
+
 bool BetterStepDown(const BudgetActor &a_candidate,
                     const BudgetActor &a_chosen) noexcept {
-  const int candidateGap =
-      LevelGap(a_candidate.level, IdealLevel(a_candidate.screenFraction));
-  const int chosenGap =
-      LevelGap(a_chosen.level, IdealLevel(a_chosen.screenFraction));
+  const int candidateGap = SurplusLevels(a_candidate);
+  const int chosenGap = SurplusLevels(a_chosen);
   if (candidateGap != chosenGap) {
     return candidateGap > chosenGap;
   }
-  return a_candidate.stepDown->freed > a_chosen.stepDown->freed;
+  return FreedBy(a_candidate) > FreedBy(a_chosen);
 }
 
 bool CanStepDown(const BudgetActor &a_actor) noexcept {
@@ -46,8 +57,22 @@ StepDownCandidate(std::span<const BudgetActor> a_actors) noexcept {
   return chosen;
 }
 
-std::uint64_t FreeVideoMemory(const VideoMemory &a_memory) noexcept {
-  return Less(a_memory.budget, a_memory.usage);
+bool SmallerThanRequester(const BudgetActor &a_candidate,
+                          const ActorSight &a_requester) noexcept {
+  if (!a_candidate.inView) {
+    return true;
+  }
+  if (!a_candidate.screenFraction || !a_requester.screenFraction) {
+    return false;
+  }
+  return *a_candidate.screenFraction <
+         kStepDownBand * *a_requester.screenFraction;
+}
+
+bool MayPreempt(const BudgetActor &a_candidate,
+                const ActorSight &a_requester) noexcept {
+  return CanStepDown(a_candidate) && SurplusLevels(a_candidate) > 0 &&
+         SmallerThanRequester(a_candidate, a_requester);
 }
 
 std::vector<std::size_t> ReleaseOrder(std::span<const BudgetActor> a_actors) {
@@ -88,17 +113,31 @@ std::uint64_t BandOf(std::uint64_t a_allowance) noexcept {
       a_allowance / 2);
 }
 
-std::optional<std::uint64_t>
-AllowanceOf(const BudgetSample &a_sample) noexcept {
+std::uint64_t FreeVideoMemory(const VideoMemory &a_memory) noexcept {
+  return Less(a_memory.budget, a_memory.usage);
+}
+
+std::optional<LimitedAllowance>
+LimitedAllowanceOf(const BudgetSample &a_sample) noexcept {
   if (!a_sample.memory || a_sample.memory->budget == 0) {
     return std::nullopt;
   }
   const VideoMemory &memory = *a_sample.memory;
   const std::uint64_t plugin = std::min(a_sample.pluginBytes, memory.usage);
-  const std::uint64_t allowance =
+  const std::uint64_t fromMemory =
       Less(Sum(plugin, FreeVideoMemory(memory)), MarginOf(memory.budget));
-  return a_sample.capBytes > 0 ? std::min(allowance, a_sample.capBytes)
-                               : allowance;
+  if (a_sample.capBytes > 0 && a_sample.capBytes <= fromMemory) {
+    return LimitedAllowance{a_sample.capBytes, AllowanceLimit::kCap};
+  }
+  return LimitedAllowance{fromMemory, AllowanceLimit::kFreeVideoMemory};
+}
+
+std::optional<std::uint64_t>
+AllowanceOf(const BudgetSample &a_sample) noexcept {
+  const std::optional<LimitedAllowance> allowance =
+      LimitedAllowanceOf(a_sample);
+  return allowance ? std::optional<std::uint64_t>{allowance->bytes}
+                   : std::nullopt;
 }
 
 bool IsOver(Pressure a_pressure) noexcept {
@@ -135,6 +174,13 @@ Admission AdmitGrowth(const BudgetState &a_state,
   return Sum(a_state.planned, a_added) > *a_state.allowance
              ? Admission::kOverAllowance
              : Admission::kAdmitted;
+}
+
+std::uint64_t ShortfallOf(const BudgetState &a_state,
+                          std::uint64_t a_added) noexcept {
+  return a_state.allowance
+             ? Less(Sum(a_state.planned, a_added), *a_state.allowance)
+             : 0;
 }
 
 BudgetState Charged(BudgetState a_state, std::uint64_t a_added) noexcept {
@@ -194,6 +240,26 @@ StepDownOf(ResolutionLevel a_level, const LevelCost &a_current,
   }
   return StepDownOption{*coarser, Less(PlannedBytes(a_current, a_holding),
                                        PlannedBytes(*a_coarser, a_holding))};
+}
+
+std::optional<std::size_t>
+PreemptionCandidate(const PreemptionRequest &a_request,
+                    std::span<const BudgetActor> a_actors) noexcept {
+  if (!a_request.sight.inView || a_request.shortfall == 0) {
+    return std::nullopt;
+  }
+  std::optional<std::size_t> chosen;
+  std::uint64_t surplus = 0;
+  for (std::size_t i = 0; i < a_actors.size(); ++i) {
+    if (!MayPreempt(a_actors[i], a_request.sight)) {
+      continue;
+    }
+    surplus = Sum(surplus, a_actors[i].surplusBytes);
+    if (!chosen || BetterStepDown(a_actors[i], a_actors[*chosen])) {
+      chosen = i;
+    }
+  }
+  return surplus >= a_request.shortfall ? chosen : std::nullopt;
 }
 
 BudgetResponse RespondToPressure(std::uint64_t a_planned, std::uint64_t a_goal,
@@ -265,14 +331,21 @@ std::string PressureEndLine(const BudgetState &a_state) {
                      Mebibytes(BandOf(allowance)));
 }
 
-std::string StepDownLine(std::uint32_t a_actor, std::string_view a_name,
-                         ResolutionLevel a_from,
-                         const StepDownOption &a_option) {
-  return std::format("actor {:08X} ({}) steps down from {} to {} resolution: "
-                     "frees {} (render target budget)",
-                     a_actor, a_name.empty() ? "unnamed" : a_name,
-                     LevelName(a_from), LevelName(a_option.to),
-                     Mebibytes(a_option.freed));
+namespace {
+std::string StepDownReason(std::optional<std::uint32_t> a_preemptedBy) {
+  return a_preemptedBy ? std::format("render target budget, for actor {:08X}",
+                                     *a_preemptedBy)
+                       : std::string{"render target budget"};
+}
+}
+
+std::string StepDownLine(const StepDownReport &a_report) {
+  return std::format(
+      "actor {:08X} ({}) steps down from {} to {} resolution: "
+      "frees {} ({})",
+      a_report.actor, a_report.name.empty() ? "unnamed" : a_report.name,
+      LevelName(a_report.from), LevelName(a_report.option.to),
+      Mebibytes(a_report.option.freed), StepDownReason(a_report.preemptedBy));
 }
 
 std::string ExhaustedLine(const BudgetState &a_state,
