@@ -1013,7 +1013,7 @@ void Manager::Tick(std::uint32_t a_nowMS, const Settings &a_settings) {
       const SectionTimer lightsTimer{Metrics::Section::kLights};
       UpdateLights(state, hidden);
     }
-    if (!state.firstDraw) {
+    if (!state.firstDraw || !state.inView) {
       FinishApplications(it->first, state);
     }
     ++it;

@@ -1586,6 +1586,14 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
 - `VerifyRenderPlanCache`, a run file's `verifyRenderPlans`, a disabled plan
   cache and an uncacheable key keep the synchronous build. Verification
   compares a reused plan with a fresh build in the same sync.
+- The first draw advances only while the actor is in view, because its
+  hidden draws are collected in the in-view branch of the tick. An actor out
+  of view still reports its applications during a pending first draw, and
+  `FinishApplications` reports a prepared application of an actor out of
+  view as `kOutOfView`. From 7h (2026-10-08) until 2026-10-09 the report
+  waited for the first draw, so an actor installed out of view stayed
+  `prepared` until it came into view, and every crowd soak and `cull`
+  timed out with 3 of 12 actors neither rendered nor waiting.
 - A plan that arrives starts a hidden first draw like an install does
   (`KeepActorRender`). The attach itself is a plan cache hit of about 0.5 ms,
   so install pacing does not count it.
