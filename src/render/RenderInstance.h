@@ -50,6 +50,8 @@ public:
   std::size_t ReleaseIntermediates();
   void CollectOutputTargets(HolderSet &a_set) const;
   void CollectInputTargets(HolderSet &a_set) const;
+  void
+  CollectUnplannedOutputs(std::map<std::string, HeldTally> &a_unplanned) const;
   [[nodiscard]] static std::size_t LiveCount() noexcept;
   ~RenderInstance();
   RenderInstance(const RenderInstance &) = delete;

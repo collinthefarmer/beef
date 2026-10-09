@@ -10,6 +10,7 @@
 #include <atomic>
 #include <cmath>
 #include <iterator>
+#include <unordered_set>
 
 namespace BetterEnchantmentEffects {
 namespace {
@@ -372,13 +373,29 @@ std::atomic<std::size_t> &LiveInstances() {
   static std::atomic<std::size_t> live{0};
   return live;
 }
+using TargetPointers = std::unordered_set<const TextureLab::RenderTarget *>;
+void AddTarget(const TextureLab::RenderTarget *target, TargetPointers &set) {
+  if (target)
+    set.insert(target);
+}
+void CollectValuePointers(const RenderValue &value, TargetPointers &set) {
+  if (const auto *view = Get<TextureView>(value)) {
+    AddTarget(view->texture.Target(), set);
+    AddTarget(view->target.get(), set);
+  } else if (const auto *material = Get<MaterialInputs>(value)) {
+    AddTarget(material->diffuse.Target(), set);
+    AddTarget(material->normal.Target(), set);
+    AddTarget(material->rmaos.Target(), set);
+    AddTarget(material->displacement.Target(), set);
+  } else if (const auto *stack = Get<StackResult>(value)) {
+    AddTarget(stack->texture.Target(), set);
+  }
+}
 void CollectValue(const RenderValue &value, HolderSet &set) {
-  if (const auto *view = Get<TextureView>(value))
-    CollectView(*view, set);
-  else if (const auto *material = Get<MaterialInputs>(value))
-    material->CollectTargets(set);
-  else if (const auto *stack = Get<StackResult>(value))
-    stack->texture.CollectTarget(set);
+  TargetPointers targets;
+  CollectValuePointers(value, targets);
+  for (const TextureLab::RenderTarget *target : targets)
+    set.insert(TargetId(target));
 }
 bool Animated(const std::vector<bool> &animated, RenderStepId step) {
   return step < animated.size() && animated[step];
@@ -1149,6 +1166,39 @@ void RenderInstance::CollectOutputTargets(HolderSet &a_set) const {
     for (const auto &output : state.outputs)
       if (output.value)
         CollectValue(*output.value, a_set);
+}
+void RenderInstance::CollectUnplannedOutputs(
+    std::map<std::string, HeldTally> &a_unplanned) const {
+  const std::vector<RenderStepId> held = HeldSteps(execution_.Plan());
+  const auto steps = execution_.Steps();
+  for (RenderStepId step = 0; step < steps.size(); ++step) {
+    TargetPointers targets;
+    for (const auto &output : steps[step].outputs)
+      if (output.value)
+        CollectValuePointers(*output.value, targets);
+    if (targets.empty())
+      continue;
+    std::uint64_t bytes = 0;
+    for (const TextureLab::RenderTarget *target : targets)
+      bytes += target->Bytes();
+    const RenderStepKind &kind = execution_.Plan().steps[step].kind;
+    const auto requirements = RequirementsOf(kind);
+    const TextureSize size = requirements ? SizeOf(sizes_, requirements->side)
+                                          : TextureSize{TextureSize::kMin};
+    const bool planned = std::ranges::contains(held, step);
+    const std::uint64_t priced =
+        planned && requirements
+            ? TargetBytes(size, requirements->format, requirements->mipPolicy)
+            : 0;
+    if (planned && targets.size() == 1 && bytes == priced)
+      continue;
+    HeldTally &tally = a_unplanned[std::format(
+        "{} {} {} {}", planned ? "mispriced" : "unplanned", StepKindName(kind),
+        requirements ? FormatName(requirements->format) : "none",
+        size.Pixels())];
+    tally.targets += targets.size();
+    tally.bytes += bytes - std::min(bytes, priced);
+  }
 }
 void RenderInstance::CollectInputTargets(HolderSet &a_set) const {
   for (const auto &input : execution_.Inputs())

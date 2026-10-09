@@ -22,6 +22,9 @@ public:
   [[nodiscard]] bool Holds(
       const std::shared_ptr<TextureLab::RenderTarget> &a_target) const noexcept;
   void CollectTarget(HolderSet &a_set) const;
+  [[nodiscard]] const TextureLab::RenderTarget *Target() const noexcept {
+    return target_.get();
+  }
 
 private:
   std::shared_ptr<TextureLab::RenderTarget> target_;

@@ -11,6 +11,7 @@
 #include "render/TextureRef.h"
 
 #include <format>
+#include <map>
 #include <string>
 #include <unordered_set>
 #include <vector>
@@ -96,11 +97,22 @@ void EmitTargetHolders(
     const HolderSets sets = HolderSetsOf(a_live, instances);
     const std::vector<LiveTarget> live = LiveTextureTargets();
     const HolderTallies tallies = TallyHolders(live, sets);
+    std::map<std::string, HeldTally> unplanned;
+    for (const RenderInstance *instance : instances) {
+      instance->CollectUnplannedOutputs(unplanned);
+    }
+    std::string unplannedText;
+    for (const auto &[shape, tally] : unplanned) {
+      unplannedText += std::format("{}{}: {} targets {} bytes",
+                                   unplannedText.empty() ? "" : "; ", shape,
+                                   tally.targets, tally.bytes);
+    }
     std::vector<Trace::Field> fields{
         {"action", "target_holders"},
         {"live_targets", std::to_string(live.size())},
         {"live_instances", std::to_string(RenderInstance::LiveCount())},
-        {"attached_instances", std::to_string(instances.size())}};
+        {"attached_instances", std::to_string(instances.size())},
+        {"unplanned", unplannedText}};
     for (const TargetHolder holder : kTargetHolders) {
       const HeldTally &tally = TallyOf(tallies, holder);
       fields.push_back({std::format("{}_targets", HolderName(holder)),
