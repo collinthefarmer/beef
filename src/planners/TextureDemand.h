@@ -7,9 +7,10 @@
 
 #include <compare>
 #include <cstdint>
+#include <string_view>
 
 namespace BetterEnchantmentEffects {
-enum class TextureFormat { kRgba8, kRgba32Float };
+enum class TextureFormat { kRgba8, kRgba32Float, kR8 };
 enum class MipPolicy { kGenerate, kNone };
 inline constexpr std::size_t kMaxIdentityBytes = std::size_t{8} * 1024 * 1024;
 struct SideRef {
@@ -24,6 +25,22 @@ struct TextureRequirements {
   MipPolicy mipPolicy = MipPolicy::kGenerate;
   [[nodiscard]] bool operator==(const TextureRequirements &) const = default;
 };
+[[nodiscard]] constexpr bool IsUnorm8(TextureFormat a_format) noexcept {
+  return a_format == TextureFormat::kRgba8 || a_format == TextureFormat::kR8;
+}
+[[nodiscard]] constexpr std::uint64_t
+BytesPerTexel(TextureFormat a_format) noexcept {
+  switch (a_format) {
+  case TextureFormat::kR8:
+    return 1;
+  case TextureFormat::kRgba8:
+    return 4;
+  case TextureFormat::kRgba32Float:
+    return 16;
+  }
+  return 16;
+}
+[[nodiscard]] std::string_view FormatName(TextureFormat a_format) noexcept;
 struct TextureKey {
   ValueIdentity identity;
   TextureRequirements requirements;

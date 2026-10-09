@@ -112,7 +112,8 @@ the new ones again when the request fails.
 |---|---|
 | `ValueIdentity` | A `canonical` string that `IdentifyValue` encodes from a graph value's structure, external bindings and state owner. |
 | `ValueBindings` | The two callbacks `IdentifyValue` uses: `external` names an `ExternalSource`, and `state` names a node's state owner. |
-| `TextureFormat` | `kRgba8` or `kRgba32Float`. A reduction operand uses `kRgba32Float`. |
+| `TextureFormat` | `kRgba8`, `kRgba32Float` or `kR8`. A scalar field uses `kR8`, a reduction operand `kRgba32Float`, a mesh bake and every other value `kRgba8`. |
+| `IsUnorm8`, `BytesPerTexel`, `FormatName` | Whether a format has 8 bits per channel (R8 or RGBA8); its bytes per texel (1, 4 or 16); its name in traces and listings. |
 | `MipPolicy` | `kGenerate` or `kNone`. |
 | `TextureRequirements` | A `TextureSize`, a `TextureFormat` and a `MipPolicy`. |
 | `TextureKey` | A `ValueIdentity` and the `TextureRequirements`. Equal keys are one demand. |
@@ -193,7 +194,7 @@ bytes. The heartbeat compares the count with the measured holdings.
 | `HeldTarget` | One target: its `TextureSize` (`size`), its format and its shared key, if it has one. |
 | `PlanTargets` | The targets one plan holds (`withIntermediates`: every drawing step a rendered root reaches) and the stacks among them (`stacks`). A static output is kept until the instance goes; only animated outputs are released when idle. |
 | `TargetCost` | The number of targets, their bytes, and the count per size (`targetsBySize`). |
-| `TargetBytes` | The bytes of one target: size² × 4, × 4/3 for `MipPolicy::kGenerate` (a full mip chain), × 4 for `kRgba32Float`. `TextureLab::RenderTarget::Bytes` uses it. |
+| `TargetBytes` | The bytes of one target: size² × `BytesPerTexel`, × 4/3 for `MipPolicy::kGenerate` (a full mip chain). `TextureLab::RenderTarget::Bytes` uses it. |
 | `HeldSteps` | The steps of a plan that hold a target: reached from a rendered root, with texture requirements, and drawing. `TargetsOf` prices them. |
 | `TargetsOf` | The `PlanTargets` of a plan at the given `PlanSizes`. |
 | `CostOf` | The cost of a list of held targets, with one target per shared key. |

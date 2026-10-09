@@ -5,6 +5,17 @@
 #include <tuple>
 
 namespace BetterEnchantmentEffects {
+std::string_view FormatName(TextureFormat a_format) noexcept {
+  switch (a_format) {
+  case TextureFormat::kR8:
+    return "r8";
+  case TextureFormat::kRgba8:
+    return "rgba8";
+  case TextureFormat::kRgba32Float:
+    return "f32";
+  }
+  return "f32";
+}
 std::strong_ordering TextureKey::operator<=>(const TextureKey &other) const {
   if (const auto order = identity <=> other.identity; order != 0)
     return order;

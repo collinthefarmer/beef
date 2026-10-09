@@ -5,6 +5,12 @@
 
 namespace BetterEnchantmentEffects {
 namespace {
+bool SameUnorm8Shape(const TextureRequirements &a_left,
+                     const TextureRequirements &a_right) {
+  return a_left.side == a_right.side && a_left.mipPolicy == a_right.mipPolicy &&
+         IsUnorm8(a_left.format) && IsUnorm8(a_right.format);
+}
+
 constexpr std::size_t kMaxInliningRounds = 4096;
 
 struct StepUses {
@@ -39,8 +45,8 @@ bool CanInlineProducer(const RenderPlan &plan, RenderStepId producer,
       AsProgramLike(plan, plan.steps[producer].kind);
   const std::optional<ProgramLikeStep> reader =
       AsProgramLike(plan, plan.steps[consumer].kind);
-  return program && reader && program->requirements == reader->requirements &&
-         reader->requirements.format == TextureFormat::kRgba8 &&
+  return program && reader &&
+         SameUnorm8Shape(program->requirements, reader->requirements) &&
          ConsumedOnce(uses, producer) && InlinesFor(uses, producer, consumer);
 }
 
@@ -117,7 +123,7 @@ struct StoredField {
 std::optional<StoredField> AsStoredField(const RenderPlan &plan,
                                          RenderStepId producer) {
   const auto program = AsProgramLike(plan, plan.steps[producer].kind);
-  if (!program || program->requirements.format != TextureFormat::kRgba8)
+  if (!program || !IsUnorm8(program->requirements.format))
     return std::nullopt;
   auto stored = FieldProgram::Inline(FieldProgram::Sample(ValueType::kVec3), 0,
                                      program->program);

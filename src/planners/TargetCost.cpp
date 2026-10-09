@@ -35,10 +35,8 @@ void Add(TargetCost &a_cost, const HeldTarget &a_target) {
 std::uint64_t TargetBytes(TextureSize a_size, TextureFormat a_format,
                           MipPolicy a_mips) noexcept {
   const auto pixels = static_cast<std::uint64_t>(a_size.Pixels());
-  const std::uint64_t level = pixels * pixels * 4;
-  const std::uint64_t texels =
-      a_mips == MipPolicy::kGenerate ? level * 4 / 3 : level;
-  return a_format == TextureFormat::kRgba32Float ? texels * 4 : texels;
+  const std::uint64_t level = pixels * pixels * BytesPerTexel(a_format);
+  return a_mips == MipPolicy::kGenerate ? level * 4 / 3 : level;
 }
 
 std::vector<RenderStepId> HeldSteps(const RenderPlan &a_plan) {

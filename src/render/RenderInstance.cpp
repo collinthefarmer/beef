@@ -359,10 +359,9 @@ std::string StepSpanKey(const RenderStep &step, const PlanSizes &sizes) {
   const auto requirements = RequirementsOf(step.kind);
   if (!requirements)
     return std::string{StepKindName(step.kind)};
-  return std::format(
-      "{} {} {}", StepKindName(step.kind),
-      SizeOf(sizes, requirements->side).Pixels(),
-      requirements->format == TextureFormat::kRgba32Float ? "f32" : "rgba8");
+  return std::format("{} {} {}", StepKindName(step.kind),
+                     SizeOf(sizes, requirements->side).Pixels(),
+                     FormatName(requirements->format));
 }
 bool Releasable(const RenderStep &step, const RenderValue &value) {
   return !Is<CompositeStackStep>(step.kind) &&

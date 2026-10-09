@@ -24,7 +24,7 @@ using test::Check;
 namespace {
 constexpr std::uint32_t kGuardedBaseSide = 2048;
 constexpr std::array<std::uint32_t, 3> kBaseSides{1024, 2048, 4096};
-constexpr std::uint64_t kFillTemplateHeldBytes = std::uint64_t{58} << 20;
+constexpr std::uint64_t kFillTemplateHeldBytes = std::uint64_t{37} << 20;
 
 bool ActorScoped(const ExternalSource &a_source) {
   return Is<EffectShaderInput>(a_source) || Is<EventInput>(a_source) ||
@@ -296,8 +296,7 @@ void ListHeldTargets(const SizedPlan &a_sized, std::uint32_t a_base) {
         "  #{} {} '{}' ({}): {} {} {} mips, {:.2f} MiB; {}; read by {}\n", step,
         StepKindName(planned.kind), planned.displayName,
         animated[step] ? "animated" : "static", size.Pixels(),
-        requirements->format == TextureFormat::kRgba32Float ? "rgba32f"
-                                                            : "rgba8",
+        FormatName(requirements->format),
         requirements->mipPolicy == MipPolicy::kGenerate ? "with" : "no",
         static_cast<double>(
             TargetBytes(size, requirements->format, requirements->mipPolicy)) /

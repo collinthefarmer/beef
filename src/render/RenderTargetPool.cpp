@@ -13,6 +13,18 @@ namespace BetterEnchantmentEffects {
 using namespace REX::W32;
 
 namespace {
+DXGI_FORMAT DxgiFormatOf(TextureFormat a_format) {
+  switch (a_format) {
+  case TextureFormat::kR8:
+    return DXGI_FORMAT_R8_UNORM;
+  case TextureFormat::kRgba8:
+    return DXGI_FORMAT_R8G8B8A8_UNORM;
+  case TextureFormat::kRgba32Float:
+    return DXGI_FORMAT_R32G32B32A32_FLOAT;
+  }
+  return DXGI_FORMAT_R8G8B8A8_UNORM;
+}
+
 std::string TextureName(std::string a_name) {
   std::ranges::transform(a_name, a_name.begin(), [](unsigned char a_char) {
     return a_char == '/' ? '\\' : static_cast<char>(std::tolower(a_char));
@@ -104,9 +116,7 @@ bool RenderTargetPool::CreateTarget(ID3D11Device *a_device,
   desc.height = pixels;
   desc.mipLevels = chain ? 0 : 1;
   desc.arraySize = 1;
-  desc.format = a_shape.format == TextureFormat::kRgba32Float
-                    ? DXGI_FORMAT_R32G32B32A32_FLOAT
-                    : DXGI_FORMAT_R8G8B8A8_UNORM;
+  desc.format = DxgiFormatOf(a_shape.format);
   desc.sampleDesc.count = 1;
   desc.usage = D3D11_USAGE_DEFAULT;
   desc.bindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;

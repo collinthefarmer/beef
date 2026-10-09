@@ -2087,13 +2087,32 @@ them outside as separate passes.
 - `InlineFields` (`planners/FieldInlining`) inlines a producer program into
   its consumer's texture input
   when the producer is program-like (`EvaluateProgram`, `MapField`,
-  `ComposeVector`), shares the consumer's size and RGBA8 format, has exactly
+  `ComposeVector`), shares the consumer's size and mips, is stored in an
+  8-bit format (R8 or RGBA8, `IsUnorm8`) as the consumer is, has exactly
   one live consumer (counted from the stack outputs; preview demands do not
   count), and animates (depends on a changing graph input or a changing
   readback). The inlined code is followed by `kSplat` for a scalar producer,
-  because a scalar field is stored as `xxx`, and by `kQuantize`, because the
-  stored field was RGBA8. A texel-centre read returns the stored texel
-  exactly, so the inlined program computes the same value.
+  because a scalar field is read as `xxx`, and by `kQuantize`, because the
+  stored field had 8 bits per channel. A texel-centre read returns the stored
+  texel exactly, so the inlined program computes the same value.
+- A scalar field is stored as R8 (`StoredFormat`, `RenderPlanLowering.cpp`,
+  2026-10-09). The lowering sets each node's format from its own type: a
+  scalar gets R8 and any other value RGBA8, unless the request is
+  `kRgba32Float` (a reduction operand), which stays. An operand therefore
+  gets its own format, not its reader's. Writers need no change, because a
+  pixel shader's `float4` result stores only `.r` in an R8 target and every
+  scalar writer returns the value in `.r` (`PSProgram`, `PSRipple`,
+  `PSClusters`, the slope pass). Readers need no change, because every view
+  of a scalar step output reads channel R (`View`), and `Pick` with channel R
+  returns `.rrr`; an R8 texture samples as `(r, 0, 0, 1)`.
+- A mesh bake and a distance bake stay RGBA8 (`Rgba8`), also for a scalar.
+  `BakePS` writes alpha 1 on covered texels and `DilatePS` reads alpha to
+  find the gutter it fills; an R8 texture samples alpha as 1 everywhere, so
+  dilation would stop. The ripple's position bake holds a vec3.
+- In the fill template, R8 holds 7 of the 8 scalar targets; the chart id bake
+  stays RGBA8. A plan holds 36.3 MiB at a 2048² base, against 57.3 MiB with
+  every target RGBA8 and 69.3 MiB before the mip change. It keeps the same
+  13 targets, because inlining accepts either 8-bit format.
 - A stack of up to 8 layers (`kMaxStackLayers`) without a legacy
   curve draws in one `PSStack` pass. The per-layer `LayerPass` and `PSStack`
   both call `ComposeLayer`, so they compute the same value per layer.
@@ -2103,7 +2122,7 @@ them outside as separate passes.
   t20 and its masks at t21 to t28, clear of the program pass's t0 to t11.
 - A stack layer evaluates its source or mask program inside the stack pass
   (a **layer field**) when the field is program-like, animates, is stored
-  RGBA8 at the stack's size, and every live consumer of it is a stack
+  in an 8-bit format at the stack's size, and every live consumer of it is a stack
   reading it as a layer source or mask. The field then inlines into every
   such stack or into none, so its own draw stops. A stack whose only path to
   the field is a readback does not count as taking it.

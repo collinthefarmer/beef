@@ -46,11 +46,35 @@ LoweringRequest OperandRequest(const LoweringRequest &request,
       TextureValue{request.value.graph, operand, request.value.instance},
       request.requirements, request.geometry};
 }
+TextureFormat StoredFormat(const RecipeNode &node, const GraphValueType &type,
+                           TextureFormat inherited) {
+  if (!IsUnorm8(inherited))
+    return inherited;
+  if (Is<BakeOperation>(node.kind) || Is<DistanceOperation>(node.kind))
+    return TextureFormat::kRgba8;
+  const ValueType *value = Get<ValueType>(type);
+  return value && *value == ValueType::kScalar ? TextureFormat::kR8
+                                               : TextureFormat::kRgba8;
+}
+LoweringRequest Stored(const LoweringRequest &request, const RecipeNode &node,
+                       const GraphValueType &type) {
+  LoweringRequest stored = request;
+  stored.requirements.format =
+      StoredFormat(node, type, request.requirements.format);
+  return stored;
+}
 TextureRequirements KeyRequirementsOf(const RecipeGraph &graph,
+                                      const RecipeNode &node,
                                       const LoweringRequest &request,
                                       const GraphValueType &type) {
   TextureRequirements requirements = request.requirements;
   if (!graph.SampleDependent(request.value.output) && Is<ValueType>(type))
+    requirements.format = TextureFormat::kRgba8;
+  requirements.format = StoredFormat(node, type, requirements.format);
+  return requirements;
+}
+TextureRequirements Rgba8(TextureRequirements requirements) {
+  if (IsUnorm8(requirements.format))
     requirements.format = TextureFormat::kRgba8;
   return requirements;
 }
@@ -222,7 +246,7 @@ struct PlanBuilder {
     }
     return LoweringSite{
         graph, *node, *type,
-        TextureKey{*identity, KeyRequirementsOf(graph, request, *type)}};
+        TextureKey{*identity, KeyRequirementsOf(graph, *node, request, *type)}};
   }
   std::optional<ValueIdentity> IdentityOf(const LoweringRequest &request) {
     const IdentitySite site{request.value.graph, request.value.output.node,
@@ -260,14 +284,15 @@ struct PlanBuilder {
   RenderValueRef Build(const LoweringRequest &request, std::size_t depth = 0) {
     if (!problem.empty())
       return RenderInputRef{0};
-    const LoweringRequest lowered = WithoutMips(request);
+    const LoweringRequest unstored = WithoutMips(request);
     if (++visits > kMaxLoweringVisits || depth > kMaxLoweringDepth ||
-        !lowered.value.graph)
+        !unstored.value.graph)
       return Fail(
           "render lowering exceeds its traversal limit or has no graph");
-    const std::optional<LoweringSite> site = SiteFor(lowered);
+    const std::optional<LoweringSite> site = SiteFor(unstored);
     if (!site)
       return RenderInputRef{0};
+    const LoweringRequest lowered = Stored(unstored, site->node, site->type);
     if (const std::optional<RenderValueRef> reused =
             ReuseLowered(site->key, lowered))
       return *reused;
@@ -497,7 +522,7 @@ struct PlanBuilder {
         BuildBakeBuffersStep{BuildOperand(operation.geometry, request, depth),
                              operation.bake},
         label + " buffers");
-    return Step(BakeMeshStep{buffers, request.requirements,
+    return Step(BakeMeshStep{buffers, Rgba8(request.requirements),
                              Is<ComponentIdBake>(operation.bake) ||
                                  Is<ChartIdBake>(operation.bake)},
                 label);
@@ -511,7 +536,7 @@ struct PlanBuilder {
         BuildBakeBuffersStep{BuildOperand(operation.geometry, request, depth),
                              BuildOperand(operation.origin, request, depth)},
         label + " buffers");
-    return Step(BakeMeshStep{buffers, request.requirements}, label);
+    return Step(BakeMeshStep{buffers, Rgba8(request.requirements)}, label);
   }
   RenderValueRef LowerMaterialClustersOperation(
       const MaterialClustersOperation &operation, const LoweringSite &site,
@@ -548,7 +573,8 @@ struct PlanBuilder {
         Step(BuildBakeBuffersStep{mesh, BakeKind{PositionBake{}}},
              label + " position buffers");
     const RenderValueRef positions =
-        Step(BakeMeshStep{buffers, request.requirements}, label + " positions");
+        Step(BakeMeshStep{buffers, Rgba8(request.requirements)},
+             label + " positions");
     KeyPositionBake(positions, operation.geometry, request);
     std::vector<RenderValueRef> inputs;
     for (const OutputRef operand : InputsOf(site.node.kind)) {
@@ -567,7 +593,7 @@ struct PlanBuilder {
     if (!mesh)
       return;
     RecordValueKey(TextureKey{PositionBakeIdentity(mesh->key.identity),
-                              request.requirements},
+                              Rgba8(request.requirements)},
                    positions);
   }
   RenderValueRef LowerUnsupported(const LoweringSite &site,
