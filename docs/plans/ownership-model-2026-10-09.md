@@ -1,4 +1,4 @@
-Status: proposed (2026-10-09); decisions D1 to D8 made. No stage is started. Stage 0 is the uncommitted `engine/SlotWrites.*` change in the working tree. Raised by the leak fixes of 2026-10-08 and 2026-10-09 and by three read-only audits on 2026-10-09.
+Status: active (2026-10-09); decisions D1 to D8 made. Stage 0 is done: `engine/SlotWrites.*` is committed after `camera cull isolation`, `soak-fight`, `soak-fight-orbit`, `soak-orbit` and `soak-distance` passed 5 of 5 with the census clean. Stage 1 is next. Raised by the leak fixes of 2026-10-08 and 2026-10-09 and by three read-only audits on 2026-10-09.
 
 # Ownership model
 

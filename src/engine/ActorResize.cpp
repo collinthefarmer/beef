@@ -3,6 +3,7 @@
 
 #include "diagnostics/Metrics.h"
 #include "engine/LogOnce.h"
+#include "engine/SlotWrites.h"
 #include "render/Compositor.h"
 #include "render/RenderInstance.h"
 #include "render/TextureLab.h"
@@ -75,22 +76,6 @@ std::vector<bool> DrawnByMergedChains(const LiveActor &a_state) {
   }
   covered.insert(covered.end(), mergedStacks, false);
   return covered;
-}
-
-void ConcealStackSlots(LiveGeometry &a_geometry) {
-  for (const SlotStackPlan &slot : a_geometry.stackPlan.slots) {
-    if (SlotTarget *target = TargetFor(a_geometry, slot.surface)) {
-      target->WriteTexture(slot.slot, nullptr);
-    }
-  }
-}
-
-void ConcealStackSlots(LiveActor &a_state) {
-  for (LivePiece &piece : a_state.pieces) {
-    for (LiveGeometry &geometry : piece.geometries) {
-      ConcealStackSlots(geometry);
-    }
-  }
 }
 
 bool StacksMatch(const std::vector<StackHolder> &a_holders,

@@ -2757,8 +2757,10 @@ cancel by the user instead of the load.
   cannot hold two instances. Its stacks that have not drawn can show nothing
   for a few frames, as a reinstall did.
 - A swap of an actor out of view writes each of its stack slots as not
-  shown (`ConcealStackSlots`, `FinishResize`): the slot gets its original
-  texture back and `written` releases the old instance's target. The
+  shown (`ConcealStackSlots` in `engine/SlotWrites.h`, `FinishResize`): the
+  same `EmptyWrite` the render path writes for a hidden slot, so the slot
+  gets its original texture and fallback scalars back and `written` releases
+  the old instance's target. The
   actor's next draw in view writes the new stacks. Before 2026-10-09 the
   slots kept the old textures until the actor came into view, because slots
   are written only by an in-view render. In `soak-fight` one NPC stepped

@@ -11,6 +11,7 @@
 #include "engine/Clock.h"
 #include "engine/LogOnce.h"
 #include "engine/RegressionRun.h"
+#include "engine/SlotWrites.h"
 #include "planners/RenderBudget.h"
 #include "planners/RenderMemory.h"
 #include "render/Compositor.h"
@@ -87,68 +88,6 @@ bool DrawsHidden(const LiveActor &a_state) {
 
 ActorRole RoleOf(RE::Actor &a_actor) {
   return a_actor.IsPlayerRef() ? ActorRole::kPlayer : ActorRole::kOther;
-}
-
-struct SlotWrite {
-  Slot slot = Slot::kEmissive;
-  TextureRef texture;
-  bool shown = false;
-  std::array<float, kScalarFieldCount> scalars{};
-  Vec3 color{1.0f, 1.0f, 1.0f};
-
-  [[nodiscard]] float Of(ScalarField a_field) const {
-    return scalars[IndexOf(a_field)];
-  }
-  [[nodiscard]] float Shown(ScalarField a_field) const {
-    return shown ? Of(a_field) : 0.0f;
-  }
-};
-
-SlotWrite EmptyWrite(Slot a_slot) {
-  SlotWrite write;
-  write.slot = a_slot;
-  for (const ScalarField field : ScalarsOf(a_slot)) {
-    write.scalars[IndexOf(field)] = ScalarFallback(field);
-  }
-  const float fallback = ScalarFallback(ScalarField::kColor);
-  write.color = Vec3{fallback, fallback, fallback};
-  return write;
-}
-
-void WriteSlot(SlotTarget &a_target, const SlotWrite &a_write) {
-  a_target.WriteTexture(a_write.slot,
-                        a_write.shown ? a_write.texture : nullptr);
-  switch (a_write.slot) {
-  case Slot::kEmissive:
-    a_target.WriteEmissive(Vec3{1.0f, 1.0f, 1.0f},
-                           a_write.Shown(ScalarField::kStrength));
-    break;
-  case Slot::kFuzz:
-    a_target.WriteFuzz(a_write.color, a_write.Shown(ScalarField::kWeight));
-    break;
-  case Slot::kHeight:
-    a_target.WriteHeightScale(a_write.Shown(ScalarField::kScale));
-    break;
-  case Slot::kGlint:
-    a_target.WriteGlint(
-        {.enabled = a_write.shown,
-         .screenSpaceScale = a_write.Of(ScalarField::kScreenSpaceScale),
-         .logMicrofacetDensity = a_write.Of(ScalarField::kLogMicrofacetDensity),
-         .microfacetRoughness = a_write.Of(ScalarField::kMicrofacetRoughness),
-         .densityRandomization =
-             a_write.Of(ScalarField::kDensityRandomization)});
-    break;
-  case Slot::kCoat:
-    a_target.WriteCoat(a_write.Of(ScalarField::kRoughness),
-                       a_write.Shown(ScalarField::kLevel));
-    break;
-  case Slot::kSubsurface:
-    a_target.WriteSubsurface(a_write.color,
-                             a_write.Shown(ScalarField::kThickness));
-    break;
-  default:
-    break;
-  }
 }
 
 struct TickFrame {
@@ -507,18 +446,20 @@ void FailGeometryOutputs(LiveActor &a_state, const LiveGeometry &a_bound) {
 
 void WriteSlots(LiveActor &a_state, LiveGeometry &a_bound,
                 const SlotRenderView &a_view, bool a_hidden) {
+  if (a_hidden) {
+    ConcealStackSlots(a_bound);
+    return;
+  }
   for (const SlotStackPlan &slot : a_bound.stackPlan.slots) {
     SlotTarget *target = TargetFor(a_bound, slot.surface);
     if (!target) {
       continue;
     }
+    const SlotChain chain = RenderSlotChain(a_state, a_bound, a_view, slot);
     SlotWrite write = EmptyWrite(slot.slot);
-    if (!a_hidden) {
-      const SlotChain chain = RenderSlotChain(a_state, a_bound, a_view, slot);
-      write.shown = chain.shown && a_view.publish;
-      write.texture = chain.texture;
-      ApplySlotScalars(write, slot.slot, chain);
-    }
+    write.shown = chain.shown && a_view.publish;
+    write.texture = chain.texture;
+    ApplySlotScalars(write, slot.slot, chain);
     WriteSlot(*target, write);
   }
 }
