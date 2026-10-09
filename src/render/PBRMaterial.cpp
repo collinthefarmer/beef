@@ -73,7 +73,7 @@ std::size_t PbrMaterial::PresenterTextures() const {
   if (!Attached()) {
     return 0;
   }
-  const std::string folder = Identity::PresenterTextureFolder();
+  const std::string folder = PluginIdentity::PresenterTextureFolder();
   const std::array<const RE::NiSourceTexture *, 7> textures{
       layout_->diffuseTexture.get(),      layout_->normalTexture.get(),
       layout_->rmaosTexture.get(),        layout_->emissiveTexture.get(),

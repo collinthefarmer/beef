@@ -11,7 +11,7 @@
 #define BEEF_PLUGIN_NAME "BetterEnchantmentEffects"
 #endif
 
-namespace BetterEnchantmentEffects::Identity {
+namespace BetterEnchantmentEffects::PluginIdentity {
 inline constexpr std::string_view kName = BEEF_PLUGIN_NAME;
 inline constexpr std::string_view kMenuTitle = "Better Enchantment Effects";
 inline constexpr std::string_view kNodePrefix = "BEEF";

@@ -139,6 +139,18 @@ void KeptValuesAreRenewedAndExemptFromTheCount() {
         "kept values survive a zero count bound");
 }
 
+void UseRenewsWithoutAdding() {
+  RetainedStore<int, float> means{
+      {.maxCount = 4, .maxBytes = kNoByteBound, .maxIdle = 30}};
+  Check(!means.Use(1, 0) && means.Size() == 0,
+        "using an absent key adds nothing");
+  Check(!means.Insert(1, 0.25f, 0, 0), "a value is taken in");
+  const float *used = means.Use(1, 20);
+  Check(used && *used == 0.25f, "using a key returns its value");
+  Check(means.Sweep(49, KeepNone{}).empty() && means.Find(1),
+        "a use renews the value's idle age");
+}
+
 void FailureRecordsExpireToo() {
   RetainedStore<int, std::string> failures{
       {.maxCount = 64, .maxBytes = kNoByteBound, .maxIdle = 30}};
@@ -155,6 +167,7 @@ int main() {
   TakeTransfersOwnership();
   IdleValuesExpire();
   KeptValuesAreRenewedAndExemptFromTheCount();
+  UseRenewsWithoutAdding();
   FailureRecordsExpireToo();
   return test::Finish("planners_retainedstore");
 }

@@ -83,7 +83,7 @@ void RebuildApplied() {
 
 void LoadPresets() {
   g_presets = {};
-  const auto path = Identity::PresetsPath();
+  const auto path = PluginIdentity::PresetsPath();
   const auto text = ReadText(path);
   if (!text) {
     logger::warn("presets: {} {}; no mask presets", path.string(),
@@ -303,7 +303,8 @@ const LoadedRecipe *RecipeForEffectShader(const FormKey &a_key) {
 std::unordered_map<std::string_view, Recipe> LoadImportTemplates() {
   std::unordered_map<std::string_view, Recipe> templates;
   for (const std::string_view id : kImportTemplateIds) {
-    const auto path = Identity::TemplateFolder() / std::format("{}.json", id);
+    const auto path =
+        PluginIdentity::TemplateFolder() / std::format("{}.json", id);
     const auto text = ReadText(path);
     if (!text) {
       logger::error("import template {}: {} {}", id, path.string(),
@@ -423,8 +424,8 @@ RecipeStoreStatus LoadRecipes() {
   g_applied = std::make_shared<const RecipeCatalog>(RecipeCatalog::Of({}));
   g_appliedWithoutDebug = g_applied;
   g_status = {};
-  const auto root = Identity::RecipeRoot();
-  const auto user = Identity::UserRecipeFolder();
+  const auto root = PluginIdentity::RecipeRoot();
+  const auto user = PluginIdentity::UserRecipeFolder();
   std::error_code ec;
   std::filesystem::create_directories(root, ec);
   if (ec) {
@@ -442,7 +443,7 @@ RecipeStoreStatus LoadRecipes() {
   for (const auto &path : saved) {
     LoadFile(path, RecipeClass::kRegular);
   }
-  ImportMissing(Identity::ImportedRecipeFolder());
+  ImportMissing(PluginIdentity::ImportedRecipeFolder());
   LoadPresets();
   for (auto &l : g_loaded) {
     l.references = Studio::CountReferences(l.recipe);
@@ -583,9 +584,10 @@ SaveRecipe(std::string_view a_id) {
     return std::unexpected(Refusal(a_id, "the paint recipe is never written"));
   }
   auto path = loaded->path;
-  const bool promoteImported = IsUnder(path, Identity::ImportedRecipeFolder());
-  if (!IsUnder(path, Identity::UserRecipeFolder())) {
-    path = Identity::UserRecipeFolder() / (loaded->recipe.id + ".json");
+  const bool promoteImported =
+      IsUnder(path, PluginIdentity::ImportedRecipeFolder());
+  if (!IsUnder(path, PluginIdentity::UserRecipeFolder())) {
+    path = PluginIdentity::UserRecipeFolder() / (loaded->recipe.id + ".json");
   }
   auto written = WriteRecipeFile(path, loaded->recipe, promoteImported);
   if (!written) {
@@ -633,8 +635,9 @@ std::optional<Diagnostic> RenameRecipe(std::string_view a_from,
   if (!loaded || loaded->transient) {
     return refuse(loaded ? "the paint recipe keeps its name" : "not loaded");
   }
-  const auto to = Identity::UserRecipeFolder() / (std::string{a_to} + ".json");
-  const bool owned = IsUnder(loaded->path, Identity::UserRecipeFolder());
+  const auto to =
+      PluginIdentity::UserRecipeFolder() / (std::string{a_to} + ".json");
+  const bool owned = IsUnder(loaded->path, PluginIdentity::UserRecipeFolder());
   if (const auto problem = RenameRecipeFile(loaded->path, to, a_from, owned)) {
     return refuse(problem->message);
   }
@@ -666,7 +669,7 @@ std::optional<Diagnostic> DeleteRecipe(std::string_view a_id) {
   if (loaded.transient) {
     return refuse("the paint recipe is never deleted");
   }
-  const bool owned = IsUnder(loaded.path, Identity::UserRecipeFolder());
+  const bool owned = IsUnder(loaded.path, PluginIdentity::UserRecipeFolder());
   if (const auto problem = DeleteRecipeFile(loaded.path, a_id, owned)) {
     return refuse(problem->message);
   }
@@ -705,7 +708,8 @@ std::optional<Diagnostic> DuplicateRecipe(std::string_view a_from,
   copy.metadata.imported.clear();
   LoadedRecipe loaded;
   loaded.recipe = std::move(copy);
-  loaded.path = Identity::UserRecipeFolder() / (std::string{a_to} + ".json");
+  loaded.path =
+      PluginIdentity::UserRecipeFolder() / (std::string{a_to} + ".json");
   loaded.dirty = true;
   loaded.diagnostics = Validate(loaded.recipe);
   ResolveForms(loaded.recipe, loaded.diagnostics);
@@ -743,7 +747,7 @@ std::optional<Diagnostic> NewRecipe(std::string_view a_id, RecipeKey a_key,
   }
   LoadedRecipe loaded;
   loaded.recipe = std::move(recipe);
-  loaded.path = Identity::UserRecipeFolder() / (id + ".json");
+  loaded.path = PluginIdentity::UserRecipeFolder() / (id + ".json");
   loaded.dirty = true;
   loaded.diagnostics = Validate(loaded.recipe);
   ResolveForms(loaded.recipe, loaded.diagnostics);

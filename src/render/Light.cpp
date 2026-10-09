@@ -211,7 +211,7 @@ LightBinding::Create(const std::vector<LightPlacement> &a_placements,
     entry.name = placement.name;
     entry.share = placement.share;
 
-    light->name = RE::BSFixedString{Identity::LightNodeName()};
+    light->name = RE::BSFixedString{PluginIdentity::LightNodeName()};
     light->local.translate = placement.offset;
     auto &ld = light->GetLightRuntimeData();
     ld.ambient = RE::NiColor{

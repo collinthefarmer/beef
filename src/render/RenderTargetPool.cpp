@@ -41,7 +41,7 @@ std::string TextureName(std::string a_name) {
 RE::NiPointer<RE::NiSourceTexture>
 RenderTargetPool::LoadPresenter(std::size_t a_slot) {
   const auto path =
-      Identity::PresenterTexturePath(static_cast<std::uint32_t>(a_slot));
+      PluginIdentity::PresenterTexturePath(static_cast<std::uint32_t>(a_slot));
   RE::BSResourceNiBinaryStream resource{path};
   if (!resource.good()) {
     logger::error("TextureLab: presenter asset missing: {}", path);

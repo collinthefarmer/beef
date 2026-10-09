@@ -76,7 +76,7 @@ pure core has no logger. Turning a scale into pixels and clamping the result to
 64..4096 is wave-3 render/ work; the setting here has no consumer yet.
 
 `SettingsFile` is the engine-facing half: the on-disk path
-(`Identity::IniPath()`), load/save, and the process's single copy behind
+(`PluginIdentity::IniPath()`), load/save, and the process's single copy behind
 `GetSettings`/`SetSettings`.
 
 `g_logRing` (declared in `PCH.h`, defined in `main.cpp`) is a 300-line
@@ -681,6 +681,16 @@ Lab mechanics:
   0x0 for streamed maps, so a texture's real size comes from the D3D
   resource (NOTES 43). `GetTexture` accepts a record's raw path and the
   `textures\` prefixed form (NOTES 7).
+- Channel means (`MeanChannel`, the only caller `MeasureFlatDisplacement` in
+  `MaterialInputs::From`) are kept by `Identity<RE::NiSourceTexture>` and
+  channel: the lowercased texture name and its D3D extent (`MeanKeyOf`,
+  ownership-model D5). The store keeps 256 means for 30 s after their last use
+  (`kMeans`); a failed measurement is kept 10 s (`kFailedMeans`) and measured
+  again after that. A texture without a name is measured on each call and not
+  kept; `From` runs once per geometry install, so this costs no tick time.
+  `ExpireIdle` sweeps both stores each tick. Before 2026-10-09 the means were
+  kept by raw texture pointer for the session, a failure stayed 0.5 for the
+  session, and `MeanLuminance` had no caller.
 
 ## Bindings (`Binding.cpp`, `Binding.h`, `PBRMaterial.h`)
 
@@ -831,7 +841,7 @@ Lab mechanics:
   0.022 (`render/Light.cpp`). A recipe's own `cutoff` below 1 overrides them,
   clamped to 0.01..1. One light per recipe, third person only, at the skinned
   centre of the bones carrying the most vertices (NOTES 34).
-- Geometry names ending in `Identity::ShellNodeSuffix()` are shells the plugin
+- Geometry names ending in `PluginIdentity::ShellNodeSuffix()` are shells the plugin
   attached; the apply traversal skips them, and shells are collected before
   applying because attaching one adds a sibling a live walk would visit.
 - `ShellPose` (Plan G, 2026-09-14): `PosedTransform` (`mesh/ShellPose.h`,
@@ -1268,7 +1278,7 @@ layout, and so its out-of-view share, did not exist.
   `IdleShape`: pixels, format and mip chain). When a returned target does not
   fit, the pool lets its oldest idle targets go, not the returned one, because
   a newer shape is the likelier to be asked for again. Each tick,
-  `TextureLab::ExpireIdleTargets` lets go every target idle for 5 s, counted
+  `TextureLab::ExpireIdle` lets go every target idle for 5 s, counted
   from the time of the last `ExpireIdle` before the target returned
   (`Pool::now`), because the deleter that returns a target has no clock of
   its own. Before 2026-10-09 the count started at the first sweep that saw
@@ -2244,6 +2254,15 @@ them outside as separate passes.
   game's maps loaded for up to 30 s after use (`kMaterialRecords`). A game
   texture reloaded at the same address with the same name is the same file,
   and a plugin target's generation tells a reused target apart.
+- The image store (`LoadImage`) keeps 64 images by `ImageCacheKey` for 30 s
+  after their last use (`kImages`) and a failed load for 10 s
+  (`kFailedImages`). `SweepBoundMeshes` sweeps it every 5 s with the meshes
+  and materials. `Manager::Clear` empties it (`ClearImages`), and the
+  `clear_end` load event records the dropped count as `images`. Before
+  2026-10-09 the store kept every image and every failed load for the
+  session. An evicted image stays alive while an instance holds its
+  `TextureRef`; the next `LoadImage` gets the same texture from the game's
+  texture manager.
 
 ## Recipe format details beyond the schema (`Recipe.h`, `RecipeRead.cpp`, `RecipeWrite.cpp`)
 
@@ -2779,6 +2798,14 @@ cancel by the user instead of the load.
   (`kResizeSwapAfterFrames`) swaps anyway, so a readback that never arrives
   cannot hold two instances. Its stacks that have not drawn can show nothing
   for a few frames, as a reinstall did.
+- When `StartResize` fails (`SizesFor` fails, or a stack output names no
+  stack of the plan), `AdvanceResizes` sets `TrackedActor::targetResolution`
+  back to `appliedResolution` (ownership-model stage 2). Before 2026-10-09 the
+  target kept the failed level, so `RequestLevelStep` stepped from a level the
+  actor never reached and the actor stayed at its applied level. Both
+  failures are structural, so the next tick asks for the same resize and it
+  fails again; `LogOnce` writes the line once. Stage 3 replaces the stored
+  target level.
 - A swap of an actor out of view writes each of its stack slots as not
   shown (`ConcealStackSlots` in `engine/SlotWrites.h`, `FinishResize`): the
   same `EmptyWrite` the render path writes for a hidden slot, so the slot

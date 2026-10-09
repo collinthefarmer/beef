@@ -45,7 +45,7 @@ std::optional<std::string_view> IniValue(std::string_view a_text,
 }
 }
 
-std::filesystem::path SettingsPath() { return Identity::IniPath(); }
+std::filesystem::path SettingsPath() { return PluginIdentity::IniPath(); }
 
 Settings LoadSettingsFromDisk() {
   const auto path = SettingsPath();

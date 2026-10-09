@@ -128,6 +128,7 @@ void Manager::Clear() {
   Compositor::GetSingleton()->ClearStepOutputs();
   Compositor::GetSingleton()->ClearMeshes();
   Compositor::GetSingleton()->ClearMaterials();
+  const std::size_t images = Compositor::GetSingleton()->ClearImages();
   if (TextureLab *lab = TextureLab::GetSingleton()) {
     lab->Clear();
   }
@@ -147,7 +148,8 @@ void Manager::Clear() {
   lastTickMS_ = 0;
   frozenLastTick_ = false;
   Trace::EmitSafely(Trace::Event::kLoad, {{"action", "clear_end"},
-                                          {"actors", std::to_string(count)}});
+                                          {"actors", std::to_string(count)},
+                                          {"images", std::to_string(images)}});
   logger::info("cleared {} actor states", count);
 }
 

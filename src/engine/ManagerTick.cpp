@@ -430,6 +430,7 @@ void SweepBoundMeshes(
   const BoundMeshes meshes = BoundMeshesOf(a_applied);
   a_compositor.SweepMeshes(a_nowMS, meshes.geometries);
   a_compositor.SweepMaterials(a_nowMS, meshes.materials);
+  a_compositor.SweepImages(a_nowMS);
 }
 
 void FailGeometryOutputs(LiveActor &a_state, const LiveGeometry &a_bound) {
@@ -853,7 +854,7 @@ void Manager::OnFrame() {
     const SectionTimer sweepTimer{Metrics::Section::kSweep};
     Compositor::GetSingleton()->BeginTick(now);
     Compositor::GetSingleton()->SweepStepOutputs(now);
-    lab->ExpireIdleTargets(now);
+    lab->ExpireIdle(now);
   }
   if (!live_.empty()) {
     const SectionTimer tickTimer{Metrics::Section::kTick};
@@ -1161,6 +1162,10 @@ void Manager::AdvanceResizes(const Settings &a_settings) {
   if (const std::expected<void, std::string> started =
           StartResize(found->second, renderFrame_);
       !started) {
+    if (const auto tracked = tracked_.find(found->first);
+        tracked != tracked_.end() && tracked->second.targetResolution) {
+      tracked->second.targetResolution = found->second.appliedResolution;
+    }
     LogOnce(warningHistory_, Severity::kWarning,
             std::format("actor {:08X} keeps its resolution: {}", found->first,
                         started.error()));

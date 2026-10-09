@@ -231,7 +231,7 @@ void ReadRegressionRun(const RunSetup &a_setup) {
     return;
   }
   const std::filesystem::path path =
-      *directory / Identity::RegressionRunFileName();
+      *directory / PluginIdentity::RegressionRunFileName();
   std::error_code missing;
   if (!std::filesystem::exists(path, missing)) {
     return;
@@ -260,7 +260,7 @@ void ReadRegressionRun(const RunSetup &a_setup) {
     return;
   }
   std::filesystem::path results =
-      *directory / Identity::RegressionResultsFileName(request->run);
+      *directory / PluginIdentity::RegressionResultsFileName(request->run);
   const std::lock_guard lock{runLock};
   verifyRenderPlans.store(request->verifyRenderPlans);
   screenResolution.store(OverrideOf(request->screenResolution));

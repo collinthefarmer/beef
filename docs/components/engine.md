@@ -92,7 +92,9 @@ then starts at most one resize across all actors (`NextResize`,
 fraction resizes first. `StartResize` creates the new instance
 (`ResizeInFlight`) from the current instance's plan, `GeometryInputs` and
 graphs at the new sizes (`RenderInstance::AtSizes`). It gives each stack output of the actor a
-`RenderOutput` on the new instance (`RenderOutput::DrawnBy`). `DrawResize`
+`RenderOutput` on the new instance (`RenderOutput::DrawnBy`). When
+`StartResize` fails, `AdvanceResizes` sets the tracked `targetResolution` back
+to the applied level and logs `actor … keeps its resolution` once. `DrawResize`
 runs in `Manager::DrawHidden` after the actor loop of each tick, for an actor
 in view. It draws each stack of the new instance once, with no hidden layers
 and no preceding stack. It shares the tick's hidden draw budget with the first
@@ -281,7 +283,7 @@ its piece gets a new model or the game loads.
 
 **Save.** `SaveRecipe` calls engine-free `WriteRecipeFile` with the
 destination and an explicit import-promotion flag. An existing file under
-`Identity::UserRecipeFolder()` keeps its destination, including nested paths.
+`PluginIdentity::UserRecipeFolder()` keeps its destination, including nested paths.
 Every other source saves to `<id>.json` in the user folder, so shipped and
 imported source files stay. Only an imported-folder source has its import
 metadata cleared. The store adopts the user destination only after a
@@ -402,6 +404,7 @@ below the material's native size.
 | `Settings::renderTargetBudgetMiB` | The cap on the render target allowance in MiB. 0 sets no cap. `kMaxRenderTargetBudgetMiB` (65536) caps it. A regression run can replace it (`RegressionRenderTargetBudgetMiB`). | `Settings.h` |
 | `Settings::stepDownHoldSeconds`, `Settings::StepDownHoldMS` | How long an NPC stays small on screen before `RequestLevelStep` steps it down, in seconds (INI `StepDownHoldSeconds`, default 2, at most `kMaxStepDownHoldSeconds` 30). `LiveActor::smallOnScreen` holds the start. | `Settings.h` |
 | `Settings::hiddenReleaseSeconds`, `Settings::HiddenReleaseMS` | How long an NPC stays out of view before `ReleaseWhileHidden` releases its intermediates, in seconds (INI `HiddenReleaseSeconds`, default 5, at most `kMaxHiddenReleaseSeconds` 60). `LiveActor::outOfView` holds the start. | `Settings.h` |
+| `Compositor::ClearImages` | Empties the image store at load. `Manager::Clear` calls it and writes the count as `images` on the `clear_end` load event. | `render/Compositor.h` |
 | `Manager::budget_`, `BudgetState` | The last allowance, the planned bytes and the `Pressure`: `kNone`, `kOver`, or `kOverWarned` after the exhaustion warning of the episode. | `Manager.h`, `planners/RenderBudget.h` |
 | `Manager::SampleBudget`, `Manager::UpdateBudget`, `Manager::RelieveBudget`, `Manager::StepDownForBudget`, `Manager::AdmitStepUp` | Read the DXGI memory and the cap, update the pressure, apply the responses, step one NPC down, and admit or block one step up. | `ManagerTick.cpp` |
 | `Manager::budgetRadius_`, `BudgetRadius` | The optional budget radius. No record means no radius. | `Manager.h`, `planners/BudgetRadius.h` |

@@ -21,7 +21,7 @@ extern const char *const kShaderSource;
 
 namespace {
 ComPtr<ID3DBlob> CompileEntry(const char *a_entry, const char *a_target) {
-  const std::string sourceName{Identity::kName};
+  const std::string sourceName{PluginIdentity::kName};
   ComPtr<ID3DBlob> out;
   ComPtr<ID3DBlob> errors;
   const HRESULT hr = D3DCompile(kShaderSource, std::strlen(kShaderSource),
@@ -282,10 +282,15 @@ void TextureLab::InvalidatePreviews() noexcept {
   previews_->InvalidatePreviews();
 }
 
-void TextureLab::ExpireIdleTargets(std::uint64_t a_nowMs) {
+void TextureLab::ExpireIdle(Millis a_now) {
   if (targets_) {
-    targets_->ExpireIdle(a_nowMs);
+    targets_->ExpireIdle(a_now);
   }
+  meansNow_ = a_now;
+  const RetainedStore<MeanKey, float>::Evicted means =
+      means_.Sweep(a_now, KeepNone{});
+  const RetainedStore<MeanKey, std::monostate>::Evicted failures =
+      failedMeans_.Sweep(a_now, KeepNone{});
 }
 
 void TextureLab::CollectIdleTargets(HolderSet &a_set) const {
@@ -303,8 +308,9 @@ void TextureLab::CollectPreviewTargets(HolderSet &a_set) {
 void TextureLab::Clear() {
   ClearPreviews();
   targets_->ClearUnused();
-  luminance_.clear();
-  channelMeans_.clear();
+  const RetainedStore<MeanKey, float>::Evicted means = means_.Clear();
+  const RetainedStore<MeanKey, std::monostate>::Evicted failures =
+      failedMeans_.Clear();
   reductionLevels_.clear();
   sampleWarned_.clear();
 }

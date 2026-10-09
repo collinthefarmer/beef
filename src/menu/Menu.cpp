@@ -370,7 +370,8 @@ void RegisterMenu() {
     logger::warn("{}", *problem);
     return;
   }
-  SKSEMenuFramework::SetSection(std::string{Identity::kMenuTitle}.c_str());
+  SKSEMenuFramework::SetSection(
+      std::string{PluginIdentity::kMenuTitle}.c_str());
   SKSEMenuFramework::AddSectionItem("Studio", RenderStudio);
   SKSEMenuFramework::AddSectionItem("Recipes", RenderRecipes);
   SKSEMenuFramework::AddSectionItem("Setup", RenderSetup);

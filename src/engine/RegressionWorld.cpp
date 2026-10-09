@@ -112,8 +112,8 @@ std::uint32_t ResidueUnder(RE::NiAVObject *a_root) {
   RE::BSVisit::TraverseScenegraphGeometries(
       a_root, [&residue](RE::BSGeometry *a_geometry) {
         const char *name = a_geometry ? a_geometry->name.c_str() : nullptr;
-        if (name &&
-            std::string_view{name}.ends_with(Identity::ShellNodeSuffix())) {
+        if (name && std::string_view{name}.ends_with(
+                        PluginIdentity::ShellNodeSuffix())) {
           ++residue;
           return RE::BSVisit::BSVisitControl::kContinue;
         }

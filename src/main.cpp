@@ -33,10 +33,10 @@ void InitLog() {
                          std::chrono::system_clock::now().time_since_epoch())
                          .count());
   const auto tracePath =
-      *path / BetterEnchantmentEffects::Identity::TraceFileName(run);
+      *path / BetterEnchantmentEffects::PluginIdentity::TraceFileName(run);
   const bool traceOpened =
       BetterEnchantmentEffects::Trace::Get().Open(tracePath, run);
-  *path /= BetterEnchantmentEffects::Identity::LogFileName();
+  *path /= BetterEnchantmentEffects::PluginIdentity::LogFileName();
   auto sink =
       std::make_shared<spdlog::sinks::basic_file_sink_mt>(path->string(), true);
   BetterEnchantmentEffects::g_logRing =

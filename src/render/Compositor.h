@@ -34,6 +34,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <variant>
 #include <vector>
 
 namespace BetterEnchantmentEffects {
@@ -144,6 +145,8 @@ public:
                      const StackBase &a_base = {});
 
   [[nodiscard]] TextureRef LoadImage(std::string_view a_path);
+  void SweepImages(Millis a_now);
+  [[nodiscard]] std::size_t ClearImages();
 
   static constexpr std::string_view kNotRendered =
       "not rendered on this geometry; add a layer that reads it";
@@ -197,7 +200,12 @@ private:
   std::shared_ptr<TextureLab::RenderTarget> NeutralHeight();
   std::shared_ptr<TextureLab::RenderTarget> neutralHeight_;
 
-  std::unordered_map<std::string, TextureRef> images_;
+  static constexpr RetentionPolicy kImages{
+      .maxCount = 64, .maxBytes = kNoByteBound, .maxIdle = 30000};
+  static constexpr RetentionPolicy kFailedImages{
+      .maxCount = 64, .maxBytes = kNoByteBound, .maxIdle = 10000};
+  RetainedStore<std::string, TextureRef> images_{kImages};
+  RetainedStore<std::string, std::monostate> failedImages_{kFailedImages};
   MeshCache meshes_;
   RetainedStore<MaterialKey, MaterialRecord> materials_{kMaterialRecords};
   StepOutputCache stepOutputs_;

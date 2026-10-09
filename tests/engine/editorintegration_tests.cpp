@@ -59,7 +59,7 @@ std::filesystem::path Start(const std::filesystem::path &root,
   const auto dir = root / name;
   std::filesystem::create_directories(dir);
   std::filesystem::current_path(dir);
-  const auto path = Identity::UserRecipeFolder() / (kID + ".json");
+  const auto path = PluginIdentity::UserRecipeFolder() / (kID + ".json");
   Check(WriteText(path, SerializeRecipe(recipe)), "write integration fixture");
   Check(LoadRecipes().loaded == 1 && !IsDirty(kID),
         "real store loads one clean recipe");
@@ -96,7 +96,8 @@ void SnapshotLifecycle(const std::filesystem::path &root,
 void DebugRecipesMatchOnlyWhenShown(const std::filesystem::path &root,
                                     const Recipe &fixture) {
   const auto userPath = Start(root, "debug_recipes", fixture);
-  const auto debugPath = Identity::RecipeRoot() / "debug" / (kID + ".json");
+  const auto debugPath =
+      PluginIdentity::RecipeRoot() / "debug" / (kID + ".json");
   std::filesystem::create_directories(debugPath.parent_path());
   std::filesystem::rename(userPath, debugPath);
   const RecipeStoreStatus status = LoadRecipes();
@@ -296,7 +297,7 @@ void ImportPromotion(const std::filesystem::path &root, const Recipe &fixture) {
   Recipe imported = fixture;
   imported.metadata.imported = "source shader";
   const auto userPath = Start(root, "promotion", imported);
-  const auto source = Identity::ImportedRecipeFolder() / (kID + ".json");
+  const auto source = PluginIdentity::ImportedRecipeFolder() / (kID + ".json");
   std::filesystem::create_directories(source.parent_path());
   std::filesystem::rename(userPath, source);
   Check(LoadRecipes().loaded == 1, "load from the imported directory");
@@ -355,7 +356,7 @@ void CreateAndDuplicate(const std::filesystem::path &root,
   RecipeEditor editor{manager};
   const auto created = editor.NewRecipe("new", RecipeKey{}, "ArmorGeometry");
   manager.Drain();
-  const auto createdPath = Identity::UserRecipeFolder() / "new.json";
+  const auto createdPath = PluginIdentity::UserRecipeFolder() / "new.json";
   Check(!EditResult(editor, created).error && IsDirty("new") &&
             !Current("new").outputs.empty() &&
             !std::filesystem::exists(createdPath),
@@ -396,7 +397,7 @@ void CreateAndDuplicate(const std::filesystem::path &root,
   manager.Drain();
   Check(!EditResult(editor, renamedDraft).error && !MutableRecipe("draft") &&
             MutableRecipe("draft-renamed") && IsDirty("draft-renamed") &&
-            !std::filesystem::exists(Identity::UserRecipeFolder() /
+            !std::filesystem::exists(PluginIdentity::UserRecipeFolder() /
                                      "draft-renamed.json"),
         "unsaved document can be renamed without creating a file");
   const auto deletedDraft = editor.DeleteRecipe("draft-renamed");
@@ -419,7 +420,7 @@ void CreateAndDuplicate(const std::filesystem::path &root,
 void RenameAndDelete(const std::filesystem::path &root, const Recipe &fixture) {
   const auto source = Start(root, "rename", fixture);
   const std::string renamed = "renamed";
-  const auto target = Identity::UserRecipeFolder() / (renamed + ".json");
+  const auto target = PluginIdentity::UserRecipeFolder() / (renamed + ".json");
   Manager manager;
   RecipeEditor editor{manager};
   Edit(editor, manager, 11);
@@ -514,7 +515,7 @@ void CleanRename(const std::filesystem::path &root, const Recipe &fixture) {
   RecipeEditor editor{manager};
   const auto request = editor.RenameRecipe(kID, "clean");
   manager.Drain();
-  const auto path = Identity::UserRecipeFolder() / "clean.json";
+  const auto path = PluginIdentity::UserRecipeFolder() / "clean.json";
   const auto reopened = ReadRecipeFile(path, "clean");
   Check(!EditResult(editor, request).error && !IsDirty("clean") && reopened &&
             reopened->recipe == Current("clean") &&
@@ -531,7 +532,7 @@ void ShippedSaveRouting(const std::filesystem::path &root,
     const auto userPath =
         Start(root, "save_routing_" + (folder.empty() ? "root" : folder),
               shippedRecipe);
-    const auto source = Identity::RecipeRoot() / folder / (kID + ".json");
+    const auto source = PluginIdentity::RecipeRoot() / folder / (kID + ".json");
     std::filesystem::create_directories(source.parent_path());
     std::filesystem::rename(userPath, source);
     Check(LoadRecipes().loaded == 1, "load shipped save source");
@@ -608,7 +609,8 @@ void ShippedSaveRouting(const std::filesystem::path &root,
 void NestedUserSave(const std::filesystem::path &root, const Recipe &fixture) {
   for (const std::string folder : {"personal", ".personal"}) {
     const auto flat = Start(root, "nested_user_save_" + folder, fixture);
-    const auto nested = Identity::UserRecipeFolder() / folder / (kID + ".json");
+    const auto nested =
+        PluginIdentity::UserRecipeFolder() / folder / (kID + ".json");
     std::filesystem::create_directories(nested.parent_path());
     std::filesystem::rename(flat, nested);
     Check(LoadRecipes().loaded == 1, "load nested user-owned recipe");
@@ -628,7 +630,8 @@ void NestedUserSave(const std::filesystem::path &root, const Recipe &fixture) {
 void ShippedOwnership(const std::filesystem::path &root,
                       const Recipe &fixture) {
   const auto userPath = Start(root, "shipped", fixture);
-  const auto shipped = Identity::RecipeRoot() / "vendor" / (kID + ".json");
+  const auto shipped =
+      PluginIdentity::RecipeRoot() / "vendor" / (kID + ".json");
   std::filesystem::create_directories(shipped.parent_path());
   std::filesystem::rename(userPath, shipped);
   Check(LoadRecipes().loaded == 1, "load shipped source");
@@ -636,7 +639,8 @@ void ShippedOwnership(const std::filesystem::path &root,
   RecipeEditor editor{manager};
   const auto rename = editor.RenameRecipe(kID, "personal");
   manager.Drain();
-  const auto personalPath = Identity::UserRecipeFolder() / "personal.json";
+  const auto personalPath =
+      PluginIdentity::UserRecipeFolder() / "personal.json";
   Check(!EditResult(editor, rename).error && !MutableRecipe(kID) &&
             IsDirty("personal") && !std::filesystem::exists(personalPath) &&
             test::ReadFile(shipped) == SerializeRecipe(fixture),
@@ -715,7 +719,7 @@ void PaintCommitLifecycle(const std::filesystem::path &root,
   const auto refusedSave = editor.SaveRecipe(std::string{kPaintRecipe});
   manager.Drain();
   Check(FileResult(editor, refusedSave).state == FileOperationState::kFailed &&
-            !std::filesystem::exists(Identity::UserRecipeFolder() /
+            !std::filesystem::exists(PluginIdentity::UserRecipeFolder() /
                                      "paint.json") &&
             IsTransient(kPaintRecipe),
         "saving the preview is refused without ending the paint session");
@@ -1242,7 +1246,7 @@ void RecipeAcknowledgements(const std::filesystem::path &root,
   MenuState state;
   state.selection.recipeID = kID;
   state.selection.subject = MaskSubject{"metal"};
-  const auto collision = Identity::UserRecipeFolder() / "renamed.json";
+  const auto collision = PluginIdentity::UserRecipeFolder() / "renamed.json";
   Check(WriteText(collision, "existing destination"), "seed UI rename refusal");
   const Intent rename = Studio::RenameRecipe{kID, "renamed"};
   const auto refused = editor.RenameRecipe(kID, "renamed");

@@ -152,7 +152,7 @@ struct ShellBinding::Builder {
     auto *clone = Clone();
     clone->name = RE::BSFixedString{
         std::string{original->name.c_str() ? original->name.c_str() : ""} +
-        Identity::ShellNodeSuffix()};
+        PluginIdentity::ShellNodeSuffix()};
 
     auto &rt = clone->GetGeometryRuntimeData();
     auto *property =

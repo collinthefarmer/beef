@@ -19,7 +19,7 @@ namespace {
 CompiledShader CompileGeneratedShader(ID3D11Device *a_device,
                                       const std::string &a_source,
                                       const std::string &a_entry) {
-  const std::string sourceName{Identity::kName};
+  const std::string sourceName{PluginIdentity::kName};
   ComPtr<ID3DBlob> out;
   ComPtr<ID3DBlob> errors;
   CompiledShader shader;

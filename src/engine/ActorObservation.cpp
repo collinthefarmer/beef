@@ -77,7 +77,7 @@ ModelRead GeometriesOf(RE::NiAVObject *a_model, MaterialLayout &a_layout) {
       a_model, [&](RE::BSGeometry *a_geometry) {
         const std::string_view name{
             a_geometry->name.c_str() ? a_geometry->name.c_str() : ""};
-        if (name.ends_with(Identity::ShellNodeSuffix())) {
+        if (name.ends_with(PluginIdentity::ShellNodeSuffix())) {
           return RE::BSVisit::BSVisitControl::kContinue;
         }
         RE::BSLightingShaderProperty *property = LightingPropertyOf(a_geometry);

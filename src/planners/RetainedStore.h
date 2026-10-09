@@ -53,6 +53,15 @@ public:
     return found == entries_.end() ? nullptr : &found->value;
   }
 
+  [[nodiscard]] Value *Use(const Key &a_key, Millis a_now) {
+    const auto found = std::ranges::find(entries_, a_key, &Entry::key);
+    if (found == entries_.end()) {
+      return nullptr;
+    }
+    found->lastUsed = a_now;
+    return &found->value;
+  }
+
   Value &Get(const Key &a_key, Millis a_now) {
     const auto found = std::ranges::find(entries_, a_key, &Entry::key);
     if (found != entries_.end()) {
