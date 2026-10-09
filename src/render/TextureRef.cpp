@@ -91,7 +91,7 @@ void CollectView(const TextureView &a_view, HolderSet &a_set) {
 std::vector<LiveTarget> LiveTextureTargets() {
   std::vector<LiveTarget> live;
   Leases().ForEachLive([&live](const TextureLab::RenderTarget &a_target) {
-    live.push_back({TargetId(&a_target), a_target.Bytes()});
+    live.push_back({TargetId(&a_target), a_target.Bytes(), a_target.Side()});
   });
   return live;
 }

@@ -32,6 +32,7 @@ inline constexpr std::array<TargetHolder, kReachingHolders + 1> kTargetHolders{
 struct LiveTarget {
   std::uintptr_t id = 0;
   std::uint64_t bytes = 0;
+  std::uint32_t side = 0;
 };
 
 using HolderSet = std::unordered_set<std::uintptr_t>;
@@ -46,6 +47,8 @@ using HolderTallies = std::array<HeldTally, kReachingHolders + 1>;
 
 [[nodiscard]] HolderSet &SetOf(HolderSets &a_sets,
                                TargetHolder a_holder) noexcept;
+[[nodiscard]] const HolderSet &SetOf(const HolderSets &a_sets,
+                                     TargetHolder a_holder) noexcept;
 [[nodiscard]] HolderTallies TallyHolders(std::span<const LiveTarget> a_live,
                                          const HolderSets &a_sets);
 [[nodiscard]] const HeldTally &TallyOf(const HolderTallies &a_tallies,

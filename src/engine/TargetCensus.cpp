@@ -3,6 +3,7 @@
 
 #include "diagnostics/Trace.h"
 #include "engine/ActorResize.h"
+#include "planners/ResolutionLevel.h"
 #include "planners/TargetHolders.h"
 #include "render/Binding.h"
 #include "render/Compositor.h"
@@ -12,6 +13,7 @@
 
 #include <format>
 #include <map>
+#include <span>
 #include <string>
 #include <unordered_set>
 #include <vector>
@@ -67,6 +69,59 @@ void CollectActor(const LiveActor &a_state, HolderSets &a_sets,
   }
 }
 
+HolderSet SlotTargetsOf(const LiveActor &a_state) {
+  HolderSet slots;
+  for (const LivePiece &piece : a_state.pieces) {
+    for (const LiveGeometry &geometry : piece.geometries) {
+      if (geometry.material) {
+        geometry.material->CollectTargets(slots);
+      }
+      if (geometry.shell) {
+        geometry.shell->CollectTargets(slots);
+      }
+    }
+  }
+  return slots;
+}
+
+std::string
+SlotOnlyText(const std::unordered_map<RE::FormID, LiveActor> &a_live,
+             const HolderSets &a_sets, std::span<const LiveTarget> a_targets) {
+  std::unordered_map<std::uintptr_t, const LiveTarget *> byId;
+  for (const LiveTarget &target : a_targets) {
+    byId.emplace(target.id, &target);
+  }
+  const HolderSet &instance = SetOf(a_sets, TargetHolder::kInstance);
+  const HolderSet &output = SetOf(a_sets, TargetHolder::kOutput);
+  std::string text;
+  for (const auto &[id, state] : a_live) {
+    std::map<std::uint32_t, std::size_t> sides;
+    std::uint64_t bytes = 0;
+    for (const std::uintptr_t target : SlotTargetsOf(state)) {
+      const auto found = byId.find(target);
+      if (found == byId.end() || instance.contains(target) ||
+          output.contains(target)) {
+        continue;
+      }
+      ++sides[found->second->side];
+      bytes += found->second->bytes;
+    }
+    if (sides.empty()) {
+      continue;
+    }
+    std::string sideText;
+    for (const auto &[side, count] : sides) {
+      sideText +=
+          std::format("{}{}x{}", sideText.empty() ? "" : ",", count, side);
+    }
+    text += std::format(
+        "{}actor {} level {} {} bytes {} sides {}", text.empty() ? "" : "; ",
+        id, LevelName(state.appliedResolution),
+        state.inView ? "in view" : "out of view", bytes, sideText);
+  }
+  return text;
+}
+
 HolderSets HolderSetsOf(const std::unordered_map<RE::FormID, LiveActor> &a_live,
                         Instances &a_instances) {
   HolderSets sets;
@@ -112,7 +167,8 @@ void EmitTargetHolders(
         {"live_targets", std::to_string(live.size())},
         {"live_instances", std::to_string(RenderInstance::LiveCount())},
         {"attached_instances", std::to_string(instances.size())},
-        {"unplanned", unplannedText}};
+        {"unplanned", unplannedText},
+        {"slot_only", SlotOnlyText(a_live, sets, live)}};
     for (const TargetHolder holder : kTargetHolders) {
       const HeldTally &tally = TallyOf(tallies, holder);
       fields.push_back({std::format("{}_targets", HolderName(holder)),

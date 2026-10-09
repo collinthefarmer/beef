@@ -9,6 +9,12 @@ HolderSet &SetOf(HolderSets &a_sets, TargetHolder a_holder) noexcept {
   return a_sets[index < kReachingHolders ? index : 0];
 }
 
+const HolderSet &SetOf(const HolderSets &a_sets,
+                       TargetHolder a_holder) noexcept {
+  const std::size_t index = std::to_underlying(a_holder);
+  return a_sets[index < kReachingHolders ? index : 0];
+}
+
 HolderTallies TallyHolders(std::span<const LiveTarget> a_live,
                            const HolderSets &a_sets) {
   HolderTallies tallies{};

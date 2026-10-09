@@ -211,6 +211,7 @@ public:
     }
     [[nodiscard]] TargetMips Mips() const noexcept { return mips; }
     [[nodiscard]] std::uint64_t Bytes() const noexcept;
+    [[nodiscard]] std::uint32_t Side() const noexcept { return size; }
 
   private:
     friend class TextureLab;

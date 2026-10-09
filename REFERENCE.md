@@ -3171,7 +3171,9 @@ cancel by the user instead of the load.
   `live_instances` at the swap. `unplanned` lists, by step kind, format and size, the
   step outputs that hold a target outside the steps `TargetsOf` prices
   (`unplanned`), and priced steps whose targets differ from the price
-  (`mispriced`, with the bytes over the price). In the session of 2026-10-09 live targets
+  (`mispriced`, with the bytes over the price). `slot_only` lists, per live actor,
+  the targets that only its material and shell slots still hold, with the
+  actor's applied level, whether it is in view, the bytes and the sides. In the session of 2026-10-09 live targets
   ran 120 to 136 above the estimate after resolution swaps, until the
   1024 presenter slots ran out; the census names the holder.
 - The heartbeat reports the estimate over every live instance of a rendered
