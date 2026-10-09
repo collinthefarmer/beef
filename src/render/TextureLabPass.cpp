@@ -832,14 +832,14 @@ bool TextureLab::DrawStackPass(RenderTarget &a_target,
 bool TextureLab::RenderLayersOneByOne(RenderTarget &a_target,
                                       RE::NiSourceTexture *a_base,
                                       std::span<const LayerPass> a_layers) {
-  auto *alternate = a_layers.size() > 1
-                        ? Scratch(TextureSize{a_target.size}, a_target.format,
-                                  TargetMips::kNone)
-                        : nullptr;
+  const std::shared_ptr<RenderTarget> alternate =
+      a_layers.size() > 1 ? Acquire(TextureSize{a_target.size}, "layer swap",
+                                    a_target.format, TargetMips::kNone)
+                          : nullptr;
   if (a_layers.size() > 1 && !alternate)
     return false;
-  auto *write = a_layers.size() % 2 ? &a_target : alternate;
-  auto *other = a_layers.size() % 2 ? alternate : &a_target;
+  auto *write = a_layers.size() % 2 ? &a_target : alternate.get();
+  auto *other = a_layers.size() % 2 ? alternate.get() : &a_target;
   RE::NiSourceTexture *previous = a_base;
   for (auto layer : a_layers) {
     LayerParams params;
@@ -1049,9 +1049,10 @@ bool TextureLab::DrawDilation(const RenderPass &a_pass,
                               RenderTarget &a_target) {
   const PixelPipeline *dilate =
       gpu_ && gpu_->dilate.has_value() ? &gpu_->dilate.value() : nullptr;
-  RenderTarget *gutter = dilate ? Scratch(TextureSize{a_target.size},
-                                          a_target.format, TargetMips::kNone)
-                                : nullptr;
+  const std::shared_ptr<RenderTarget> gutter =
+      dilate ? Acquire(TextureSize{a_target.size}, "dilation gutter",
+                       a_target.format, TargetMips::kNone)
+             : nullptr;
   if (!dilate || !gutter || !gutter->rtv.Get() ||
       gutter->size != a_target.size) {
     return false;

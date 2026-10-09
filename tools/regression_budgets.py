@@ -135,8 +135,6 @@ def measure(events: list[dict], window: Window) -> dict[str, float]:
         'target_bytes_peak': peak('target_bytes_peak'),
         'pool_targets_end': number(last, 'pool_targets'),
         'pool_bytes_end': number(last, 'pool_bytes'),
-        'scratch_targets_end': number(last, 'scratch_targets'),
-        'scratch_bytes_end': number(last, 'scratch_bytes'),
         'live_targets_end': live('targets', 'targets'),
         'live_target_bytes_end': live('target_bytes', 'bytes'),
         **{f'{level}_end': number(last_levels, level) for level in LEVELS},
@@ -162,7 +160,7 @@ SPIKE_MEASURES = ('frame_max_us', 'tick_max_us', 'sync_max_us', 'readback_max_us
                   'plugin_over_8ms', 'plugin_over_16ms', 'plugin_over_33ms', 'interval_max_us',
                   'hitches_50ms', 'hitches_100ms')
 MEMORY_MEASURES = ('targets_end', 'target_bytes_end', 'target_bytes_peak', 'pool_targets_end',
-                   'pool_bytes_end', 'scratch_targets_end', 'scratch_bytes_end',
+                   'pool_bytes_end',
                    'live_targets_end', 'live_target_bytes_end')
 RESOLUTION_MEASURES = (*(f'{level}_end' for level in LEVELS), 'level_changes',
                        'screen_fraction_median_end')

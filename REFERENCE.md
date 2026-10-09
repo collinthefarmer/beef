@@ -1262,11 +1262,20 @@ layout, and so its out-of-view share, did not exist.
   These provisional retention values mirror the mesh grace period and preserve
   short rebuild reuse; they are not measured alpha workload limits. Shared target
   caches prune expired keys both on adoption and during maintenance.
-- The render-target idle pool retains at most 16 targets and 64 MiB, using the
-  same `Metrics::MippedRgbaBytes` accounting as allocation diagnostics. This
-  bounds reusable idle allocation while permitting short rebuild reuse. Targets
-  held by active consumers, previews, scratch buffers, or material journals are
-  outside this allowance. Destruction occurs only after the final target lease
+- The render-target idle pool retains at most 16 targets and 64 MiB
+  (`ResourcePool`). When a returned target does not fit, the pool lets its
+  oldest idle targets go, not the returned one, because a newer shape is the
+  likelier to be asked for again. Each tick, `TextureLab::ExpireIdleTargets`
+  lets go every target idle for 5 s (`kMaxIdleMs`), counted from the first
+  sweep that saw it idle. Before 2026-10-09 the pool refused new targets when
+  full and kept old ones until a load, so shapes from earlier resizes could
+  hold the pool. The pool returns what it lets go, and the caller destroys it
+  after the pool lock is released. Targets held by active consumers,
+  previews or material journals are outside this allowance.
+- A draw that needs a second target for one draw only (the layer swap of
+  `RenderLayersOneByOne`, the dilation gutter of `DrawDilation`) leases one
+  from the pool and returns it when the draw ends. Before 2026-10-09 these
+  were scratch targets that the pool kept per size and format until a load. Destruction occurs only after the final target lease
   returns; normal D3D resource ownership and presenter restoration still apply.
 
 - `kMaxTerminalApplicationRecipes` retains 256 recipe/whole-catalog results by
@@ -2014,8 +2023,8 @@ them outside as separate passes.
   importer patches, so the importer tests do not depend on the shipped
   templates. Imported recipes are written once; a template change reaches a
   shader's recipe only after its file in `recipes/imported` is deleted.
-- Stack composition alternates between its retained target and the lab's shared
-  scratch. Initial parity ensures the final layer lands in the retained target;
+- Stack composition alternates between its retained target and a target
+  leased from the pool for the draw. Initial parity ensures the final layer lands in the retained target;
   a preceding stack remains separate from both destinations.
 - Reductions measure all requested texel centers, including uncovered texels.
   The GPU reduces the float field in `PSReduce` passes. Each pass reduces a 4x4
@@ -2024,7 +2033,7 @@ them outside as separate passes.
   texel count for the mean. A sum of float32 values can lose a small term next
   to a large one. The first pass writes 1 to alpha for a texel with a
   non-finite used component, and later passes keep the maximum. A flagged or
-  non-finite result fails instead of using a fallback. Float scratch prevents
+  non-finite result fails instead of using a fallback. A float gutter target prevents
   bake dilation from introducing an extra RGBA8 quantization into the
   measurement path.
 - A reduction lowers to a `SubmitReductionStep` and a readback input
@@ -2758,9 +2767,7 @@ cancel by the user instead of the load.
 - The **allowance** is the most target memory the plugin may hold:
   `allowance = plugin + (budget - usage) - margin` (`AllowanceOf`).
   `budget - usage` is the **free video memory** (`FreeVideoMemory`). `plugin`
-  is the measured target bytes less the scratch targets
-  (`BudgetSample::pluginBytes`), because the planned figure leaves out the
-  scratch targets. The plugin's own targets are part of the DXGI usage. A
+  is the measured target bytes (`BudgetSample::pluginBytes`). The plugin's own targets are part of the DXGI usage. A
   release therefore lowers `plugin` and `usage` by the same bytes, and the
   allowance stays the same. A usage over the budget gives no free video
   memory. Plugin bytes over the usage count only up to the usage. Every sum
@@ -3085,7 +3092,7 @@ cancel by the user instead of the load.
   for the whole lab.
 - The heartbeat reports the estimate over every live instance of a rendered
   actor (`estimated_targets`, `estimated_bytes`). The measured
-  `target_bytes` minus `pool_bytes` and `scratch_bytes` is the figure to
+  `target_bytes` minus `pool_bytes` is the figure to
   compare. In `soak-enchanted` run 20261007T193002-2 (12 mannequins) the
   steady estimate was 3978 MiB and the measured holdings 3979 MiB; in the
   orbit window of `soak-fight-orbit` run 20261007T193002-1 they were 6919
@@ -3100,8 +3107,7 @@ cancel by the user instead of the load.
   with the most own bytes, each with its shared bytes, its screen fraction
   and its recipes. A shared target has a content key that another rendered
   actor also holds. The own bytes of all actors plus each shared target once
-  equal the plans' total. The measured total also counts the pool and the
-  scratch targets. The burst line is an `info` line and needs
+  equal the plans' total. The measured total also counts the pool. The burst line is an `info` line and needs
   `VerboseLogging`. It is written when one heartbeat interval creates
   256 MiB or more; it gives the interval and the syncs of the last 2 s by
   kind.
@@ -3633,7 +3639,7 @@ first application lands; the `settle` window after it holds that cost, and
 `steady` measures the settled state. First-render admission (in the manager
 section) and idle release (in the compositor section) bound the burst's
 memory. A heartbeat's `targets` and
-`target_bytes` include the scratch targets and the targets idle in the reuse pool (at most 16 and 64
+`target_bytes` include the targets idle in the reuse pool (at most 16 and 64
 MiB, `RenderTargetPool::kMaxIdleTargets` and `kMaxIdleBytes`).
 
 The heartbeat is emitted before `OnFrame` starts its frame timer, so its own

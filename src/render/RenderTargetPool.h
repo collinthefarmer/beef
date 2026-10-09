@@ -6,10 +6,8 @@
 #include "render/TextureLab.h"
 
 #include <cstdint>
-#include <map>
 #include <memory>
 #include <mutex>
-#include <tuple>
 #include <vector>
 
 namespace BetterEnchantmentEffects {
@@ -33,15 +31,14 @@ public:
   [[nodiscard]] std::shared_ptr<RenderTarget>
   Acquire(REX::W32::ID3D11Device *a_device, const TargetShape &a_shape,
           std::string_view a_owner);
-  [[nodiscard]] RenderTarget *Scratch(REX::W32::ID3D11Device *a_device,
-                                      const TargetShape &a_shape);
-  void ClearScratch();
+  void ExpireIdle(std::uint64_t a_nowMs);
   void ClearUnused();
   [[nodiscard]] Holdings Held() const;
 
 private:
   static constexpr std::size_t kMaxIdleTargets = 16;
   static constexpr std::uint64_t kMaxIdleBytes = 64 * 1024 * 1024;
+  static constexpr std::uint64_t kMaxIdleMs = 5000;
   struct Pool {
     std::mutex lock;
     ResourcePool<RenderTarget> targets{kMaxIdleTargets, kMaxIdleBytes};
@@ -67,8 +64,5 @@ private:
   std::array<Presenter, kPresenterCount> presenters_{};
   std::uint64_t nextGeneration_ = 0;
   std::shared_ptr<Pool> pool_ = std::make_shared<Pool>();
-  std::map<std::tuple<std::uint32_t, TextureFormat, bool>,
-           std::shared_ptr<RenderTarget>>
-      scratch_;
 };
 }

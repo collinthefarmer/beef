@@ -118,7 +118,7 @@ stack in one pass. `CanRenderStack` refuses that pass when the shape fails
 `CheckStackShape`, when a layer has a legacy curve, or when a pipeline is
 missing. `RenderStack` then calls `RenderFieldsToTargets` and
 `RenderLayersOneByOne`. `RenderLayersOneByOne` alternates between the stack's
-target and the lab's scratch target. The layer count's parity makes the last
+target and a target it leases from the pool for the draw. The layer count's parity makes the last
 layer land in the stack's target.
 
 ### Programs and the interpreter
@@ -164,8 +164,8 @@ disables only its own pass (`ProgramPassAvailable`, `RippleAvailable`,
 | `ClusterConstants` | The cluster pass's constant buffer: RMAOS, luma and diffuse centroids for `kMaxMaterialClusters` (8) clusters, plus weights. | `ShaderConstants.h` |
 
 `TextureLab::BakeMesh` rasterizes a mesh's triangles into UV space. It then
-calls `DrawDilation`, which draws the dilate shader twice through a scratch
-target so that covered texels spread into the gutter around each UV island.
+calls `DrawDilation`, which draws the dilate shader twice through a gutter
+target leased from the pool for the draw, so that covered texels spread into the gutter around each UV island.
 
 ### Measurements and readback
 
@@ -203,7 +203,7 @@ the target again.
 |---|---|---|
 | `TextureLab::RenderTarget` | One D3D11 texture with its views, size, `TextureFormat`, `TargetMips` (`kNone`, `kGeneratedOnDraw` or `kGeneratedByCaller`), generation and presenter. It cannot be copied or moved. | `TextureLab.h` |
 | `VideoMemoryProbe` | Reads the DXGI budget and usage of the local segment for the render target budget. It reaches `IDXGIAdapter3` from the game's D3D11 device once and keeps it. It keeps a failure too, and `Sample` then returns the failure text. | `VideoMemory.h` |
-| `RenderTargetPool` | Owns the idle targets (at most 16 and 64 MiB), the scratch targets per size, format and chain, and `kPresenterCount` (512) presenter slots. `Acquire` takes a `TargetShape` (size, format, mips), creates it as `DXGI_FORMAT_R8_UNORM`, `R8G8B8A8_UNORM` or `R32G32B32A32_FLOAT`, reuses an idle target only with the same chain, and returns a shared target, `Scratch` returns a reused one, and `Recycle` returns a released target to the pool. | `RenderTargetPool.h` |
+| `RenderTargetPool` | Owns the idle targets (at most 16 and 64 MiB; the oldest go when a returned target does not fit, and any target idle 5 s goes at the next `ExpireIdle`), and `kPresenterCount` (512) presenter slots. `Acquire` takes a `TargetShape` (size, format, mips), creates it as `DXGI_FORMAT_R8_UNORM`, `R8G8B8A8_UNORM` or `R32G32B32A32_FLOAT`, reuses an idle target only with the same chain, and returns a shared target, and `Recycle` returns a released target to the pool. | `RenderTargetPool.h` |
 | `TextureRef` | A generated target or a static engine texture. `get()` returns the presenter or the engine texture. `Valid()` and `Generation()` tell a live target from a stale one. | `TextureRef.h` |
 | `TextureIdentity` | The engine texture's address, generation and name as text. `CompositorDemand.cpp` uses it in material identities. It differs from `ImageCacheKey` (`planners/TextureIdentity.h`), which identifies a file by its path. | `TextureRef.h` |
 | `TexturePreviews` | The studio's live preview requests, keyed by source texture, channel and context. It re-renders the dynamic entries each generation and expires the unused ones. | `TexturePreviews.h` |

@@ -492,7 +492,7 @@ results.
 ### `TextureLab`
 
 - Owns shader setup, render passes, and readback. It delegates texture
-  allocation, **presenter** slots, scratch **targets**, and reuse to
+  allocation, **presenter** slots, **targets**, and reuse to
   `RenderTargetPool`.
 - Every drawing path uses `TextureLab::RenderPass`, a noncopyable,
   nonmovable scope that owns the renderer lock and the captured D3D state
@@ -506,7 +506,8 @@ results.
   returned after the cache expires is destroyed directly. Cache access is
   locked; target destruction and shared-pointer construction happen outside
   the cache lock.
-- Inside the pool, scratch targets are destroyed before the return cache.
+- The pool returns the targets it lets go, and the caller destroys them
+  after the pool lock is released.
 - Recycling from a shared-pointer deleter cannot throw. When caching a
   returned target fails, local unique ownership releases it.
 - Each render target owns its replacement presenter metadata with
@@ -519,7 +520,7 @@ results.
   the renderer's public API and holds no shader or device state.
 - The renderer destroys previews before the pool, so a preview target can
   still return to the pool during destruction.
-- Clearing runs in this order: scratch release, preview retirement,
+- Clearing runs in this order: preview retirement,
   unused-target release, readback-cache reset.
 - Preview retirement retains targets for the eight-tick interval.
 - Preview entries and work batches retain their source textures.

@@ -257,12 +257,6 @@ TextureLab::TargetHoldings TextureLab::HeldTargets() const {
   return targets_ ? targets_->Held() : TargetHoldings{};
 }
 
-TextureLab::RenderTarget *
-TextureLab::Scratch(TextureSize a_size, TextureFormat format, TargetMips mips) {
-  return Init() ? targets_->Scratch(borrowedDevice_, {a_size, format, mips})
-                : nullptr;
-}
-
 std::shared_ptr<TextureLab::RenderTarget>
 TextureLab::Preview(RE::NiSourceTexture *a_source, ShaderChannel a_channel,
                     bool a_dynamic) {
@@ -288,8 +282,13 @@ void TextureLab::InvalidatePreviews() noexcept {
   previews_->InvalidatePreviews();
 }
 
+void TextureLab::ExpireIdleTargets(std::uint64_t a_nowMs) {
+  if (targets_) {
+    targets_->ExpireIdle(a_nowMs);
+  }
+}
+
 void TextureLab::Clear() {
-  targets_->ClearScratch();
   ClearPreviews();
   targets_->ClearUnused();
   luminance_.clear();

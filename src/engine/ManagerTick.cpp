@@ -781,8 +781,6 @@ void EmitMetricsHeartbeat(const Metrics::Snapshot &a_measured,
       {"estimated_bytes", std::to_string(a_planned.bytes)},
       {"pool_targets", std::to_string(held.idleTargets)},
       {"pool_bytes", std::to_string(held.idleBytes)},
-      {"scratch_targets", std::to_string(held.scratchTargets)},
-      {"scratch_bytes", std::to_string(held.scratchBytes)},
       {"resident_targets", std::to_string(compositor->ResidentTargets())},
       {"resident_bytes", std::to_string(compositor->ResidentBytes())},
       {"frames", std::to_string(a_measured.frames)},
@@ -909,6 +907,7 @@ void Manager::OnFrame() {
     const SectionTimer sweepTimer{Metrics::Section::kSweep};
     Compositor::GetSingleton()->BeginTick(now);
     Compositor::GetSingleton()->SweepStepOutputs(now);
+    lab->ExpireIdleTargets(now);
   }
   if (!live_.empty()) {
     const SectionTimer tickTimer{Metrics::Section::kTick};
@@ -1240,14 +1239,10 @@ BudgetSample Manager::SampleBudget(const Metrics::Snapshot &a_measured,
                         "the plugin does not respond to memory pressure",
                         memory.error()));
   }
-  const TextureLab *lab = TextureLab::GetSingleton();
-  const std::uint64_t scratch = lab ? lab->HeldTargets().scratchBytes : 0;
   const std::uint64_t capMiB = RegressionRenderTargetBudgetMiB().value_or(
       a_settings.renderTargetBudgetMiB);
   return {memory ? std::optional<VideoMemory>{*memory} : std::nullopt,
-          a_measured.targetBytes > scratch ? a_measured.targetBytes - scratch
-                                           : 0,
-          capMiB * kMebibyte};
+          a_measured.targetBytes, capMiB * kMebibyte};
 }
 
 void Manager::UpdateBudget(const BudgetSample &a_sample,

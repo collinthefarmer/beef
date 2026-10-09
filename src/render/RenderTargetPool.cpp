@@ -218,16 +218,6 @@ RenderTargetPool::Acquire(ID3D11Device *a_device, const TargetShape &a_shape,
   return acquired;
 }
 
-RenderTargetPool::RenderTarget *
-RenderTargetPool::Scratch(ID3D11Device *a_device, const TargetShape &a_shape) {
-  auto &target = scratch_[{a_shape.size.Pixels(), a_shape.format,
-                           TextureLab::HasChain(a_shape.mips)}];
-  if (!target) {
-    target = Acquire(a_device, a_shape, "scratch");
-  }
-  return target.get();
-}
-
 void RenderTargetPool::Recycle(const std::weak_ptr<Pool> &a_pool,
                                RenderTarget *a_target) noexcept {
   std::unique_ptr<RenderTarget> target{a_target};
@@ -241,15 +231,16 @@ void RenderTargetPool::Recycle(const std::weak_ptr<Pool> &a_pool,
                        {"target", std::to_string(target->traceID_)},
                        {"generation", std::to_string(target->generation_)},
                        {"presenter", Trace::Pointer(target->presenter.get())}});
-    std::scoped_lock lock{pool->lock};
     const std::uint64_t bytes = target->Bytes();
-    pool->targets.Retain(std::move(target), bytes);
+    ResourcePool<RenderTarget>::Released released;
+    {
+      std::scoped_lock lock{pool->lock};
+      released = pool->targets.Retain(std::move(target), bytes);
+    }
   } catch (...) {
     target.reset();
   }
 }
-
-void RenderTargetPool::ClearScratch() { scratch_.clear(); }
 
 RenderTargetPool::Holdings RenderTargetPool::Held() const {
   Holdings held;
@@ -258,13 +249,15 @@ RenderTargetPool::Holdings RenderTargetPool::Held() const {
     held.idleTargets = pool_->targets.Size();
     held.idleBytes = pool_->targets.Bytes();
   }
-  for (const auto &[key, target] : scratch_) {
-    if (target) {
-      ++held.scratchTargets;
-      held.scratchBytes += target->Bytes();
-    }
-  }
   return held;
+}
+
+void RenderTargetPool::ExpireIdle(std::uint64_t a_nowMs) {
+  ResourcePool<RenderTarget>::Released released;
+  {
+    std::scoped_lock lock{pool_->lock};
+    released = pool_->targets.Expire(a_nowMs, kMaxIdleMs);
+  }
 }
 
 void RenderTargetPool::ClearUnused() {

@@ -351,17 +351,12 @@ public:
   void ClearPreviews();
   void InvalidatePreviews() noexcept;
 
-  [[nodiscard]] RenderTarget *
-  Scratch(TextureSize a_size, TextureFormat format = TextureFormat::kRgba8,
-          TargetMips mips = TargetMips::kGeneratedOnDraw);
-
   void Clear();
+  void ExpireIdleTargets(std::uint64_t a_nowMs);
 
   struct TargetHoldings {
     std::uint64_t idleTargets = 0;
     std::uint64_t idleBytes = 0;
-    std::uint64_t scratchTargets = 0;
-    std::uint64_t scratchBytes = 0;
   };
   [[nodiscard]] TargetHoldings HeldTargets() const;
 
