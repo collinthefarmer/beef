@@ -2941,15 +2941,28 @@ cancel by the user instead of the load.
   (`AwaitResize`).
 - **Response 1: hidden actors release their intermediates.** An actor out of
   view releases every texture and bake output of its instance except the
-  stacks (`RenderInstance::ReleaseIntermediates`, the `Releasable` rule of
-  the idle release). These are the static outputs that 7b keeps until the
+  stacks and the mesh bakes (`RenderInstance::ReleaseIntermediates`,
+  `KeptWhenReleased`, the `Releasable` rule of the idle release). A mesh bake
+  stays because it is the costly step to restore: in the session of
+  2026-10-09 a `BakeMesh` call took 0.4 to 5.9 ms of GPU on average and up to
+  42 ms, against 17 µs for a 1024 mask program, 3 to 36 µs for a cluster
+  draw and 2 to 17 µs for a slope. A restored bake would also re-read a
+  trimmed mesh and rebuild its vertex buffers.
+- An actor out of view for 5 s (`kHiddenReleaseMS`, `HiddenSince`,
+  `HiddenReleaseDue`, `LiveActor::hiddenSinceMS`) releases the same
+  intermediates without pressure (`Manager::ReleaseWhileHidden`, trace event
+  `hidden_release`), unless a resize or a first draw is in flight. The delay
+  keeps a camera turn from releasing and restoring. When the actor is in
+  view again its next draw restores the released steps, which costs under a
+  millisecond of GPU for a fill plan. A release takes a fill plan at a 2048
+  base from 33.3 to 26.3 MiB (`kept on release` in `planners_templatecost`). These are the static outputs that 7b keeps until the
   instance goes. The largest holdings release first, and the releases stop
   when the planned bytes fit. A released step restores when a draw demands it
   (`RenderExecution::Materialize`) and keeps its change version, so a stack
   draws again only when an input changed. The step output cache keeps an
   unheld target for 500 ms (`kStepOutputIdleMs`), and the idle pool keeps at
   most 64 MiB, so the measured bytes fall within about a second. Until the
-  actor is in view again, the estimate counts only its stacks (`HeldNow`,
+  actor is in view again, the estimate counts only its stacks and bakes (`HeldNow`,
   `LiveActor::intermediates`). From the tick that the actor is in view, the
   estimate counts all its held targets again.
 - **Response 2: one NPC steps down one level.** The candidate is the NPC whose

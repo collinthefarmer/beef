@@ -144,7 +144,9 @@ pressure start and end writes one `info` line. Under pressure,
 (`BudgetActorOf`, `ActorBudget.h`) and applies the `BudgetResponse`: its
 releases, then its next step (`Enough`, `AwaitResize`, `StepDown` or
 `Exhausted`). Each release and step down names the actor by FormID. An actor
-out of view releases its intermediate targets (`ReleaseIntermediates`). One
+out of view releases its intermediate targets except the mesh bakes
+(`ReleaseIntermediates`). Without pressure, an actor out of view for 5 s
+releases them too (`ReleaseWhileHidden`). One
 NPC steps down one level through the resize (`StepDownForBudget`). When
 neither is left, `ShrinkBudgetRadius` sets or lowers the **budget radius**
 (`Manager::budgetRadius_`) so that the farthest rendered NPC is evicted.

@@ -222,12 +222,12 @@ ResolutionLevel FittingLevel(ResolutionLevel a_finest,
 
 std::uint64_t PlannedBytes(const LevelCost &a_cost,
                            IntermediateHolding a_holding) noexcept {
-  return a_holding == IntermediateHolding::kReleased ? a_cost.stacksOnly
+  return a_holding == IntermediateHolding::kReleased ? a_cost.whenReleased
                                                      : a_cost.withIntermediates;
 }
 
 std::uint64_t IntermediateBytes(const LevelCost &a_cost) noexcept {
-  return Less(a_cost.withIntermediates, a_cost.stacksOnly);
+  return Less(a_cost.withIntermediates, a_cost.whenReleased);
 }
 
 std::optional<StepDownOption>
@@ -260,6 +260,21 @@ PreemptionCandidate(const PreemptionRequest &a_request,
     }
   }
   return surplus >= a_request.shortfall ? chosen : std::nullopt;
+}
+
+std::optional<std::uint32_t> HiddenSince(bool a_inView,
+                                         std::optional<std::uint32_t> a_since,
+                                         std::uint32_t a_nowMS) noexcept {
+  if (a_inView) {
+    return std::nullopt;
+  }
+  return a_since.value_or(a_nowMS);
+}
+
+bool HiddenReleaseDue(std::optional<std::uint32_t> a_since,
+                      std::uint32_t a_nowMS) noexcept {
+  return a_since && a_nowMS >= *a_since &&
+         a_nowMS - *a_since >= kHiddenReleaseMS;
 }
 
 BudgetResponse RespondToPressure(std::uint64_t a_planned, std::uint64_t a_goal,

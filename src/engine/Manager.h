@@ -239,6 +239,7 @@ private:
                                             std::uint64_t a_replaced,
                                             const Settings &a_settings) const;
   void KeepInstallLevel(RE::FormID a_actorID, ResolutionLevel a_level);
+  void ReleaseWhileHidden(RE::FormID a_actorID, LiveActor &a_state);
   void RequestLevelStep(RE::FormID a_actorID, RE::Actor &a_actor,
                         LiveActor &a_state, const Settings &a_settings);
   void AdvanceResizes(const Settings &a_settings);

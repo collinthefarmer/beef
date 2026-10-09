@@ -32,6 +32,10 @@ void Add(TargetCost &a_cost, const HeldTarget &a_target) {
 }
 }
 
+bool KeptWhenReleased(const RenderStepKind &a_kind) noexcept {
+  return Is<CompositeStackStep>(a_kind) || Is<BakeMeshStep>(a_kind);
+}
+
 std::uint64_t TargetBytes(TextureSize a_size, TextureFormat a_format,
                           MipPolicy a_mips) noexcept {
   const auto pixels = static_cast<std::uint64_t>(a_size.Pixels());
@@ -66,6 +70,9 @@ PlanTargets TargetsOf(const RenderPlan &a_plan, const PlanSizes &a_sizes) {
     targets.withIntermediates.push_back(target);
     if (Is<CompositeStackStep>(planned.kind)) {
       targets.stacks.push_back(target);
+    }
+    if (KeptWhenReleased(planned.kind)) {
+      targets.whenReleased.push_back(target);
     }
   }
   return targets;

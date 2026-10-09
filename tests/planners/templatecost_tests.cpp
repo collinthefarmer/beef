@@ -194,18 +194,25 @@ TargetCost CheckedCost(const Wearers &a_wearers, std::uint32_t a_base) {
       TargetsOf(a_wearers.otherItem.plan, a_wearers.otherItem.sizes);
   const TargetCost held = CostOf(first.withIntermediates);
   const TargetCost stacks = CostOf(first.stacks);
+  const TargetCost released = CostOf(first.whenReleased);
   const TargetCost twoSame =
       CostOf(Joined(first.withIntermediates, same.withIntermediates));
   const TargetCost twoOther =
       CostOf(Joined(first.withIntermediates, other.withIntermediates));
   std::cout << std::format("base {}\n  held: {}\n  stacks: {}\n"
+                           "  kept on release: {}\n"
                            "  held, two wearers of one item: {}\n"
                            "  held, two wearers of two items: {}\n",
                            a_base, Describe(held), Describe(stacks),
-                           Describe(twoSame), Describe(twoOther));
+                           Describe(released), Describe(twoSame),
+                           Describe(twoOther));
   Check(stacks.targets == StacksIn(a_wearers.first.plan) &&
             stacks.bytes <= held.bytes,
         std::format("at base {} a plan holds its stacks among its targets",
+                    a_base));
+  Check(released.targets == stacks.targets + 2 &&
+            stacks.bytes < released.bytes && released.bytes < held.bytes,
+        std::format("at base {} a release keeps the stacks and the two bakes",
                     a_base));
   Check(twoSame.bytes <= twoOther.bytes && twoOther.bytes <= 2 * held.bytes,
         std::format("at base {} a second wearer of one item shares at least "

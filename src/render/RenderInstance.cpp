@@ -1558,7 +1558,7 @@ bool RenderInstance::BeginFrame(std::uint64_t frame, std::uint64_t nowMS) {
 std::size_t RenderInstance::ReleaseIntermediates() {
   const std::size_t released = execution_.ReleaseWhere(
       [](RenderStepId, const RenderStep &planned, const RenderValue &value) {
-        return Releasable(planned, value);
+        return !KeptWhenReleased(planned.kind) && Releasable(planned, value);
       });
   Metrics::CountStepReleases(released);
   return released;

@@ -137,6 +137,7 @@ struct LiveActor {
   IntermediateHolding intermediates = IntermediateHolding::kHeld;
   std::optional<ResolutionLevel> stepUpBlockedFrom;
   std::optional<std::uint32_t> smallSinceMS;
+  std::optional<std::uint32_t> hiddenSinceMS;
   std::optional<JobId> awaitedPlan;
   std::uint64_t renderedFrame = 0;
   std::shared_ptr<const RecipeCatalog> catalog;

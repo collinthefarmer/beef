@@ -26,6 +26,7 @@ struct HeldTarget {
 struct PlanTargets {
   std::vector<HeldTarget> withIntermediates;
   std::vector<HeldTarget> stacks;
+  std::vector<HeldTarget> whenReleased;
   [[nodiscard]] bool operator==(const PlanTargets &) const = default;
 };
 
@@ -36,6 +37,7 @@ struct TargetCost {
   [[nodiscard]] bool operator==(const TargetCost &) const = default;
 };
 
+[[nodiscard]] bool KeptWhenReleased(const RenderStepKind &a_kind) noexcept;
 [[nodiscard]] std::uint64_t TargetBytes(TextureSize a_size,
                                         TextureFormat a_format,
                                         MipPolicy a_mips) noexcept;

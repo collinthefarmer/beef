@@ -995,6 +995,7 @@ void Manager::Tick(std::uint32_t a_nowMS, const Settings &a_settings) {
     if (state.inView) {
       state.intermediates = IntermediateHolding::kHeld;
     }
+    ReleaseWhileHidden(it->first, state);
     RequestLevelStep(it->first, *actor, state, a_settings);
     std::vector<bool> hidden;
     if (state.inView) {
@@ -1135,6 +1136,21 @@ void Manager::TickInstance(LiveInstance &a_instance, float a_time,
     a_delta = a_time;
   }
   a_instance.signals->Tick(*a_instance.environment, {a_time, a_delta});
+}
+
+void Manager::ReleaseWhileHidden(RE::FormID a_actorID, LiveActor &a_state) {
+  a_state.hiddenSinceMS =
+      HiddenSince(a_state.inView, a_state.hiddenSinceMS, tickNowMS_);
+  if (a_state.intermediates != IntermediateHolding::kHeld ||
+      !HiddenReleaseDue(a_state.hiddenSinceMS, tickNowMS_) ||
+      !Is<ResizeIdle>(a_state.resize) || a_state.firstDraw) {
+    return;
+  }
+  const std::size_t steps = ReleaseIntermediates(a_state);
+  Trace::EmitSafely(Trace::Event::kMetrics,
+                    {{"action", "hidden_release"},
+                     {"actor", std::to_string(a_actorID)},
+                     {"steps", std::to_string(steps)}});
 }
 
 void Manager::RequestLevelStep(RE::FormID a_actorID, RE::Actor &a_actor,

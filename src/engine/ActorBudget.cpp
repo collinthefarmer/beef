@@ -18,7 +18,7 @@ std::optional<LevelCost> LevelCostOf(const RenderPlan &a_plan,
   }
   const PlanTargets targets = TargetsOf(a_plan, *sizes);
   return LevelCost{CostOf(targets.withIntermediates).bytes,
-                   CostOf(targets.stacks).bytes};
+                   CostOf(targets.whenReleased).bytes};
 }
 
 InstallLevelChoice ChooseInstallLevel(const RenderPlan &a_plan,
@@ -103,7 +103,7 @@ BudgetActor BudgetActorOf(LiveActor &a_state, std::uint32_t a_id,
 const std::vector<HeldTarget> &HeldNow(const LiveActor &a_state,
                                        const PlanTargets &a_targets) noexcept {
   return a_state.intermediates == IntermediateHolding::kReleased
-             ? a_targets.stacks
+             ? a_targets.whenReleased
              : a_targets.withIntermediates;
 }
 
