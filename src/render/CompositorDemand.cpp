@@ -45,12 +45,11 @@ std::optional<std::string> MeshHashIdentityOf(const GeometryInputs &inputs) {
   if (!geometry || !compositor) {
     return std::nullopt;
   }
-  const auto entry = compositor->MeshOf(geometry);
-  if (!entry || !*entry || !(*entry)->mesh) {
+  const auto entry = compositor->MeshOf(geometry, MeshUse::kSummary);
+  if (!entry || !*entry) {
     return std::nullopt;
   }
-  const MeshData &mesh = *(*entry)->mesh;
-  return std::format("mesh:{:016x}:{}", mesh.hash, mesh.partitions.size());
+  return std::format("mesh:{:016x}:{}", (*entry)->hash, (*entry)->partitions);
 }
 
 std::string MeshIdentityOf(const GeometryInputs &inputs) {

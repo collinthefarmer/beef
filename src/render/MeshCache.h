@@ -17,6 +17,8 @@
 #include <unordered_map>
 
 namespace BetterEnchantmentEffects {
+enum class MeshUse { kSummary, kData };
+
 struct MeshEntry {
   RE::NiPointer<RE::BSGeometry> geometry;
   MeshIdentity identity;
@@ -24,13 +26,20 @@ struct MeshEntry {
   std::string problem;
   MeshFacts facts;
   MeshAnalysis analysis;
+  std::uint64_t hash = 0;
+  std::size_t partitions = 0;
   std::uint32_t lastUsedMS = 0;
+  std::uint32_t readMS = 0;
+  bool dataUsed = false;
+  [[nodiscard]] bool Read() const noexcept { return problem.empty(); }
+  [[nodiscard]] bool Trimmed() const noexcept { return Read() && !mesh; }
 };
 
 class MeshCache {
 public:
   [[nodiscard]] std::expected<std::shared_ptr<MeshEntry>, std::string>
-  Get(RE::BSGeometry *a_geometry, std::uint32_t a_nowMS, bool a_verbose);
+  Get(RE::BSGeometry *a_geometry, std::uint32_t a_nowMS, bool a_verbose,
+      MeshUse a_use);
   [[nodiscard]] std::shared_ptr<const MeshEntry>
   Cached(RE::BSGeometry *a_geometry) const noexcept;
   void Sweep(std::uint32_t a_nowMS, std::uint32_t a_maxAgeMS,

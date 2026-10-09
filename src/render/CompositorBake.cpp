@@ -20,8 +20,8 @@ bool RealTexture(const TextureRef &a_texture) {
 }
 
 std::expected<std::shared_ptr<MeshEntry>, std::string>
-Compositor::MeshOf(RE::BSGeometry *a_geometry) {
-  return meshes_.Get(a_geometry, nowMS_, GetSettings().verboseLogging);
+Compositor::MeshOf(RE::BSGeometry *a_geometry, MeshUse a_use) {
+  return meshes_.Get(a_geometry, nowMS_, GetSettings().verboseLogging, a_use);
 }
 
 std::shared_ptr<const MeshEntry>

@@ -28,7 +28,7 @@ void ReportMeshProblems(const LiveGeometry &a_bound) {
     return;
   }
   if (const std::expected<std::shared_ptr<MeshEntry>, std::string> mesh =
-          compositor->MeshOf(a_bound.geometry.get());
+          compositor->MeshOf(a_bound.geometry.get(), MeshUse::kSummary);
       !mesh) {
     logger::warn("mesh '{}': {}", a_bound.name, mesh.error());
   }

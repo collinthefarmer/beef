@@ -1040,8 +1040,8 @@ std::optional<RenderValue> NumberValueOf(const BoundTextureValue &bound,
   if (bound.external && Is<ItemHashInput>(bound.external->source))
     return Value{bound.geometry.itemHash};
   if (bound.external && Is<ChartCountInput>(bound.external->source)) {
-    const auto mesh =
-        Compositor::GetSingleton()->MeshOf(bound.geometry.geometry.get());
+    const auto mesh = Compositor::GetSingleton()->MeshOf(
+        bound.geometry.geometry.get(), MeshUse::kSummary);
     if (!mesh || !*mesh)
       return std::nullopt;
     return Value{static_cast<float>((*mesh)->analysis.charts)};

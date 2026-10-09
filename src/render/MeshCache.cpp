@@ -8,6 +8,12 @@
 
 namespace BetterEnchantmentEffects {
 namespace {
+void Trim(MeshEntry &a_entry) {
+  a_entry.mesh.reset();
+  a_entry.analysis.componentOf = {};
+  a_entry.analysis.chartOf = {};
+}
+
 const char *NameOf(RE::BSGeometry *a_geometry) noexcept {
   return a_geometry && a_geometry->name.c_str() ? a_geometry->name.c_str()
                                                 : "?";
@@ -37,7 +43,7 @@ void LogRead(const char *a_name, const MeshData &a_mesh,
 
 std::expected<std::shared_ptr<MeshEntry>, std::string>
 MeshCache::Get(RE::BSGeometry *a_geometry, std::uint32_t a_nowMS,
-               bool a_verbose) {
+               bool a_verbose, MeshUse a_use) {
   if (!a_geometry) {
     return std::unexpected("no geometry to read");
   }
@@ -51,13 +57,21 @@ MeshCache::Get(RE::BSGeometry *a_geometry, std::uint32_t a_nowMS,
     auto &entry = *it->second;
     if (entry.identity == *identity) {
       entry.lastUsedMS = a_nowMS;
-      if (!entry.mesh) {
+      if (!entry.Read()) {
         return std::unexpected(
             std::format("the mesh could not be read: {}", entry.problem));
       }
-      return it->second;
-    }
-    if (a_verbose) {
+      if (a_use == MeshUse::kSummary) {
+        return it->second;
+      }
+      if (!entry.Trimmed()) {
+        entry.dataUsed = true;
+        return it->second;
+      }
+      if (a_verbose) {
+        logger::info("mesh '{}': reading again for its data", name);
+      }
+    } else if (a_verbose) {
       logger::info("mesh '{}': buffers changed, reading again", name);
     }
   }
@@ -65,11 +79,15 @@ MeshCache::Get(RE::BSGeometry *a_geometry, std::uint32_t a_nowMS,
   entry->geometry = RE::NiPointer{a_geometry};
   entry->identity = std::move(*identity);
   entry->lastUsedMS = a_nowMS;
+  entry->readMS = a_nowMS;
+  entry->dataUsed = a_use == MeshUse::kData;
   auto read = ReadMesh(a_geometry);
   if (read) {
     entry->mesh = *read;
     entry->facts = FactsOf(*entry->mesh);
     entry->analysis = AnalyseMesh(*entry->mesh);
+    entry->hash = entry->mesh->hash;
+    entry->partitions = entry->mesh->partitions.size();
     if (a_verbose) {
       LogRead(name, *entry->mesh, entry->analysis, a_geometry);
     }
@@ -99,6 +117,10 @@ void MeshCache::Sweep(std::uint32_t a_nowMS, std::uint32_t a_maxAgeMS,
     }
     if (std::ranges::contains(a_keep, geometry)) {
       entry->lastUsedMS = a_nowMS;
+      if (!entry->dataUsed && entry->mesh &&
+          a_nowMS - entry->readMS > a_maxAgeMS) {
+        Trim(*entry);
+      }
       return false;
     }
     return a_nowMS - entry->lastUsedMS > a_maxAgeMS;

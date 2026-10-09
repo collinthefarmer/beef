@@ -209,7 +209,7 @@ struct GeometrySnapshotBuilder {
     row.shell = bound.shell ? bound.shell->Describe() : "";
     if (const std::shared_ptr<const MeshEntry> entry =
             compositor->CachedMesh(bound.geometry.get());
-        entry && entry->mesh) {
+        entry && entry->Read()) {
       row.meshRead = true;
       row.partitions = entry->facts.slots;
       row.bones = entry->facts.bones;

@@ -233,13 +233,18 @@ loop writes the same way to a worn material and to a shell clone.
 
 A bake needs a mesh's positions and UVs, which the engine holds in GPU
 buffers. `Compositor::MeshOf` reads them once per geometry and caches the
-result. `Compositor::SweepMeshes` drops entries after `kMeshMaxAgeMS`.
+result. `Compositor::SweepMeshes` drops entries after `kMeshMaxAgeMS`. A
+caller asks for a **summary** (hash, partition count, facts, counts) or for
+the mesh **data** (`MeshUse`). A bound entry whose data no caller used
+within `kMeshMaxAgeMS` of its read is **trimmed**: the sweep drops its mesh
+copy and per-triangle analysis and keeps the summary. A later data request
+reads the mesh again.
 
 | Type | Description | Declared in |
 |---|---|---|
 | `MeshIdentity` | The key of one GPU mesh: skin partition, vertex buffers and vertex count. `IdentityOf` reads it. | `MeshReader.h` |
 | `GpuComparison` | The count of differing values between a cached mesh and a fresh GPU read. `CompareWithGpu` produces it. | `MeshReader.h` |
-| `MeshEntry` | One cached geometry: identity, mesh data, facts, analysis and last use. | `MeshCache.h` |
+| `MeshUse`, `MeshEntry` | Whether a caller needs the summary or the data; one cached geometry: identity, mesh data, facts, analysis, hash and partition count, read and last-use times, and whether its data was used (`Read`, `Trimmed`). | `MeshCache.h` |
 | `MeshCache` | The per-geometry store. `Get` reads or reuses an entry, and `Sweep` drops aged entries not in the keep list. With `VerboseLogging`, `Get` logs each read and compares it with a GPU readback. It logs the comparison only when bytes differ. | `MeshCache.h` |
 | `SkinPaletteLease` | Ownership of a shell clone's repaired bone-transform links. `Preserve` takes them from the source geometry. `StillOwned` reports whether the clone still carries them. | `SkinPalette.h` |
 

@@ -154,7 +154,7 @@ public:
               std::string_view a_name, const GeometryInputs &a_inputs) const;
 
   [[nodiscard]] std::expected<std::shared_ptr<MeshEntry>, std::string>
-  MeshOf(RE::BSGeometry *a_geometry);
+  MeshOf(RE::BSGeometry *a_geometry, MeshUse a_use = MeshUse::kData);
   [[nodiscard]] std::shared_ptr<const MeshEntry>
   CachedMesh(RE::BSGeometry *a_geometry) const noexcept;
   static constexpr std::uint32_t kMeshSweepMS = 5000;

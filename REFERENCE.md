@@ -1869,6 +1869,15 @@ them:
   (NOTES 49).
 - Coverage of a bone is the summed weight it carries over every vertex as a
   share of all vertices: a bone moving half the mesh fully reads 0.5.
+- The mesh cache trims an entry whose mesh data no caller used within
+  `kMeshMaxAgeMS` (30 s) of its read (`MeshCache::Sweep`, 2026-10-09). The
+  plan key needs only the hash and partition count (`MeshHashIdentityOf`),
+  and the chart count uniform only `MeshAnalysis::charts`, so a geometry
+  whose recipes never bake kept a full copy for nothing: 56 bytes per vertex
+  and 12 per triangle plus the per-triangle chart and component ids, about
+  1.5 to 3 MB per armor piece. Trimming keeps the hash, the facts, the
+  islands and the counts. A bake that runs after the trim reads the mesh
+  again once and keeps it from then on.
 
 ## Compositor (`render/Compositor.cpp`, `CompositorSource.cpp`, `CompositorBake.cpp`)
 
