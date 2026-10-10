@@ -153,6 +153,7 @@ std::size_t ReleaseIntermediates(LiveActor &a_state) {
     return 0;
   }
   a_state.intermediates = IntermediateHolding::kReleased;
+  a_state.holding = IntermediateHolding::kReleased;
   return render->ReleaseIntermediates();
 }
 }

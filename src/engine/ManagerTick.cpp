@@ -11,6 +11,7 @@
 #include "engine/Clock.h"
 #include "engine/LogOnce.h"
 #include "engine/RegressionRun.h"
+#include "engine/SectionTimer.h"
 #include "planners/RenderBudget.h"
 #include "planners/RenderMemory.h"
 #include "render/Compositor.h"
@@ -32,21 +33,6 @@
 
 namespace BetterEnchantmentEffects {
 namespace {
-class SectionTimer {
-public:
-  explicit SectionTimer(Metrics::Section a_section) noexcept
-      : section_(a_section) {}
-  ~SectionTimer() { Metrics::CountSection(section_, watch_.Micros()); }
-  SectionTimer(const SectionTimer &) = delete;
-  SectionTimer &operator=(const SectionTimer &) = delete;
-  SectionTimer(SectionTimer &&) = delete;
-  SectionTimer &operator=(SectionTimer &&) = delete;
-
-private:
-  Metrics::Section section_;
-  Metrics::Stopwatch watch_;
-};
-
 bool ShownThisTick(RE::Actor &a_actor, const Settings &a_settings,
                    bool a_inspected) {
   if (a_actor.IsPlayerRef() || !a_settings.cullOutOfView) {
@@ -524,9 +510,9 @@ void WriteSlots(LiveActor &a_state, LiveGeometry &a_bound,
 }
 
 DrawPace DrawFirstSlots(LiveActor &a_state, const SlotRenderView &a_view,
-                        DrawPace a_pace) {
+                        DrawPace a_pace, std::uint64_t a_budgetUs) {
   TextureLab *lab = TextureLab::GetSingleton();
-  if (!a_state.firstDraw || !lab || !MayDrawStack(a_pace)) {
+  if (!a_state.firstDraw || !lab || !MayDrawStack(a_pace, a_budgetUs)) {
     return a_pace;
   }
   const TextureLab::PassBatch batch{*lab};
@@ -534,7 +520,7 @@ DrawPace DrawFirstSlots(LiveActor &a_state, const SlotRenderView &a_view,
     if (slot.drawn) {
       continue;
     }
-    if (!MayDrawStack(a_pace)) {
+    if (!MayDrawStack(a_pace, a_budgetUs)) {
       break;
     }
     LiveGeometry *bound = GeometryOf(a_state, slot);
@@ -1000,7 +986,11 @@ void Manager::Tick(std::uint32_t a_nowMS, const Settings &a_settings) {
     std::vector<bool> hidden;
     if (state.inView) {
       const SectionTimer renderTimer{Metrics::Section::kRender};
-      hidden = RenderPieces(state, it->first);
+      const bool drawing = state.firstDraw.has_value();
+      hidden =
+          RenderPieces(state, it->first,
+                       {drawing, !a_settings.publishEffects ||
+                                     state.awaitedPlan.has_value() || drawing});
       state.renderedFrame = renderFrame_;
       if (DrawsHidden(state)) {
         candidates.push_back({it->first, RoleOf(*actor), state.screenFraction});
@@ -1039,13 +1029,14 @@ void Manager::DrawHidden(
           view, view.isolation.layer.has_value() || !view.muted.empty(),
           publish, inspected != found->first};
       const std::size_t before = pace.stacks;
-      pace = DrawFirstSlots(state, slotView, pace);
+      pace = DrawFirstSlots(state, slotView, pace, kUnpublishedDrawBudgetUs);
       if (pace.stacks > before) {
         ++state.firstDraw->drawTicks;
       }
       AttachFirstDraw(found->first, state);
     } else {
-      pace = DrawResize(state, renderFrame_, tickNowMS_, warningHistory_, pace);
+      pace = DrawResize(state, renderFrame_, tickNowMS_, warningHistory_, pace,
+                        kUnpublishedDrawBudgetUs);
     }
   }
   if (pace.stacks > 0) {
@@ -1098,7 +1089,8 @@ void Manager::RunWaitingInstalls(std::uint32_t a_nowMS) {
 }
 
 std::vector<bool> Manager::RenderPieces(LiveActor &a_state,
-                                        RE::FormID a_actorID) {
+                                        RE::FormID a_actorID,
+                                        const RenderFlags &a_flags) {
   const Studio::View &view = editor_.CurrentView();
   const bool inspected = InspectedActor(NowMS()) == a_actorID;
   const bool soloingPiece = view.soloPiece.has_value();
@@ -1113,7 +1105,7 @@ std::vector<bool> Manager::RenderPieces(LiveActor &a_state,
         soloingPiece && !view.PieceShown(a_actorID, piece.armor);
     std::vector<bool> &referenced = pieceHidden ? hidden : shown;
     for (LiveGeometry &bound : piece.geometries) {
-      RenderGeometry(a_state, bound, pieceHidden, inspected);
+      RenderGeometry(a_state, bound, pieceHidden, inspected, a_flags);
       if (soloingPiece) {
         MarkReferencedInstances(a_state, bound, referenced);
       }
@@ -1579,7 +1571,8 @@ void Manager::ClaimLostGeometries(RE::FormID a_actorID, LiveActor &a_state) {
 }
 
 void Manager::RenderGeometry(LiveActor &a_state, LiveGeometry &a_bound,
-                             bool a_hidden, bool a_inspected) {
+                             bool a_pieceHidden, bool a_inspected,
+                             const RenderFlags &a_flags) {
   TextureLab *lab = TextureLab::GetSingleton();
   if (!lab) {
     return;
@@ -1598,12 +1591,12 @@ void Manager::RenderGeometry(LiveActor &a_state, LiveGeometry &a_bound,
   const SlotRenderView slotView{
       view, view.isolation.layer.has_value() || !view.muted.empty(),
       GetSettings().publishEffects, !a_inspected};
-  const bool drawing = a_state.firstDraw.has_value();
   {
     const SectionTimer slotsTimer{Metrics::Section::kRenderSlots};
-    WriteSlots(a_state, a_bound, slotView, a_hidden || drawing);
+    WriteSlots(a_state, a_bound, slotView,
+               a_pieceHidden || a_flags.concealSlots);
   }
-  if (a_hidden || !slotView.publish || a_state.awaitedPlan || drawing) {
+  if (a_pieceHidden || a_flags.hideShells) {
     if (a_bound.shell) {
       a_bound.shell->SetVisible(false);
     }
@@ -1637,4 +1630,94 @@ void Manager::UpdateLights(LiveActor &a_state,
   }
 }
 
+CommandResults Manager::RunTickActor(const Orchestration::TickActor &a_command,
+                                     const TickContext &a_context) {
+  const RE::FormID id = Orchestration::FormOf(a_command.actor);
+  const auto found = live_.find(id);
+  if (found == live_.end()) {
+    return {};
+  }
+  LiveActor &state = found->second;
+  if (!state.actor.get()) {
+    return {};
+  }
+  {
+    const SectionTimer signalsTimer{Metrics::Section::kSignals};
+    const TickFrame frame{a_context.settings, a_context.view, a_context.nowMS,
+                          a_context.resuming};
+    for (LiveInstance &instance : state.instances) {
+      if (!instance.recipe || !instance.graph || !instance.signals ||
+          !instance.environment) {
+        continue;
+      }
+      const InstanceTiming timing = InstanceTimeFor(instance, frame);
+      TickInstance(instance, timing.time, timing.delta);
+      instance.lastTime = timing.time;
+    }
+  }
+  std::vector<bool> hidden;
+  if (a_command.drawStacks) {
+    const SectionTimer renderTimer{Metrics::Section::kRender};
+    state.holding = IntermediateHolding::kHeld;
+    hidden =
+        RenderPieces(state, id, {a_command.concealSlots, a_command.hideShells});
+  }
+  if (a_command.hideLights) {
+    hidden.assign(state.instances.size(), true);
+  }
+  {
+    const SectionTimer lightsTimer{Metrics::Section::kLights};
+    UpdateLights(state, hidden);
+  }
+  if (a_command.finishApplications) {
+    FinishApplications(id, state, a_command.drawStacks);
+  }
+  if (!a_command.concealSlots) {
+    state.firstDraw.reset();
+  }
+  return {};
+}
+
+CommandResults
+Manager::RunDrawUnpublished(const Orchestration::DrawUnpublished &a_command,
+                            const TickContext &a_context) {
+  const SectionTimer renderTimer{Metrics::Section::kRender};
+  const Studio::View &view = a_context.view;
+  CommandResults results;
+  DrawPace pace;
+  for (const Orchestration::ActorId actor : a_command.order) {
+    const RE::FormID id = Orchestration::FormOf(actor);
+    const auto found = live_.find(id);
+    if (found == live_.end()) {
+      ReportDisagreement(id, {"command", "draw_unpublished"},
+                         "no resources to draw");
+      continue;
+    }
+    LiveActor &state = found->second;
+    const std::size_t before = pace.stacks;
+    std::size_t drawn = 0;
+    if (InFlightOf(state)) {
+      pace = DrawResize(state, renderFrame_, a_context.nowMS, warningHistory_,
+                        pace, a_command.budgetUs);
+      const ResizeInFlight *resize = InFlightOf(state);
+      drawn = resize ? DrawnStacks(*resize) : 0;
+    } else if (state.firstDraw) {
+      const SlotRenderView slotView{
+          view, view.isolation.layer.has_value() || !view.muted.empty(),
+          a_context.settings.publishEffects, a_context.inspected != id};
+      pace = DrawFirstSlots(state, slotView, pace, a_command.budgetUs);
+      drawn = state.firstDraw ? DrawnSlots(*state.firstDraw) : 0;
+    } else {
+      ReportDisagreement(id, {"command", "draw_unpublished"},
+                         "nothing unpublished to draw");
+      continue;
+    }
+    results.emplace_back(Orchestration::ActorEvent{
+        actor, Orchestration::UnpublishedDrawn{drawn, pace.stacks > before}});
+  }
+  if (pace.stacks > 0) {
+    Metrics::CountHiddenDraw(pace.stacks, pace.spentUs);
+  }
+  return results;
+}
 }

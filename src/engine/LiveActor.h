@@ -106,6 +106,7 @@ struct ResizedStack {
 
 struct ResizeInFlight {
   ResizeProgress progress;
+  ResolutionLevel to = ResolutionLevel::kFull;
   std::shared_ptr<RenderInstance> render;
   std::vector<ResizedStack> stacks;
 };
@@ -140,6 +141,8 @@ struct LiveActor {
   std::optional<std::uint32_t> hiddenSinceMS;
   std::optional<JobId> awaitedPlan;
   std::uint64_t renderedFrame = 0;
+  ResolutionLevel renderLevel = ResolutionLevel::kFull;
+  IntermediateHolding holding = IntermediateHolding::kHeld;
   std::shared_ptr<const RecipeCatalog> catalog;
   ActorMatches matches;
   std::vector<LivePiece> pieces;

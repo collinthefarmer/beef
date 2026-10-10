@@ -3,6 +3,7 @@
 
 #include "PCH.h"
 #include "Settings.h"
+#include "TraceTypes.h"
 #include "actors/Actor.h"
 #include "actors/SyncLog.h"
 #include "diagnostics/Metrics.h"
@@ -15,14 +16,19 @@
 #include "engine/LiveActor.h"
 #include "engine/PlanJobs.h"
 #include "engine/RecipeEditor.h"
+#include "orchestration/Commands.h"
+#include "orchestration/Facts.h"
+#include "orchestration/World.h"
 #include "planners/ActorPlanning.h"
 #include "planners/BudgetRadius.h"
 #include "planners/DrawPacing.h"
 #include "planners/InstallPacing.h"
+#include "planners/InstallProgram.h"
 #include "planners/RenderBudget.h"
 #include "planners/RenderPlanCache.h"
 #include "planners/ResolutionLevel.h"
 #include "planners/TargetCost.h"
+#include "planners/TickClock.h"
 #include "recipe/Recipe.h"
 #include "regression/Run.h"
 #include "render/TextureRef.h"
@@ -35,19 +41,49 @@
 #include <cstdint>
 #include <expected>
 #include <functional>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <set>
 #include <span>
 #include <string>
 #include <string_view>
 #include <unordered_map>
 #include <unordered_set>
+#include <variant>
 #include <vector>
 
 namespace BetterEnchantmentEffects {
 struct ActorStacks;
-struct ActorRender;
+
+struct RenderNotBuilt {};
+
+struct RenderFlags {
+  bool concealSlots = false;
+  bool hideShells = false;
+};
+
+using RenderOutcome =
+    std::variant<RenderBuild, Orchestration::PlanAwaited, RenderNotBuilt>;
+
+using CommandResults = std::vector<Orchestration::CommandResult>;
+
+struct GatheredFacts {
+  Orchestration::TickFacts facts;
+  std::map<RE::FormID, std::vector<ApplicationToken>> tokens;
+  std::shared_ptr<const RecipeCatalog> catalog;
+  std::vector<WaitingInstall> waiting;
+};
+
+struct TickContext {
+  const Settings &settings;
+  const Studio::View &view;
+  std::optional<RE::FormID> inspected;
+  std::uint32_t nowMS = 0;
+  bool resuming = false;
+  const GatheredFacts &inputs;
+};
 
 struct RegressionWearer {
   RE::FormID actor = 0;
@@ -151,6 +187,73 @@ private:
 
   void SyncStale(RE::FormID a_actorID,
                  const std::vector<ApplicationToken> &a_tokens);
+  void NoteStale(RE::FormID a_actorID,
+                 const std::vector<ApplicationToken> &a_tokens);
+  void RunTick(std::uint32_t a_nowMS, const Settings &a_settings);
+  [[nodiscard]] GatheredFacts
+  GatherFacts(std::uint32_t a_nowMS, const Settings &a_settings,
+              std::vector<Orchestration::PlanJobDone> a_jobs);
+  [[nodiscard]] Orchestration::Sighting
+  SightingOf(RE::FormID a_actorID, const Settings &a_settings,
+             std::optional<RE::FormID> a_inspected) const;
+  [[nodiscard]] Orchestration::StaleActor
+  StaleActorOf(RE::FormID a_actorID, const RecipeCatalog &a_catalog,
+               const Settings &a_settings);
+  [[nodiscard]] std::vector<Orchestration::ClaimedGeometry> ClaimsOf();
+  [[nodiscard]] std::vector<Orchestration::ActorId> ForgetRequests();
+  void CheckAgreement(const Orchestration::TickFacts &a_facts);
+  void ReportDisagreement(RE::FormID a_actorID, Trace::Field a_where,
+                          std::string a_what);
+  void EmitCoreRecords(const std::vector<Orchestration::TraceRecord> &a_trace,
+                       const std::vector<Orchestration::LogRecord> &a_logs);
+  [[nodiscard]] CommandResults
+  Execute(const std::vector<Orchestration::Command> &a_commands,
+          const TickContext &a_context);
+  [[nodiscard]] CommandResults
+  RunTickActor(const Orchestration::TickActor &a_command,
+               const TickContext &a_context);
+  [[nodiscard]] CommandResults
+  RunStartResize(const Orchestration::StartResize &a_command);
+  [[nodiscard]] CommandResults
+  RunSwapResize(const Orchestration::SwapResize &a_command,
+                const TickContext &a_context);
+  [[nodiscard]] CommandResults
+  RunAbandonResize(const Orchestration::AbandonResize &a_command);
+  [[nodiscard]] CommandResults
+  RunReleaseIntermediates(const Orchestration::ReleaseIntermediates &a_command);
+  [[nodiscard]] CommandResults
+  RunSetAppliedLevel(const Orchestration::SetAppliedLevel &a_command);
+  [[nodiscard]] CommandResults
+  RunDrawUnpublished(const Orchestration::DrawUnpublished &a_command,
+                     const TickContext &a_context);
+  [[nodiscard]] CommandResults
+  RunBuildAwaitedRender(const Orchestration::BuildAwaitedRender &a_command,
+                        const TickContext &a_context);
+  [[nodiscard]] CommandResults
+  RunFailAwaitedRender(const Orchestration::FailAwaitedRender &a_command,
+                       const TickContext &a_context);
+  [[nodiscard]] CommandResults
+  RunInstall(const Orchestration::Install &a_command,
+             const TickContext &a_context);
+  [[nodiscard]] CommandResults RunRetire(const Orchestration::Retire &a_command,
+                                         const TickContext &a_context);
+  [[nodiscard]] CommandResults
+  RunForget(const Orchestration::Forget &a_command);
+  [[nodiscard]] CommandResults
+  RunObserve(const Orchestration::Observe &a_command);
+  [[nodiscard]] CommandResults
+  RunKeepModels(const Orchestration::KeepModels &a_command);
+  [[nodiscard]] CommandResults
+  RunSettleApplications(const Orchestration::SettleApplications &a_command,
+                        const TickContext &a_context);
+  [[nodiscard]] Orchestration::CommandResult
+  InstallLiveActor(RE::Actor &a_actor, const Orchestration::Install &a_command,
+                   const TickContext &a_context);
+  [[nodiscard]] Orchestration::RenderEvent
+  BuildAwaitedRender(RE::FormID a_actorID, LiveActor &a_state,
+                     const InstallBound &a_bound, const Settings &a_settings);
+  [[nodiscard]] std::size_t RetireActorResources(RE::FormID a_actorID);
+  void ForgetActorResources(RE::FormID a_actorID);
   enum class SyncOutcome { kSettled, kInstalled, kDeferred };
   [[nodiscard]] SyncOutcome SyncActor(RE::Actor *a_actor);
   void DeferInstall(RE::FormID a_actorID, Actors::SyncKind a_kind);
@@ -211,7 +314,8 @@ private:
   void MarkRecheckStale(std::uint32_t a_nowMS, float a_evictDistance);
   [[nodiscard]] std::expected<LiveActor, std::string>
   LiveActorFor(RE::Actor &a_actor, const Actors::ActorFacts &a_facts,
-               CatalogMatches a_planned, const Settings &a_settings);
+               const ModelTable &a_models, CatalogMatches a_planned,
+               const Settings &a_settings);
   std::size_t RetireActor(RE::FormID a_actorID);
   void ForgetActor(RE::FormID a_actorID);
   void ChangeAndRebuildActors(std::string a_reportRecipe,
@@ -223,6 +327,8 @@ private:
   void PrepareApplications(RE::FormID a_actor,
                            const std::vector<ApplicationToken> &a_tokens);
   void FinishApplications(RE::FormID a_actor, LiveActor &a_state);
+  void FinishApplications(RE::FormID a_actor, LiveActor &a_state,
+                          bool a_inView);
   void AbandonApplications(RE::FormID a_actor);
   void QueueAnimationEvent(AnimationEvent a_event);
   void ReconcileAnimationEvents(RE::FormID a_actor);
@@ -243,11 +349,15 @@ private:
   void RequestLevelStep(RE::FormID a_actorID, RE::Actor &a_actor,
                         LiveActor &a_state, const Settings &a_settings);
   void AdvanceResizes(const Settings &a_settings);
-  void PlaceInstances(LiveActor &a_state, RE::FormID a_actorID,
-                      std::uint64_t a_replaced, const Settings &a_settings);
+  [[nodiscard]] RenderOutcome PlaceInstances(LiveActor &a_state,
+                                             RE::FormID a_actorID,
+                                             const InstallBound &a_bound,
+                                             std::uint64_t a_replaced,
+                                             const Settings &a_settings);
   void KeepActorRender(RE::FormID a_actorID, LiveActor &a_state,
-                       const ActorRender &a_render);
+                       const RenderOutcome &a_render);
   void DrainPlanJobs(const Settings &a_settings);
+  [[nodiscard]] std::vector<Orchestration::PlanJobDone> DrainPlanJobs();
   void RebuildAwaitedRender(RE::FormID a_actorID, LiveActor &a_state,
                             JobId a_arrived, const Settings &a_settings);
   void FailAwaitedRender(RE::FormID a_actorID, LiveActor &a_state,
@@ -265,12 +375,14 @@ private:
   void DrawHidden(std::span<const UnpublishedDrawCandidate> a_candidates);
   void AttachFirstDraw(RE::FormID a_actorID, LiveActor &a_state);
   void ClaimLostGeometries(RE::FormID a_actorID, LiveActor &a_state);
-  void RenderGeometry(LiveActor &a_state, LiveGeometry &a_bound, bool a_hidden,
-                      bool a_inspected);
+  void RenderGeometry(LiveActor &a_state, LiveGeometry &a_bound,
+                      bool a_pieceHidden, bool a_inspected,
+                      const RenderFlags &a_flags);
   [[nodiscard]] std::optional<RE::FormID>
   InspectedActor(std::uint32_t a_nowMS) const;
   [[nodiscard]] std::vector<bool> RenderPieces(LiveActor &a_state,
-                                               RE::FormID a_actorID);
+                                               RE::FormID a_actorID,
+                                               const RenderFlags &a_flags);
   void UpdateLights(LiveActor &a_state,
                     const std::vector<bool> &a_instanceHidden);
   void FireDueFinalizes();
@@ -321,6 +433,16 @@ private:
   std::vector<WaitingInstall> waitingInstalls_;
   std::uint32_t lastSweepMS_ = 0;
   std::uint32_t lastRecheckMS_ = 0;
+  Orchestration::World world_;
+  std::unordered_map<RE::FormID, ModelTable> models_;
+  std::vector<Orchestration::CommandResult> results_;
+  std::map<RE::FormID, std::vector<ApplicationToken>> stale_;
+  std::set<RE::FormID> forgets_;
+  bool heartbeatDue_ = false;
+  std::optional<BudgetSample> pendingSample_;
+  TickClock tickClock_;
+  std::map<RE::FormID, std::vector<std::string>> disagreements_;
+  std::uint64_t disagreementCount_ = 0;
   bool emissivePathEnabled_ = false;
   MaterialLayout materialLayout_ = MaterialLayout::kUnchecked;
   bool frozenLastTick_ = false;

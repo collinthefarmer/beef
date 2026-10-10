@@ -371,10 +371,6 @@ struct ActorStackRequest {
   LocatedStackOutput located;
   SideRef side;
 };
-struct NoRender {};
-struct ActorRender {
-  std::variant<InstallLevelChoice, PlanAwaited, NoRender> outcome;
-};
 struct ActorStacks {
   RE::FormID actor = 0;
   std::vector<ActorStackRequest> requests;
@@ -792,15 +788,12 @@ struct RenderStores {
   PlanJobBook &jobs;
 };
 
-struct PlanFailed {
-  std::string problem;
-};
+using PlanOrJob = std::variant<RenderPlan, Orchestration::PlanAwaited>;
 
-using PlanOutcome = std::variant<RenderPlan, PlanAwaited, PlanFailed>;
-
-PlanOutcome OutcomeOf(std::expected<RenderPlan, std::string> a_plan) {
+std::expected<PlanOrJob, std::string>
+OutcomeOf(std::expected<RenderPlan, std::string> a_plan) {
   if (!a_plan) {
-    return PlanFailed{std::move(a_plan.error())};
+    return std::unexpected(std::move(a_plan.error()));
   }
   return std::move(*a_plan);
 }
@@ -845,8 +838,10 @@ std::optional<JobId> AwaitPlanJob(const LiveActor &a_state,
   return SubmitPlanJob(a_state, a_stacks, a_key, a_stores);
 }
 
-PlanOutcome RenderPlanFor(const LiveActor &a_state, const ActorStacks &a_stacks,
-                          const Settings &a_settings, RenderStores a_stores) {
+std::expected<PlanOrJob, std::string> RenderPlanFor(const LiveActor &a_state,
+                                                    const ActorStacks &a_stacks,
+                                                    const Settings &a_settings,
+                                                    RenderStores a_stores) {
   if (!a_settings.renderPlanCache) {
     return OutcomeOf(FreshRenderPlan(a_stacks, a_state, a_stores.warnings));
   }
@@ -883,7 +878,7 @@ PlanOutcome RenderPlanFor(const LiveActor &a_state, const ActorStacks &a_stacks,
     if (const std::optional<JobId> job =
             AwaitPlanJob(a_state, a_stacks, *key, a_stores)) {
       TraceRenderPlanCache(a_stacks.actor, "miss", a_stores.plans.Size());
-      return PlanAwaited{*job};
+      return Orchestration::PlanAwaited{PlanJobIdOf(*job)};
     }
   }
   std::expected<RenderPlan, std::string> fresh =
@@ -895,10 +890,10 @@ PlanOutcome RenderPlanFor(const LiveActor &a_state, const ActorStacks &a_stacks,
   return OutcomeOf(std::move(fresh));
 }
 
-ActorRender BuildActorRender(const LiveActor &a_state, ActorStacks &a_stacks,
-                             const Settings &a_settings, RenderStores a_stores,
-                             const InstallBound &a_bound) {
-  const ActorRender unbuilt{NoRender{}};
+RenderOutcome BuildActorRender(const LiveActor &a_state, ActorStacks &a_stacks,
+                               const Settings &a_settings,
+                               RenderStores a_stores,
+                               const InstallBound &a_bound) {
   const PlanSizes full{a_stacks.sizes};
   AttachRender(a_stacks, nullptr);
   for (LiveGeometry *bound : a_stacks.bound) {
@@ -907,34 +902,37 @@ ActorRender BuildActorRender(const LiveActor &a_state, ActorStacks &a_stacks,
     }
   }
   if (a_stacks.requests.empty()) {
-    return unbuilt;
+    return RenderNotBuilt{};
   }
   PhaseTrace phases{Trace::Event::kMetrics, "actor_render", a_stacks.actor};
-  PlanOutcome outcome = phases.Measure("plan_us", [&] {
-    return RenderPlanFor(a_state, a_stacks, a_settings, a_stores);
-  });
-  if (const PlanAwaited *awaited = Get<PlanAwaited>(outcome)) {
+  std::expected<PlanOrJob, std::string> outcome =
+      phases.Measure("plan_us", [&] {
+        return RenderPlanFor(a_state, a_stacks, a_settings, a_stores);
+      });
+  if (!outcome) {
+    FailStackOutputs(a_stacks, outcome.error());
+    return RenderNotBuilt{};
+  }
+  if (const Orchestration::PlanAwaited *awaited =
+          Get<Orchestration::PlanAwaited>(*outcome)) {
     phases.Add("plan", "awaited");
     phases.Emit();
-    return ActorRender{*awaited};
+    return *awaited;
   }
-  RenderPlan *plan = Get<RenderPlan>(outcome);
+  RenderPlan *plan = Get<RenderPlan>(*outcome);
   if (!plan) {
-    const PlanFailed *failed = Get<PlanFailed>(outcome);
-    FailStackOutputs(a_stacks,
-                     failed ? failed->problem : std::string{"no render plan"});
-    return unbuilt;
+    FailStackOutputs(a_stacks, "no render plan");
+    return RenderNotBuilt{};
   }
-  const InstallLevelChoice choice = ChooseInstallLevel(*plan, full, a_bound);
-  std::expected<PlanSizes, std::string> sizes =
-      SizesFor(*plan, AtLevel(full, choice.level).sizes);
-  if (!sizes) {
-    FailStackOutputs(a_stacks, sizes.error());
-    return unbuilt;
+  std::expected<RenderBuild, std::string> build =
+      RenderBuildAt(*plan, full, a_bound);
+  if (!build) {
+    FailStackOutputs(a_stacks, build.error());
+    return RenderNotBuilt{};
   }
   phases.Measure("attach_us", [&] {
     const std::shared_ptr<RenderInstance> render =
-        std::make_shared<RenderInstance>(std::move(*plan), std::move(*sizes),
+        std::make_shared<RenderInstance>(std::move(*plan), build->sizes,
                                          a_stacks.geometries,
                                          LiveGraphs(a_state));
     AttachRender(a_stacks, render);
@@ -943,27 +941,56 @@ ActorRender BuildActorRender(const LiveActor &a_state, ActorStacks &a_stacks,
   });
   phases.Add("plan", "built");
   phases.Emit();
-  return ActorRender{choice};
+  return std::move(*build);
 }
 
-std::string LevelText(const ActorRender &a_render) {
-  if (const InstallLevelChoice *choice =
-          Get<InstallLevelChoice>(a_render.outcome)) {
-    return std::string{LevelName(choice->level)};
+std::string LevelText(const RenderOutcome &a_render) {
+  if (const RenderBuild *build = Get<RenderBuild>(a_render)) {
+    return std::string{LevelName(build->level)};
   }
-  return Is<PlanAwaited>(a_render.outcome) ? "awaited" : "none";
+  return Is<Orchestration::PlanAwaited>(a_render) ? "awaited" : "none";
 }
 
-std::string_view ResultText(const ActorRender &a_render) {
-  if (Is<InstallLevelChoice>(a_render.outcome)) {
+std::string_view ResultText(const RenderOutcome &a_render) {
+  if (Is<RenderBuild>(a_render)) {
     return "attached";
   }
-  return Is<PlanAwaited>(a_render.outcome) ? "awaited" : "no_render";
+  return Is<Orchestration::PlanAwaited>(a_render) ? "awaited" : "no_render";
 }
 
-std::uint64_t ChargedBytesOf(const ActorRender &a_render) {
-  const InstallLevelChoice *choice = Get<InstallLevelChoice>(a_render.outcome);
-  return choice ? choice->chargedBytes : 0;
+std::uint64_t ChargedBytesOf(const RenderOutcome &a_render) {
+  const RenderBuild *build = Get<RenderBuild>(a_render);
+  return build ? build->chargedBytes : 0;
+}
+
+void KeepRender(LiveActor &a_state, const RenderOutcome &a_render) {
+  if (const Orchestration::PlanAwaited *awaited =
+          Get<Orchestration::PlanAwaited>(a_render)) {
+    a_state.awaitedPlan = JobIdOf(awaited->job);
+    a_state.firstDraw.reset();
+    return;
+  }
+  a_state.awaitedPlan.reset();
+  if (const RenderBuild *build = Get<RenderBuild>(a_render)) {
+    a_state.renderLevel = build->level;
+    a_state.holding = IntermediateHolding::kHeld;
+  }
+  StartFirstDraw(a_state);
+}
+
+Orchestration::RenderEvent RenderEventOf(const LiveActor &a_state,
+                                         const RenderOutcome &a_render) {
+  if (const Orchestration::PlanAwaited *awaited =
+          Get<Orchestration::PlanAwaited>(a_render)) {
+    return *awaited;
+  }
+  const RenderBuild *build = Get<RenderBuild>(a_render);
+  if (!build) {
+    return Orchestration::InstalledWithoutRender{};
+  }
+  return Orchestration::Installed{
+      build->level, a_state.firstDraw ? a_state.firstDraw->slots.size() : 0,
+      build->levelCosts, build->chargedBytes};
 }
 
 std::optional<std::size_t> LightSourceInstance(const ActorLightPlan &a_plan,
@@ -1265,7 +1292,7 @@ void Manager::InstallActor(RE::Actor &a_actor, ActorDecision a_decision,
   const RE::FormID actorID = a_actor.GetFormID();
   PhaseTrace phases{Trace::Event::kMetrics, "actor_install", actorID};
   std::expected<LiveActor, std::string> state = phases.Measure("live_us", [&] {
-    return LiveActorFor(a_actor, a_decision.facts,
+    return LiveActorFor(a_actor, a_decision.facts, tracked_[actorID].models,
                         std::move(a_decision.planned), a_settings);
   });
   if (!state) {
@@ -1285,7 +1312,12 @@ void Manager::InstallActor(RE::Actor &a_actor, ActorDecision a_decision,
     return;
   }
   phases.Measure("place_us", [&] {
-    PlaceInstances(*state, actorID, a_replaced, a_settings);
+    const InstallBound bound =
+        InstallBoundOf(actorID, a_actor, a_replaced, a_settings);
+    const RenderOutcome built =
+        PlaceInstances(*state, actorID, bound, a_replaced, a_settings);
+    budget_ = Released(budget_, a_replaced);
+    KeepActorRender(actorID, *state, built);
   });
   phases.Measure("lights_us", [&] { PlaceLightsOf(&a_actor, *state); });
   phases.Measure("report_us", [&] {
@@ -1397,13 +1429,10 @@ Actors::ActorPlan Manager::InstalledPlanOf(RE::FormID a_actorID) const {
 
 std::expected<LiveActor, std::string>
 Manager::LiveActorFor(RE::Actor &a_actor, const Actors::ActorFacts &a_facts,
-                      CatalogMatches a_planned, const Settings &a_settings) {
-  const auto tracked = tracked_.find(a_actor.GetFormID());
-  if (tracked == tracked_.end()) {
-    return std::unexpected{std::string{"the actor is not tracked"}};
-  }
+                      const ModelTable &a_models, CatalogMatches a_planned,
+                      const Settings &a_settings) {
   std::expected<std::vector<LivePiece>, std::string> pieces =
-      LivePiecesOf(a_actor, a_facts, tracked->second.models);
+      LivePiecesOf(a_actor, a_facts, a_models);
   if (!pieces) {
     return std::unexpected{std::move(pieces.error())};
   }
@@ -1490,57 +1519,50 @@ void Manager::CarryInstanceTime(LiveInstance &a_instance, RE::FormID a_actor,
   }
 }
 
-void Manager::PlaceInstances(LiveActor &a_state, RE::FormID a_actorID,
-                             std::uint64_t a_replaced,
-                             const Settings &a_settings) {
+RenderOutcome Manager::PlaceInstances(LiveActor &a_state, RE::FormID a_actorID,
+                                      const InstallBound &a_bound,
+                                      std::uint64_t a_replaced,
+                                      const Settings &a_settings) {
   for (LiveInstance &instance : a_state.instances) {
     if (instance.signals && instance.environment) {
       instance.signals->Tick(*instance.environment, {0.0f, 0.0f});
     }
   }
-  const RE::NiPointer<RE::Actor> actor = a_state.actor.get();
-  const InstallBound bound =
-      actor ? InstallBoundOf(a_actorID, *actor, a_replaced, a_settings)
-            : InstallBound{};
   PhaseTrace phases{Trace::Event::kMetrics, "actor_place", a_actorID};
   ActorStacks stacks{.actor = a_actorID};
   const std::size_t geometries = phases.Measure("geometry_us", [&] {
     return PlaceGeometries(a_state, a_settings, stacks);
   });
-  const ActorRender built = phases.Measure("render_us", [&] {
+  RenderOutcome built = phases.Measure("render_us", [&] {
     return BuildActorRender(
         a_state, stacks, a_settings,
-        {renderPlans_, warningHistory_, planQueue_, planJobs_}, bound);
+        {renderPlans_, warningHistory_, planQueue_, planJobs_}, a_bound);
   });
   a_state.fullSizes = PlanSizes{stacks.sizes};
-  budget_ = Released(budget_, a_replaced);
-  KeepActorRender(a_actorID, a_state, built);
   phases.Add("geometries", std::to_string(geometries));
   phases.Add("level", LevelText(built));
-  phases.Add("finest_level", std::string{LevelName(bound.finest)});
-  if (bound.headroom) {
+  phases.Add("finest_level", std::string{LevelName(a_bound.finest)});
+  if (a_bound.headroom) {
     phases.Add("replaced_bytes", std::to_string(a_replaced));
-    phases.Add("headroom_bytes", std::to_string(*bound.headroom));
+    phases.Add("headroom_bytes", std::to_string(*a_bound.headroom));
     phases.Add("admitted_bytes", std::to_string(ChargedBytesOf(built)));
   }
   phases.Emit();
+  return built;
 }
 
 void Manager::KeepActorRender(RE::FormID a_actorID, LiveActor &a_state,
-                              const ActorRender &a_render) {
-  if (const PlanAwaited *awaited = Get<PlanAwaited>(a_render.outcome)) {
-    a_state.awaitedPlan = awaited->job;
-    a_state.firstDraw.reset();
-    return;
+                              const RenderOutcome &a_render) {
+  KeepRender(a_state, a_render);
+  if (const RenderBuild *build = Get<RenderBuild>(a_render)) {
+    SetAppliedResolution(a_state, build->level);
+    a_state.levelCosts = build->levelCosts;
+    KeepInstallLevel(a_actorID, build->level);
+    budget_ = Charged(budget_, build->chargedBytes);
   }
-  a_state.awaitedPlan.reset();
-  if (const InstallLevelChoice *choice =
-          Get<InstallLevelChoice>(a_render.outcome)) {
-    SetAppliedResolution(a_state, choice->level);
-    KeepInstallLevel(a_actorID, choice->level);
-    budget_ = Charged(budget_, choice->chargedBytes);
+  if (a_state.firstDraw) {
+    a_state.firstDraw->beganFrame = renderFrame_;
   }
-  StartFirstDraw(a_state, renderFrame_);
 }
 
 void Manager::DrainPlanJobs(const Settings &a_settings) {
@@ -1605,7 +1627,7 @@ void Manager::RebuildAwaitedRender(RE::FormID a_actorID, LiveActor &a_state,
   ActorStacks stacks{.actor = a_actorID};
   CollectActorStacks(a_state, a_settings, stacks);
   const InstallBound bound = InstallBoundOf(a_actorID, *actor, 0, a_settings);
-  const ActorRender built = BuildActorRender(
+  const RenderOutcome built = BuildActorRender(
       a_state, stacks, a_settings,
       {renderPlans_, warningHistory_, planQueue_, planJobs_}, bound);
   a_state.fullSizes = PlanSizes{stacks.sizes};
@@ -1785,6 +1807,14 @@ std::size_t Manager::RetireActor(RE::FormID a_actorID) {
       tracked->second.returnBytes = bytes;
     }
   }
+  return RetireActorResources(a_actorID);
+}
+
+std::size_t Manager::RetireActorResources(RE::FormID a_actorID) {
+  const auto it = live_.find(a_actorID);
+  if (it == live_.end()) {
+    return 0;
+  }
   applications_.Retire(a_actorID, it->second.applications);
   const std::size_t recipes = LiveInstanceCount(it->second);
   const std::uint32_t now = NowMS();
@@ -1807,5 +1837,131 @@ std::size_t Manager::RetireActor(RE::FormID a_actorID) {
     lab->InvalidatePreviews();
   }
   return recipes;
+}
+
+void Manager::ForgetActorResources(RE::FormID a_actorID) {
+  animations_.Stop(a_actorID);
+  ForgetAnimEvents(a_actorID);
+  AbandonApplications(a_actorID);
+  if (const std::size_t retired = RetireActorResources(a_actorID);
+      retired > 0 && GetSettings().verboseLogging) {
+    logger::info("actor {:08X}: retired {} recipe(s)", a_actorID, retired);
+  }
+  applications_.ClearReinstall(a_actorID);
+  models_.erase(a_actorID);
+  stale_.erase(a_actorID);
+  forgets_.erase(a_actorID);
+}
+
+Orchestration::CommandResult
+Manager::InstallLiveActor(RE::Actor &a_actor,
+                          const Orchestration::Install &a_command,
+                          const TickContext &a_context) {
+  const RE::FormID actorID = a_actor.GetFormID();
+  const SyncMeter meter{actorID};
+  const Settings &settings = a_context.settings;
+  PhaseTrace phases{Trace::Event::kMetrics, "actor_install", actorID};
+  std::expected<LiveActor, std::string> state = phases.Measure("live_us", [&] {
+    return LiveActorFor(a_actor, a_command.facts, models_[actorID],
+                        {a_context.inputs.catalog, a_command.planned.matches},
+                        settings);
+  });
+  const Orchestration::ActorId id = Orchestration::ActorOf(actorID);
+  if (!state) {
+    logger::error("actor {:08X} ({}): {}; nothing installed", actorID,
+                  a_actor.GetName(), state.error());
+    phases.Emit();
+    return Orchestration::InstallFailed{id, std::move(state.error())};
+  }
+  if (TextureLab *lab = TextureLab::GetSingleton()) {
+    lab->InvalidatePreviews();
+  }
+  if (state->matches.placements.empty()) {
+    if (settings.verboseLogging) {
+      logger::info("actor {:08X} ({}): {} piece(s), no recipe placed", actorID,
+                   a_actor.GetName(), state->pieces.size());
+    }
+    phases.Emit();
+    return Orchestration::ActorEvent{id,
+                                     Orchestration::InstalledWithoutRender{}};
+  }
+  const RenderOutcome built = phases.Measure("place_us", [&] {
+    return PlaceInstances(*state, actorID, a_command.bound,
+                          a_command.replacedBytes, settings);
+  });
+  KeepRender(*state, built);
+  phases.Measure("lights_us", [&] { PlaceLightsOf(&a_actor, *state); });
+  phases.Measure("report_us", [&] {
+    ReportApplied(a_actor, *state, settings,
+                  a_command.kind == Orchestration::InstallKind::kReinstall
+                      ? Actors::SyncKind::kReinstalled
+                      : Actors::SyncKind::kInstalled);
+  });
+  phases.Emit();
+  Orchestration::ActorEvent event{id, RenderEventOf(*state, built)};
+  live_[actorID] = std::move(*state);
+  if (applications_.TakeEquipped(actorID)) {
+    FireEquip(actorID);
+  }
+  return event;
+}
+
+Orchestration::RenderEvent
+Manager::BuildAwaitedRender(RE::FormID a_actorID, LiveActor &a_state,
+                            const InstallBound &a_bound,
+                            const Settings &a_settings) {
+  const std::optional<JobId> arrived =
+      std::exchange(a_state.awaitedPlan, std::nullopt);
+  ActorStacks stacks{.actor = a_actorID};
+  CollectActorStacks(a_state, a_settings, stacks);
+  const RenderOutcome built = BuildActorRender(
+      a_state, stacks, a_settings,
+      {renderPlans_, warningHistory_, planQueue_, planJobs_}, a_bound);
+  a_state.fullSizes = PlanSizes{stacks.sizes};
+  KeepRender(a_state, built);
+  if (TextureLab *lab = TextureLab::GetSingleton()) {
+    lab->InvalidatePreviews();
+  }
+  TracePlanJob(ResultText(built),
+               a_state.awaitedPlan ? a_state.awaitedPlan : arrived, a_actorID,
+               {{"level", LevelText(built)},
+                {"finest_level", std::string{LevelName(a_bound.finest)}},
+                {"admitted_bytes", std::to_string(ChargedBytesOf(built))}});
+  return RenderEventOf(a_state, built);
+}
+
+std::vector<Orchestration::PlanJobDone> Manager::DrainPlanJobs() {
+  std::vector<Orchestration::PlanJobDone> finished;
+  for (JobDone<PlanBuildOutput> &done : planQueue_.TakeDone()) {
+    BookAfterClose closed = Closed(std::move(planJobs_), done.id);
+    planJobs_ = std::move(closed.book);
+    const RE::FormID submitter = closed.job ? closed.job->actor : 0;
+    finished.push_back(PlanJobDoneOf(done.id, closed.job, done.result));
+    if (!closed.job) {
+      TracePlanJob("dropped", done.id, submitter,
+                   Appended({{"reason", "stale"}}, TimingFields(done.timing)));
+      continue;
+    }
+    if (done.result) {
+      LogPlanWarnings(done.result->warnings, warningHistory_);
+    }
+    if (!done.result || !done.result->plan) {
+      TracePlanJob(
+          "failed", done.id, submitter,
+          Appended({{"problem", ProblemOf(done)}}, TimingFields(done.timing)));
+      continue;
+    }
+    EmitPlanBuild(submitter, "worker", closed.job->key.stacks.size(),
+                  *done.result);
+    TracePlanJob(
+        "done", done.id, submitter,
+        Appended(TimingFields(done.timing),
+                 {{"steps", std::to_string(done.result->plan->steps.size())},
+                  {"unfinished", std::to_string(planQueue_.Unfinished())}}));
+    renderPlans_.Store(std::move(closed.job->key),
+                       std::move(*done.result->plan),
+                       std::move(closed.job->graphs));
+  }
+  return finished;
 }
 }
