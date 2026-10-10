@@ -22,7 +22,8 @@ test covers it.
   reductions and previews.
 - `RenderInstance` (`RenderInstance.h`) executes one actor's `RenderPlan`.
   `BuildActorRender` (`engine/ManagerApply.cpp`) creates one instance per
-  actor, and every geometry of the actor shares it through
+  actor from the install program's request (`planners/InstallProgram.h`), and
+  every geometry of the actor shares it through
   `GeometryInputs::render`. A resolution resize (`engine/ActorResize.h`)
   creates a second instance with `AtSizes`, which copies the plan, the
   `GeometryInputs` and the graphs and takes new sizes. The second instance
@@ -254,7 +255,7 @@ clone.
 ## How a stack flows
 
 ```
-LiveActor stack requests                      engine/ManagerApply.cpp
+ActivateOutputs stack requests                planners/InstallProgram.cpp
   │  BuildActorRender: a cache hit, or BuildPlanFrom   planners/RenderPlanJob.h
   │  on the plan worker (the sync on verification):
   │  CollectTextureDemand, then

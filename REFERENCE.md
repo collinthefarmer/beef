@@ -312,7 +312,7 @@ atom   := number | "[" expr "," expr ("," expr)? "]" | "(" expr ")"
   enchantment field runs once and gets a content key. The input's identity
   is its value (`enchantment:<field>:<bits>`, `EnchantmentIdentity` in
   `planners/ValueIdentity.h`, which the template-cost test also calls), taken from `GeometryInputs::enchantment`,
-  which `LocateStackOutput` fills per instance from `ActorEnvironment`. An
+  which `StackInputsOf` fills per instance from `ActorEnvironment`. An
   identity by value is required: the render plan key (W2) reads static input
   identities with the actor left out, so an identity by instance would let
   two actors with different enchantments share a plan. Before 2026-10-07
@@ -946,7 +946,7 @@ diffuse path through `PbrMaterial::DiffusePath` and never through
 the displacement mean, a blocking GPU readback observation does not need.
 `actor_decide` traces the observe, plan and advance times. An install then
 traces `actor_install` (live actor, placement, lights, report),
-`actor_place` (geometry bindings, render), `actor_render` (plan, attach) and,
+`actor_place` (surface plan, bindings and output activation; render), `actor_render` (plan, attach) and,
 on a plan build, `render_plan_build` (demand collection, lowering; `thread`
 names the main thread or the plan worker). A
 2026-10-05 Vigilant sync spent about 1 ms observing and planning, 10 ms
@@ -1562,13 +1562,13 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
 - An actor accepts a result only when its `LiveActor::awaitedPlan` names that
   job (`StepFor`). A reinstall makes a new `LiveActor`, and a retire removes
   it, so neither can accept an older job's plan.
-- An actor whose job built or went stale collects its stacks again
-  (`CollectActorStacks`) and runs `BuildActorRender`. A built plan is in the
-  cache by then, so the build is a cache hit when the stacks still give the
-  job's key. Stacks with another key get a new job. A stale job therefore
+- An actor whose job built or went stale reads its surface plan back
+  (`SurfacePlanOf`), runs the install program from `ActivateOutputs` and runs
+  `BuildActorRender`. A built plan is in the cache by then, so the build is a
+  cache hit when the stacks still give the job's key. Stacks with another key get a new job. A stale job therefore
   makes its actors ask again and never leaves them waiting.
 - An actor whose job failed records the problem on every stack output
-  (`FailStackOutputs`), as a synchronous failure does.
+  (`FailedOutputs`), as a synchronous failure does.
 - `PlanJobDoneOf` turns a finished job into the tick core's fact. A stale job
   is `PlanJobBuilt`, so its awaiter rebuilds and asks again, as `StepFor`
   does (decision Q3 of `docs/plans/pure-tick-r4-2026-10-10.md`). A failed job
@@ -2798,7 +2798,7 @@ cancel by the user instead of the load.
   manager decided, after the budget, across reinstalls.
   `LiveActor::appliedResolution` is the level the current instance uses. An
   install that builds no render instance (`NoRender`) records no level.
-- The level divides the side after `Compositor::StackSize`, which raises a
+- The level divides the side after `StackSizeOf`, which raises a
   stack to its slot's base map. A stack draws over the armor's own map and
   replaces it in the material, so a lower level also lowers the armor's own
   texture detail, not only the effect's. That is invisible only while the
@@ -3562,6 +3562,75 @@ The engine runs it once per tick. "The engine runs the core" below says how.
 - `estimated_bytes` is the core's estimate (`PlannedBytesOf(World)`).
   `engine_estimated_bytes` is the planned holding of the engine's renders of
   actors that have rendered. The two agree on settled windows.
+
+### The install program (`planners/InstallProgram.*`, `engine/InstallStages.*`)
+
+- An install runs the stages in one executor call (`Manager::InstallLiveActor`):
+  `PlanSurfaces`, `KeepSurfacePlan`, `BindSurfaces`, `ActivateOutputs`,
+  `StackSizeOf` for each stack, `RenderBuildRequestOf`, `PlanRouteOf`,
+  `RenderBuildAt`, `AttachmentsOf`, `UnpublishedSlotsOf` and `PlanLightsOf`.
+  The stages are pure and native-tested. `BindSurfaces`, `ApplyAttachments`
+  and `PlaceLights` are the executors that call the engine.
+- `BuildAwaitedRender` and `FailAwaitedRender` gather the surface plan again
+  from the `LiveActor` (`SurfacePlanOf`, `BoundSurfacesOf`) and run the
+  program from `ActivateOutputs`. The gather gives the plan key of the
+  install, so the build after a plan job is a cache hit. A geometry that a
+  claim retired has an empty plan (`RetireGeometry`), so it requests no stack.
+- `GeometryPlacementPlan::placed` holds pointers into the recipe catalog
+  (`PlacedRecipe::recipe`). A `RebuildAll` swaps the catalog, so
+  `KeepSurfacePlan` does not copy `placed` and `SurfacePlanOf` leaves it
+  empty. `ActivateOutputs` and `AttachmentsOf` do not read it.
+- The install executor reads a geometry's slot targets right after it binds
+  that geometry. A later bind can detach an earlier geometry's material when
+  the two geometries share a shader property.
+- The adapters find each geometry, placement and output by its id at the
+  moment they write. No stage keeps a reference into a `LiveActor`.
+- The executor copies the `GeometryInputs` for the `RenderInstance` after it
+  clears each geometry's render. A copy that held the new render would keep
+  the instance alive through its own inputs.
+- **Plan route.** `PlanRouteOf` chooses one of seven routes from the cache
+  setting, the key, a cached plan, verification and an open job: `kFresh`
+  (the cache is off), `kUncacheable`, `kCached`, `kVerifyCached`,
+  `kShareJob`, `kSubmitJob` and `kFreshStored` (a verifying miss). A refused
+  submission builds a fresh plan and stores it.
+- The plan cache and the job book stay in the engine. They are mutable state
+  that actors share, which the boundary rule gives to the core. They are an
+  exception because they change when a plan is ready, not which plan an actor
+  gets. A cached plan has the structure of a fresh plan, and verification
+  (`hit_verified`, `mismatch`) checks it.
+- **Stack size.** `StackSizeOf` reads two facts: the largest side of the
+  material's native maps (0 when no map has an extent), and the largest side
+  of the slot's base map. The engine gives no base side when the slot is
+  height and the material has flat displacement, when the base map is a
+  placeholder, or when its extent is unknown.
+- The requested size is the largest native side (4096 when it is 0), divided
+  by the texture scale and then by the slot's resolution. Each step clamps to
+  64..4096. Without a base side, the stack takes the requested size. With a
+  base side, the stack takes the base side, clamped between the requested
+  size and the larger of the native side and the requested size.
+- `StackSizeOf` takes the texture scale as a `Resolution`, because the layer
+  graph (`tools/gate.py`) does not let `planners/` include `Settings.h`.
+  `ScaleResolutionOf` converts `Settings::textureScale`. The two enums divide
+  by 1, 2 and 4.
+- The executor computes `animated` of a stack's `RenderOutput` as
+  `IsAnimated` of the instance graph at the output. The instance graph can
+  carry a variant, and no stage sees it. A merged chain's `animated` comes
+  from its `SlotStackPlan` (`AttachmentsOf`).
+- **Output states.** `PlacedOutput::state` is an `OutputState`. An output
+  that holds a stack is pending, rendered or failed with the render failure.
+  An output with any other problem holds no stack. So a render outcome
+  changes only an output that holds a stack (`RecordRender`,
+  `engine/ManagerTick.cpp`), and a lost geometry fails only such an output.
+- `ObserveOutput` reports a render failure only after the actor has rendered,
+  and any other problem at once. `RetireGeometry` replaces a render failure
+  with the retire problem. The studio's output row shows the render failure.
+- `Installed::total` is the length of the list from `UnpublishedSlotsOf`:
+  every slot of every stack plan, in geometry order. The agreement check
+  compares it with the actor's first draw.
+- `PlaceLights` writes the light problems of `PlanLightsOf` first. It skips a
+  light whose instance has no signals or whose geometries are all gone, and
+  the problem "no eligible light output" stays then. `LightProblemOf`
+  branches on the engine's result, so it stays in the executor.
 
 ## Generated texture references
 

@@ -459,7 +459,10 @@ GeometryPlacementPlan{ placed, sources, plan }
   ├─▶ PlanStacks -> GeometryStackPlan                        StackPlan.cpp
   ├─▶ PlanBinding -> BindingPlan                             BindingPlan.cpp
   ▼
-BuildActorRender: one RenderStackRequest per placed output  engine/ManagerApply.cpp
+ActivateOutputs: one StackRequest per active output         InstallProgram.cpp
+  │  StackSizeOf per stack, RenderBuildRequestOf: sides       InstallProgram.cpp
+  ▼
+BuildActorRender: PlanRouteOf, then a plan build            engine/ManagerApply.cpp
   │  CollectTextureDemand per layer source and mask          TextureDemand.cpp
   │    IdentifyValue -> TextureKey; equal keys coalesce      ValueIdentity.cpp
   │    FieldProgram::Compile for a sampled expression        FieldProgram.cpp

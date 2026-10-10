@@ -39,30 +39,33 @@ resolution swap writes no line by default. With `VerboseLogging`,
 also adds each piece, recipe, light and geometry of an apply, and the
 retirement count.
 
-**Per-actor render assembly.** `Manager::SyncActor` builds one `LiveActor` per
-actor. `PlaceInstances` collects every **stack** request of the actor into one
-`ActorStacks`. `BuildActorRender` turns those requests into one `RenderPlan`
-(`BuildRenderPlan`, `planners/RenderPlan.h`) and one `RenderInstance`. Every
-bound geometry of the actor shares that `RenderInstance` through
-`GeometryInputs::render`. Each placed **output** receives a `RenderOutput` for
-its step of the plan. A plan failure writes its text into every request's
-`PlacedOutput::problem` through `FailStackOutputs`. A request that the plan
-does not lower gets the problem `stack was not lowered`.
-`PlaceInstances` keeps the full-resolution sizes of the stacks in
-`LiveActor::fullSizes`. `Manager::InstallBoundOf` gives the finest level of
-the install and the budget's headroom. For a reinstall, the finest level is
-the target level. `SyncActor` reads the actor's planned bytes
-(`PlannedBytesOf`) before `RetireActor`, and the headroom counts them as
-freed. `BuildActorRender` chooses the level
-after it has the plan (`ChooseInstallLevel`, `ActorBudget.h`). `PlaceInstances`
-keeps that level in `LiveActor::appliedResolution` and
-`TrackedActor::targetResolution` (`KeepInstallLevel`). It takes the replaced
-bytes off `Manager::budget_` (`Released`) and charges its own bytes
-(`Charged`). A render that is not built (`NoRender`) records no level.
+**Per-actor render assembly.** The `Install` executor
+(`Manager::InstallLiveActor`, `ManagerApply.cpp`) builds one `LiveActor` per
+actor and runs the **install program**. The program's stages are pure
+functions in `planners/InstallProgram.h`. The adapters that read and write a
+`LiveActor` are in `InstallStages.h`. `PlanSurfaces` plans each geometry's
+placements, stacks and bindings, and `KeepSurfacePlan` copies the plan onto
+the `LiveActor`. `BindSurfaces` installs each material and shell. It reads the
+geometry's slot targets into a `BoundSurfaces` right after that bind.
+`ActivateOutputs` sets each output's `OutputState` and lists the **stack**
+requests and the chains. `StackSizeOf` sizes each stack, and
+`RenderBuildRequestOf` gives each stack a side. `BuildActorRender` turns the
+request into one `RenderPlan` and one `RenderInstance`. Every bound geometry
+of the actor shares that `RenderInstance` through `GeometryInputs::render`.
+`AttachmentsOf` matches each stack to its plan output, and `ApplyAttachments`
+gives each placed **output** a `RenderOutput`. A stack that the plan does not
+lower fails its output with the problem `stack was not lowered`. A plan
+failure fails every requested output (`FailedOutputs`). `LiveActor::fullSizes`
+keeps the full-resolution sizes of the stacks. `RenderBuildAt` chooses the
+level from the plan's level costs and the command's `InstallBound`.
+`PlanLightsOf` gives each instance's light problem and the lights to place,
+and `PlaceLights` places them. `UnpublishedSlotsOf` lists the slots of the
+first draw, and `Installed::total` is their count.
 
 **Plan builds on a worker.** On a plan cache miss, `BuildActorRender` submits
 the plan build to one worker thread and does not build the plan in the sync
-(`RenderPlanFor`, `ManagerApply.cpp`). The job input (`PlanBuildInput`,
+(`RenderPlanFor`, `ManagerApply.cpp`). `PlanRouteOf`
+(`planners/InstallProgram.h`) chooses the route. The job input (`PlanBuildInput`,
 `planners/RenderPlanJob.h`) owns its graphs, recipe outputs and identity
 facts (`PlanInputOf`). `JobQueue` (`JobQueue.h`) is the generic queue: one
 worker, owned inputs, a function pointer as the job, a bound of 16
@@ -72,10 +75,12 @@ same key share one job. The waiting actor keeps the job in
 `LiveActor::awaitedPlan` and has no render instance. Its materials keep the
 vanilla look, `RenderGeometry` hides its shells, and its applications stay
 `prepared`. `Manager::DrainPlanJobs` runs in each tick before the actors
-render. It stores each built plan in the cache. Each waiting actor then
-collects its stacks again (`CollectActorStacks`) and runs `BuildActorRender`
-from the cache (`RebuildAwaitedRender`). The install level is chosen then.
-A failed job fails the actor's stack outputs (`FailAwaitedRender`). A stale
+render. It stores each built plan in the cache. A `BuildAwaitedRender`
+command then reads the actor's surface plan back from its `LiveActor`
+(`SurfacePlanOf`, `BoundSurfacesOf`) and runs the install program again from
+`ActivateOutputs`. The key is the job's key, so the build is a cache hit. The
+install level is chosen then. A `FailAwaitedRender` command runs the same
+activation and fails every requested output with the job's problem. A stale
 job, one that a load or a recipe reload removed from the book, is dropped,
 and its actors ask again. Cache verification, a disabled cache, an
 uncacheable key and a full queue build the plan in the sync.
@@ -213,7 +218,7 @@ debug recipes out, and `DecideActor` asks for it while the
 the editor pages show them. `LiveActorFor` stores it in `LiveActor::catalog` with the
 `ActorMatches` it was planned with, so each `RecipeId` indexes the catalog it
 came from. `LiveInstance::recipe` comes from `SharedRecipe` and keeps the
-catalog alive. `PlaceInstances` and `PlaceLightsOf` read `RecipesOf(state)`,
+catalog alive. `PlanSurfaces` and `PlanLightsOf` read `RecipesOf(state)`,
 not `LoadedRecipes()`. `Manager::ChangeAndRebuildActors` runs its synchronous
 mutation callback. It then asks each affected actor for a reinstall
 (`MarkReinstall`); the actor keeps its effects until its sync replaces them.
@@ -394,8 +399,7 @@ below the material's native size.
 | `Loaded3D`, `DistanceToPlayer` | The engine facts that observation and the tick share: the actor is not deleted and has 3D; the distance to the player (none for the player). | `ActorObservation.h` |
 | `EvictionFor`, `EvictionAction` | The pure decision: `kEvict` past the distance, `kRestore` inside 80% of it, `kNone` otherwise. The distance is `EvictDistance` or the smaller budget radius (`EvictDistanceNow`). | `planners/Eviction.h` |
 | `Settings::evictDistance` | The eviction radius in game units. 0 disables eviction. `kMaxEvictDistance` (20000) caps it. | `Settings.h` |
-| `RuntimeSizes` | Derives the base and maximum stack size from the material's largest native texture and `Settings::textureScale`. | `ManagerApply.cpp` |
-| `SlotStackSize` | Divides the base size by `ResolutionDivisor` of the slot's `Resolution`. `CollectChainStacks` calls it before `Compositor::StackSize`. | `ManagerApply.cpp` |
+| `StackSizeFacts`, `StackSizeOf`, `StackSizeFactsOf`, `ScaleResolutionOf` | The size of one stack: the largest native map side of the material and the side of the slot's base map, if usable. `StackSizeOf` divides the largest side by the texture scale and the slot's `Resolution` and clamps the result over the base map. `StackSizeFactsOf` gathers the facts from the engine textures, and `ScaleResolutionOf` converts `Settings::textureScale`. | `planners/InstallProgram.h`, `ManagerApply.cpp`, `InstallStages.h` |
 | `DefaultSlotResolution`, `ResolutionDivisor` | The per-slot default `Resolution` and its divisor (`kFull` 1, `kHalf` 2, `kQuarter` 4). | `recipe/Recipe.h` |
 | `SurfaceOutput::resolution` | An optional `Resolution` that overrides `DefaultSlotResolution` for that output's slot. | `recipe/Recipe.h` |
 | `Settings::renderTargetBudgetMiB` | The cap on the render target allowance in MiB. 0 sets no cap. `kMaxRenderTargetBudgetMiB` (65536) caps it. A regression run can replace it (`RegressionRenderTargetBudgetMiB`). | `Settings.h` |
@@ -429,7 +433,7 @@ without the manager.
 | `LiveGeometry` | One bound geometry: its `Actors::GeometryRef` (`ref`, set by `LivePiecesOf` through `Actors::GeometryRefOf`), engine geometry and shader-property pointers, `GeometryInputs`, `MaterialBinding`, `ShellBinding`, its `GeometryPlan`, `GeometryStackPlan` and `BindingPlan`, and its `PlacementId`s. Its `lost` flag marks it retired. |
 | `LiveInstance` | One recipe matched onto the actor: the `Recipe` pointer, enchantment, effect scope, `RecipeGraph`, `SignalState` and `ActorEnvironment`. It also holds the optional `LightBinding`, the light problem text, and the timing (`startMS`, `lastTime`). |
 | `LivePlacement` | The outputs bound onto one geometry: a `GeometryId` and one `PlacedOutput` per placed output. |
-| `PlacedOutput` | One placed output: its recipe output index, its `RenderOutput` (`stack`), its `problem` text and its `active`, `rendered` and `renderFailed` flags. |
+| `PlacedOutput` | One placed output: its recipe output index, its `RenderOutput` (`stack`) and its `OutputState` (`state`): inactive with a problem, pending, rendered, or failed with a problem. |
 | `ResolvedPlacement` | The placement index and instance index that `ResolvePlacement` returns. |
 | `ActorEnvironment` | The `SignalEnvironment` a `LiveInstance` ticks against. It reads actor values, actor state, the enchantment and effect shaders from the game. It holds a copy of the actor's `appliedResolution`, which `SetAppliedResolution` sets, and returns it as the `resolutionLevel` actor state. |
 
@@ -442,11 +446,11 @@ write it to the material.
 
 | Record | Description | Declared in |
 |---|---|---|
-| `LocatedGeometry` | A geometry found by `GeometryId`: its piece, its `LiveGeometry` and the id. | `ManagerApply.cpp` |
-| `LocatedStackOutput` | One slot contribution resolved to its placement, recipe, `RecipeGraph`, `SurfaceOutput` and `PlacedOutput`. | `ManagerApply.cpp` |
-| `ActorStackRequest` | One `StackTextureRequest` with its geometry and located output. | `ManagerApply.cpp` |
-| `ActorStacks` | Every stack request of one actor, with the per-geometry `GeometryInputs` and bound geometries. `BuildActorRender` reads it. | `ManagerApply.cpp` |
-| `ActorRender`, `NoRender` | The result of `BuildActorRender`: the chosen `InstallLevelChoice`, the `PlanAwaited` job, or `NoRender` when no request or no plan gave a render instance. | `ManagerApply.cpp` |
+| `LocatedGeometry`, `LocateGeometry` | A geometry found by `GeometryId`: its piece, its `LiveGeometry` and the id. | `InstallStages.h` |
+| `StackInputs` | One stack's engine inputs: the instance's recipe and `RecipeGraph`, its `SurfaceOutput`, and the geometry's `GeometryInputs` with the instance scope and enchantment values. | `ManagerApply.cpp` |
+| `ActorRenderRequest` | One actor's render request: the surface plan's geometries, the `OutputActivation`, the `RenderBuildRequest`, one `StackInputs` per stack and the `GeometryInputs` of every geometry. `BuildActorRender` reads it. | `ManagerApply.cpp` |
+| `SurfacePlanOf`, `KeepSurfacePlan`, `WriteOutputs`, `CompiledInstancesOf`, `BoundSurfacesOf` | Read a `LiveActor` into the install program's records and write the results back. `KeepSurfacePlan` copies no `GeometryPlacementPlan::placed`. | `InstallStages.h` |
+| `RenderOutcome`, `RenderNotBuilt`, `PlacedRender` | The result of `BuildActorRender`: the `RenderBuild`, the `PlanAwaited` job, or `RenderNotBuilt` when no stack or no plan gave a render instance. `PlacedRender` adds the slots of the first draw. | `Manager.h` |
 | `PlanAwaited` | The worker job whose plan the actor waits for. | `PlanJobs.h` |
 | `JobQueue`, `JobId`, `JobDone`, `JobRefusal`, `JobTiming` | The generic worker queue, a job's id, a finished job with its result or error text, the reason a job was refused (`kFull`, `kNoWorker`), and the queue wait and work time. | `JobQueue.h` |
 | `PlanQueue`, `kPlanJobCapacity` | The plan build queue and its bound of 16 unfinished jobs. | `PlanJobs.h` |
@@ -537,19 +541,21 @@ Manager::SyncActor                                              ManagerApply.cpp
   │   LiveActorFor: LivePiecesOf, the plan's matches, BuildInstances
   ▼
 Manager::PlaceInstances                                         ManagerApply.cpp
-  │   per geometry: PreparePlacement, PlaceOnGeometry
-  │     InstallSurfaces, MarkReplaced, CollectChainStacks
-  │     (SlotStackSize, Compositor::StackSize) into ActorStacks
+  │   PlanSurfaces ──▶ KeepSurfacePlan ──▶ BindSurfaces    planners/InstallProgram.h, InstallStages.h
+  │   RenderRequestOf: ActivateOutputs, StackSizeOf per stack,
+  │     RenderBuildRequestOf
   ▼
 BuildActorRender                                                ManagerApply.cpp
   │   PlanKeyOf ──▶ RenderPlanKeyOf               planners/RenderPlanKey.h
-  │   RenderPlanCache hit, or a miss:
+  │   PlanRouteOf: a cache hit, or a miss:
   │     open job for the key, or PlanInputOf ──▶ PlanQueue::Submit  JobQueue.h, PlanJobs.h
   │     (the actor waits in LiveActor::awaitedPlan)
   │     verification or a refused job: BuildPlanFrom in the sync  planners/RenderPlanJob.h
-  │   one RenderInstance per actor, AttachRender, AttachStackOutputs
+  │   RenderBuildAt, one RenderInstance per actor, AttachRender,
+  │   AttachmentsOf ──▶ ApplyAttachments
   ▼
-PlaceLightsOf, then live_[actorID] = LiveActor                 ManagerApply.cpp
+KeepRender (UnpublishedSlotsOf), PlanLightsOf ──▶ PlaceLights,
+then live_[actorID] = LiveActor                                ManagerApply.cpp
 
 PlayerCharacter::Update hook (every frame)                      Hooks.cpp
   │
@@ -563,7 +569,7 @@ Manager::OnFrame                                                ManagerTick.cpp
   ▼
 Manager::DrainPlanJobs                                          ManagerApply.cpp
   │   each finished job: RenderPlanCache::Store; each waiting actor:
-  │   CollectActorStacks ──▶ BuildActorRender, or FailStackOutputs
+  │   SurfacePlanOf, ActivateOutputs ──▶ BuildActorRender, or FailedOutputs
   ▼
 Manager::Tick                                                   ManagerTick.cpp
   │   not Loaded3D: ForgetActor

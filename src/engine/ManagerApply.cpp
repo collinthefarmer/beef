@@ -32,16 +32,13 @@
 #include "studio/Selection.h"
 
 #include <algorithm>
-#include <array>
 #include <cstddef>
 #include <expected>
 #include <format>
 #include <memory>
 #include <optional>
-#include <ranges>
 #include <string>
 #include <string_view>
-#include <unordered_set>
 #include <utility>
 #include <variant>
 #include <vector>

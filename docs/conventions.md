@@ -631,7 +631,7 @@ code.
 | `<Verb><Type>` | One handler per alternative of a variant, named after the exact alternative type. | `ExecuteCompositeStackStep`, `LowerExpressionOperation`, `ValidateSampleFieldStep` |
 | `Fill…` | Writes rows of a GPU constant buffer. | `FillProgramConstants`, `FillLayerConstants` |
 | `Bind…` | Binds textures or program inputs for a draw. | `BindProgram`, `BindLayerTextures` |
-| `Attach…` | Hands a render or its outputs to engine geometries. | `AttachRender`, `AttachStackOutputs` |
+| `Attach…` | Hands a render or its outputs to engine geometries. | `AttachRender`, `ApplyAttachments` |
 | `Expect…` | A regression step that checks a state the earlier steps produced. It waits only for the observation to catch up (`kExpectDeadlineFrames`). | `ExpectAborted`, `ExpectScratch` |
 | `Await…` | A regression step that waits for work in progress, with a deadline sized to that work. | `AwaitRendered`, `AwaitSessionActive` |
 | `Render…` | A public `TextureLab` operation that draws. | `RenderStack`, `RenderProgram` |
