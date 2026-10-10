@@ -1666,8 +1666,8 @@ them:
 - After the actor loop, `DrawHidden` draws the slots of the first draws and
   the stacks of the 7c-2 resizes. It draws only actors in view. The player
   draws first, then the actors by screen fraction, largest first
-  (`HiddenDrawOrder`).
-- The tick draws stacks until it spent 4 ms (`kHiddenDrawBudgetUs`,
+  (`UnpublishedDrawOrder`).
+- The tick draws stacks until it spent 4 ms (`kUnpublishedDrawBudgetUs`,
   `MayDrawStack`). The first stack of a tick always draws.
 - 4 ms is time, not a stack count, because one stack costs from a cached
   composite to a full chain of masks and bakes. The 7c-2 swap drew 16 stacks
