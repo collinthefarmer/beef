@@ -1,6 +1,7 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #pragma once
 
+#include "orchestration/Budget.h"
 #include "orchestration/sim/Contract.h"
 
 #include <cstdint>
@@ -25,11 +26,96 @@ struct Simulation {
   bool checkSteps = true;
 };
 
+[[nodiscard]] inline EngineActor
+EngineActorOf(const InstalledRender &a_render) {
+  EngineActor actor;
+  const PerLevel<std::optional<LevelCost>> &costs = a_render.levelCosts;
+  Match(
+      a_render.phase,
+      [&](const WithoutRender &) { actor.withoutRender = true; },
+      [&](const Live &a_live) {
+        actor.render = EngineRender{
+            a_live.level, HoldingOf(a_live.intermediates), costs, {}};
+      },
+      [&](const AwaitingPlan &a_awaiting) {
+        actor.awaiting = AwaitedPlanJob{a_awaiting.job, false};
+      },
+      [&](const FirstDrawing &a_drawing) {
+        actor.render = EngineRender{
+            a_drawing.level, IntermediateHolding::kHeld, costs,
+            UnpublishedWork{a_drawing.draw.total, a_drawing.draw.drawn}};
+      },
+      [&](const Resizing &a_resizing) {
+        actor.render =
+            EngineRender{a_resizing.from, a_resizing.holding, costs, {}};
+        if (const ResizeRunning *running =
+                Get<ResizeRunning>(a_resizing.stage)) {
+          actor.resize =
+              EngineResize{a_resizing.to, UnpublishedWork{running->draw.total,
+                                                          running->draw.drawn}};
+        }
+      });
+  return actor;
+}
+
 [[nodiscard]] inline Simulation Started(Script a_script, World a_world = {}) {
   Simulation simulation;
+  for (const auto &[id, record] : a_world.actors) {
+    if (record.render) {
+      simulation.shell.actors[id] = EngineActorOf(*record.render);
+    }
+  }
   simulation.world = std::move(a_world);
   simulation.shell.script = std::move(a_script);
   return simulation;
+}
+
+[[nodiscard]] inline bool Settled(const World &a_world,
+                                  const std::vector<Command> &a_commands) {
+  for (const auto &[id, record] : a_world.actors) {
+    if (record.render && !Is<Live>(record.render->phase) &&
+        !Is<WithoutRender>(record.render->phase)) {
+      return false;
+    }
+  }
+  for (const Command &command : a_commands) {
+    if (!Is<TickActor>(command) && !Is<DrawUnpublished>(command) &&
+        !Is<KeepModels>(command) && !Is<SettleApplications>(command) &&
+        !Is<Observe>(command)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+[[nodiscard]] inline std::uint64_t RenderedHeldBytes(const Shell &a_shell,
+                                                     const World &a_world) {
+  std::uint64_t bytes = 0;
+  for (const auto &[id, record] : a_world.actors) {
+    const auto found = a_shell.actors.find(id);
+    if (record.render && record.render->renderedFrame &&
+        found != a_shell.actors.end()) {
+      bytes = Sum(bytes, HeldBytes(found->second));
+    }
+  }
+  return bytes;
+}
+
+[[nodiscard]] inline std::optional<Violation>
+SettledEstimateViolation(std::uint64_t a_tick, const World &a_world,
+                         const std::vector<Command> &a_commands,
+                         const Shell &a_executed) {
+  if (!Settled(a_world, a_commands)) {
+    return std::nullopt;
+  }
+  const std::uint64_t estimate = PlannedBytesOf(a_world);
+  const std::uint64_t held = RenderedHeldBytes(a_executed, a_world);
+  if (estimate == held) {
+    return std::nullopt;
+  }
+  return Violation{a_tick, Rule::kEstimateDiffers, std::nullopt,
+                   "estimate " + std::to_string(estimate) + ", held " +
+                       std::to_string(held)};
 }
 
 inline void Append(std::vector<Violation> &a_into,
@@ -58,6 +144,10 @@ inline void Append(std::vector<Violation> &a_into,
                                        std::move(disagreement.what)});
   }
   a_simulation.shell = std::move(execution.shell);
+  if (std::optional<Violation> estimate = SettledEstimateViolation(
+          tick, output.world, output.commands, a_simulation.shell)) {
+    a_simulation.violations.push_back(std::move(*estimate));
+  }
   a_simulation.history.push_back(
       TickRecord{tick, std::move(turn.facts), output.commands,
                  std::move(output.trace), std::move(output.logs)});

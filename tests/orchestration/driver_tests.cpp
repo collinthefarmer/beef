@@ -67,12 +67,21 @@ void SamplesMemoryOnItsCadence() {
 }
 
 void ReportsViolationsWithTheirTick() {
+  Script script;
+  script.actors[kActor] = ScriptedActor(InView(0.6f, 200.0f));
   World world;
-  world.actors[kActor] = RecordOf(RenderIn(LiveAt(ResolutionLevel::kFull)));
-  const Simulation simulation = Ran(Started(Script{}, world), 3);
-  Equal(simulation.violations.size(), std::size_t{3},
-        "a world whose estimate is wrong fails every tick");
-  Check(simulation.violations.front().rule == Rule::kEstimateDiffers &&
+  world.actors[kActor] =
+      RecordOf(RenderIn(LiveAt(ResolutionLevel::kFull)), InView(0.6f, 200.0f));
+  Simulation started = Started(std::move(script), std::move(world));
+  if (EngineActor *engine = &started.shell.actors[kActor]; engine->render) {
+    engine->render->levelCosts = HalvingCosts(2 * kFullBytes);
+  }
+  const Simulation simulation = Ran(std::move(started), 3);
+  Equal(
+      simulation.violations.size(), std::size_t{3},
+      "an estimate that differs from the held bytes fails every settled tick");
+  Check(!simulation.violations.empty() &&
+            simulation.violations.front().rule == Rule::kEstimateDiffers &&
             simulation.violations.front().tick == 1,
         "the violation names its rule and tick");
   Check(!Report(simulation).empty(), "the report lists the violations");

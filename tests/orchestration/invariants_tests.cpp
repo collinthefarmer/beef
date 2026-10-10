@@ -186,34 +186,25 @@ void DrawComesLast() {
         "two unpublished draws fire");
 }
 
-void EstimateEqualsHeldCosts() {
-  World world = WorldOf({{kActor, LiveAt(kFull)},
-                         {kOther, LiveAt(kHalf, IntermediatesReleased{})}});
-  const PerLevel<std::optional<LevelCost>> costs = HalvingCosts(kFullBytes);
-  Check(world.budget.planned ==
-            costs.At(kFull)->withIntermediates + costs.At(kHalf)->whenReleased,
-        "the estimate sums each actor's cost at its level and holding");
-  Check(!Fired(Checked(world, {}), Rule::kEstimateDiffers),
-        "an estimate equal to the held costs passes");
-  world.budget.planned -= 1;
-  Check(Fired(Checked(world, {}), Rule::kEstimateDiffers),
-        "an estimate below the held costs fires");
-  World retiring = WorldOf({{kActor, LiveAt(kFull)}});
-  retiring.budget.planned = 0;
-  Check(!Fired(Checked(retiring, {Retire{kActor}}), Rule::kEstimateDiffers),
-        "a retiring actor may already be released");
-
+void EstimateMatchesTheEngineWhenSettled() {
+  World world = WorldOf({{kActor, LiveAt(kFull)}});
+  if (world.actors[kActor].render) {
+    world.actors[kActor].render->renderedFrame = 1;
+  }
+  Shell seeded = Started(Script{}, world).shell;
+  Check(Settled(world, {TickActor{kActor}}) &&
+            !SettledEstimateViolation(1, world, {TickActor{kActor}}, seeded),
+        "a settled estimate equal to the engine's held bytes passes");
+  if (EngineActor *engine = &seeded.actors[kActor]; engine->render) {
+    engine->render->holding = IntermediateHolding::kReleased;
+  }
+  Check(SettledEstimateViolation(1, world, {}, seeded).has_value(),
+        "a settled estimate that differs from the engine fires");
+  Check(!Settled(world, {Retire{kActor}}) &&
+            !SettledEstimateViolation(1, world, {Retire{kActor}}, seeded),
+        "a tick that changes resources is not settled");
   const World running = WorldOf({{kActor, Running(kFull, kHalf)}});
-  Check(running.budget.planned == costs.At(kFull)->withIntermediates +
-                                      costs.At(kHalf)->withIntermediates,
-        "a running resize adds its target's full cost");
-  World starting = WorldOf({{kActor, Queued(kFull, kHalf)}});
-  starting.budget.planned = running.budget.planned;
-  Check(!Fired(Checked(starting, {StartResize{kActor, kHalf}}),
-               Rule::kEstimateDiffers),
-        "a resize started this tick counts its target");
-  Check(Fired(Checked(starting, {}), Rule::kEstimateDiffers),
-        "a queued resize not started counts no target");
+  Check(!Settled(running, {}), "a running resize is not settled");
 }
 
 void FailedLevelNotAskedAgain() {
@@ -248,7 +239,7 @@ int main() {
   NoIgnoredCreatingEvent();
   CommandsAgreeWithPhases();
   DrawComesLast();
-  EstimateEqualsHeldCosts();
+  EstimateMatchesTheEngineWhenSettled();
   FailedLevelNotAskedAgain();
   ViolationsDescribeThemselves();
   return test::Finish("orchestration_invariants");

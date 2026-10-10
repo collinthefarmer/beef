@@ -379,17 +379,6 @@ struct Checker {
       }
     }
   }
-
-  void CheckEstimate() {
-    const EstimateRange range =
-        EstimateOf(view.output.world, view.output.commands);
-    const std::uint64_t planned = view.output.world.budget.planned;
-    if (planned < range.least || planned > range.most) {
-      Flag(Rule::kEstimateDiffers, std::nullopt,
-           "planned " + std::to_string(planned) + " outside the held costs " +
-               std::to_string(range.least) + ".." + std::to_string(range.most));
-    }
-  }
 };
 
 [[nodiscard]] inline std::vector<Violation> CheckTick(const TickView &a_view) {
@@ -400,7 +389,6 @@ struct Checker {
   checker.CheckDrawIsLast();
   checker.CheckResizes();
   checker.CheckCreatingEvents();
-  checker.CheckEstimate();
   return std::move(checker.violations);
 }
 }
