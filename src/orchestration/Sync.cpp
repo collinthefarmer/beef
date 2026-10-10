@@ -379,23 +379,29 @@ ActorRecord *TrackedRecord(World &a_world, ActorId a_actor) {
 }
 
 void ChargeInstall(World &a_world, const ActorEvent &a_event) {
-  if (const Installed *installed = Get<Installed>(a_event.event)) {
-    a_world.budget = Charged(a_world.budget, installed->chargedBytes);
+  const Installed *installed = Get<Installed>(a_event.event);
+  if (!installed) {
+    return;
   }
+  a_world.budget = Charged(a_world.budget, installed->chargedBytes);
 }
 
 void DropFailedInstall(World &a_world, const InstallFailed &a_failed) {
   a_world.waitingInstalls =
       Removed(std::move(a_world.waitingInstalls), FormOf(a_failed.actor));
-  if (ActorRecord *record = TrackedRecord(a_world, a_failed.actor)) {
-    record->syncState.reset();
+  ActorRecord *record = TrackedRecord(a_world, a_failed.actor);
+  if (!record) {
+    return;
   }
+  record->syncState.reset();
 }
 
 void RecordRetired(World &a_world, const Retired &a_retired) {
-  if (ActorRecord *record = TrackedRecord(a_world, a_retired.actor)) {
-    RetireRender(*record);
+  ActorRecord *record = TrackedRecord(a_world, a_retired.actor);
+  if (!record) {
+    return;
   }
+  RetireRender(*record);
 }
 
 void RecordSyncResult(World &a_world, const CommandResult &a_result) {
