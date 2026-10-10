@@ -123,6 +123,35 @@ struct Attachments {
   std::vector<PlacementOutputs> placements;
 };
 
+struct StackSizeFacts {
+  std::uint32_t nativeLargest = 0;
+  std::optional<std::uint32_t> baseLargest;
+};
+
+struct GeometrySlot {
+  GeometryId geometry{};
+  std::size_t slot = 0;
+  [[nodiscard]] bool operator==(const GeometrySlot &) const = default;
+};
+
+enum class PlanRoute {
+  kFresh,
+  kUncacheable,
+  kCached,
+  kVerifyCached,
+  kShareJob,
+  kSubmitJob,
+  kFreshStored,
+};
+
+struct PlanRouteFacts {
+  bool cacheOn = false;
+  bool keyed = false;
+  bool cached = false;
+  bool verifies = false;
+  bool jobOpen = false;
+};
+
 struct LightRequest {
   InstanceId instance{};
   std::size_t output = 0;
@@ -158,6 +187,11 @@ ActivateOutputs(const SurfacePlan &a_plan,
 [[nodiscard]] std::expected<RenderBuildRequest, std::string>
 RenderBuildRequestOf(const OutputActivation &a_activation,
                      std::span<const TextureSize> a_sizes);
+[[nodiscard]] TextureSize StackSizeOf(const StackSizeFacts &a_facts,
+                                      Resolution a_slot, Resolution a_scale);
+[[nodiscard]] std::vector<GeometrySlot>
+UnpublishedSlotsOf(std::span<const GeometryBinding> a_geometries);
+[[nodiscard]] PlanRoute PlanRouteOf(const PlanRouteFacts &a_facts) noexcept;
 [[nodiscard]] PerLevel<std::optional<LevelCost>>
 LevelCostsOf(const RenderPlan &a_plan, const PlanSizes &a_full);
 [[nodiscard]] std::expected<RenderBuild, std::string>

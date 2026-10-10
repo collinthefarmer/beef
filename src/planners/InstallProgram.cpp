@@ -348,6 +348,47 @@ RenderBuildRequestOf(const OutputActivation &a_activation,
   return request;
 }
 
+TextureSize StackSizeOf(const StackSizeFacts &a_facts, Resolution a_slot,
+                        Resolution a_scale) {
+  const TextureSize largest{a_facts.nativeLargest == 0 ? TextureSize::kMax
+                                                       : a_facts.nativeLargest};
+  const TextureSize scaled{largest.Pixels() / ResolutionDivisor(a_scale)};
+  const TextureSize requested{scaled.Pixels() / ResolutionDivisor(a_slot)};
+  if (!a_facts.baseLargest) {
+    return requested;
+  }
+  const std::uint32_t floor = requested.Pixels();
+  const std::uint32_t ceiling = std::max(largest.Pixels(), floor);
+  return TextureSize{std::clamp(*a_facts.baseLargest, floor, ceiling)};
+}
+
+std::vector<GeometrySlot>
+UnpublishedSlotsOf(std::span<const GeometryBinding> a_geometries) {
+  std::vector<GeometrySlot> slots;
+  for (const GeometryBinding &geometry : a_geometries) {
+    for (std::size_t s = 0; s < geometry.stacks.slots.size(); ++s) {
+      slots.push_back({geometry.geometry, s});
+    }
+  }
+  return slots;
+}
+
+PlanRoute PlanRouteOf(const PlanRouteFacts &a_facts) noexcept {
+  if (!a_facts.cacheOn) {
+    return PlanRoute::kFresh;
+  }
+  if (!a_facts.keyed) {
+    return PlanRoute::kUncacheable;
+  }
+  if (a_facts.cached) {
+    return a_facts.verifies ? PlanRoute::kVerifyCached : PlanRoute::kCached;
+  }
+  if (a_facts.verifies) {
+    return PlanRoute::kFreshStored;
+  }
+  return a_facts.jobOpen ? PlanRoute::kShareJob : PlanRoute::kSubmitJob;
+}
+
 PerLevel<std::optional<LevelCost>> LevelCostsOf(const RenderPlan &a_plan,
                                                 const PlanSizes &a_full) {
   PerLevel<std::optional<LevelCost>> costs;

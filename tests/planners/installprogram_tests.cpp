@@ -311,6 +311,86 @@ void AFailedPlanFailsEveryRequestedOutput() {
         "a failed plan names its problem on every requested output");
 }
 
+void TheTextureScaleDividesTheStack() {
+  const StackSizeFacts facts{2048, std::nullopt};
+  Equal(StackSizeOf(facts, Resolution::kFull, Resolution::kFull).Pixels(),
+        std::uint32_t{2048}, "a full scale keeps the largest material map");
+  Equal(StackSizeOf(facts, Resolution::kFull, Resolution::kHalf).Pixels(),
+        std::uint32_t{1024}, "a half scale halves the stack");
+  Equal(StackSizeOf(facts, Resolution::kFull, Resolution::kQuarter).Pixels(),
+        std::uint32_t{512}, "a quarter scale quarters the stack");
+  Equal(StackSizeOf(facts, Resolution::kHalf, Resolution::kHalf).Pixels(),
+        std::uint32_t{512}, "a slot resolution divides the scaled stack");
+  Equal(StackSizeOf({}, Resolution::kFull, Resolution::kFull).Pixels(),
+        TextureSize::kMax,
+        "a material without known maps takes the largest size");
+}
+
+void AnUnusableBaseGivesTheRequestedSize() {
+  const StackSizeFacts flat{2048, std::nullopt};
+  Equal(StackSizeOf(flat, Resolution::kQuarter, Resolution::kFull).Pixels(),
+        std::uint32_t{512},
+        "a flat height or placeholder base keeps the requested size");
+}
+
+void TheBaseMapClampsTheStack() {
+  Equal(StackSizeOf({2048, 1024}, Resolution::kQuarter, Resolution::kFull)
+            .Pixels(),
+        std::uint32_t{1024}, "a larger base raises the stack to its size");
+  Equal(StackSizeOf({2048, 128}, Resolution::kQuarter, Resolution::kFull)
+            .Pixels(),
+        std::uint32_t{512}, "a smaller base leaves the requested floor");
+  Equal(
+      StackSizeOf({1024, 4096}, Resolution::kFull, Resolution::kFull).Pixels(),
+      std::uint32_t{1024}, "the largest material map caps the stack");
+}
+
+void EqualStackSizesShareASide() {
+  OutputActivation activation;
+  activation.stacks.resize(2);
+  const std::vector<TextureSize> sizes{
+      StackSizeOf({2048, 1024}, Resolution::kHalf, Resolution::kFull),
+      StackSizeOf({2048, std::nullopt}, Resolution::kHalf, Resolution::kFull)};
+  const std::expected<RenderBuildRequest, std::string> request =
+      RenderBuildRequestOf(activation, sizes);
+  Check(request && request->full.sizes.size() == 1 &&
+            request->stacks[0].side == request->stacks[1].side,
+        "two stacks sized alike share one side");
+}
+
+void EveryStackedSlotAwaitsItsFirstDraw() {
+  std::vector<GeometryBinding> geometries(3);
+  geometries[0].geometry = GeometryId{0};
+  geometries[0].stacks.slots.resize(2);
+  geometries[1].geometry = GeometryId{1};
+  geometries[2].geometry = GeometryId{2};
+  geometries[2].stacks.slots.resize(1);
+  const std::vector<GeometrySlot> expected{
+      {GeometryId{0}, 0}, {GeometryId{0}, 1}, {GeometryId{2}, 0}};
+  Check(UnpublishedSlotsOf(geometries) == expected,
+        "the first draw lists each stacked slot in geometry order and skips a "
+        "lost geometry");
+}
+
+void ThePlanRouteFollowsTheCache() {
+  Check(PlanRouteOf({false, true, true, false, true}) == PlanRoute::kFresh,
+        "a disabled cache builds a fresh plan");
+  Check(PlanRouteOf({true, false, false, false, false}) ==
+            PlanRoute::kUncacheable,
+        "a request without a key builds a fresh plan");
+  Check(PlanRouteOf({true, true, true, false, false}) == PlanRoute::kCached,
+        "a cached plan is reused");
+  Check(PlanRouteOf({true, true, true, true, false}) ==
+            PlanRoute::kVerifyCached,
+        "a verifying run checks a cached plan against a fresh one");
+  Check(PlanRouteOf({true, true, false, true, true}) == PlanRoute::kFreshStored,
+        "a verifying run builds a missing plan at once and stores it");
+  Check(PlanRouteOf({true, true, false, false, true}) == PlanRoute::kShareJob,
+        "a missing plan shares an open job for the same key");
+  Check(PlanRouteOf({true, true, false, false, false}) == PlanRoute::kSubmitJob,
+        "a missing plan without an open job submits one");
+}
+
 void ALightRecipePlacesALight() {
   const Fixture fixture = Matched(
       {RecipeWith("glow", {Emissive()}), RecipeWith("lamp", {LightOutput{}})});
@@ -340,5 +420,11 @@ int main() {
   MergedChainsAttachToTheirGeometry();
   AFailedPlanFailsEveryRequestedOutput();
   ALightRecipePlacesALight();
+  TheTextureScaleDividesTheStack();
+  AnUnusableBaseGivesTheRequestedSize();
+  TheBaseMapClampsTheStack();
+  EqualStackSizesShareASide();
+  EveryStackedSlotAwaitsItsFirstDraw();
+  ThePlanRouteFollowsTheCache();
   return test::Finish("planners_installprogram");
 }
