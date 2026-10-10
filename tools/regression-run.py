@@ -26,7 +26,6 @@ SETTINGS = {
 }
 OPTIONAL_SETTINGS = {
     'MO2_MODS_DIR': 'the WSL path of the MO2 mods folder',
-    'REGRESSION_SAVE_PROFILE': 'the MO2 profile whose regression save every run copies',
 }
 SAVE_FILE_SUFFIXES = ('.ess', '.skse')
 RUN_FILE_LIFETIME_SECONDS = 600
@@ -40,6 +39,7 @@ MAX_MEASURED_SECONDS = 3600
 MAX_RENDER_TARGET_BUDGET_MIB = 65536
 QUICK_EDGE_SECONDS = 10
 BUDGETS_FILE = ROOT / 'tests/regression/budgets.json'
+SEED_SAVES = ROOT / 'tests/regression/saves'
 POLL_SECONDS = 2
 
 
@@ -322,11 +322,9 @@ def main() -> int:
         return 2
     mods_dir = os.environ.get('MO2_MODS_DIR') or local.get('MO2_MODS_DIR', '')
     stamp = time.strftime('%Y%m%dT%H%M%S')
-    seed_profile = (os.environ.get('REGRESSION_SAVE_PROFILE')
-                    or local.get('REGRESSION_SAVE_PROFILE', ''))
-    if seed_profile and mods_dir and seed_profile != settings.profile:
-        copies = seed_copies(profile_saves(mods_dir, seed_profile),
-                             profile_saves(mods_dir, settings.profile), args.save, stamp)
+    if mods_dir and (SEED_SAVES / f'{args.save}.ess').is_file():
+        copies = seed_copies(SEED_SAVES, profile_saves(mods_dir, settings.profile), args.save,
+                             stamp)
         if isinstance(copies, str):
             print(copies, file=sys.stderr)
             return 2

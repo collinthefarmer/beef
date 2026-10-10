@@ -6,3 +6,5 @@ docs/.obsidian export-ignore
 docs/checkpoints export-ignore
 docs/history export-ignore
 docs/plans export-ignore
+tests/regression/saves/*.ess binary
+tests/regression/saves/*.skse binary
