@@ -45,6 +45,7 @@ enchantment on the piece itself.
 | `docs/plans/render-performance-2026-09-29.md` | What costs frame time and memory when effects render, how is it measured, and in which order is it reduced? |
 | `docs/plans/architecture-fit-2026-10-06.md` | Where do the actor core, the performance work and the recipe-language additions depart from the architecture, and which work items fix them? |
 | `docs/plans/ownership-model-2026-10-09.md` | Which owner keeps each render target and game object alive, and in which stages does one ownership model replace the local release rules? |
+| `docs/plans/pure-tick-2026-10-10.md` | How does a tick's orchestration run in an engine-free core that native tests reach, and in which steps does the engine become gather, decide and execute? |
 | `docs/checkpoints/render-performance-review-2026-09-30.md` | What did the review of the layer-field and generated-shader commits find, and which findings are fixed? |
 | `docs/checkpoints/actor-core-review-2026-10-03.md` | What did the review of the actor-core branch find, what must be fixed before it merges, and how is each fix proven? |
 | `docs/checkpoints/regression-baseline-2026-10-03.md` | Where did the full in-game suite and each soak's performance stand on 2026-10-03, and which findings stayed open? |
