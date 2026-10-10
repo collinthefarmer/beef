@@ -115,6 +115,37 @@ class RegressionRunTests(unittest.TestCase):
             self.assertIsNone(host.missing_save(mods, 'Skyrim 2', 'BEEFRegression'))
             self.assertIsNone(host.missing_save(mods, 'Global saves', 'BEEFRegression'))
 
+    def test_seed_copies_replace_only_what_differs(self):
+        with tempfile.TemporaryDirectory() as folder:
+            seed = Path(folder) / 'seed'
+            target = Path(folder) / 'target'
+            seed.mkdir()
+            target.mkdir()
+            (seed / 'BEEFRegression.ess').write_bytes(b'new')
+            (seed / 'BEEFRegression.skse').write_bytes(b'co')
+            (target / 'BEEFRegression.ess').write_bytes(b'old')
+            (target / 'BEEFRegression.skse').write_bytes(b'co')
+            copies = host.seed_copies(seed, target, 'BEEFRegression', 'T')
+            self.assertEqual(copies, [host.SaveCopy(seed / 'BEEFRegression.ess',
+                                                    target / 'BEEFRegression.ess',
+                                                    target / 'BEEFRegression.ess.before-seed-T')])
+            host.apply_copies(copies)
+            self.assertEqual((target / 'BEEFRegression.ess').read_bytes(), b'new')
+            self.assertEqual((target / 'BEEFRegression.ess.before-seed-T').read_bytes(), b'old')
+            self.assertEqual(host.seed_copies(seed, target, 'BEEFRegression', 'U'), [])
+
+    def test_seed_copies_name_what_is_missing(self):
+        with tempfile.TemporaryDirectory() as folder:
+            seed = Path(folder) / 'seed'
+            target = Path(folder) / 'target'
+            seed.mkdir()
+            self.assertIn('no seed save', host.seed_copies(seed, target, 'BEEFRegression', 'T'))
+            (seed / 'BEEFRegression.ess').write_bytes(b'new')
+            self.assertIn('no saves folder', host.seed_copies(seed, target, 'BEEFRegression', 'T'))
+            target.mkdir()
+            self.assertIn('.skse', host.seed_copies(seed, target, 'BEEFRegression', 'T'))
+            self.assertFalse(any(target.iterdir()))
+
     def test_only_this_runs_unread_file_is_withdrawn(self):
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / host.RUN_FILE

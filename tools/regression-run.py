@@ -24,6 +24,11 @@ SETTINGS = {
     'MO2_LAUNCH': 'the MO2 executable title that starts SKSE',
     'SKSE_LOG_DIR': 'the WSL path of My Games/Skyrim Special Edition/SKSE',
 }
+OPTIONAL_SETTINGS = {
+    'MO2_MODS_DIR': 'the WSL path of the MO2 mods folder',
+    'REGRESSION_SAVE_PROFILE': 'the MO2 profile whose regression save every run copies',
+}
+SAVE_FILE_SUFFIXES = ('.ess', '.skse')
 RUN_FILE_LIFETIME_SECONDS = 600
 START_GRACE_SECONDS = 300
 REFUSAL_GRACE_SECONDS = 30
@@ -58,7 +63,7 @@ def local_env(text: str) -> dict[str, str]:
     values = {}
     for line in text.splitlines():
         key, separator, value = line.partition('=')
-        if separator and key.strip() in SETTINGS | {'MO2_MODS_DIR': ''}:
+        if separator and key.strip() in SETTINGS | OPTIONAL_SETTINGS:
             value = value.strip()
             if len(value) >= 2 and value[0] == value[-1] == '"':
                 value = value[1:-1]
@@ -172,11 +177,50 @@ def game_running(tasklist: str) -> bool:
 
 
 def missing_save(mods_dir: str, profile: str, save: str) -> Path | None:
-    saves = Path(mods_dir).parent / 'profiles' / profile / 'saves'
+    saves = profile_saves(mods_dir, profile)
     if not mods_dir or not saves.is_dir():
         return None
     path = saves / f'{save}.ess'
     return None if path.is_file() else path
+
+
+def profile_saves(mods_dir: str, profile: str) -> Path:
+    return Path(mods_dir).parent / 'profiles' / profile / 'saves'
+
+
+@dataclass(frozen=True)
+class SaveCopy:
+    source: Path
+    target: Path
+    backup: Path | None
+
+
+def seed_copies(seed: Path, target: Path, save: str, stamp: str) -> list[SaveCopy] | str:
+    if not (seed / f'{save}.ess').is_file():
+        return f'no seed save at {seed / save}.ess'
+    if not target.is_dir():
+        return f'the profile has no saves folder of its own: {target}'
+    copies = []
+    for suffix in SAVE_FILE_SUFFIXES:
+        source = seed / f'{save}{suffix}'
+        destination = target / f'{save}{suffix}'
+        if not source.is_file():
+            return f'the seed save has no {suffix} file: {source}'
+        if destination.is_file() and destination.read_bytes() == source.read_bytes():
+            continue
+        backup = (target / f'{save}{suffix}.before-seed-{stamp}'
+                  if destination.is_file() else None)
+        copies.append(SaveCopy(source, destination, backup))
+    return copies
+
+
+def apply_copies(copies: list[SaveCopy]) -> None:
+    for copy in copies:
+        if copy.backup is not None:
+            shutil.copy2(copy.target, copy.backup)
+        shutil.copy2(copy.source, copy.target)
+        kept = f' (kept the old one as {copy.backup.name})' if copy.backup else ''
+        print(f'copied the seed save to {copy.target}{kept}')
 
 
 def wait_for_results(settings: Settings, run: str, timeout: float, tasklist: str,
@@ -272,16 +316,25 @@ def main() -> int:
     if game_running(tasklist):
         print(f'{GAME} is running; quit it first', file=sys.stderr)
         return 2
-    mods_dir = os.environ.get('MO2_MODS_DIR') or local.get('MO2_MODS_DIR', '')
-    if (absent := missing_save(mods_dir, settings.profile, args.save)) is not None:
-        print(f'no save at {absent}; create it in game with the console command '
-              f'save {args.save}', file=sys.stderr)
-        return 2
     segments = launches(args.cases)
     if isinstance(segments, str):
         print(segments, file=sys.stderr)
         return 2
+    mods_dir = os.environ.get('MO2_MODS_DIR') or local.get('MO2_MODS_DIR', '')
     stamp = time.strftime('%Y%m%dT%H%M%S')
+    seed_profile = (os.environ.get('REGRESSION_SAVE_PROFILE')
+                    or local.get('REGRESSION_SAVE_PROFILE', ''))
+    if seed_profile and mods_dir and seed_profile != settings.profile:
+        copies = seed_copies(profile_saves(mods_dir, seed_profile),
+                             profile_saves(mods_dir, settings.profile), args.save, stamp)
+        if isinstance(copies, str):
+            print(copies, file=sys.stderr)
+            return 2
+        apply_copies(copies)
+    if (absent := missing_save(mods_dir, settings.profile, args.save)) is not None:
+        print(f'no save at {absent}; create it in game with the console command '
+              f'save {args.save}', file=sys.stderr)
+        return 2
     passed = []
     for index, cases in enumerate(segments):
         if index > 0:

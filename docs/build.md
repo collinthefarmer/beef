@@ -80,7 +80,12 @@ that starts SKSE) and `SKSE_LOG_DIR` (the WSL path of the SKSE log folder).
 `+` between case names starts a new launch, for example
 `tools/regression-run.py studio-save + studio-reload`. `--profile NAME`
 launches another MO2 profile for one run; the save must exist in that
-profile's `saves` folder. The
+profile's `saves` folder. When `local.env` names a seed profile in
+`REGRESSION_SAVE_PROFILE`, each run first copies that profile's `.ess` and
+`.skse` regression save into the launched profile. It keeps a target copy that
+differs as `<file>.before-seed-<time>`. The seed is a new character moved to
+QASmoke with `coc qasmoke` from the main menu, saved in a profile that loads
+only the plugin and what it needs. The
 [unattended regression plan](plans/unattended-regression-2026-10-01.md)
 describes the run and lists the cases.
 
