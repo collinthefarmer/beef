@@ -102,7 +102,7 @@ def measure(events: list[dict], window: Window) -> dict[str, float]:
     gpu_us = sum(number(span, 'total_us') for span in inside(events, window, 'gpu_span')
                  if span.get('span') == 'RenderTick')
     ticks = inside(events, window, 'gpu_ticks')
-    plugin_us = total('frame_us') + total('sync_us')
+    plugin_us = total('frame_us')
     levels = inside(events, window, 'resolution_levels')
     last_levels = levels[-1] if levels else {}
     return {

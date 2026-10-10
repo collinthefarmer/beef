@@ -203,7 +203,7 @@ class RegressionBudgetTests(unittest.TestCase):
         self.assertEqual(measured['gpu_ticks_timed'], 20)
         self.assertEqual(measured['gpu_ticks_untimed'], 5)
 
-    def test_sync_time_counts_in_the_plugin_share(self):
+    def test_sync_time_inside_the_frame_counts_once(self):
         events = [
             {'unix_ms': 0, 'fields': {'action': 'regression.window', 'case': 'soak',
                                       'window': 'steady', 'edge': 'begin'}},
@@ -213,7 +213,7 @@ class RegressionBudgetTests(unittest.TestCase):
                                          'window': 'steady', 'edge': 'end'}}]
         measured = budgets.measurements(events)[('soak', 'steady')]
         self.assertEqual(measured['plugin_frame_us_mean'], 1000.0)
-        self.assertEqual(measured['plugin_share_pct'], 2.0)
+        self.assertEqual(measured['plugin_share_pct'], 1.0)
 
     def test_resolution_levels_count_at_the_window_end(self):
         def at(time_ms, fields):

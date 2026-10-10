@@ -3319,7 +3319,7 @@ stores an `RE::` pointer.
 ## orchestration (`orchestration/RenderPhase.h`, `orchestration/PhaseChanges.h`)
 
 The tick core of `docs/plans/pure-tick-2026-10-10.md` (branch `pure-tick`).
-Nothing in the engine calls it yet.
+The engine runs it once per tick. "The engine runs the core" below says how.
 
 - An `ActorRecord` without `render` is an actor with nothing installed. A
   `render` in `WithoutRender` is an actor whose install built no render, or
@@ -3484,6 +3484,67 @@ Nothing in the engine calls it yet.
   `render` is a resource the core does not track.
 - `FirstDrawing` has no holding to compare: the core does not track the
   holding of a render before it is published.
+- `SettledWorld` also drops `ResizeNotSwapped`. The engine keeps a resize that
+  did not swap until it runs the `AbandonResize` that the event implies, in
+  the tick after the swap. Without the drop, the check reports that resize for
+  one tick.
+
+### The engine runs the core (`engine/ManagerFacts.cpp`, `engine/ManagerCommands.cpp`, `engine/ManagerTick.cpp`)
+
+- `Manager::RunTick` runs on every tick interval, also when no actor is
+  installed. It drains the plan jobs, sweeps, gathers the facts
+  (`GatherFacts`), checks agreement, calls `Orchestration::Tick`, emits the
+  core's trace records and log lines, and executes the commands in order.
+- Only `world_ = std::move(out.world)` writes `world_`. No executor reads it.
+  The heartbeat, the census and the regression facts read it after the tick.
+- An executor branches only on whether an engine call succeeded. It looks up
+  the actor by form id and keeps no `RE::Actor *` past its own call.
+- A sync no longer runs in an SKSE task. The application service's callback
+  (`NoteStale`) records the actor and its tokens in `stale_`. The next gather
+  observes and plans the actor. `Observe` calls `SyncNow`, so the actor
+  arrives as stale one tick later.
+- An unload event, `RetireAll`, a failed `MarkReinstall` and the regression
+  retire add the actor to `forgets_`. The gather sends a forget request for an
+  actor with a record. For an actor without a record, the gather stops its
+  animation subscription, abandons its applications and drops its models at
+  once, because the core has nothing to forget.
+- `stale_` and `forgets_` have no lock. SKSE tasks write them, and tasks do not
+  overlap `OnFrame` (run 20261004T023455, see the heartbeat note under
+  regression runs). The old sync relied on the same rule.
+- Claims are the one resource change outside a command. The gather finds a
+  geometry whose material or shell another system replaced, retires it and
+  reports `ClaimedGeometry`. The ownership is already lost when the gather
+  sees it, so the retire decides nothing.
+- `Forget` always abandons the actor's pending applications. A token of an
+  actor that the core forgets reads "the actor was retired before rendering
+  completed".
+- `KeepModels` keeps the models with the gather's observation time. Models the
+  gather saw in this tick therefore stay, as they did when one sync observed
+  and kept in the same call.
+- `SwapResize` always conceals the actor's slots. The `TickActor` later in the
+  same tick writes them again when the actor is in view. A swap that fails
+  keeps the resize; the core abandons it the next tick.
+- `resolution_swap` has no `frames` field. The frame a resize began lives in
+  the core.
+- An `Install` for an actor that still has a store entry retires the entry
+  first and traces `resource_disagreement`.
+- The install summary line says `installed` or `reinstalled` from the
+  command's `InstallKind`. A changed install reads `reinstalled`.
+- The instances' applied level lags a new render or a swap by one tick: the
+  core sends `SetAppliedLevel` when it records `Installed` or `ResizeSwapped`.
+- The agreement check traces `resource_disagreement` with the actor, its phase
+  and the findings, only when the actor's set of findings changes, and logs
+  the line once. An executor that finds no resource for its command traces the
+  same action with a `command` field. `target_holders` carries
+  `resource_disagreements`: the count of both since the game started.
+- The heartbeat is due once a second. The next tick drains the metrics,
+  samples video memory and gives the sample to the core as
+  `TickFacts::memory`, so the core runs the budget in that tick. `OnFrame`
+  emits the heartbeat after its frame timer ends. A regression window edge
+  emits a heartbeat at once and gives its sample to the next tick.
+- `estimated_bytes` is the core's estimate (`PlannedBytesOf(World)`).
+  `engine_estimated_bytes` is the planned holding of the engine's renders of
+  actors that have rendered. The two agree on settled windows.
 
 ## Generated texture references
 
@@ -3914,15 +3975,16 @@ memory. A heartbeat's `targets` and
 `target_bytes` include the targets idle in the reuse pool (at most 16 and 64
 MiB, `RenderTargetPool::kMaxIdleTargets` and `kMaxIdleBytes`).
 
-The heartbeat is emitted before `OnFrame` starts its frame timer, so its own
+The heartbeat is emitted after `OnFrame` ends its frame timer, so its own
 trace writes stay out of `frame_us` and the 8 ms spike count. A load returns
 from `OnFrame` early and calls `Metrics::ForgetFrameInterval`, so the load
-screen does not count as one long frame interval. Syncs run outside
-`OnFrame`: the SKSE task queue ran them on six engine job threads in run
-20261004T023455, one at a time, and no frame-thread event fell inside any of
-1570 syncs. The report's `plugin_ms_per_s` and `plugin_share_pct`
-therefore add `sync_us` to `frame_us`; `plugin_frame_us_mean`, the
-budgeted measure, stays the frame alone. `gpu_us_mean` counts only timed
+screen does not count as one long frame interval. Before R4, syncs ran
+outside `OnFrame`: the SKSE task queue ran them on six engine job threads in
+run 20261004T023455, one at a time, and no frame-thread event fell inside any
+of 1570 syncs. Since R4 the tick runs every install, so `frame_us` includes
+`sync_us`. `sync_us` stays a sub-measure of the frame. The report's
+`plugin_ms_per_s` and `plugin_share_pct` therefore count `frame_us` alone, and
+`plugin_frame_us_mean`, the budgeted measure, is the frame alone. `gpu_us_mean` counts only timed
 `RenderTick` spans, so the report prints `gpu_ticks_timed` and
 `gpu_ticks_untimed` (dropped plus discarded) beside it. A budget never passes
 on missing data: a window with no heartbeat, a ratio against a zero baseline,

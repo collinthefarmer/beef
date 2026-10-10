@@ -527,58 +527,65 @@ void Manager::OnFrame() {
   if (now - lastMetricsMS_ >= 1000) {
     heartbeatDue_ = true;
   }
+  if (const std::optional<HeartbeatReading> heartbeat = RunFrame(*lab, now)) {
+    EmitHeartbeat(*heartbeat);
+  }
+}
+
+std::optional<HeartbeatReading> Manager::RunFrame(TextureLab &a_lab,
+                                                  std::uint32_t a_nowMS) {
   const SectionTimer frameTimer{Metrics::Section::kFrame};
-  lab->CollectTimings();
+  a_lab.CollectTimings();
   SweepRetiredMaterialTextures();
-  lab->CollectPreviewDraws();
+  a_lab.CollectPreviewDraws();
   FireDueFinalizes();
   editor_.TickGesture();
   Metrics::CountFrame();
   ++renderFrame_;
-  if (now - lastSweepMS_ >= 1000) {
-    lastSweepMS_ = now;
-    carriedTimes_.Expire(now);
+  if (a_nowMS - lastSweepMS_ >= 1000) {
+    lastSweepMS_ = a_nowMS;
+    carriedTimes_.Expire(a_nowMS);
     SweepAnimationEvents();
   }
   const Settings settings = GetSettings();
-  if (now - lastTickMS_ < settings.TickIntervalMS()) {
-    return;
+  if (a_nowMS - lastTickMS_ < settings.TickIntervalMS()) {
+    return std::nullopt;
   }
-  lastTickMS_ = now;
-  RunTick(now, settings);
+  lastTickMS_ = a_nowMS;
+  std::optional<HeartbeatReading> heartbeat = RunTick(a_lab, a_nowMS, settings);
   {
     const SectionTimer sweepTimer{Metrics::Section::kSweep};
-    SweepBoundMeshes(*Compositor::GetSingleton(), live_, now);
+    SweepBoundMeshes(*Compositor::GetSingleton(), live_, a_nowMS);
   }
   {
     const SectionTimer snapshotTimer{Metrics::Section::kSnapshot};
-    PublishSnapshot(now);
+    PublishSnapshot(a_nowMS);
   }
   ObserveRegression();
+  return heartbeat;
 }
 
-void Manager::RunTick(std::uint32_t a_nowMS, const Settings &a_settings) {
-  TextureLab *lab = TextureLab::GetSingleton();
-  if (!lab) {
-    return;
-  }
+std::optional<HeartbeatReading> Manager::RunTick(TextureLab &a_lab,
+                                                 std::uint32_t a_nowMS,
+                                                 const Settings &a_settings) {
   tickNowMS_ = a_nowMS;
   std::vector<Orchestration::PlanJobDone> jobs = DrainPlanJobs();
   {
     const SectionTimer sweepTimer{Metrics::Section::kSweep};
     Compositor::GetSingleton()->BeginTick(a_nowMS);
     Compositor::GetSingleton()->SweepStepOutputs(a_nowMS);
-    lab->ExpireIdleTargets(a_nowMS);
+    a_lab.ExpireIdleTargets(a_nowMS);
   }
-  std::optional<Metrics::Snapshot> measured;
-  const std::uint32_t intervalMs = a_nowMS - lastMetricsMS_;
+  std::optional<HeartbeatReading> heartbeat;
   if (heartbeatDue_) {
     heartbeatDue_ = false;
+    const Metrics::Snapshot measured = Metrics::Drain();
+    const BudgetSample sample = SampleBudget(measured, a_settings);
+    heartbeat = HeartbeatReading{measured, sample, a_nowMS - lastMetricsMS_};
     lastMetricsMS_ = a_nowMS;
-    measured = Metrics::Drain();
-    pendingSample_ = SampleBudget(*measured, a_settings);
+    pendingSample_ = sample;
   }
-  const std::optional<BudgetSample> sample = pendingSample_;
+  const SectionTimer tickTimer{Metrics::Section::kTick};
   const GatheredFacts gathered =
       GatherFacts(a_nowMS, a_settings, std::move(jobs));
   CheckAgreement(gathered.facts);
@@ -595,19 +602,14 @@ void Manager::RunTick(std::uint32_t a_nowMS, const Settings &a_settings) {
                             gathered};
   frozenLastTick_ = view.freeze;
   {
-    const SectionTimer tickTimer{Metrics::Section::kTick};
-    {
-      const SectionTimer previewsTimer{Metrics::Section::kPreviews};
-      lab->RenderPreviews();
-    }
-    lab->SetGeneratedShaders(a_settings.generatedShaders);
-    lab->BeginTimedTick(a_settings.gpuTiming);
-    results_ = Execute(out.commands, context);
-    lab->EndTimedTick();
+    const SectionTimer previewsTimer{Metrics::Section::kPreviews};
+    a_lab.RenderPreviews();
   }
-  if (measured && sample) {
-    EmitHeartbeat(*measured, *sample, intervalMs);
-  }
+  a_lab.SetGeneratedShaders(a_settings.generatedShaders);
+  a_lab.BeginTimedTick(a_settings.gpuTiming);
+  results_ = Execute(out.commands, context);
+  a_lab.EndTimedTick();
+  return heartbeat;
 }
 
 void Manager::FireDueFinalizes() { applications_.FinalizeDue(NowMS()); }

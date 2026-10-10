@@ -57,8 +57,15 @@
 
 namespace BetterEnchantmentEffects {
 struct ActorStacks;
+class TextureLab;
 
 struct RenderNotBuilt {};
+
+struct HeartbeatReading {
+  Metrics::Snapshot measured;
+  BudgetSample sample;
+  std::uint32_t intervalMs = 0;
+};
 
 struct RenderFlags {
   bool concealSlots = false;
@@ -189,7 +196,10 @@ private:
 
   void NoteStale(RE::FormID a_actorID,
                  const std::vector<ApplicationToken> &a_tokens);
-  void RunTick(std::uint32_t a_nowMS, const Settings &a_settings);
+  [[nodiscard]] std::optional<HeartbeatReading> RunFrame(TextureLab &a_lab,
+                                                         std::uint32_t a_nowMS);
+  [[nodiscard]] std::optional<HeartbeatReading>
+  RunTick(TextureLab &a_lab, std::uint32_t a_nowMS, const Settings &a_settings);
   [[nodiscard]] GatheredFacts
   GatherFacts(std::uint32_t a_nowMS, const Settings &a_settings,
               std::vector<Orchestration::PlanJobDone> a_jobs);
@@ -259,8 +269,7 @@ private:
     std::shared_ptr<const RecipeCatalog> catalog;
     ActorMatches matches;
   };
-  void EmitHeartbeat(const Metrics::Snapshot &a_measured,
-                     const BudgetSample &a_sample, std::uint32_t a_intervalMs);
+  void EmitHeartbeat(const HeartbeatReading &a_heartbeat);
   [[nodiscard]] std::vector<ActorTargets> RenderedTargets() const;
   void ReportRenderMemory(const Metrics::Snapshot &a_measured,
                           const TargetCost &a_planned,

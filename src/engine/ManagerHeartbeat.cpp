@@ -261,29 +261,27 @@ void EmitMetricsHeartbeat(const Metrics::Snapshot &a_measured,
 
 void Manager::FlushMetricsHeartbeat() {
   const std::uint32_t now = NowMS();
-  const std::uint32_t intervalMs = now - lastMetricsMS_;
-  lastMetricsMS_ = now;
-  heartbeatDue_ = false;
   const Metrics::Snapshot measured = Metrics::Drain();
   const BudgetSample sample = SampleBudget(measured, GetSettings());
+  const HeartbeatReading heartbeat{measured, sample, now - lastMetricsMS_};
+  lastMetricsMS_ = now;
+  heartbeatDue_ = false;
   pendingSample_ = sample;
-  EmitHeartbeat(measured, sample, intervalMs);
+  EmitHeartbeat(heartbeat);
 }
 
-void Manager::EmitHeartbeat(const Metrics::Snapshot &a_measured,
-                            const BudgetSample &a_sample,
-                            std::uint32_t a_intervalMs) {
+void Manager::EmitHeartbeat(const HeartbeatReading &a_heartbeat) {
   const TargetCost planned = PlannedTargets(live_, world_);
-  EmitMetricsHeartbeat(a_measured, planned,
+  EmitMetricsHeartbeat(a_heartbeat.measured, planned,
                        Orchestration::PlannedBytesOf(world_),
-                       ScreenSpreadOf(world_), a_sample, world_.budget,
-                       world_.waitingInstalls.size());
+                       ScreenSpreadOf(world_), a_heartbeat.sample,
+                       world_.budget, world_.waitingInstalls.size());
   EmitTargetHolders(live_, world_, disagreementCount_);
   const PerLevel<std::size_t> levels = LevelCounts(world_);
   EmitLevelCounts(levels);
-  PublishBudgetView(
-      Studio::BudgetViewOf(a_sample, world_.budget, world_.radius, levels));
-  ReportRenderMemory(a_measured, planned, a_intervalMs);
+  PublishBudgetView(Studio::BudgetViewOf(a_heartbeat.sample, world_.budget,
+                                         world_.radius, levels));
+  ReportRenderMemory(a_heartbeat.measured, planned, a_heartbeat.intervalMs);
 }
 
 std::vector<ActorTargets> Manager::RenderedTargets() const {
