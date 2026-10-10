@@ -333,6 +333,20 @@ def recipe_sets(events: list[dict]) -> list[str]:
     return sets
 
 
+CORE_MISMATCHES = ('resource_disagreement', 'actor_phase_ignored')
+
+
+def core_mismatches(events: list[dict]) -> list[str]:
+    lines = []
+    for event in events:
+        fields = event['fields']
+        if fields.get('action') in CORE_MISMATCHES:
+            detail = ', '.join(f'{name} {value}' for name, value in fields.items()
+                               if name != 'action')
+            lines.append(f"{fields['action']}: {detail}")
+    return lines
+
+
 def check_budgets(trace: Path, budgets: Path) -> tuple[str, list[str]]:
     if not trace.is_file():
         return '', [f'trace {trace} is missing']

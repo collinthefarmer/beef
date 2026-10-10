@@ -86,7 +86,8 @@ regression save from `tests/regression/saves` into the launched profile, and
 keeps a target copy that differs as `<file>.before-seed-<time>`. That save is a
 new character moved to QASmoke with `coc qasmoke` from the main menu, saved in
 a profile that loads only the plugin and what it needs, so every profile can
-load it. The
+load it. A launch fails when its trace holds a `resource_disagreement` or an
+`actor_phase_ignored` record, and the script prints each one after `core:`. The
 [unattended regression plan](plans/unattended-regression-2026-10-01.md)
 describes the run and lists the cases.
 

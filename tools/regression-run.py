@@ -402,9 +402,15 @@ def launch(settings: Settings, run: str, cases: list[str], save: str, timeout: f
             print(table)
     for failure in failures:
         print(f'budget: {failure}')
+    mismatches = []
+    if report.trace and (settings.log_dir / report.trace).is_file():
+        mismatches = budgets.core_mismatches(
+            budgets.trace_events(settings.log_dir / report.trace))
+    for mismatch in mismatches:
+        print(f'core: {mismatch}')
     if not quit_cleanly:
         print(f'{GAME} did not quit within {QUIT_GRACE_SECONDS} seconds')
-    return report.outcome == 'PASS' and quit_cleanly and not failures
+    return report.outcome == 'PASS' and quit_cleanly and not failures and not mismatches
 
 
 if __name__ == '__main__':

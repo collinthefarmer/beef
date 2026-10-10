@@ -12,6 +12,18 @@ SPEC.loader.exec_module(budgets)
 
 
 class RegressionBudgetTests(unittest.TestCase):
+    def test_core_mismatches_name_each_record(self):
+        events = [{'fields': {'action': 'heartbeat'}},
+                  {'fields': {'action': 'resource_disagreement', 'actor': '20',
+                              'phase': 'live', 'what': 'no render'}},
+                  {'fields': {'action': 'actor_phase_ignored', 'actor': '20',
+                              'event': 'installed', 'phase': 'first_drawing'}}]
+        self.assertEqual(budgets.core_mismatches(events),
+                         ['resource_disagreement: actor 20, phase live, what no render',
+                          'actor_phase_ignored: actor 20, event installed, '
+                          'phase first_drawing'])
+        self.assertEqual(budgets.core_mismatches(events[:1]), [])
+
     def soak_events(self):
         def edge(time_ms, window, kind):
             return {'unix_ms': time_ms, 'fields': {'action': 'regression.window',
