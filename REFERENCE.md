@@ -3353,6 +3353,40 @@ Nothing in the engine calls it yet.
   radius. `MayStepDown` holds only in `Live`: a level wanted during a first
   draw is queued as `FirstDrawing::next` instead.
 
+### The lifecycle step (`orchestration/Lifecycle.cpp`)
+
+- `RunLifecycle` decides in this order: for each actor, the sighting
+  (`SeeActor`) and then the screen level step; then the resize swaps and the
+  one resize start; then the first-draw ends; then one `TickActor` per actor;
+  then one `DrawUnpublished`. A level wanted this tick can start its resize
+  in the same tick. A first draw that ends this tick starts its resize the
+  next tick, as today.
+- An actor whose sighting has no loaded 3D gets no decision and no command.
+  Today's tick forgets such an actor before it decides anything.
+- A resize that gets `SwapResize` no longer counts as running, so the next
+  resize can start in the same tick, as today. The swap comes first in the
+  command list.
+- A resize draws from the tick after `ResizeStarted` arrives. Today's tick
+  draws a resize in the tick that starts it.
+- A step-up is admitted and charged before `WantLevel`, and only when the
+  phase does not refuse the level as failed, so a refused level charges
+  nothing. A blocked step-up is recorded and traced only in `Live`, because
+  only `Live` has `stepUpBlockedFrom`; outside `Live` it is silent.
+- `resolution_level` traces the parsed `Sighting::screenFraction`. Today's
+  trace shows the raw fraction, which differs only when `ScreenResolution`
+  is off.
+- `InstallBoundFor` gives a non-player the reinstall level, or else the
+  wanted level, with `HeadroomOf(budget, 0)`. Today's `InstallBoundOf` gives
+  no headroom when `ScreenResolution` is off; the core cannot tell that case
+  apart, because the parsed fraction is then `1.0`.
+- `renderedFrame` is set in `RecordRenderResults` for every actor with a render
+  in view with loaded 3D, because its `TickActor` draws it in the same tick.
+- `actor_phase` carries `from`, `to` and `event`; `actor_phase_ignored`
+  carries `phase` and `event`. A phase created from nothing has the phase
+  name `none`. The event names are the `RenderEvent` names in snake case,
+  and `plan_built`, `plan_failed`, `seen`, `level_wanted` and
+  `first_draw_ended` for the decisions.
+
 ## Generated texture references
 
 `TextureRef` distinguishes static engine textures from registered generated

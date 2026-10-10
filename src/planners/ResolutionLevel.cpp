@@ -65,12 +65,18 @@ std::optional<std::uint32_t> SmallSince(ResolutionLevel a_current,
 LevelStep NextLevelStep(ResolutionLevel a_current, const ActorSight &a_sight,
                         std::optional<std::uint32_t> a_smallSince,
                         std::uint32_t a_nowMS) noexcept {
+  return LevelStepOf(a_current, a_sight,
+                     a_smallSince &&
+                         a_nowMS - *a_smallSince >= kStepDownHoldMS);
+}
+
+LevelStep LevelStepOf(ResolutionLevel a_current, const ActorSight &a_sight,
+                      bool a_stepDownDue) noexcept {
   if (const std::optional<ResolutionLevel> wanted = WantedLevel(a_sight);
       wanted && Halvings(*wanted) < Halvings(a_current)) {
     return StepUpTo{*wanted};
   }
-  if (a_sight.role == ActorRole::kPlayer || !a_smallSince ||
-      a_nowMS - *a_smallSince < kStepDownHoldMS) {
+  if (a_sight.role == ActorRole::kPlayer || !a_stepDownDue) {
     return KeepLevel{};
   }
   if (const std::optional<ResolutionLevel> coarser = CoarserLevel(a_current)) {
