@@ -133,7 +133,7 @@ Manager::Execute(const std::vector<Orchestration::Command> &a_commands,
                  return RunObserve(a_command);
                },
                [&](const Orchestration::KeepModels &a_command) {
-                 return RunKeepModels(a_command);
+                 return RunKeepModels(a_command, a_context);
                },
                [&](const Orchestration::SettleApplications &a_command) {
                  return RunSettleApplications(a_command, a_context);
@@ -314,8 +314,10 @@ CommandResults Manager::RunObserve(const Orchestration::Observe &a_command) {
 }
 
 CommandResults
-Manager::RunKeepModels(const Orchestration::KeepModels &a_command) {
-  KeepModels(models_[FormOf(a_command.actor)], a_command.plan, NowMS());
+Manager::RunKeepModels(const Orchestration::KeepModels &a_command,
+                       const TickContext &a_context) {
+  KeepModels(models_[FormOf(a_command.actor)], a_command.plan,
+             a_context.inputs.observedAtMS);
   return {};
 }
 

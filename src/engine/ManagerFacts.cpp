@@ -130,6 +130,7 @@ Manager::GatherFacts(std::uint32_t a_nowMS, const Settings &a_settings,
       AppliedCatalog(a_settings.showDebugRecipes ? DebugRecipes::kShown
                                                  : DebugRecipes::kHidden);
   inputs.waiting = world_.waitingInstalls;
+  inputs.observedAtMS = NowMS();
   Orchestration::TickFacts &facts = inputs.facts;
   facts.now = tickClock_.now;
   facts.frame = renderFrame_;
@@ -140,7 +141,8 @@ Manager::GatherFacts(std::uint32_t a_nowMS, const Settings &a_settings,
   facts.claims = ClaimsOf();
   facts.memory = std::exchange(pendingSample_, std::nullopt);
   for (auto &[id, tokens] : std::exchange(stale_, {})) {
-    facts.stale.push_back(StaleActorOf(id, *inputs.catalog, a_settings));
+    facts.stale.push_back(
+        StaleActorOf(id, *inputs.catalog, a_settings, inputs.observedAtMS));
     inputs.tokens[id] = std::move(tokens);
   }
   const std::optional<RE::FormID> inspected = InspectedActor(a_nowMS);
@@ -183,7 +185,8 @@ Manager::SightingOf(RE::FormID a_actorID, const Settings &a_settings,
 
 Orchestration::StaleActor Manager::StaleActorOf(RE::FormID a_actorID,
                                                 const RecipeCatalog &a_catalog,
-                                                const Settings &a_settings) {
+                                                const Settings &a_settings,
+                                                std::uint32_t a_observedAtMS) {
   const Orchestration::ActorId id = ActorOf(a_actorID);
   const RE::NiPointer<RE::Actor> actor{
       RE::TESForm::LookupByID<RE::Actor>(a_actorID)};
@@ -195,7 +198,7 @@ Orchestration::StaleActor Manager::StaleActorOf(RE::FormID a_actorID,
   Actors::ActorFacts facts = phases.Measure("observe_us", [&] {
     return ObserveActor({*actor, a_settings,
                          a_settings.enableShaders && emissivePathEnabled_,
-                         a_catalog.Recipes(), NowMS()},
+                         a_catalog.Recipes(), a_observedAtMS},
                         models_[a_actorID], materialLayout_);
   });
   NoteMaterialLayout(layoutBefore);

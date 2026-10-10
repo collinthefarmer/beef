@@ -16,6 +16,7 @@ struct RegressionRequest {
   std::uint32_t actor = 0;
   RequestKind kind = RequestKind::kApply;
   std::uint64_t previousAttempt = 0;
+  std::uint32_t retireTicks = 0;
   bool dispatched = false;
   Regression::RequestState state = Regression::NoRequest{};
 };

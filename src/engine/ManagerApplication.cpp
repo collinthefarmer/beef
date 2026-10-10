@@ -189,7 +189,7 @@ void Manager::ChangeAndRebuildActors(std::string a_reportRecipe,
   TraceRebuildState(token, editor_.CurrentView());
   for (const RE::FormID actor : actors) {
     if (!applications_.MarkReinstall(actor)) {
-      ForgetActor(actor);
+      forgets_.insert(actor);
       applications_.Report(token, actor, ApplicationPhase::kFailed,
                            "actor sync could not be queued");
     }

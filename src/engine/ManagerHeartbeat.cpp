@@ -10,6 +10,8 @@
 #include "engine/LogOnce.h"
 #include "engine/RegressionRun.h"
 #include "engine/TargetCensus.h"
+#include "orchestration/Budget.h"
+#include "orchestration/RenderPhase.h"
 #include "planners/RenderBudget.h"
 #include "planners/RenderMemory.h"
 #include "render/Compositor.h"
@@ -62,12 +64,24 @@ void EmitStepKinds(const Metrics::StepKindCounts &a_counts) {
   }
 }
 
+const Orchestration::ActorRecord *RecordOf(const Orchestration::World &a_world,
+                                           RE::FormID a_actor) {
+  const auto found = a_world.actors.find(Orchestration::ActorOf(a_actor));
+  return found == a_world.actors.end() ? nullptr : &found->second;
+}
+
+bool Rendered(const Orchestration::World &a_world, RE::FormID a_actor) {
+  const Orchestration::ActorRecord *record = RecordOf(a_world, a_actor);
+  return record && record->render && record->render->renderedFrame;
+}
+
 TargetCost
-PlannedTargets(const std::unordered_map<RE::FormID, LiveActor> &a_live) {
+PlannedTargets(const std::unordered_map<RE::FormID, LiveActor> &a_live,
+               const Orchestration::World &a_world) {
   std::unordered_set<const RenderInstance *> seen;
   std::vector<HeldTarget> held;
   for (const auto &[actor, state] : a_live) {
-    if (state.renderedFrame == 0) {
+    if (!Rendered(a_world, actor)) {
       continue;
     }
     for (const RenderInstance *render : InstancesOf(state)) {
@@ -80,12 +94,12 @@ PlannedTargets(const std::unordered_map<RE::FormID, LiveActor> &a_live) {
   return CostOf(held);
 }
 
-ScreenSpread
-ScreenSpreadOf(const std::unordered_map<RE::FormID, LiveActor> &a_live) {
+ScreenSpread ScreenSpreadOf(const Orchestration::World &a_world) {
   std::vector<float> fractions;
-  for (const auto &[actor, state] : a_live) {
-    if (state.inView && state.renderedFrame != 0 && state.screenFraction) {
-      fractions.push_back(*state.screenFraction);
+  for (const auto &[actor, record] : a_world.actors) {
+    if (record.render && record.render->renderedFrame && record.sight.inView &&
+        record.sight.screenFraction) {
+      fractions.push_back(*record.sight.screenFraction);
     }
   }
   return SpreadOf(std::move(fractions));
@@ -101,7 +115,8 @@ std::vector<std::string> RecipeIdsOf(const LiveActor &a_state) {
   return ids;
 }
 
-ActorTargets TargetsOfActor(RE::FormID a_actor, const LiveActor &a_state) {
+ActorTargets TargetsOfActor(RE::FormID a_actor, const LiveActor &a_state,
+                            const Orchestration::World &a_world) {
   std::vector<HeldTarget> held;
   for (const RenderInstance *render : InstancesOf(a_state)) {
     const std::vector<HeldTarget> &now = HeldNow(a_state, render->Targets());
@@ -109,16 +124,19 @@ ActorTargets TargetsOfActor(RE::FormID a_actor, const LiveActor &a_state) {
   }
   const RE::NiPointer<RE::Actor> actor = a_state.actor.get();
   const char *name = actor ? actor->GetName() : nullptr;
+  const Orchestration::ActorRecord *record = RecordOf(a_world, a_actor);
   return {a_actor, name ? std::string{name} : std::string{},
-          a_state.screenFraction, RecipeIdsOf(a_state), std::move(held)};
+          record ? record->sight.screenFraction : std::nullopt,
+          RecipeIdsOf(a_state), std::move(held)};
 }
 
 std::vector<ActorTargets>
-RenderedActorTargets(const std::unordered_map<RE::FormID, LiveActor> &a_live) {
+RenderedActorTargets(const std::unordered_map<RE::FormID, LiveActor> &a_live,
+                     const Orchestration::World &a_world) {
   std::vector<ActorTargets> actors;
   for (const auto &[actor, state] : a_live) {
-    if (state.renderedFrame != 0) {
-      actors.push_back(TargetsOfActor(actor, state));
+    if (Rendered(a_world, actor)) {
+      actors.push_back(TargetsOfActor(actor, state, a_world));
     }
   }
   return actors;
@@ -140,11 +158,16 @@ void AddBudgetFields(std::vector<Trace::Field> &a_fields,
   a_fields.push_back({"pressure", IsOver(a_state.pressure) ? "true" : "false"});
 }
 
-PerLevel<std::size_t>
-LevelCounts(const std::unordered_map<RE::FormID, LiveActor> &a_live) {
+PerLevel<std::size_t> LevelCounts(const Orchestration::World &a_world) {
   PerLevel<std::size_t> counts;
-  for (const auto &[actor, state] : a_live) {
-    ++counts.At(state.appliedResolution);
+  for (const auto &[actor, record] : a_world.actors) {
+    if (!record.render) {
+      continue;
+    }
+    if (const std::optional<ResolutionLevel> level =
+            Orchestration::AppliedLevel(record.render->phase)) {
+      ++counts.At(*level);
+    }
   }
   return counts;
 }
@@ -160,6 +183,7 @@ void EmitLevelCounts(const PerLevel<std::size_t> &a_counts) {
 
 void EmitMetricsHeartbeat(const Metrics::Snapshot &a_measured,
                           const TargetCost &a_planned,
+                          std::uint64_t a_coreEstimate,
                           const ScreenSpread &a_screen,
                           const BudgetSample &a_sample,
                           const BudgetState &a_budget,
@@ -202,7 +226,8 @@ void EmitMetricsHeartbeat(const Metrics::Snapshot &a_measured,
       {"screen_fraction_median", Fraction(a_screen.median)},
       {"screen_fraction_max", Fraction(a_screen.most)},
       {"estimated_targets", std::to_string(a_planned.targets)},
-      {"estimated_bytes", std::to_string(a_planned.bytes)},
+      {"estimated_bytes", std::to_string(a_coreEstimate)},
+      {"engine_estimated_bytes", std::to_string(a_planned.bytes)},
       {"pool_targets", std::to_string(held.idleTargets)},
       {"pool_bytes", std::to_string(held.idleBytes)},
       {"resident_targets", std::to_string(compositor->ResidentTargets())},
@@ -238,29 +263,31 @@ void Manager::FlushMetricsHeartbeat() {
   const std::uint32_t now = NowMS();
   const std::uint32_t intervalMs = now - lastMetricsMS_;
   lastMetricsMS_ = now;
+  heartbeatDue_ = false;
   const Metrics::Snapshot measured = Metrics::Drain();
-  const Settings settings = GetSettings();
-  const BudgetSample sample = SampleBudget(measured, settings);
-  UpdateBudget(sample, PlannedTargets(live_).bytes, settings);
+  const BudgetSample sample = SampleBudget(measured, GetSettings());
+  pendingSample_ = sample;
   EmitHeartbeat(measured, sample, intervalMs);
 }
 
 void Manager::EmitHeartbeat(const Metrics::Snapshot &a_measured,
                             const BudgetSample &a_sample,
                             std::uint32_t a_intervalMs) {
-  const TargetCost planned = PlannedTargets(live_);
-  EmitMetricsHeartbeat(a_measured, planned, ScreenSpreadOf(live_), a_sample,
-                       budget_, waitingInstalls_.size());
+  const TargetCost planned = PlannedTargets(live_, world_);
+  EmitMetricsHeartbeat(a_measured, planned,
+                       Orchestration::PlannedBytesOf(world_),
+                       ScreenSpreadOf(world_), a_sample, world_.budget,
+                       world_.waitingInstalls.size());
   EmitTargetHolders(live_, world_, disagreementCount_);
-  const PerLevel<std::size_t> levels = LevelCounts(live_);
+  const PerLevel<std::size_t> levels = LevelCounts(world_);
   EmitLevelCounts(levels);
   PublishBudgetView(
-      Studio::BudgetViewOf(a_sample, budget_, budgetRadius_, levels));
+      Studio::BudgetViewOf(a_sample, world_.budget, world_.radius, levels));
   ReportRenderMemory(a_measured, planned, a_intervalMs);
 }
 
 std::vector<ActorTargets> Manager::RenderedTargets() const {
-  return RenderedActorTargets(live_);
+  return RenderedActorTargets(live_, world_);
 }
 
 void Manager::ReportRenderMemory(const Metrics::Snapshot &a_measured,
@@ -281,7 +308,7 @@ void Manager::ReportRenderMemory(const Metrics::Snapshot &a_measured,
                           a_measured.targetBytesDestroyed, a_intervalMs};
   if (IsBurst(burst) && GetSettings().verboseLogging) {
     logger::info("{}",
-                 BurstLine(burst, Actors::SyncSummary(syncLog_, NowMS(),
+                 BurstLine(burst, Actors::SyncSummary(world_.syncLog, NowMS(),
                                                       Actors::kSyncLogMs)));
   }
 }

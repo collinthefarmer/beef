@@ -75,6 +75,7 @@ struct GatheredFacts {
   std::map<RE::FormID, std::vector<ApplicationToken>> tokens;
   std::shared_ptr<const RecipeCatalog> catalog;
   std::vector<WaitingInstall> waiting;
+  std::uint32_t observedAtMS = 0;
 };
 
 struct TickContext {
@@ -199,7 +200,7 @@ private:
              std::optional<RE::FormID> a_inspected) const;
   [[nodiscard]] Orchestration::StaleActor
   StaleActorOf(RE::FormID a_actorID, const RecipeCatalog &a_catalog,
-               const Settings &a_settings);
+               const Settings &a_settings, std::uint32_t a_observedAtMS);
   [[nodiscard]] std::vector<Orchestration::ClaimedGeometry> ClaimsOf();
   [[nodiscard]] std::vector<Orchestration::ActorId> ForgetRequests();
   void CheckAgreement(const Orchestration::TickFacts &a_facts);
@@ -243,7 +244,8 @@ private:
   [[nodiscard]] CommandResults
   RunObserve(const Orchestration::Observe &a_command);
   [[nodiscard]] CommandResults
-  RunKeepModels(const Orchestration::KeepModels &a_command);
+  RunKeepModels(const Orchestration::KeepModels &a_command,
+                const TickContext &a_context);
   [[nodiscard]] CommandResults
   RunSettleApplications(const Orchestration::SettleApplications &a_command,
                         const TickContext &a_context);

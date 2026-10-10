@@ -17,9 +17,7 @@ void Manager::RetireAll() {
     }
     std::ranges::sort(ids);
     ids.erase(std::unique(ids.begin(), ids.end()), ids.end());
-    for (const RE::FormID actor : ids) {
-      QueueForget(actor);
-    }
+    forgets_.insert(ids.begin(), ids.end());
   });
 }
 

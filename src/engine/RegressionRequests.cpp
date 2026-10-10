@@ -5,6 +5,7 @@
 #include "engine/Manager.h"
 #include "engine/RecipeStore.h"
 #include "engine/RegressionRequest.h"
+#include "orchestration/World.h"
 
 #include <algorithm>
 #include <format>
@@ -16,6 +17,8 @@
 
 namespace BetterEnchantmentEffects {
 namespace {
+constexpr std::uint32_t kRetireTicks = 10;
+
 std::mutex requestLock;
 RegressionRequest request;
 std::string recipeUnderTest;
@@ -173,10 +176,7 @@ void Manager::QueueRegression(std::uint64_t a_request) {
     }
     request.dispatched = true;
     if (request.kind == RequestKind::kRetire) {
-      AbandonApplications(request.actor);
-      ForgetActor(request.actor);
-      Finish(live_.contains(request.actor) ? Regression::Outcome::kFail
-                                           : Regression::Outcome::kPass);
+      forgets_.insert(request.actor);
       return;
     }
     for (const auto &record : applications_.Snapshot()) {
@@ -231,7 +231,10 @@ Manager::RegressionActors(std::span<const RegressionWearer> a_wearers) const {
   for (std::size_t i = 0; i < a_wearers.size(); ++i) {
     const auto found = live_.find(a_wearers[i].actor);
     facts[i].live = found != live_.end();
-    facts[i].inView = !facts[i].live || found->second.inView;
+    const auto record =
+        world_.actors.find(Orchestration::ActorOf(a_wearers[i].actor));
+    facts[i].inView = !facts[i].live || (record != world_.actors.end() &&
+                                         record->second.sight.inView);
     if (facts[i].live) {
       for (const LivePiece &piece : found->second.pieces) {
         if (!std::ranges::contains(facts[i].liveItems, piece.armor)) {
@@ -266,9 +269,17 @@ Manager::RegressionActors(std::span<const RegressionWearer> a_wearers) const {
 
 void Manager::ObserveRegression() {
   const std::lock_guard lock{requestLock};
-  if (!Pending(request) || !request.dispatched ||
-      request.kind == RequestKind::kRetire)
+  if (!Pending(request) || !request.dispatched)
     return;
+  if (request.kind == RequestKind::kRetire) {
+    if (!forgets_.contains(request.actor) && !live_.contains(request.actor) &&
+        !world_.actors.contains(Orchestration::ActorOf(request.actor))) {
+      Finish(Regression::Outcome::kPass);
+    } else if (++request.retireTicks > kRetireTicks) {
+      Finish(Regression::Outcome::kFail);
+    }
+    return;
+  }
   for (const auto &record : applications_.Snapshot()) {
     if (record.token.actorID != request.actor ||
         record.token.revision <= request.previousAttempt)

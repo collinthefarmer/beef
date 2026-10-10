@@ -29,7 +29,7 @@ Manager::Manager()
     : applications_(SubmitTask,
                     [this](std::uint32_t a_id,
                            const std::vector<ApplicationToken> &a_tokens) {
-                      SyncStale(a_id, a_tokens);
+                      NoteStale(a_id, a_tokens);
                     }),
       animations_([this](AnimationEvent a_event) {
         QueueAnimationEvent(std::move(a_event));
@@ -75,10 +75,7 @@ void Manager::QueueForget(RE::FormID a_actorID) {
   if (a_actorID == 0) {
     return;
   }
-  PostTask([this, a_actorID] {
-    AbandonApplications(a_actorID);
-    ForgetActor(a_actorID);
-  });
+  PostTask([this, a_actorID] { forgets_.insert(a_actorID); });
 }
 
 void Manager::QueueEquipFinalize(RE::FormID a_actorID) {
@@ -114,6 +111,14 @@ void Manager::Clear() {
     RetireActorEffects(state);
   live_.clear();
   tracked_.clear();
+  world_ = {};
+  models_.clear();
+  results_.clear();
+  stale_.clear();
+  forgets_.clear();
+  pendingSample_.reset();
+  heartbeatDue_ = false;
+  disagreements_.clear();
   renderPlans_.Clear();
   planJobs_ = {};
   (void)planQueue_.DropQueued();

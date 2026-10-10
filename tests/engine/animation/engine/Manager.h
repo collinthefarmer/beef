@@ -7,6 +7,7 @@
 #include "recipe/Signals.h"
 
 #include <deque>
+#include <set>
 #include <utility>
 
 namespace BetterEnchantmentEffects {
@@ -28,6 +29,7 @@ struct Manager {
     QueueAnimationEvent(std::move(a_event));
   }};
   std::unordered_map<RE::FormID, LiveActor> live_;
+  std::set<RE::FormID> forgets_;
   std::vector<EventRecord> fired;
 
   Manager() { applications_.Resume(); }
@@ -37,19 +39,20 @@ struct Manager {
   void Fire(RE::FormID, const EventRecord &a_event) {
     fired.push_back(a_event);
   }
-  void QueueForget(RE::FormID a_actor) {
-    PostTask([this, a_actor] {
-      applications_.Retire(a_actor, applications_.PendingFor(a_actor));
-      animations_.Stop(a_actor);
-      ForgetAnimEvents(a_actor);
-      live_.erase(a_actor);
-    });
+  void Forget(RE::FormID a_actor) {
+    applications_.Retire(a_actor, applications_.PendingFor(a_actor));
+    animations_.Stop(a_actor);
+    ForgetAnimEvents(a_actor);
+    live_.erase(a_actor);
   }
   void Drain() {
     while (!tasks.empty()) {
       auto task = std::move(tasks.front());
       tasks.pop_front();
       task();
+    }
+    for (const RE::FormID actor : std::exchange(forgets_, {})) {
+      Forget(actor);
     }
   }
   void QueueAnimationEvent(AnimationEvent a_event);

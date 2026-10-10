@@ -11,6 +11,7 @@
 #include "engine/LogOnce.h"
 #include "engine/RegressionRun.h"
 #include "engine/SectionTimer.h"
+#include "orchestration/Tick.h"
 #include "planners/RenderBudget.h"
 #include "planners/RenderMemory.h"
 #include "render/Compositor.h"
@@ -616,11 +617,8 @@ void Manager::OnFrame() {
   AdvanceRegressionRun();
   const std::uint32_t now = NowMS();
   if (now - lastMetricsMS_ >= 1000) {
-    FlushMetricsHeartbeat();
+    heartbeatDue_ = true;
   }
-  Metrics::CountSyncFrame(frameSyncs_.spentUs);
-  frameSyncs_ = {};
-  RunWaitingInstalls(now);
   const SectionTimer frameTimer{Metrics::Section::kFrame};
   lab->CollectTimings();
   SweepRetiredMaterialTextures();
@@ -635,32 +633,11 @@ void Manager::OnFrame() {
     SweepAnimationEvents();
   }
   const Settings settings = GetSettings();
-  if (now - lastWaitingCheckMS_ >= Actors::kPendingRecheckMs) {
-    lastWaitingCheckMS_ = now;
-    MarkWaitingStale(now);
-  }
-  if (now - lastRecheckMS_ >= Actors::kRecheckMs) {
-    lastRecheckMS_ = now;
-    MarkRecheckStale(now, EvictDistanceNow(settings));
-  }
   if (now - lastTickMS_ < settings.TickIntervalMS()) {
     return;
   }
   lastTickMS_ = now;
-  DrainPlanJobs(settings);
-  {
-    const SectionTimer sweepTimer{Metrics::Section::kSweep};
-    Compositor::GetSingleton()->BeginTick(now);
-    Compositor::GetSingleton()->SweepStepOutputs(now);
-    lab->ExpireIdleTargets(now);
-  }
-  if (!live_.empty()) {
-    const SectionTimer tickTimer{Metrics::Section::kTick};
-    lab->SetGeneratedShaders(settings.generatedShaders);
-    lab->BeginTimedTick(settings.gpuTiming);
-    Tick(now, settings);
-    lab->EndTimedTick();
-  }
+  RunTick(now, settings);
   {
     const SectionTimer sweepTimer{Metrics::Section::kSweep};
     SweepBoundMeshes(*Compositor::GetSingleton(), live_, now);
@@ -670,6 +647,59 @@ void Manager::OnFrame() {
     PublishSnapshot(now);
   }
   ObserveRegression();
+}
+
+void Manager::RunTick(std::uint32_t a_nowMS, const Settings &a_settings) {
+  TextureLab *lab = TextureLab::GetSingleton();
+  if (!lab) {
+    return;
+  }
+  tickNowMS_ = a_nowMS;
+  std::vector<Orchestration::PlanJobDone> jobs = DrainPlanJobs();
+  {
+    const SectionTimer sweepTimer{Metrics::Section::kSweep};
+    Compositor::GetSingleton()->BeginTick(a_nowMS);
+    Compositor::GetSingleton()->SweepStepOutputs(a_nowMS);
+    lab->ExpireIdleTargets(a_nowMS);
+  }
+  std::optional<Metrics::Snapshot> measured;
+  const std::uint32_t intervalMs = a_nowMS - lastMetricsMS_;
+  if (heartbeatDue_) {
+    heartbeatDue_ = false;
+    lastMetricsMS_ = a_nowMS;
+    measured = Metrics::Drain();
+    pendingSample_ = SampleBudget(*measured, a_settings);
+  }
+  const std::optional<BudgetSample> sample = pendingSample_;
+  const GatheredFacts gathered =
+      GatherFacts(a_nowMS, a_settings, std::move(jobs));
+  CheckAgreement(gathered.facts);
+  Orchestration::TickOutput out =
+      Orchestration::Tick(std::move(world_), gathered.facts);
+  world_ = std::move(out.world);
+  EmitCoreRecords(out.trace, out.logs);
+  const Studio::View &view = editor_.CurrentView();
+  const TickContext context{a_settings,
+                            view,
+                            InspectedActor(a_nowMS),
+                            a_nowMS,
+                            frozenLastTick_ && !view.freeze,
+                            gathered};
+  frozenLastTick_ = view.freeze;
+  {
+    const SectionTimer tickTimer{Metrics::Section::kTick};
+    {
+      const SectionTimer previewsTimer{Metrics::Section::kPreviews};
+      lab->RenderPreviews();
+    }
+    lab->SetGeneratedShaders(a_settings.generatedShaders);
+    lab->BeginTimedTick(a_settings.gpuTiming);
+    results_ = Execute(out.commands, context);
+    lab->EndTimedTick();
+  }
+  if (measured && sample) {
+    EmitHeartbeat(*measured, *sample, intervalMs);
+  }
 }
 
 void Manager::MarkWaitingStale(std::uint32_t a_nowMS) {
