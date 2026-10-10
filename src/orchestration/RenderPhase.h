@@ -87,26 +87,30 @@ struct Resizing {
 using RenderPhase =
     std::variant<WithoutRender, Live, AwaitingPlan, FirstDrawing, Resizing>;
 
-[[nodiscard]] IntermediateHolding
-HoldingOf(const Intermediates &a_intermediates) noexcept;
-[[nodiscard]] IntermediateHolding
-HoldingOf(const RenderPhase &a_phase) noexcept;
 [[nodiscard]] std::optional<ResolutionLevel>
 TargetLevel(const RenderPhase &a_phase) noexcept;
 [[nodiscard]] std::optional<ResolutionLevel>
 AppliedLevel(const RenderPhase &a_phase) noexcept;
+[[nodiscard]] std::optional<ResolutionLevel>
+FailedLevelOf(const RenderPhase &a_phase) noexcept;
+
+[[nodiscard]] IntermediateHolding
+HoldingOf(const Intermediates &a_intermediates) noexcept;
+[[nodiscard]] IntermediateHolding
+HoldingOf(const RenderPhase &a_phase) noexcept;
+
 [[nodiscard]] bool MayRelease(const RenderPhase &a_phase) noexcept;
 [[nodiscard]] bool MayStepDown(const RenderPhase &a_phase) noexcept;
 [[nodiscard]] bool MayEvict(const RenderPhase &a_phase) noexcept;
+[[nodiscard]] bool ScreenStepDownDue(const RenderPhase &a_phase, Millis a_now,
+                                     Millis a_delay) noexcept;
+
 [[nodiscard]] const UnpublishedDraw *
 UnpublishedDrawOf(const RenderPhase &a_phase) noexcept;
 [[nodiscard]] std::optional<ResizeProgress>
 ResizeProgressOf(const RenderPhase &a_phase) noexcept;
 [[nodiscard]] std::optional<PlanJobId>
 AwaitedJob(const RenderPhase &a_phase) noexcept;
-[[nodiscard]] std::optional<ResolutionLevel>
-FailedLevelOf(const RenderPhase &a_phase) noexcept;
-[[nodiscard]] bool ScreenStepDownDue(const RenderPhase &a_phase, Millis a_now,
-                                     Millis a_delay) noexcept;
+
 [[nodiscard]] std::string_view PhaseName(const RenderPhase &a_phase) noexcept;
 }
