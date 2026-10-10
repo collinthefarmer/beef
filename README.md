@@ -49,6 +49,7 @@ enchantment on the piece itself.
 | `docs/plans/pure-tick-r4-2026-10-10.md` | How does the engine gather facts, run the tick core and execute its commands, and what does R4 delete? |
 | `docs/plans/pure-tick-r7b-2026-10-10.md` | How does the engine run the install program's pure stages, and which engine install code does R7b delete? |
 | `docs/plans/application-ledger-2026-10-10.md` | What is left of `ApplicationService` and `SessionQueue` after the tick core, and how would they shrink to a progress ledger and a session queue? (proposed, on hold) |
+| `docs/plans/effects-runtime-2026-10-10.md` | How would `Manager` split into named parts with a data-driven load reset and frame table, and in which order? (proposed, on hold) |
 | `docs/checkpoints/render-performance-review-2026-09-30.md` | What did the review of the layer-field and generated-shader commits find, and which findings are fixed? |
 | `docs/checkpoints/actor-core-review-2026-10-03.md` | What did the review of the actor-core branch find, what must be fixed before it merges, and how is each fix proven? |
 | `docs/checkpoints/regression-baseline-2026-10-03.md` | Where did the full in-game suite and each soak's performance stand on 2026-10-03, and which findings stayed open? |
