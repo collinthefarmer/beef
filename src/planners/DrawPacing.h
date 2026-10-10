@@ -30,6 +30,8 @@ struct FirstDrawProgress {
   std::uint64_t drawTicks = 0;
   std::size_t stacks = 0;
   std::size_t drawn = 0;
+  std::uint64_t beganFrame = 0;
+  [[nodiscard]] bool operator==(const FirstDrawProgress &) const = default;
 };
 
 enum class FirstDrawEnd { kDrawn, kTickLimit };

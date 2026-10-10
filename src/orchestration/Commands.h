@@ -15,13 +15,14 @@
 #include <vector>
 
 namespace BetterEnchantmentEffects::Orchestration {
-enum class ActorDraw : std::uint8_t { kSkip, kVisible, kHidden };
-
 enum class ReleaseReason : std::uint8_t { kHidden, kBudget };
 
-struct UpdateActor {
+struct TickActor {
   ActorId actor{};
-  ActorDraw draw = ActorDraw::kSkip;
+  bool drawStacks = false;
+  bool concealSlots = false;
+  bool hideShells = false;
+  bool hideLights = false;
   bool finishApplications = false;
 };
 
@@ -46,14 +47,15 @@ struct ReleaseIntermediates {
 
 struct DrawHidden {
   std::vector<ActorId> order;
+  std::uint64_t budgetUs = 0;
 };
 
-struct RebuildRender {
+struct BuildAwaitedRender {
   ActorId actor{};
   InstallBound bound;
 };
 
-struct FailRender {
+struct FailAwaitedRender {
   ActorId actor{};
   std::string problem;
 };
@@ -75,14 +77,14 @@ struct Forget {
   ActorId actor{};
 };
 
-struct MarkStale {
+struct Observe {
   ActorId actor{};
 };
 
 using Command =
-    std::variant<UpdateActor, StartResize, SwapResize, AbandonResize,
-                 ReleaseIntermediates, DrawHidden, RebuildRender, FailRender,
-                 Install, Retire, Forget, MarkStale>;
+    std::variant<TickActor, StartResize, SwapResize, AbandonResize,
+                 ReleaseIntermediates, DrawHidden, BuildAwaitedRender,
+                 FailAwaitedRender, Install, Retire, Forget, Observe>;
 
 struct TraceRecord {
   Trace::Event event = Trace::Event::kMetrics;

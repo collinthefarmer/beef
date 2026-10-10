@@ -8,16 +8,18 @@
 #include <vector>
 
 namespace BetterEnchantmentEffects::Orchestration {
-struct StepOutput {
+struct TickOutput {
   World world;
   std::vector<Command> commands;
   std::vector<TraceRecord> trace;
 };
 
-[[nodiscard]] StepOutput AbsorbSync(World a_world, const TickFacts &a_facts);
-[[nodiscard]] StepOutput AbsorbRender(World a_world, const TickFacts &a_facts);
-[[nodiscard]] StepOutput BudgetStep(World a_world, const TickFacts &a_facts);
-[[nodiscard]] StepOutput SyncStep(World a_world, const TickFacts &a_facts);
-[[nodiscard]] StepOutput LifecycleStep(World a_world, const TickFacts &a_facts);
-[[nodiscard]] StepOutput Tick(World a_world, const TickFacts &a_facts);
+[[nodiscard]] TickOutput RecordSyncResults(World a_world,
+                                           const TickFacts &a_facts);
+[[nodiscard]] TickOutput RecordRenderResults(World a_world,
+                                             const TickFacts &a_facts);
+[[nodiscard]] TickOutput RunBudget(World a_world, const TickFacts &a_facts);
+[[nodiscard]] TickOutput RunSync(World a_world, const TickFacts &a_facts);
+[[nodiscard]] TickOutput RunLifecycle(World a_world, const TickFacts &a_facts);
+[[nodiscard]] TickOutput Tick(World a_world, const TickFacts &a_facts);
 }

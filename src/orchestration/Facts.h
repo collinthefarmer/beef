@@ -2,6 +2,7 @@
 #pragma once
 
 #include "actors/Actor.h"
+#include "actors/Planning.h"
 #include "orchestration/World.h"
 #include "planners/InstallPacing.h"
 #include "planners/RenderBudget.h"
@@ -26,32 +27,36 @@ struct ActorSighting {
   Sighting sight;
 };
 
-struct ObservedActor {
+struct StaleActor {
   ActorId actor{};
   Actors::ActorFacts facts;
+  Actors::PlannedActor planned;
 };
 
 struct PlanJobDone {
-  PlanJob job{};
+  PlanJobId job{};
   bool built = false;
   std::string problem;
 };
 
-struct InstallAwaited {
-  ActorId actor{};
-  PlanJob job{};
+struct AwaitsPlan {
+  PlanJobId job{};
 };
 
-struct InstallRendered {
-  ActorId actor{};
+struct WithRender {
   ResolutionLevel level = ResolutionLevel::kFull;
   std::size_t firstDrawSlots = 0;
-  PerLevel<std::optional<LevelCost>> costs;
+  PerLevel<std::optional<LevelCost>> levelCosts;
   std::uint64_t chargedBytes = 0;
 };
 
-struct InstallBare {
+struct WithoutRender {};
+
+using RenderOutcome = std::variant<AwaitsPlan, WithRender, WithoutRender>;
+
+struct InstallDone {
   ActorId actor{};
+  RenderOutcome outcome;
 };
 
 struct InstallFailed {
@@ -59,38 +64,43 @@ struct InstallFailed {
   std::string reason;
 };
 
-struct ActorRetired {
+struct BuildAwaitedRenderDone {
+  ActorId actor{};
+  RenderOutcome outcome;
+};
+
+struct RetireDone {
   ActorId actor{};
 };
 
-struct ResizeBuilt {
+struct StartResizeDone {
   ActorId actor{};
   std::size_t stacks = 0;
 };
 
-struct ResizeRefused {
+struct StartResizeFailed {
   ActorId actor{};
   std::string reason;
 };
 
-struct ResizeSwapped {
+struct SwapResizeDone {
   ActorId actor{};
 };
 
-struct ResizeMismatched {
+struct SwapResizeFailed {
   ActorId actor{};
 };
 
-struct HiddenDrawn {
+struct DrawHiddenDone {
   ActorId actor{};
   std::size_t drawn = 0;
   bool drewThisTick = false;
 };
 
 using CommandResult =
-    std::variant<InstallAwaited, InstallRendered, InstallBare, InstallFailed,
-                 ActorRetired, ResizeBuilt, ResizeRefused, ResizeSwapped,
-                 ResizeMismatched, HiddenDrawn>;
+    std::variant<InstallDone, InstallFailed, BuildAwaitedRenderDone, RetireDone,
+                 StartResizeDone, StartResizeFailed, SwapResizeDone,
+                 SwapResizeFailed, DrawHiddenDone>;
 
 struct TickFacts {
   Millis now = 0;
@@ -99,8 +109,7 @@ struct TickFacts {
   std::vector<ActorSighting> sightings;
   std::vector<CommandResult> results;
   std::vector<PlanJobDone> jobs;
-  std::vector<ActorId> stale;
-  std::vector<ObservedActor> observed;
+  std::vector<StaleActor> stale;
   std::optional<BudgetSample> memory;
   FrameSyncs frameSyncs;
 };
