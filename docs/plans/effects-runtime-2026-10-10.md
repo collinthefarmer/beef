@@ -397,3 +397,92 @@ Each step leaves the Windows build and the native tests green. Use `tools/rename
     - The apply callback's shape is bound in one place, `RuntimeParts()`.
     - Ask them whether `Prepare/Finish/AbandonApplications`, `ActorsApplying` and `ChangeAndRebuildActors` become theirs. If yes, skip `RecipeRebuild.cpp`.
     - Sequencing: do steps 1-3 now, and freeze or land their API before steps 4 and 8.
+
+## 8. Frame routing by cadence
+
+This section replaces the "Data-driven frame routing" paragraph of section 3 and adds rows to steps 3 and 6; the rest stands.
+
+```text
+The root does no domain work. Each owner declares its work as a function in its own header, and the root walks a table of cadences. The hot path (the core tick and executing its commands) stays written out in the root.
+
+
+### Types
+  enum class Cadence { kEveryFrame, kEverySecond, kTickBeforeCore, kTickAfterCore, kTickAfterExecute, kAfterFrame };
+  struct FrameMoment { std::uint32_t nowMS; const Settings &settings; TextureLab &lab; };
+  struct FrameStep { Cadence cadence; std::optional<Metrics::Section> timed; void (*run)(RuntimeParts &, const FrameMoment &); };
+  inline constexpr std::array<FrameStep, 17> kFrameSteps{...};
+Each row is a one-line captureless adapter that calls the owner's function.
+
+
+### Cadence Table, In Run Order. Format: owner -> function | cadence | timed section | today's source (ManagerTick.cpp unless another file is named)
+ 1 regression -> AdvanceRegressionRun() | every frame | - | :543
+ 2 MemoryHeartbeat -> MarkHeartbeatDue(heartbeat, now) | every frame | - | :545-547
+ 3 texture lab -> lab.CollectTimings() | every frame | kFrame | :556
+ 4 material textures -> SweepRetiredMaterialTextures() | every frame | kFrame | :557
+ 5 texture lab -> lab.CollectPreviewDraws() | every frame | kFrame | :558
+ 6 applications -> applications.FinalizeDue(now) | every frame | kFrame | :633
+ 7 RecipeEditor -> editor.TickGesture() | every frame | kFrame | :560
+ 8 FrameCadence -> CountFrame(cadence) (Metrics::CountFrame and ++frame) | every frame | kFrame | :561-562
+ 9 ActorResources -> ExpireCarriedTimes(resources, now) | once a second | kFrame | :565
+10 AnimationSubscriptions -> SweepAnimationEvents(animations, resources, applications) | once a second | kFrame | :566
+11 RenderPlanStore -> DrainPlanJobs(plans, warnings), result into inbox.jobs | tick, before core | kTick | :590
+12 compositor and lab -> BeginTick, SweepStepOutputs, ExpireIdleTargets | tick, before core | kSweep | :592-596
+13 MemoryHeartbeat -> TakeHeartbeatIfDue(heartbeat, inbox, warnings, now, settings, planned), which sets inbox.memory and heartbeat.pendingEmit | tick, before core | kTick | :598-605
+ - CORE, written out in the root: gather -> CheckAgreement -> Orchestration::Tick -> EmitCoreRecords -> TickContext | kTick | :607-621
+14 texture lab -> lab.RenderPreviews() | tick, after core | kPreviews | :622-625
+ - EXECUTE, written out in the root: lab.BeginTimedTick; inbox.results = Execute(...); EndTimedTick | kTick | :626-629
+15 ActorResources -> SweepBoundMeshes(compositor, resources, now) | tick, after execute | kSweep | :574-577
+16 PublishedSnapshots -> PublishWatchedSnapshot(snapshots, resources, observed, editor, applications, now) | tick, after execute | kSnapshot | :578-581
+17 regression -> ObserveRegression(inbox, resources, core.world, applications) | tick, after execute | - | :582
+18 MemoryHeartbeat -> EmitPendingHeartbeat(heartbeat, resources, core.world, disagreements.reported, snapshots) | after frame, outside the kFrame timer as today | - | :548-550
+ L every part -> ResetForLoad(part) (kLoadResets, in the order given in section 3) | on load | - | Manager.cpp:99-154
+
+Notes on the table:
+- Rows 9 and 10 also run under kFrame. Today the whole of RunFrame sits under the kFrame timer (:555), including the once-a-second sweep.
+- Rows 11 and 13 run under kTick. Today kTick starts only at :606, so drain and heartbeat sampling are untimed now. This is a small change in the timing totals.
+
+
+### Two State Changes That Let Every Row Be A Pure Step
+- Plan jobs go through the inbox. TickInbox gains std::vector<Orchestration::PlanJobDone> jobs. Row 11 fills it, and gather takes it with TakeJobs(TickInbox&). No return value has to be threaded from row 11 to gather.
+- The heartbeat reading waits in its owner. MemoryHeartbeat gains std::optional<HeartbeatReading> pendingEmit. Row 13 sets it and row 18 consumes it. This replaces the optional<HeartbeatReading> that RunTick and RunFrame return today. FlushMetricsHeartbeat reuses the same two functions.
+
+
+### What Stays In The Root (FrameSteps.cpp), each block separated by a blank line:
+ 1. Guards: stop when there is no lab; start the lab once (cadence.textureLabStarted); while loading, call ForgetFrameInterval and stop.
+ 2. Build the moment and the due cadences with DueAt(cadence, now, settings.TickIntervalMS()). DueAt is pure and gets a native test.
+ 3. The every-frame rows.
+ 4. The once-a-second rows, if due.
+ 5. The tick, if due: before-core rows, then the core, then the after-core rows and execute, then the after-execute rows. The core and execute are spelled out as below.
+ 6. The after-frame rows.
+RunSteps(parts, moment, Cadence) is one loop that opens the row's SectionTimer when the row is timed.
+
+The core and execute, written out in the root:
+  const GatheredFacts gathered = GatherFacts(executionParts, parts_.core, view, inspected, now, cadence.frame, settings, TakeJobs(parts_.inbox));
+  CheckAgreement(parts_.disagreements, parts_.warnings, parts_.core.world, gathered.facts, parts_.resources);
+
+  Orchestration::TickOutput out = Orchestration::Tick(std::move(parts_.core.world), gathered.facts);
+  parts_.core.world = std::move(out.world);
+  EmitCoreRecords(out.trace, out.logs);
+
+  const TickContext context{...};
+  RunSteps(parts_, moment, Cadence::kTickAfterCore);
+
+  moment.lab.BeginTimedTick(settings.gpuTiming);
+  parts_.inbox.results = Execute(executionParts, out.commands, context);
+  moment.lab.EndTimedTick();
+The reader sees the boundary rule in one place: gather facts, the core decides, the engine executes. The chores live in the owners and the table.
+
+
+### Changes To The Order Of Work
+- Step 3 adds FrameCadence::DueAt with native tests: the three cadences, uint32 wrap-around, and a load reset that keeps frame. It also adds TickInbox::jobs and MemoryHeartbeat::pendingEmit, with tests that a reading is emitted once and that a second take while one is pending does nothing.
+- Step 6 moves rows 1-18 into the owners' headers and builds kFrameSteps.
+- In-game check for step 6:
+  - the heartbeat metrics trace still comes once a second;
+  - texture_lab_start appears once;
+  - the studio snapshot still updates while the menu is watching;
+  - section totals in the heartbeat match the baseline within noise, apart from the new kTick timing of rows 11 and 13;
+  - the regression suite passes, with trace action counts matching run 20261010T174638.
+
+
+### Open question 13: should the engine singletons (TextureLab, Compositor, retired material textures) appear as owners directly in the table, or be wrapped in a part? I recommend listing them directly as rows. Wrapping them would add a part that holds nothing.
+```
