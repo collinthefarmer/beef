@@ -186,3 +186,41 @@ If you decline the behaviour changes, a fallback for step 2 is possible: keep `S
 | Q5 | Rename `SessionQueue` (to `Session` or `GameSession`)? | Keep the name. It still posts tasks, and a rename touches 6 test files for little gain. |
 | Q6 | A record for the reinstall and equipped sets, or two `Manager` members? | Two members next to `forgets_`. They are plain sets with no invariants to protect together. |
 | Q7 | Keep the rule that an empty recipe id overlaps every recipe? | Keep it, named `Overlaps`. `ReapplyAll` (`ManagerApply.cpp:1066`) depends on it. |
+
+## 6. Data-driven structure and layout
+
+This section adds to sections 3 and 4; their steps, behaviour changes and open questions still hold.
+
+### A. Declared tables
+- Phases. Today three places describe them: `Pending()` (`ApplicationService.cpp:18-22`), the priority array in `Aggregate` (cpp58-62) and `ApplicationPhaseName`. Proposed: one `kPhaseRules` array, one row per phase in aggregate priority order: `{ApplicationPhase phase; Progress progress;}`, where `Progress` is unfinished or finished. Rows: Failed (finished), Queued, Prepared, OutOfView (unfinished), Cancelled, Unmatched, Rendered (finished). `IsUnfinished` looks up a phase's row. `Aggregate` takes the first row that one of the record's actors has, so the separate priority array goes away.
+- Report checks. `Report`'s guard is one expression with seven conditions (cpp293-305). It becomes `kReportChecks`, an array of named predicates: `RecordExists`, `TokenIsCurrent`, `PhaseIsReportable`, `ActorIsUnfinished`, `AttemptIsCurrent`. `Accepts` walks them with `all_of`, and each check gets its own unit test.
+- Recipe changes. `Begin` runs six steps in one function (cpp209-245). They become `kRecipeChangeSteps`, each with the signature `void(ApplicationLedger&, RecipeChange&)`: `Supersede`, `AddRetryActors`, `NormaliseActors`, `CancelActorRecords`, `AddRecord`, `DropOldestFinished`. `BeginRecipeChange` runs them in order, so the table itself states the order of a change.
+- History caps. The two near-copy prune functions (cpp335-376) and the caps declared before the type become one record, `kFinishedHistory{actors 256, recipes 256}`, and one generic `DropOldestFinished`, called once per map. The maps have different key types, so they cannot share a table.
+- Problem strings. The three inline strings (cpp180, 196, 331) become named constants in `kProblems`: `retiredBeforeRender` and `syncNotQueued`. `adapterUnavailable` is deleted in step 2.
+- Load reset. `SessionQueue::BeginLoad` clears five containers one after another (`SessionQueue.cpp:234-243`). The fields a load resets move into one nested record, `State::Marks{stale, equipDue}`. `BeginLoad` resets it in one assignment and increments the generation, so nothing can be left out.
+- `kEquipFinalizeDelayMS` moves out of the function (`SessionQueue.cpp:193`) to the top of the `.cpp`, next to `Due()`.
+- Not turned into tables: the `Manager` wiring. It is short and already reads as the domain, and a table would hide which engine call each step makes.
+
+
+### B. Layout
+- `ApplicationLedger.h`, with a blank line between groups:
+  1. Types: `ApplicationLedger`, `FinishedHistory`/`kFinishedHistory`.
+  2. Starting work: `BeginRecipeChange`, `BeginActorSync`.
+  3. Reporting: `Report`, `EndUnfinished`.
+  4. Reading: `PendingFor`, `ActorsOf`, `FailedActorsOf`, `RecordsOf`.
+  5. Load: `CancelAll`, `DropCancelled`.
+- `ApplicationLedger.cpp`: an unnamed namespace first, holding the tables, their one-line lookups, the `RecipeChange` steps, then `DropOldestFinished`. The public functions follow, in header order.
+- Phases inside a function, separated by blank lines:
+  - `Report`: check (`Accepts`) / trace / record (phase, problem, `Aggregate`) / drop the oldest finished.
+  - `BeginActorSync`: mint the token / requeue the actor in recipe records / store the record.
+  - `DropOldestFinished`: under the cap? / collect / sort by revision / erase the oldest.
+- `SessionQueue.h`: types first (`Task`, `Submit`, `StaleMarks`), then the class, grouped as the load gate (`BeginLoad`, `Resume`, `Loading`) / posting (`Post`) / marks (`MarkStale`, `Equip`, `TakeStale`).
+- `SessionQueue.cpp` `State`: fields grouped as the gate (`lock`, `generation`, `loading`) / posting (`submit`) / `Marks`.
+- `Manager.h`: one block, set apart by blank lines, holds `session_`, `applications_`, `reinstall_`, `equipped_`, `forgets_`. The application helpers sit next to it: `MarkReinstall`, `PrepareApplications`, `FinishApplications`, `AbandonApplications`.
+- `GatherFacts` (`ManagerFacts.cpp:124`), in phases: clock and settings / results, jobs, forgets, claims, memory / take the stale marks and begin each actor's sync with its tokens / observe the stale actors / sightings.
+
+
+### C. Changes to the steps
+- Step 1 also adds the four tables and the new layout. Behaviour stays identical.
+- Step 1 adds ledger tests: one checks that `kPhaseRules` has exactly one row per phase (`kApplicationPhaseCount` rows), and each `kReportChecks` entry gets a unit test.
+- Step 2 also adds `State::Marks` and regroups `Manager.h`.
