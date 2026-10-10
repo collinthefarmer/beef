@@ -102,6 +102,10 @@ void WritesOutsideTheRowFire() {
         "the budget step adding an actor fires");
   Check(CheckedStep("RunSync", before, inserted, {}).empty(),
         "the sync step adding an actor passes");
+  World synced = before;
+  synced.actors[kActor].syncState = Actors::ActorState{};
+  Check(CheckedStep("RunSync", before, synced, {}).empty(),
+        "the sync step writing a sync state passes");
   World radius = before;
   radius.radius = BudgetRadius{500.0f, 1, false};
   Check(Fired(CheckedStep("RunLifecycle", before, radius, {}),

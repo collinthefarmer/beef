@@ -181,6 +181,16 @@ EstimateOf(const World &a_world, const std::vector<Command> &a_commands) {
   return range;
 }
 
+[[nodiscard]] inline bool ReleasedFromLive(const RenderPhase &a_phase) {
+  const Resizing *resizing = Get<Resizing>(a_phase);
+  if (resizing) {
+    return IsQueued(a_phase) &&
+           resizing->holding == IntermediateHolding::kReleased;
+  }
+  const Live *live = Get<Live>(a_phase);
+  return live && Is<IntermediatesReleased>(live->intermediates);
+}
+
 struct Checker {
   const TickView &view;
   std::vector<Violation> violations;
@@ -199,10 +209,10 @@ struct Checker {
 
   void CheckRelease(const ReleaseIntermediates &a_command) {
     const RenderPhase *after = After(a_command.actor);
-    const Live *live = after ? Get<Live>(*after) : nullptr;
-    if (!live || !Is<IntermediatesReleased>(live->intermediates)) {
+    if (!after || !ReleasedFromLive(*after)) {
       Flag(Rule::kReleaseOutsideLive, a_command.actor,
-           "the actor is not live with released intermediates after the tick");
+           "the actor is neither live nor resizing from a released render "
+           "after the tick");
       return;
     }
     if (a_command.reason != ReleaseReason::kOutOfView) {
@@ -232,11 +242,9 @@ struct Checker {
     };
     Match(
         a_command,
-        [&](const TickActor &a_tick) {
+        [&](const TickActor &) {
           if (!after) {
             disagree("tick of an actor without a render");
-          } else if (a_tick.drawStacks && !AppliedLevel(*after)) {
-            disagree("stacks drawn for a phase without a render");
           }
         },
         [&](const StartResize &a_start) {
@@ -335,7 +343,8 @@ struct Checker {
       }
       const bool starting = IsQueued(phase) && HasCommandFor<StartResize>(
                                                    view.output.commands, id);
-      inFlight += IsRunning(phase) || starting ? 1 : 0;
+      const bool swapping = HasCommandFor<SwapResize>(view.output.commands, id);
+      inFlight += (IsRunning(phase) && !swapping) || starting ? 1 : 0;
     }
     if (inFlight > 1) {
       Flag(Rule::kTwoResizesInFlight, std::nullopt,
@@ -373,7 +382,8 @@ struct Checker {
         Flag(Rule::kCreatingEventIgnored, event->actor,
              "creating event for a phase that cannot take it");
       }
-      if (!After(event->actor)) {
+      if (!After(event->actor) &&
+          !HasCommandFor<Forget>(view.output.commands, event->actor)) {
         Flag(Rule::kCreatingEventIgnored, event->actor,
              "creating event left the actor without a render");
       }

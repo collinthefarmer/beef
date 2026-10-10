@@ -78,6 +78,12 @@ void ReleaseOutsideLive() {
   Check(!Fired(Checked(held, FactsAt(kNow), released, {release}),
                Rule::kReleaseOutsideLive),
         "a release that leaves the actor live and released passes");
+  const World steppedDown =
+      WorldOf({{kActor, Resizing{kFull, kHalf, IntermediateHolding::kReleased,
+                                 ResizeQueued{}, std::nullopt}}});
+  Check(!Fired(Checked(held, FactsAt(kNow), steppedDown, {release}),
+               Rule::kReleaseOutsideLive),
+        "a budget release followed by a step-down in the same tick passes");
 }
 
 void OutOfViewReleaseWaitsForItsHold() {
@@ -110,6 +116,10 @@ void OneResizeInFlight() {
         "a resize started beside a running one fires");
   Check(!Fired(Checked(starting, {}), Rule::kTwoResizesInFlight),
         "a queued resize beside a running one passes");
+  Check(!Fired(
+            Checked(starting, {SwapResize{kActor}, StartResize{kOther, kHalf}}),
+            Rule::kTwoResizesInFlight),
+        "a resize started beside one that swaps passes");
 }
 
 void NoResizeToTheSameLevel() {
@@ -140,6 +150,9 @@ void NoIgnoredCreatingEvent() {
   Check(!Fired(Checked(live, reinstall, drawing, {}),
                Rule::kCreatingEventIgnored),
         "an install result after a retire of the same actor passes");
+  Check(!Fired(Checked(awaiting, facts, World{}, {Forget{kActor}}),
+               Rule::kCreatingEventIgnored),
+        "an install result for an actor forgotten in the same tick passes");
 }
 
 void CommandsAgreeWithPhases() {
