@@ -8,6 +8,7 @@
 #include "engine/JobQueue.h"
 #include "planners/ActorMatches.h"
 #include "planners/BindingPlan.h"
+#include "planners/OutputState.h"
 #include "planners/PlanSizes.h"
 #include "planners/RenderBudget.h"
 #include "planners/RenderPlan.h"
@@ -34,10 +35,7 @@ class RenderInstance;
 struct PlacedOutput {
   std::size_t index = 0;
   std::unique_ptr<RenderOutput> stack;
-  std::string problem;
-  bool active = false;
-  bool rendered = false;
-  bool renderFailed = false;
+  OutputState state = OutputInactive{};
 };
 
 struct MergedSlotStack {

@@ -16,6 +16,15 @@ std::span<const Recipe> RecipesOf(const LiveActor &a_actor) noexcept {
                          : std::span<const Recipe>{};
 }
 
+namespace {
+OutputState StateBeforeRender(const PlacedOutput &a_output) {
+  if (a_output.stack && IsActive(a_output.state)) {
+    return OutputPending{};
+  }
+  return a_output.state;
+}
+}
+
 void RetireGeometry(LiveGeometry &a_geometry) {
   a_geometry.lost = true;
   a_geometry.shell.reset();
@@ -41,12 +50,8 @@ void RetireGeometry(LiveActor &a_actor, LiveGeometry &a_geometry) {
     }
     for (PlacedOutput &output :
          a_actor.placements[resolved->placement].outputs) {
+      output.state = AfterRetire(StateBeforeRender(output));
       output.stack.reset();
-      output.rendered = false;
-      output.renderFailed = true;
-      if (output.problem.empty()) {
-        output.problem = "the geometry was retired after ownership changed";
-      }
     }
   }
 }

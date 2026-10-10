@@ -67,8 +67,8 @@ bool PlacementRendered(const LiveActor &a_state, PlacementId a_placement) {
   }
   return std::ranges::any_of(a_state.placements[resolved->placement].outputs,
                              [](const PlacedOutput &a_output) {
-                               return a_output.stack && a_output.rendered &&
-                                      !a_output.renderFailed;
+                               return a_output.stack &&
+                                      Is<OutputRendered>(a_output.state);
                              });
 }
 

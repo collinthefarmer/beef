@@ -281,8 +281,8 @@ void PreparePlacement(LiveActor &a_state,
     live.outputs.clear();
     for (const OutputPlacement &output :
          a_state.matches.placements[k].outputs) {
-      live.outputs.push_back(
-          PlacedOutput{IndexOf(output.output), nullptr, output.problem});
+      live.outputs.push_back(PlacedOutput{IndexOf(output.output), nullptr,
+                                          OutputInactive{output.problem}});
     }
   }
 }
@@ -346,8 +346,10 @@ void MarkReplaced(LiveActor &a_state, LiveGeometry &a_bound) {
       if (!output) {
         continue;
       }
-      output->problem = std::format(
-          "replaced by recipe {}", ReplacerRecipeId(a_state, a_bound, slot, c));
+      output->state =
+          WithProblem(output->state,
+                      std::format("replaced by recipe {}",
+                                  ReplacerRecipeId(a_state, a_bound, slot, c)));
     }
   }
 }
@@ -482,9 +484,11 @@ void CollectChainStacks(LiveActor &a_state, const LocatedGeometry &a_geometry,
         continue;
       }
       PlacedOutput &output = located->placed;
-      output.active = true;
-      output.problem = SurfaceProblem(bound, slot, output.problem);
-      if (!output.problem.empty()) {
+      std::string problem =
+          SurfaceProblem(bound, slot, std::string{ProblemOf(output.state)});
+      const bool blocked = !problem.empty();
+      output.state = Activated(std::move(problem));
+      if (blocked) {
         continue;
       }
       const TextureSize slotSize =
@@ -588,7 +592,8 @@ PlanInputOf(const ActorStacks &a_stacks, const LiveActor &a_state) {
 
 void FailStackOutputs(ActorStacks &a_stacks, const std::string &a_problem) {
   for (ActorStackRequest &request : a_stacks.requests) {
-    request.located.placed.problem = a_problem;
+    request.located.placed.state =
+        WithProblem(request.located.placed.state, a_problem);
   }
 }
 
@@ -625,7 +630,7 @@ void AttachStackOutputs(ActorStacks &a_stacks,
     }
     const LiveGeometry *bound = BoundAt(a_stacks, request.geometry);
     if (!placed.stack) {
-      placed.problem = "stack was not lowered";
+      placed.state = WithProblem(placed.state, std::string{kStackNotLowered});
     } else if (bound) {
       LogStackDiagnostics(request.located, bound->name, a_warnings);
     }

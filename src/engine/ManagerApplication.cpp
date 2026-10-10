@@ -57,19 +57,20 @@ bool Includes(const ApplicationToken &a_token, const LiveInstance &a_instance) {
 void ObserveOutput(ApplicationObservation &a_result,
                    const PlacedOutput &a_output, bool a_rendered,
                    bool a_planAwaited) {
-  if (!a_output.active) {
+  if (!IsActive(a_output.state)) {
     return;
   }
   ++a_result.outputs;
-  if (!a_output.problem.empty()) {
-    a_result.problem = a_output.problem;
+  const std::string_view problem = ProblemOf(a_output.state);
+  if (!a_output.stack && !problem.empty()) {
+    a_result.problem = problem;
   } else if (!a_output.stack && a_planAwaited) {
     a_result.waiting = true;
   } else if (!a_output.stack) {
     a_result.problem = "the output was not prepared";
-  } else if (a_rendered && a_output.renderFailed) {
-    a_result.problem = "the output could not be rendered; reapply to retry";
-  } else if (a_rendered && !a_output.rendered) {
+  } else if (a_rendered && Is<OutputFailed>(a_output.state)) {
+    a_result.problem = problem;
+  } else if (a_rendered && !Is<OutputRendered>(a_output.state)) {
     a_result.waiting = true;
   }
 }

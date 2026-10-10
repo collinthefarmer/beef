@@ -153,6 +153,24 @@ void UpdateRenderInputs(LiveActor &a_state, LiveGeometry &a_bound,
   }
 }
 
+OutputRender OutputRenderOf(StackRender a_render) noexcept {
+  switch (a_render) {
+  case StackRender::kRendered:
+    return OutputRender::kRendered;
+  case StackRender::kPending:
+    return OutputRender::kPending;
+  case StackRender::kFailed:
+    return OutputRender::kFailed;
+  }
+  return OutputRender::kFailed;
+}
+
+void RecordRender(PlacedOutput &a_output, StackRender a_render) {
+  if (a_output.stack) {
+    a_output.state = AfterRender(a_output.state, OutputRenderOf(a_render));
+  }
+}
+
 StackRender RenderStackOutput(PlacedOutput &a_output,
                               const LayerFilter &a_filter,
                               const StackBase &a_base) {
@@ -161,8 +179,7 @@ StackRender RenderStackOutput(PlacedOutput &a_output,
   }
   const StackRender outcome =
       Compositor::GetSingleton()->Render(*a_output.stack, a_filter, a_base);
-  a_output.rendered = outcome == StackRender::kRendered;
-  a_output.renderFailed = outcome == StackRender::kFailed;
+  RecordRender(a_output, outcome);
   return outcome;
 }
 
@@ -275,8 +292,7 @@ SlotChain RenderMergedChain(const SlotContext &a_context,
   const StackRender outcome =
       Compositor::GetSingleton()->Render(*a_merged.stack, filter, StackBase{});
   for (PlacedOutput *output : drawn) {
-    output->rendered = outcome == StackRender::kRendered;
-    output->renderFailed = outcome == StackRender::kFailed;
+    RecordRender(*output, outcome);
   }
   if (outcome != StackRender::kRendered) {
     SlotChain unshown;
@@ -440,7 +456,9 @@ void FailGeometryOutputs(LiveActor &a_state, const LiveGeometry &a_bound) {
             ResolvePlacement(a_state, id)) {
       for (PlacedOutput &output :
            a_state.placements[resolved->placement].outputs) {
-        output.renderFailed = true;
+        if (output.stack) {
+          output.state = AfterLostGeometry(output.state);
+        }
       }
     }
   }

@@ -3,11 +3,34 @@
 #include "test_support.h"
 
 #include <memory>
+#include <string>
 
 using namespace BetterEnchantmentEffects;
 using test::Check;
 
+namespace {
+void ARetireNamesItselfOverARenderFailure() {
+  LiveActor actor;
+  actor.matches.placements.resize(1);
+  actor.instances.resize(1);
+  actor.placements.resize(1);
+  PlacedOutput failed;
+  failed.state = OutputFailed{std::string{kRenderFailedProblem}};
+  failed.stack = std::make_unique<RenderOutput>();
+  actor.placements[0].outputs.push_back(std::move(failed));
+  actor.pieces.resize(1);
+  actor.pieces[0].geometries.resize(1);
+  LiveGeometry &geometry = actor.pieces[0].geometries[0];
+  geometry.placements = {PlacementId{0}};
+  RetireGeometry(actor, geometry);
+  Check(actor.placements[0].outputs[0].state ==
+            OutputState{OutputFailed{std::string{kRetiredProblem}}},
+        "a retire replaces a render failure with the retire problem");
+}
+}
+
 int main() {
+  ARetireNamesItselfOverARenderFailure();
   LiveActor actor;
   actor.instances.resize(1);
   actor.instances[0].light = std::make_unique<LightBinding>();
@@ -15,8 +38,7 @@ int main() {
   actor.placements.resize(2);
   for (auto &placement : actor.placements) {
     PlacedOutput output;
-    output.active = true;
-    output.rendered = true;
+    output.state = OutputRendered{};
     output.stack = std::make_unique<RenderOutput>();
     output.stack->target = std::make_shared<int>(42);
     placement.outputs.push_back(std::move(output));
@@ -56,8 +78,10 @@ int main() {
             material.expired() && render.expired(),
         "lost geometry drops its bindings, inputs, and cached resources");
   const auto &output = actor.placements[0].outputs[0];
-  Check(!output.stack && !output.rendered && output.renderFailed &&
-            output.active && !output.problem.empty() && lost.name == "lost",
+  Check(!output.stack &&
+            output.state ==
+                OutputState{OutputFailed{std::string{kRetiredProblem}}} &&
+            lost.name == "lost",
         "retirement keeps diagnostic identity and reports the released output");
   Check(actor.placements.size() == 2 && lost.placements.size() == 2 &&
             ResolvePlacement(actor, PlacementId{1}) && !otherStack.expired() &&
