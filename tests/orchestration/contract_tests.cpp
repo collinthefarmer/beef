@@ -85,9 +85,11 @@ void WritesOutsideTheRowFire() {
         "the render results step writing a sighting passes");
   World erased = before;
   erased.actors[kActor].render.reset();
-  Check(Fired(CheckedStep("RunSync", before, erased, {}),
+  Check(CheckedStep("RunSync", before, erased, {}).empty(),
+        "the sync step erasing a render it retires passes");
+  Check(Fired(CheckedStep("RunLifecycle", before, erased, {}),
               Rule::kStepWroteOutsideRow),
-        "the sync step erasing a render fires");
+        "the lifecycle step erasing a render fires");
   Check(CheckedStep("RecordSyncResults", before, erased, {}).empty(),
         "the sync results step erasing a render passes");
   World costed = before;

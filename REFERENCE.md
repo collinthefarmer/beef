@@ -3415,6 +3415,13 @@ Nothing in the engine calls it yet.
   plan's models are kept, the actor joins the waiting installs, and the
   trace records `sync_deferred`. Its state is not recorded, so the next
   observation decides again.
+- The core stops tracking a render when it decides to retire it: `RunSync`
+  records the render's target level as `reinstallLevel` and its return bytes,
+  then erases `render` in the tick it issues `Retire`. Later steps of that tick
+  therefore send no `TickActor` and no unpublished draw for it; the engine
+  carries out commands after the `Install` of a reinstall, so a `TickActor`
+  with the old phase's flags would show the new, unpublished render for a
+  tick. A `Retired` result for an actor without a render changes nothing.
 - A changed actor gets `KeepModels`, `Retire` when something was installed,
   `Install` with its bound and replaced bytes, and `SettleApplications` for a
   reinstall. The replaced bytes are freed with `Released` when the `Install`

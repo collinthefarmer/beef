@@ -192,6 +192,20 @@ void Settle(TickOutput &a_output, Decided a_decided, std::uint32_t a_now) {
   a_output.commands.emplace_back(SettleApplications{actor, !waiting, true});
 }
 
+void RetireRender(ActorRecord &a_record) {
+  if (!a_record.render) {
+    return;
+  }
+  if (const std::optional<ResolutionLevel> level =
+          TargetLevel(a_record.render->phase)) {
+    a_record.reinstallLevel = level;
+  }
+  if (const std::optional<std::uint64_t> bytes = ReturnBytesOf(a_record)) {
+    a_record.returnBytes = bytes;
+  }
+  a_record.render.reset();
+}
+
 FrameSyncs Change(TickOutput &a_output, Decided a_decided,
                   const TickFacts &a_facts, FrameSyncs a_frame) {
   const ActorId actor = a_decided.stale.actor;
@@ -207,6 +221,7 @@ FrameSyncs Change(TickOutput &a_output, Decided a_decided,
       KeepModels{actor, InstalledPlanOf(a_decided.next.state)});
   if (replacing) {
     a_output.commands.emplace_back(Retire{actor});
+    RetireRender(record);
   }
   record.syncState = std::move(a_decided.next.state);
   if (installs) {
@@ -370,19 +385,10 @@ TickOutput RecordSyncResults(World a_world, const TickFacts &a_facts) {
       continue;
     }
     if (const Retired *retired = Get<Retired>(result)) {
-      const auto record = a_world.actors.find(retired->actor);
-      if (record == a_world.actors.end() || !record->second.render) {
-        continue;
+      if (const auto record = a_world.actors.find(retired->actor);
+          record != a_world.actors.end()) {
+        RetireRender(record->second);
       }
-      ActorRecord &actor = record->second;
-      if (const std::optional<ResolutionLevel> level =
-              TargetLevel(actor.render->phase)) {
-        actor.reinstallLevel = level;
-      }
-      if (const std::optional<std::uint64_t> bytes = ReturnBytesOf(actor)) {
-        actor.returnBytes = bytes;
-      }
-      actor.render.reset();
     }
   }
   for (const ClaimedGeometry &claimed : a_facts.claims) {

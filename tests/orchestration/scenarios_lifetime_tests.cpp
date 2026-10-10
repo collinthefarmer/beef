@@ -196,7 +196,7 @@ void AnActorUnloadsDuringAResize() {
         "the unloaded actor's resize never swaps");
 }
 
-[[maybe_unused]] void KnownBugReinstallTickUsesTheRetiredPhase() {
+void AReinstallTickSendsNothingForTheOldRender() {
   constexpr ActorId kActor{960};
   Script script;
   ActorScript actor =
@@ -222,8 +222,14 @@ void AnActorUnloadsDuringAResize() {
       }
     }
   }
-  Check(concealed, "the reinstall tick's TickActor conceals the new, "
-                   "unpublished render");
+  bool untouched = true;
+  for (const Issued<Retire> &retire : retired) {
+    for (const Issued<TickActor> &tick : IssuedFor<TickActor>(sim, kActor)) {
+      untouched = untouched && tick.tick != retire.tick;
+    }
+  }
+  Check(untouched && concealed,
+        "the reinstall tick sends no TickActor for the retired render");
   Check(unlisted, "the reinstall tick does not draw the retired phase's "
                   "unpublished work");
 }
@@ -234,5 +240,6 @@ int main() {
   TheRadiusShrinksAndGrows();
   AReinstallDuringAResize();
   AnActorUnloadsDuringAResize();
+  AReinstallTickSendsNothingForTheOldRender();
   return test::Finish("orchestration_scenarios_lifetime");
 }
