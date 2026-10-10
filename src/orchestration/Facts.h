@@ -2,6 +2,7 @@
 #pragma once
 
 #include "actors/Actor.h"
+#include "actors/Lifecycle.h"
 #include "actors/Planning.h"
 #include "orchestration/World.h"
 #include "planners/InstallPacing.h"
@@ -19,6 +20,7 @@
 namespace BetterEnchantmentEffects::Orchestration {
 struct TickSettings {
   float evictDistance = 0.0f;
+  bool sizeByScreen = true;
   bool publishEffects = true;
   bool verboseLogging = false;
   std::uint32_t unpublishedDrawBudgetMs = 4;
@@ -31,6 +33,7 @@ struct StaleActor {
   ActorId actor{};
   Actors::ActorFacts facts;
   Actors::PlannedActor planned;
+  Actors::Reinstall reinstall = Actors::Reinstall::kIfChanged;
 };
 
 struct ClaimedGeometry {

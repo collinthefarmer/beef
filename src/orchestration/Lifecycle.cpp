@@ -1,6 +1,7 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #include "orchestration/Lifecycle.h"
 
+#include "orchestration/Budget.h"
 #include "orchestration/PhaseChanges.h"
 #include "orchestration/Tick.h"
 #include "planners/DrawPacing.h"
@@ -142,7 +143,8 @@ PlanJobId JobOf(const PlanJobDone &a_done) noexcept {
       [](const PlanJobFailed &a_failed) { return a_failed.job; });
 }
 
-void RecordJob(TickOutput &a_out, const PlanJobDone &a_done) {
+void RecordJob(TickOutput &a_out, const PlanJobDone &a_done,
+               const TickSettings &a_settings) {
   const PlanJobId job = JobOf(a_done);
   for (auto &[actor, record] : a_out.world.actors) {
     if (!record.render || AwaitedJob(record.render->phase) != job) {
@@ -156,7 +158,8 @@ void RecordJob(TickOutput &a_out, const PlanJobDone &a_done) {
     }
     Apply(a_out, actor, render,
           PlanBuilt(actor, render.phase, job,
-                    InstallBoundFor(record, a_out.world.budget)),
+                    InstallBoundOf(record, record.sight, a_out.world.budget, 0,
+                                   a_settings)),
           "plan_built");
   }
 }
@@ -268,8 +271,18 @@ void StepLevel(TickOutput &a_out, ActorId a_actor, ActorRecord &a_record,
         "level_wanted");
 }
 
-std::set<ActorId> ScheduleResizes(TickOutput &a_out, std::uint64_t a_frame) {
+struct ScheduledResizes {
   std::set<ActorId> swapping;
+  std::optional<ActorId> starting;
+
+  [[nodiscard]] bool Includes(ActorId a_actor) const {
+    return swapping.contains(a_actor) || starting == a_actor;
+  }
+};
+
+ScheduledResizes ScheduleResizes(TickOutput &a_out, std::uint64_t a_frame) {
+  ScheduledResizes scheduled;
+  std::set<ActorId> &swapping = scheduled.swapping;
   std::size_t running = 0;
   std::vector<ResizeCandidate> candidates;
   for (const auto &[actor, record] : a_out.world.actors) {
@@ -297,17 +310,18 @@ std::set<ActorId> ScheduleResizes(TickOutput &a_out, std::uint64_t a_frame) {
   }
   const std::optional<std::uint32_t> next = NextResize(candidates, running);
   if (!next) {
-    return swapping;
+    return scheduled;
   }
   const auto found = a_out.world.actors.find(ActorOf(*next));
   if (found == a_out.world.actors.end() || !found->second.render) {
-    return swapping;
+    return scheduled;
   }
   if (const std::optional<ResolutionLevel> to =
           TargetLevel(found->second.render->phase)) {
     a_out.commands.push_back(StartResize{found->first, *to});
+    scheduled.starting = found->first;
   }
-  return swapping;
+  return scheduled;
 }
 
 void FinishFirstDraw(TickOutput &a_out, ActorId a_actor,
@@ -362,21 +376,6 @@ ActorSight ActorSightOf(const Sighting &a_sight) noexcept {
   return {a_sight.screenFraction, a_sight.inView, a_sight.role};
 }
 
-InstallBound InstallBoundFor(const ActorRecord &a_record,
-                             const BudgetState &a_budget) noexcept {
-  const ActorSight sight = ActorSightOf(a_record.sight);
-  if (sight.role == ActorRole::kPlayer) {
-    return {a_record.reinstallLevel.value_or(ResolutionLevel::kFull),
-            std::nullopt};
-  }
-  const std::optional<ResolutionLevel> level =
-      a_record.reinstallLevel ? a_record.reinstallLevel : WantedLevel(sight);
-  if (!level) {
-    return {};
-  }
-  return {*level, HeadroomOf(a_budget, 0)};
-}
-
 TickActor TickActorFor(ActorId a_actor, const RenderPhase &a_phase,
                        const Sighting &a_sight,
                        const TickSettings &a_settings) noexcept {
@@ -420,7 +419,7 @@ TickOutput RecordRenderResults(World a_world, const TickFacts &a_facts) {
     }
   }
   for (const PlanJobDone &done : a_facts.jobs) {
-    RecordJob(out, done);
+    RecordJob(out, done, a_facts.settings);
   }
   RecordRenderedFrames(out.world, a_facts.frame);
   return out;
@@ -428,13 +427,15 @@ TickOutput RecordRenderResults(World a_world, const TickFacts &a_facts) {
 
 TickOutput RunLifecycle(World a_world, const TickFacts &a_facts) {
   TickOutput out{std::move(a_world), {}, {}, {}};
+  const ScheduledResizes scheduled = ScheduleResizes(out, a_facts.frame);
   for (auto &[actor, record] : out.world.actors) {
     if (RenderLoaded(record)) {
       See(out, actor, record, a_facts);
-      StepLevel(out, actor, record, a_facts);
+      if (!scheduled.Includes(actor)) {
+        StepLevel(out, actor, record, a_facts);
+      }
     }
   }
-  const std::set<ActorId> swapping = ScheduleResizes(out, a_facts.frame);
   for (auto &[actor, record] : out.world.actors) {
     if (RenderLoaded(record)) {
       FinishFirstDraw(out, actor, *record.render, a_facts.frame);
@@ -447,7 +448,7 @@ TickOutput RunLifecycle(World a_world, const TickFacts &a_facts) {
     }
   }
   if (std::optional<DrawUnpublished> draw =
-          UnpublishedDraws(out.world, swapping, a_facts.settings)) {
+          UnpublishedDraws(out.world, scheduled.swapping, a_facts.settings)) {
     out.commands.push_back(std::move(*draw));
   }
   return out;

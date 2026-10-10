@@ -1,6 +1,7 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #include "actors/Lifecycle.h"
 #include "actors/fixtures.h"
+#include "orchestration/Budget.h"
 #include "orchestration/Sync.h"
 #include "orchestration/Tick.h"
 #include "test_support.h"
@@ -465,7 +466,8 @@ void ThePlayerInstallsWithoutHeadroom() {
   BudgetState budget;
   budget.allowance = 1000;
   const Sighting player{ActorRole::kPlayer, true, true, 0.01f, std::nullopt};
-  const InstallBound bound = InstallBoundOf(record, player, budget, 0);
+  const InstallBound bound =
+      InstallBoundOf(record, player, budget, 0, TickSettings{});
   Check(bound.finest == ResolutionLevel::kFull && !bound.headroom,
         "the player installs at full resolution without a headroom");
 }
@@ -475,40 +477,50 @@ void ANewActorInstallsAtItsWantedLevel() {
   BudgetState budget;
   budget.allowance = 1000;
   budget.planned = 200;
-  const InstallBound away = InstallBoundOf(record, Seen(false), budget, 0);
+  const InstallBound away =
+      InstallBoundOf(record, Seen(false), budget, 0, TickSettings{});
   Check(away.finest == ResolutionLevel::kEighth &&
             away.headroom == std::uint64_t{800},
         "an actor out of view installs at the coarsest level");
-  const InstallBound unmeasured =
-      InstallBoundOf(record, Seen(true, std::nullopt), budget, 0);
+  const InstallBound unmeasured = InstallBoundOf(
+      record, Seen(true, std::nullopt), budget, 0, TickSettings{});
   Check(unmeasured == InstallBound{},
         "an unmeasured actor installs without a bound");
   ActorRecord evicted;
   evicted.reinstallLevel = ResolutionLevel::kQuarter;
-  const InstallBound back = InstallBoundOf(evicted, Seen(), budget, 0);
+  const InstallBound back =
+      InstallBoundOf(evicted, Seen(), budget, 0, TickSettings{});
   Check(back.finest == ResolutionLevel::kQuarter,
         "a returning actor installs at its earlier level");
 }
 
-void HeldBytesFollowThePhase() {
-  InstalledRender render = LiveRender(ResolutionLevel::kFull);
-  Equal(HeldBytes(render), std::uint64_t{400},
-        "a live render holds its level's cost");
-  render.phase = Live{ResolutionLevel::kFull,
-                      IntermediatesReleased{},
-                      {},
-                      std::nullopt,
-                      std::nullopt};
-  Equal(HeldBytes(render), std::uint64_t{300},
-        "a released render holds its cost when released");
-  render.phase =
+void ReturnBytesFollowTheTarget() {
+  ActorRecord record;
+  record.render = LiveRender(ResolutionLevel::kFull);
+  Check(ReturnBytesOf(record) == std::uint64_t{400},
+        "a live actor returns at its level's full cost");
+  record.render->phase =
       Resizing{ResolutionLevel::kFull, ResolutionLevel::kHalf,
-               IntermediateHolding::kHeld, ResizeRunning{}, std::nullopt};
-  Equal(HeldBytes(render), std::uint64_t{500},
-        "a running resize holds both levels");
-  render.renderedFrame.reset();
-  Equal(HeldBytes(render), std::uint64_t{0},
-        "a render never drawn holds nothing");
+               IntermediateHolding::kHeld, ResizeQueued{}, std::nullopt};
+  Check(ReturnBytesOf(record) == std::uint64_t{100},
+        "a resizing actor returns at its target level's full cost");
+  Check(!ReturnBytesOf(ActorRecord{}),
+        "an actor without a render returns none");
+}
+
+void ScreenSizingOffKeepsTheOldBound() {
+  const ActorRecord record;
+  BudgetState budget;
+  budget.allowance = 1000;
+  TickSettings off;
+  off.sizeByScreen = false;
+  Check(InstallBoundOf(record, Seen(false), budget, 0, off) == InstallBound{},
+        "with screen sizing off a new actor installs without a bound");
+  ActorRecord returning;
+  returning.reinstallLevel = ResolutionLevel::kHalf;
+  Check(InstallBoundOf(returning, Seen(false), budget, 0, off).finest ==
+            ResolutionLevel::kHalf,
+        "a returning actor keeps its earlier level with screen sizing off");
 }
 }
 
@@ -533,6 +545,7 @@ int main() {
   TheNextWaitingInstallIsObserved();
   ThePlayerInstallsWithoutHeadroom();
   ANewActorInstallsAtItsWantedLevel();
-  HeldBytesFollowThePhase();
+  ReturnBytesFollowTheTarget();
+  ScreenSizingOffKeepsTheOldBound();
   return test::Finish("orchestration_sync");
 }

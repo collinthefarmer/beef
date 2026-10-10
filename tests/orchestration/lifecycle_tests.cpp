@@ -360,9 +360,12 @@ void AnAdmittedStepUpChargesAndResizes() {
             HasField(levels.front(), "reason", "screen") &&
             HasField(levels.front(), "screen_fraction", "0.600"),
         "the step-up is traced with today's fields");
-  const std::vector<StartResize> started = CommandsOf<StartResize>(out);
+  Check(CommandsOf<StartResize>(out).empty(),
+        "a resize queued this tick starts no earlier than the next tick");
+  const TickOutput next = Lifecycle(out.world);
+  const std::vector<StartResize> started = CommandsOf<StartResize>(next);
   Check(started.size() == 1 && started.front().to == kFull,
-        "the queued resize starts in the same tick");
+        "the queued resize starts in the next tick");
 }
 
 void ABlockedStepUpIsRecordedOnce() {

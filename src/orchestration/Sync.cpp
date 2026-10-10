@@ -4,6 +4,7 @@
 #include "Core.h"
 #include "actors/Lifecycle.h"
 #include "actors/SyncLog.h"
+#include "orchestration/Budget.h"
 #include "orchestration/Tick.h"
 #include "planners/BudgetRadius.h"
 #include "planners/InstallPacing.h"
@@ -32,7 +33,11 @@ const Sighting &SightingOf(const TickFacts &a_facts, const World &a_world,
   return unseen;
 }
 
-std::string NameOf(ActorId a_actor) {
+std::string NameOf(const World &a_world, ActorId a_actor) {
+  if (const auto record = a_world.actors.find(a_actor);
+      record != a_world.actors.end() && !record->second.sight.name.empty()) {
+    return record->second.sight.name;
+  }
   return std::format("{:08X}", FormOf(a_actor));
 }
 
@@ -142,9 +147,8 @@ Decided Decide(const StaleActor &a_stale, const World &a_world,
       EffectiveEvictDistance(a_facts.settings.evictDistance, a_world.radius);
   Actors::Transition next =
       Actors::Advance({before, a_stale.facts, a_stale.planned.plan,
-                       PlannerMs(a_facts.now), evict});
-  const Actors::SyncKind kind =
-      Actors::KindOf(before, next, Actors::Reinstall::kIfChanged);
+                       PlannerMs(a_facts.now), evict, a_stale.reinstall});
+  const Actors::SyncKind kind = Actors::KindOf(before, next, a_stale.reinstall);
   return {a_stale, std::move(before), std::move(next), kind};
 }
 
@@ -173,9 +177,9 @@ void RecordSync(World &a_world, ActorId a_actor, Actors::SyncKind a_kind,
   if (a_kind == Actors::SyncKind::kUnchanged) {
     return;
   }
-  a_world.syncLog =
-      Actors::Recorded(std::move(a_world.syncLog),
-                       {FormOf(a_actor), NameOf(a_actor), a_kind, a_now});
+  a_world.syncLog = Actors::Recorded(
+      std::move(a_world.syncLog),
+      {FormOf(a_actor), NameOf(a_world, a_actor), a_kind, a_now});
 }
 
 void Settle(TickOutput &a_output, Decided a_decided, std::uint32_t a_now) {
@@ -195,10 +199,10 @@ FrameSyncs Change(TickOutput &a_output, Decided a_decided,
   ActorRecord &record = a_output.world.actors[actor];
   const bool replacing =
       record.render.has_value() || Actors::AnythingInstalled(a_decided.before);
-  const std::uint64_t replaced = record.render ? HeldBytes(*record.render) : 0;
+  const std::uint64_t replaced = PlannedBytesOf(record);
   const InstallBound bound =
       InstallBoundOf(record, SightingOf(a_facts, a_output.world, actor),
-                     a_output.world.budget, replaced);
+                     a_output.world.budget, replaced, a_facts.settings);
   a_output.commands.emplace_back(
       KeepModels{actor, InstalledPlanOf(a_decided.next.state)});
   if (replacing) {
@@ -317,65 +321,25 @@ std::uint32_t PlannerMs(Millis a_now) noexcept {
   return static_cast<std::uint32_t>(a_now);
 }
 
-std::uint64_t HeldBytes(const InstalledRender &a_render) noexcept {
-  if (!a_render.renderedFrame) {
-    return 0;
-  }
-  std::uint64_t bytes = 0;
-  if (const std::optional<ResolutionLevel> applied =
-          AppliedLevel(a_render.phase)) {
-    if (const std::optional<LevelCost> &cost =
-            a_render.levelCosts.At(*applied)) {
-      bytes = PlannedBytes(*cost, HoldingOf(a_render.phase));
-    }
-  }
-  if (const Resizing *resizing = Get<Resizing>(a_render.phase);
-      resizing && Is<ResizeRunning>(resizing->stage)) {
-    if (const std::optional<LevelCost> &cost =
-            a_render.levelCosts.At(resizing->to)) {
-      bytes = Sum(bytes, cost->withIntermediates);
-    }
-  }
-  return bytes;
-}
-
 std::optional<std::uint64_t>
-ReturnBytesOf(const InstalledRender &a_render) noexcept {
+ReturnBytesOf(const ActorRecord &a_record) noexcept {
+  if (!a_record.render) {
+    return std::nullopt;
+  }
+  const InstalledRender &render = *a_record.render;
   std::uint64_t bytes = 0;
-  const std::optional<ResolutionLevel> level = TargetLevel(a_render.phase);
+  const std::optional<ResolutionLevel> level = TargetLevel(render.phase);
   const std::optional<LevelCost> *cost =
-      level ? &a_render.levelCosts.At(*level) : nullptr;
+      level ? &render.levelCosts.At(*level) : nullptr;
   if (cost && *cost) {
     bytes = (*cost)->withIntermediates;
   } else {
-    bytes = HeldBytes(a_render);
+    bytes = PlannedBytesOf(a_record);
   }
   if (bytes == 0) {
     return std::nullopt;
   }
   return bytes;
-}
-
-InstallBound InstallBoundOf(const ActorRecord &a_record,
-                            const Sighting &a_sight,
-                            const BudgetState &a_budget,
-                            std::uint64_t a_replaced) noexcept {
-  std::optional<ResolutionLevel> level =
-      a_record.render ? TargetLevel(a_record.render->phase) : std::nullopt;
-  if (!level) {
-    level = a_record.reinstallLevel;
-  }
-  if (a_sight.role == ActorRole::kPlayer) {
-    return {level.value_or(ResolutionLevel::kFull), std::nullopt};
-  }
-  if (!level) {
-    level = WantedLevel(
-        {a_sight.screenFraction, a_sight.inView, ActorRole::kOther});
-  }
-  if (!level) {
-    return {};
-  }
-  return {*level, HeadroomOf(a_budget, a_replaced)};
 }
 
 bool RangeChanged(const Actors::ActorState &a_state,
@@ -415,8 +379,7 @@ TickOutput RecordSyncResults(World a_world, const TickFacts &a_facts) {
               TargetLevel(actor.render->phase)) {
         actor.reinstallLevel = level;
       }
-      if (const std::optional<std::uint64_t> bytes =
-              ReturnBytesOf(*actor.render)) {
+      if (const std::optional<std::uint64_t> bytes = ReturnBytesOf(actor)) {
         actor.returnBytes = bytes;
       }
       actor.render.reset();

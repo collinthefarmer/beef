@@ -12,9 +12,6 @@
 
 namespace BetterEnchantmentEffects::Orchestration {
 [[nodiscard]] ActorSight ActorSightOf(const Sighting &a_sight) noexcept;
-[[nodiscard]] InstallBound
-InstallBoundFor(const ActorRecord &a_record,
-                const BudgetState &a_budget) noexcept;
 [[nodiscard]] TickActor TickActorFor(ActorId a_actor,
                                      const RenderPhase &a_phase,
                                      const Sighting &a_sight,

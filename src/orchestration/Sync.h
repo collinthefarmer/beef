@@ -11,13 +11,8 @@
 
 namespace BetterEnchantmentEffects::Orchestration {
 [[nodiscard]] std::uint32_t PlannerMs(Millis a_now) noexcept;
-[[nodiscard]] std::uint64_t HeldBytes(const InstalledRender &a_render) noexcept;
 [[nodiscard]] std::optional<std::uint64_t>
-ReturnBytesOf(const InstalledRender &a_render) noexcept;
-[[nodiscard]] InstallBound InstallBoundOf(const ActorRecord &a_record,
-                                          const Sighting &a_sight,
-                                          const BudgetState &a_budget,
-                                          std::uint64_t a_replaced) noexcept;
+ReturnBytesOf(const ActorRecord &a_record) noexcept;
 [[nodiscard]] bool RangeChanged(const Actors::ActorState &a_state,
                                 std::optional<float> a_distance,
                                 float a_evictDistance);

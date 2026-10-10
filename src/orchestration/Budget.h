@@ -1,6 +1,7 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #pragma once
 
+#include "orchestration/Facts.h"
 #include "orchestration/World.h"
 #include "planners/BudgetRadius.h"
 #include "planners/RenderBudget.h"
@@ -23,6 +24,10 @@ struct BlockedStepUp {
 [[nodiscard]] std::uint64_t
 PlannedBytesOf(const ActorRecord &a_record) noexcept;
 [[nodiscard]] std::uint64_t PlannedBytesOf(const World &a_world) noexcept;
+[[nodiscard]] InstallBound
+InstallBoundOf(const ActorRecord &a_record, const Sighting &a_sight,
+               const BudgetState &a_budget, std::uint64_t a_replaced,
+               const TickSettings &a_settings) noexcept;
 [[nodiscard]] std::optional<BudgetActor>
 BudgetActorOf(ActorId a_actor, const ActorRecord &a_record) noexcept;
 [[nodiscard]] BudgetActors BudgetActorsOf(const World &a_world);

@@ -15,6 +15,7 @@
 #include <cstdint>
 #include <map>
 #include <optional>
+#include <string>
 #include <vector>
 
 namespace BetterEnchantmentEffects::Orchestration {
@@ -34,6 +35,7 @@ struct Sighting {
   bool inView = false;
   std::optional<float> screenFraction;
   std::optional<float> distance;
+  std::string name;
   [[nodiscard]] bool operator==(const Sighting &) const = default;
 };
 

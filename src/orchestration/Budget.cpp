@@ -129,7 +129,8 @@ void StepDownForBudget(TickOutput &a_output, ActorId a_actor,
       a_preemptedBy ? std::optional<std::uint32_t>{FormOf(*a_preemptedBy)}
                     : std::nullopt;
   AddLog(a_output, LogLevel::kInfo,
-         StepDownLine({FormOf(a_actor), {}, *from, a_option, preemptedBy}));
+         StepDownLine({FormOf(a_actor), found->second.sight.name, *from,
+                       a_option, preemptedBy}));
   std::vector<Trace::Field> fields{
       {"action", "budget_step_down"},
       {"actor", FormText(a_actor)},
@@ -164,10 +165,13 @@ bool ShrinkBudgetRadius(TickOutput &a_output,
     return false;
   }
   const ActorId evicted = ActorOf(shrink->actor);
+  const auto record = a_output.world.actors.find(evicted);
+  const std::string name =
+      record != a_output.world.actors.end() ? record->second.sight.name : "";
   a_output.world.radius = shrink->radius;
   a_output.commands.push_back(Observe{evicted});
   AddLog(a_output, LogLevel::kInfo,
-         RadiusShrinkLine(shrink->radius.distance, shrink->actor, {},
+         RadiusShrinkLine(shrink->radius.distance, shrink->actor, name,
                           shrink->freed));
   AddTrace(a_output, {{"action", "budget_radius"},
                       {"change", "shrink"},
@@ -331,6 +335,32 @@ std::uint64_t PlannedBytesOf(const World &a_world) noexcept {
     planned = Sum(planned, PlannedBytesOf(record));
   }
   return planned;
+}
+
+InstallBound InstallBoundOf(const ActorRecord &a_record,
+                            const Sighting &a_sight,
+                            const BudgetState &a_budget,
+                            std::uint64_t a_replaced,
+                            const TickSettings &a_settings) noexcept {
+  std::optional<ResolutionLevel> level =
+      a_record.render ? TargetLevel(a_record.render->phase) : std::nullopt;
+  if (!level) {
+    level = a_record.reinstallLevel;
+  }
+  if (a_sight.role == ActorRole::kPlayer) {
+    return {level.value_or(ResolutionLevel::kFull), std::nullopt};
+  }
+  if (!level && !a_settings.sizeByScreen) {
+    return {};
+  }
+  if (!level) {
+    level = WantedLevel(
+        {a_sight.screenFraction, a_sight.inView, ActorRole::kOther});
+  }
+  if (!level) {
+    return {};
+  }
+  return {*level, HeadroomOf(a_budget, a_replaced)};
 }
 
 std::optional<BudgetActor> BudgetActorOf(ActorId a_actor,

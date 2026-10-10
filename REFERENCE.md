@@ -3367,11 +3367,13 @@ Nothing in the engine calls it yet.
 
 ### The lifecycle step (`orchestration/Lifecycle.cpp`)
 
-- `RunLifecycle` decides in this order: for each actor, the sighting
-  (`SeeActor`) and then the screen level step; then the resize swaps and the
-  one resize start; then the first-draw ends; then one `TickActor` per actor;
-  then one `DrawUnpublished`. A level wanted this tick can start its resize
-  in the same tick. A first draw that ends this tick starts its resize the
+- `RunLifecycle` decides in this order: the resize swaps and the one resize
+  start; then, for each actor, the sighting (`SeeActor`) and the screen level
+  step; then the first-draw ends; then one `TickActor` per actor; then one
+  `DrawUnpublished`. An actor that gets `SwapResize` or `StartResize` takes no
+  level step in the same tick: the engine acts on those commands before their
+  results arrive, so a level change in the same tick would abandon or
+  redirect the work it started. A level wanted this tick starts its resize the
   next tick, as today.
 - An actor whose sighting has no loaded 3D gets no decision and no command.
   Today's tick forgets such an actor before it decides anything.
@@ -3387,10 +3389,11 @@ Nothing in the engine calls it yet.
 - `resolution_level` traces the parsed `Sighting::screenFraction`. Today's
   trace shows the raw fraction, which differs only when `ScreenResolution`
   is off.
-- `InstallBoundFor` gives a non-player the reinstall level, or else the
-  wanted level, with `HeadroomOf(budget, 0)`. Today's `InstallBoundOf` gives
-  no headroom when `ScreenResolution` is off; the core cannot tell that case
-  apart, because the parsed fraction is then `1.0`.
+- `InstallBoundOf` (`Budget.h`) is the one install bound for `Install` and
+  `BuildAwaitedRender`: the render's target level, else the reinstall level,
+  else the wanted level, with `HeadroomOf(budget, replaced)`. The player gets
+  no headroom. With `TickSettings::sizeByScreen` off, a non-player without a
+  level gets no bound, as today's `InstallBoundOf`.
 - `renderedFrame` is set in `RecordRenderResults` for every actor with a render
   in view with loaded 3D, because its `TickActor` draws it in the same tick.
 - `actor_phase` carries `from`, `to` and `event`; `actor_phase_ignored`
@@ -3398,6 +3401,32 @@ Nothing in the engine calls it yet.
   name `none`. The event names are the `RenderEvent` names in snake case,
   and `plan_built`, `plan_failed`, `seen`, `level_wanted` and
   `first_draw_ended` for the decisions.
+
+### The sync step (`orchestration/Sync.cpp`)
+
+- `RunSync` forgets first: an actor whose sighting has no loaded 3D, or whose
+  install failed, gets `Forget` and its record is erased. The engine reports
+  no `Retired` for a forget, so the erase happens in `RunSync`.
+- Stale actors are decided in order: those already waiting for an install
+  first, in `NextInstall` precedence, then the rest. Each goes through
+  `Actors::Advance` with the effective evict distance (the setting or the
+  budget radius) and the actor's requested reinstall mode.
+- An install that `InstallMayStart` refuses is deferred: the old installed
+  plan's models are kept, the actor joins the waiting installs, and the
+  trace records `sync_deferred`. Its state is not recorded, so the next
+  observation decides again.
+- A changed actor gets `KeepModels`, `Retire` when something was installed,
+  `Install` with its bound and replaced bytes, and `SettleApplications` for a
+  reinstall. The replaced bytes are freed with `Released` when the `Install`
+  is issued; the new render is charged when its `Installed` arrives.
+- Each issued install is charged the full `kInstallBudgetUs`, because the core
+  cannot measure install time, so at most one install starts per tick.
+- `Observe` asks for a fresh observation: on the pending-model timer
+  (`kPendingRecheckMs`), on the recheck timer (`kRecheckMs`, `RecheckOf`, a
+  range change through `InRange`), for each claimed actor, and for the next
+  waiting install.
+- The sync log names an actor by `Sighting::name`, or by its form id in hex
+  when the name is empty.
 
 ## Generated texture references
 
