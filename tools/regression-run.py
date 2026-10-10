@@ -66,8 +66,11 @@ def local_env(text: str) -> dict[str, str]:
     return values
 
 
-def read_settings(environ: dict[str, str], local: dict[str, str]) -> Settings | str:
+def read_settings(environ: dict[str, str], local: dict[str, str],
+                  profile: str | None = None) -> Settings | str:
     values = {key: environ.get(key) or local.get(key, '') for key in SETTINGS}
+    if profile:
+        values['MO2_PROFILE'] = profile
     missing = [f'{key} ({meaning})' for key, meaning in SETTINGS.items() if not values[key]]
     if missing:
         return 'set these in the environment or local.env: ' + '; '.join(missing)
@@ -233,6 +236,7 @@ def main() -> int:
                         help='case names in run order; "+" starts a new launch, '
                              'for example studio-save + studio-reload')
     parser.add_argument('--save', default='BEEFRegression', help='save name without extension')
+    parser.add_argument('--profile', help='the MO2 profile to launch, in place of MO2_PROFILE')
     parser.add_argument('--timeout', type=float, default=900, help='seconds to wait for the end line')
     parser.add_argument('--verify-render-plans', action='store_true',
                         help='rebuild every reused render plan and log any difference')
@@ -251,7 +255,7 @@ def main() -> int:
     args = parser.parse_args()
     local_path = ROOT / 'local.env'
     local = local_env(local_path.read_text(encoding='utf-8')) if local_path.is_file() else {}
-    settings = read_settings(dict(os.environ), local)
+    settings = read_settings(dict(os.environ), local, args.profile)
     if isinstance(settings, str):
         print(settings, file=sys.stderr)
         return 2

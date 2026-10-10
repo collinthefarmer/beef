@@ -26,6 +26,11 @@ class RegressionRunTests(unittest.TestCase):
                                                  'SKSE - beef testing', Path('/logs')))
         self.assertNotIn('OTHER', host.local_env(LOCAL))
 
+    def test_profile_argument_wins(self):
+        settings = host.read_settings({'MO2_PROFILE': 'from environment'}, host.local_env(LOCAL),
+                                      'Skyrim 2 - PGPatcher run')
+        self.assertEqual(settings.profile, 'Skyrim 2 - PGPatcher run')
+
     def test_missing_settings_are_named(self):
         problem = host.read_settings({}, {'MO2_EXE': 'x'})
         self.assertIsInstance(problem, str)

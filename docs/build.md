@@ -78,7 +78,9 @@ four more lines from `local.env` or the environment: `MO2_EXE` (the WSL path
 of `ModOrganizer.exe`), `MO2_PROFILE`, `MO2_LAUNCH` (the MO2 executable title
 that starts SKSE) and `SKSE_LOG_DIR` (the WSL path of the SKSE log folder).
 `+` between case names starts a new launch, for example
-`tools/regression-run.py studio-save + studio-reload`. The
+`tools/regression-run.py studio-save + studio-reload`. `--profile NAME`
+launches another MO2 profile for one run; the save must exist in that
+profile's `saves` folder. The
 [unattended regression plan](plans/unattended-regression-2026-10-01.md)
 describes the run and lists the cases.
 
