@@ -4,10 +4,11 @@ The pure decision layer between a **recipe** and the engine. It is
 engine-free. It compiles natively and is unit-tested through
 `ctest --preset native`. It may include only `Core.h`, `recipe/`, `mesh/` and
 itself, per its `ALLOWS` row in `tools/gate.py`, `'planners': ('Core.h',
-'recipe', 'mesh', 'planners')`. The engine and render modules above it
-(`engine/ManagerApply.cpp`, `render/RenderInstance`, `render/TextureLab`,
-`render/GeneratedShaders`) own the `RE::` and D3D handles and call these
-functions with value records. No planner takes or stores an `RE::` pointer.
+'recipe', 'mesh', 'planners')`. The tick core in `orchestration/` calls the
+level, budget, pacing and eviction decisions. The engine and render modules
+(`engine/ManagerApply.cpp`, `engine/InstallStages.cpp`,
+`render/RenderInstance`, `render/TextureLab`, `render/GeneratedShaders`) own
+the `RE::` and D3D handles and call these functions with value records. No planner takes or stores an `RE::` pointer.
 
 ## What it owns
 
@@ -84,8 +85,8 @@ load order from the recipe-store index. `PlanActorLights` gives an instance
 the highest priority among its placements whose geometry passes
 `LightEligible` (`EligibleLightPriority` in `ActorPlanning.cpp`). An instance
 with no eligible placement keeps its row but has a null recipe.
-`engine/ManagerApply.cpp` calls `LightEligible` again for the light's
-geometry inputs.
+`PlanLightsOf` (`InstallProgram.cpp`) calls `LightEligible` again to list
+the light's geometries.
 
 ### Stack classification and binding
 
@@ -175,7 +176,7 @@ reads no engine state.
 | `PlanStackRequest` | One stack with owned inputs: the graph, the `SurfaceOutput` (aliasing its recipe), the recipe id, the output, placement, geometry, context, side and identity facts. |
 | `PlanBuildInput` | The stacks and slot chains of one plan build. |
 | `PlanBuildOutput`, `PlanBuildPhases` | The plan or its error, the demand warnings as text, and the demand and lowering times with the demand count. |
-| `BuildPlanFrom` | Collects the layer demands (`CollectTextureDemand`) and lowers the plan (`BuildRenderPlan`) from a `PlanBuildInput`. The sync and the worker both call it. |
+| `BuildPlanFrom` | Collects the layer demands (`CollectTextureDemand`) and lowers the plan (`BuildRenderPlan`) from a `PlanBuildInput`. The install executor and the worker both call it. |
 
 ### Retention and identity helpers
 
@@ -214,12 +215,12 @@ A plan names texture sizes by **side reference** (`SideRef`, in `TextureDemand.h
 | `IdealLevel` | The level for a screen fraction. |
 | `PerLevel`, `LevelIndex`, `kResolutionLevels` | One value per level, read with `At`; the index of a level; every level from full to eighth. |
 | `ActorSight`, `WantedLevel` | One actor's optional screen fraction, whether it is in view, and its role; the level it wants: full for the player, eighth out of view, `IdealLevel` in view, and none when the fraction is unmeasured. |
-| `SmallFor`, `SmallSince`, `kStepDownBand`, `kStepDownHoldMS` | Whether a fraction is under 0.8 of the lower threshold of a level, and the start of the step-down hold, kept while the fraction stays small and cleared when it grows. |
-| `KeepLevel`, `StepUpTo`, `StepDownTo`, `LevelStep`, `NextLevelStep` | The level change for one tick: a step up straight to the wanted level, one level down after the 2 s hold, or none. The player never steps down. |
+| `SmallFor`, `kStepDownBand`, `kStepDownHoldMS` | Whether a fraction is under 0.8 of the lower threshold of a level, and the 2 s that it must stay small before a step down. The tick core keeps the start of that hold in `Live::smallOnScreen` (a `Hold`). |
+| `KeepLevel`, `StepUpTo`, `StepDownTo`, `LevelStep`, `LevelStepOf` | The level change for one tick: a step up straight to the wanted level, one level down when the step-down hold is due, or none. The player never steps down. |
 | `LargerOnScreen` | Orders two optional fractions, larger first and unmeasured last. |
 | `AtLevel` | The `PlanSizes` divided by a level, with 64 as the floor. |
 | `CoarserLevel`, `LevelGap` | The next coarser level, if any, and the number of steps between two levels. |
-| `ResizeIdle`, `ResizePending`, `ResizeProgress` | The resize states of one actor (`ResolutionResize.h`): none, a level that waits for a resize, and a resize with its old level, new level and first frame. |
+| `ResizeProgress` | A running resize's old level, new level and first frame (`ResolutionResize.h`). The tick core derives it from the render phase (`ResizeProgressOf`). |
 | `ResizeDraw`, `ResizeDrawState` | What a tick saw of a resize: `kOutOfView`, `kDrawing` or `kDrawn`. `DrawOf` gives it from a `ResizeDrawState`: the view and the drawn and total stack counts. |
 | `SwapDue` | True when a resize is drawn, out of view, or `kResizeSwapAfterFrames` (60) frames old. |
 | `ResizeCandidate`, `NextResize` | One actor with its FormID, whether a level is pending, whether it is in view, and its optional screen fraction; the FormID of the pending actor to resize first (in view first, then `LargerOnScreen`), or none while `kResizesInFlight` (1) resizes are in flight. |
@@ -237,7 +238,7 @@ A plan names texture sizes by **side reference** (`SideRef`, in `TextureDemand.h
 | `Admission`, `AdmitGrowth`, `Charged`, `Released`, `AdmissionName` | Whether a step up of the given bytes may start, the planned bytes after bytes are charged, and the planned bytes after a holding goes. |
 | `InstallBound`, `LevelBytes`, `HeadroomOf`, `FittingLevel` | The finest level and the optional headroom of an install, and the bytes with intermediates per level (a `PerLevel`). `HeadroomOf` gives the allowance less the planned bytes without the replaced bytes, the replaced bytes under pressure, and none when the allowance is unknown. A first install replaces 0 bytes. `FittingLevel` gives the finest level from the bound to eighth whose bytes fit the headroom, eighth when none fits, and the bound when there is no headroom. |
 | `LevelCost`, `IntermediateHolding`, `PlannedBytes`, `IntermediateBytes`, `StepDownOption`, `StepDownOf` | The bytes of a plan at one level with intermediates (`withIntermediates`) and with only its stacks and bakes after a release (`whenReleased`), whether an actor's intermediates are released, the bytes the planned figure counts for each case, the bytes a release frees, and the bytes that one step down frees. |
-| `BudgetActor`, `BudgetRelease`, `PressureStep`, `BudgetResponse`, `RespondToPressure` | One actor's facts, and the responses for one heartbeat: the hidden actors that release, by FormID with their bytes, and the next step: `Enough`, `AwaitResize` while a resize is pending or in flight, `StepDown` (one NPC by FormID) or `Exhausted`. The facts include the planned bytes (`plannedBytes`), the optional distance to the player, and the bytes freed at the wanted level (`surplusBytes`). |
+| `BudgetActor`, `BudgetRelease`, `PressureStep`, `BudgetResponse`, `RespondToPressure` | One actor's facts, and the responses for one memory sample: the hidden actors that release, by FormID with their bytes, and the next step: `Enough`, `AwaitResize` while a resize is pending or in flight, `StepDown` (one NPC by FormID) or `Exhausted`. The facts include the planned bytes (`plannedBytes`), the optional distance to the player, and the bytes freed at the wanted level (`surplusBytes`). |
 | `PreemptionRequest`, `ShortfallOf`, `PreemptionCandidate` | A blocked step up in view with its **shortfall** (planned plus added bytes over the allowance); the NPC to step down for it: one that holds a finer level than it wants and is out of view or under 0.8 of the requester's fraction, ranked as under pressure. None when the requester is out of view, when there is no shortfall, or when the candidates' `surplusBytes` together cannot cover the shortfall. |
 | `PressureStartLine`, `PressureEndLine`, `StepDownLine`, `ExhaustedLine` | The text of the budget's log lines. `StepDownLine` names the actor a preemption makes room for. |
 
@@ -246,7 +247,7 @@ response of the budget.
 
 | Type or function | Description |
 |---|---|
-| `BudgetRadius` | The radius in game units, the time of its last change or of the last heartbeat under pressure (`sinceMs`), and whether the current blocked episode was reported (`blockReported`). The manager keeps it optional; no record means no radius. |
+| `BudgetRadius` | The radius in game units, the time of its last change or of the last memory sample under pressure (`sinceMs`), and whether the current blocked episode was reported (`blockReported`). The tick core keeps it optional in `World::radius`; no record means no radius. |
 | `LimitsDistance`, `EffectiveEvictDistance` | Whether an `EvictDistance` sets a limit (above 0), and the distance that eviction uses: the smaller of `EvictDistance` and the radius. Without a radius it is `EvictDistance` unchanged. |
 | `RadiusShrink`, `ShrinkRadius` | The FormID of the actor that is evicted, the new radius and the bytes freed. The candidate is the farthest NPC inside the current radius that is not resizing. The new radius is 0.99 × its distance (`kRadiusShrinkFactor`), raised to the next nearer distance, so that `EvictionFor` evicts that actor alone. The player and missing, non-finite or non-positive distances never count. A resizing actor beyond the candidate stops the shrink. |
 | `EvictedActor`, `RingActor`, `RingOf` | An evicted NPC: its optional distance and its optional **return bytes**. The **ring** is the evicted NPCs that `Returns` does not return at the current eviction distance and returns at the eviction distance after a growth. `RingOf` keeps only finite distances and orders the ring nearest first. |
@@ -254,7 +255,7 @@ response of the budget.
 | `RingRoom`, `RingRoomOf`, `kRingMarginDivisor` | The headroom (`HeadroomOf` with no replaced bytes) and the margin, half of the band (`BandOf`). An unknown allowance gives no room. |
 | `RingFit`, `FitRing`, `kUnpricedPerGrowth` | How many ring NPCs return and their bytes. NPCs at one distance return together. The ring stops at the first distance where the sum passes the room, or where a second unpriced NPC would return. |
 | `RadiusStoppingAt`, `kRadiusRoundingSteps` | The largest radius whose 0.8 × value is at or below the distance, so that `Returns` returns every nearer NPC and not that one. |
-| `RadiusGrowthRequest`, `RadiusGrowth`, `GrowRadius` | One heartbeat of the radius without a shrink: `RadiusUnchanged`, `RadiusGrown`, `RadiusBlocked` or `RadiusCleared`. Under pressure the distance is unchanged and the dwell restarts. After `kRadiusDwellMs` (10 s) the radius grows by 1 / 0.8 (`kRestoreFraction`) when the ring fits the headroom less the margin. When part of the ring fits, the radius grows to `RadiusStoppingAt` the first NPC that does not fit. When the nearest NPC does not fit, `RadiusBlocked` keeps the distance, restarts the dwell, carries the ring bytes and the room, and marks the first block of the episode (`firstInEpisode`). The radius clears when the grown radius reaches `EvictDistance`, or the farthest loaded NPC when `EvictDistance` sets no limit, and the ring of the clear fits. Otherwise the clear is a growth to the fitting radius. Without an allowance the ring is not priced. |
+| `RadiusGrowthRequest`, `RadiusGrowth`, `GrowRadius` | One memory sample of the radius without a shrink: `RadiusUnchanged`, `RadiusGrown`, `RadiusBlocked` or `RadiusCleared`. Under pressure the distance is unchanged and the dwell restarts. After `kRadiusDwellMs` (10 s) the radius grows by 1 / 0.8 (`kRestoreFraction`) when the ring fits the headroom less the margin. When part of the ring fits, the radius grows to `RadiusStoppingAt` the first NPC that does not fit. When the nearest NPC does not fit, `RadiusBlocked` keeps the distance, restarts the dwell, carries the ring bytes and the room, and marks the first block of the episode (`firstInEpisode`). The radius clears when the grown radius reaches `EvictDistance`, or the farthest loaded NPC when `EvictDistance` sets no limit, and the ring of the clear fits. Otherwise the clear is a growth to the fitting radius. Without an allowance the ring is not priced. |
 | `RadiusShrinkLine`, `RadiusGrowLine`, `RadiusBlockedLine`, `RadiusClearLine` | The text of the radius's log lines. |
 
 `RenderMemory.h` turns the counts into the render-target log lines.
@@ -267,6 +268,54 @@ response of the budget.
 | `TargetBurst`, `IsBurst` | The targets created and destroyed in one heartbeat interval; a **burst** creates 256 MiB or more. |
 | `ScreenSpread`, `SpreadOf` | The least, median and most screen fraction of the rendered actors. |
 | `HoldingLine`, `BurstLine`, `Mebibytes` | The text of the two log lines. The holding line gives the measured total and the plans' total. |
+
+### The install program
+
+`InstallProgram.h` holds the pure stages of an install. The engine runs them
+in order inside one command (`Manager::InstallLiveActor`) and writes their
+results onto the actor's live records (`engine/InstallStages.h`). The same
+stages from `ActivateOutputs` onward rebuild a render after a plan job ends.
+
+| Type or function | Description |
+|---|---|
+| `PlacedOutputState`, `PlacementOutputs` | One output index with its `OutputState`, and the outputs of one placement on one geometry. |
+| `GeometryBinding`, `SurfacePlan` | One geometry's placement plan, stack plan, binding plan and optional shell owner (`InstanceId`); the bindings of every geometry and the outputs of every placement. |
+| `PlanSurfaces` | Plans each geometry's placements (`PlanGeometryPlacement`), stacks (`PlanStacks`) and bindings (`PlanBinding`), chooses the shell owner, and marks each output that another recipe replaced. |
+| `SlotTargetState`, `BoundSurfaces` | The slot targets of one bound geometry with their problems, and whether its material and shell bound. The engine fills them after it binds. |
+| `StackRequest`, `OutputActivation`, `ActivateOutputs` | One stack to render: geometry, surface, slot, placement, instance, output and slot `Resolution`. `ActivateOutputs` sets each output's `OutputState` from the bound surfaces and the compiled instances, and lists the stacks and the slot chains. |
+| `StackSizeFacts`, `StackSizeOf` | The largest native map side of the material and the optional side of the slot's base map; the stack's `TextureSize` after the texture scale and the slot resolution, clamped over the base map. |
+| `SidedStack`, `RenderBuildRequest`, `RenderBuildRequestOf` | A stack with its `SideRef`; the sided stacks, the chains and the full-resolution `PlanSizes`. Two stacks share a side only when their sizes are equal. |
+| `PlanRoute`, `PlanRouteFacts`, `PlanRouteOf` | How the engine gets a plan: `kFresh` (the cache is off), `kUncacheable`, `kCached`, `kVerifyCached`, `kShareJob`, `kSubmitJob` or `kFreshStored` (a verifying miss), from the cache setting, the key, a cached plan, verification and an open job. |
+| `LevelCostsOf` | The `LevelCost` of a plan at each `ResolutionLevel`. |
+| `RenderBuild`, `RenderBuildAt` | The built level, the bytes charged to the budget, the sizes at that level and the level costs. `RenderBuildAt` takes the bound's finest level, or the level that `FittingLevel` gives when the `InstallBound` has headroom. |
+| `StackAttachment`, `MergedAttachment`, `Attachments`, `AttachmentsOf` | The plan output of each stack, each merged slot chain with its side and `animated` flag, and the placement outputs. A stack that the plan does not lower fails its output with `kStackNotLowered`. |
+| `FailedOutputs` | The placement outputs with every requested stack failed with a problem. |
+| `GeometrySlot`, `UnpublishedSlotsOf` | One slot of one geometry; every slot of every stack plan, in geometry order. Its length is `Installed::total`. |
+| `LightRequest`, `InstanceLightProblem`, `LightProgram`, `PlanLightsOf` | The lights to place with their instance, output and eligible geometries (`LightEligible`), and each instance's light problem. |
+| `kShellNotCreated`, `kMaterialNotBound`, `kSurfaceNotBound`, `kStackNotLowered`, `kNoEligibleLight` | The problem texts of the stages. |
+
+`OutputState.h` holds the state of one placed output. The install program
+sets it, a render outcome changes it, and the application observation reads
+it.
+
+| Type or function | Description |
+|---|---|
+| `OutputInactive`, `OutputPending`, `OutputRendered`, `OutputFailed`, `OutputState` | An output that is not active, with its problem; active and not rendered yet; rendered; failed with a problem. |
+| `OutputRender`, `AfterRender` | A render outcome (`kRendered`, `kPending`, `kFailed`) and the state after it. |
+| `Activated`, `WithProblem`, `AfterLostGeometry`, `AfterRetire` | The state when an output activates, gets a problem, loses its geometry or retires. A retire keeps an existing problem and otherwise uses `kRetiredProblem`. |
+| `ProblemOf`, `IsActive`, `kRenderFailedProblem` | The problem text of an inactive or failed state, whether the output is active, and the problem text of a render failure. |
+
+### Tick boundary facts
+
+These helpers turn engine readings into the facts of the tick core
+(`orchestration/`).
+
+| Type or function | Description |
+|---|---|
+| `ViewInputs`, `InViewOf` | The role, the `CullOutOfView` setting, whether the actor is inspected, and the optional camera test; whether the actor counts as in view. The player, an inspected actor and every actor with culling off are in view. An actor without a camera test counts as out of view. |
+| `ScreenFractionOf` | The parsed screen fraction: the raw fraction, `1.0` when screen sizing is off, the regression override in place of the setting, and none when unmeasured. |
+| `TickClock`, `ClockAfter` | The 64-bit tick time built from 32-bit `NowMS` readings. Each reading adds the unsigned difference to the last one. |
+| `Millis`, `Hold` | A 64-bit time in ms, and the start of a condition that must hold for a delay. `Update` starts or clears it, and `Due` tells when the delay has passed. |
 
 ### Render steps
 
@@ -462,7 +511,7 @@ GeometryPlacementPlan{ placed, sources, plan }
 ActivateOutputs: one StackRequest per active output         InstallProgram.cpp
   │  StackSizeOf per stack, RenderBuildRequestOf: sides       InstallProgram.cpp
   ▼
-BuildActorRender: PlanRouteOf, then a plan build            engine/ManagerApply.cpp
+RenderBuildRequestOf, PlanRouteOf, then a plan build       engine/ManagerApply.cpp
   │  CollectTextureDemand per layer source and mask          TextureDemand.cpp
   │    IdentifyValue -> TextureKey; equal keys coalesce      ValueIdentity.cpp
   │    FieldProgram::Compile for a sampled expression        FieldProgram.cpp
@@ -496,10 +545,14 @@ PSGeneratedStack, or PSStack until the compile finishes     render/GeneratedShad
 | `RenderMemory.h`/`.cpp` | Render planning | `NextHoldingStep`, `HoldingsOf`, `LargestHoldings`, `IsBurst`, `SpreadOf`, `HoldingLine`, `BurstLine`. |
 | `RenderBudget.h`/`.cpp` | Render planning | The render target budget: `AllowanceOf`, `NextBudget`, `AdmitGrowth`, `FittingLevel`, `StepDownOf`, `RespondToPressure` and the log lines. |
 | `BudgetRadius.h`/`.cpp` | Render planning | The budget radius: `EffectiveEvictDistance`, `ShrinkRadius`, the ring (`RingOf`, `FitRing`), `GrowRadius` and the log lines. |
-| `InstallPacing.h`/`.cpp` | Render planning | The install budget per frame and the order of deferred installs: `InstallMayStart`, `Synced`, `NextInstall`, `Deferred`, `Removed`, `WaitedMS`. |
+| `InstallProgram.h`/`.cpp` | Actor planning | The install program's stages: `PlanSurfaces`, `ActivateOutputs`, `StackSizeOf`, `RenderBuildRequestOf`, `PlanRouteOf`, `LevelCostsOf`, `RenderBuildAt`, `AttachmentsOf`, `FailedOutputs`, `UnpublishedSlotsOf`, `PlanLightsOf`. |
+| `OutputState.h`/`.cpp` | Actor planning | `OutputState` and its transitions. |
+| `ViewFacts.h`/`.cpp`, `TickClock.h`, `Hold.h` | Tick boundary | `InViewOf`, `ScreenFractionOf`; `TickClock`, `ClockAfter`; `Hold`. |
+| `TargetHolders.h`/`.cpp` | Render planning | `TargetHolder`, `TallyHolders`, `HolderName`: the holder tallies of the `target_holders` census. |
+| `InstallPacing.h`/`.cpp` | Render planning | The install budget per tick and the order of deferred installs: `InstallMayStart`, `Synced`, `NextInstall`, `Deferred`, `Removed`, `WaitedMS`. |
 | `DrawPacing.h`/`.cpp` | Render planning | The unpublished-draw budget per tick, the order of unpublished draws and the end of a first draw: `MayDrawStack`, `Drew`, `UnpublishedDrawOrder`, `FirstDrawDone`. |
 | `TargetCost.h`/`.cpp` | Render planning | `HeldTarget`, `PlanTargets`, `TargetCost`, `KeptWhenReleased`, `TargetBytes`, `HeldSteps`, `TargetsOf`, `CostOf`. |
-| `PlanSizes.h`/`.cpp`, `ResolutionLevel.h`/`.cpp`, `ResolutionResize.h`/`.cpp`, `ActorRole.h` | Render planning | `PlanSizes`, `SizesFor`, `SizeOf`, `SharedKeyOf`; `ResolutionLevel`, `PerLevel`, `IdealLevel`, `StepUpFor`, `CoarserLevel`, `LevelGap`, `AtLevel`, `LevelName`; `DrawOf`, `SwapDue`, `NextResize`; `ActorRole`. |
+| `PlanSizes.h`/`.cpp`, `ResolutionLevel.h`/`.cpp`, `ResolutionResize.h`/`.cpp`, `ActorRole.h` | Render planning | `PlanSizes`, `SizesFor`, `SizeOf`, `SharedKeyOf`; `ResolutionLevel`, `PerLevel`, `IdealLevel`, `WantedLevel`, `LevelStepOf`, `CoarserLevel`, `LevelGap`, `AtLevel`, `LevelName`; `DrawOf`, `SwapDue`, `NextResize`; `ActorRole`. |
 | `FieldInlining.h`/`.cpp` | Render planning | `AsProgramLike` and `InlineFields`. |
 | `RenderExecution.h` | Render planning | `RenderExecution` and its state records. `ReleaseIdle` and `ReleaseWhere` release step outputs. |
 | `RenderFirings.h` | Render planning | `RenderFiring` and `RenderFirings`. |

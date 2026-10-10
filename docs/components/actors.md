@@ -5,8 +5,9 @@ on one actor. It reads what the engine adapter observed and returns the
 actor's next state and the commands that bring the engine side to the plan.
 It is engine-free and holds no `RE::` pointer. Its `ALLOWS` row in
 `tools/gate.py` is `'actors': ('Core.h', 'recipe', 'mesh', 'planners',
-'studio', 'actors')`. The engine adapter (`engine/ActorObservation.cpp`,
-`engine/ManagerApply.cpp`, `engine/ManagerTick.cpp`) calls it.
+'studio', 'actors')`. The engine adapter calls `PlanActor` when it gathers facts
+(`engine/ManagerFacts.cpp`). The tick core calls `Advance`, `KindOf`,
+`RecheckOf`, `InRange` and `WithClaim` (`orchestration/Sync.cpp`).
 `ctest --preset native` runs its tests as the suites `actors_actor`,
 `actors_planning`, `actors_reconcile` and `actors_lifecycle`.
 
@@ -26,7 +27,9 @@ command.
 
 The core does not observe the engine and does not perform commands.
 `ObserveActor` in `engine/ActorObservation.cpp` reads the engine into
-facts. `Manager::SyncActor` in `engine/ManagerApply.cpp` performs the result.
+facts. The tick core's sync step (`RunSync`, `orchestration/Sync.cpp`)
+turns the transition into commands, and the engine's executors
+(`engine/ManagerCommands.cpp`) perform them.
 The core does not own recipe matching. `MatchActor` in
 `planners/ActorPlanning.h` produces the matches, and `EvictionFor` in
 `planners/Eviction.h` decides distance eviction.
@@ -122,7 +125,7 @@ is the answer to "observe this actor again without an event?".
 | Type | Description | Declared in |
 |---|---|---|
 | `PlanRequest{facts, recipes, view, claims}` | The input of `PlanActor`: the facts, the catalog, the studio `View` (recipe set and isolation filter), and the actor's claims. | `Planning.h` |
-| `AdvanceRequest{state, facts, plan, nowMs, evictDistance, reinstall}` | The input of `Advance`: the current state (none when the actor has no record), the facts, the plan, the clock, the eviction distance setting, and the reinstall demand. | `Lifecycle.h` |
+| `AdvanceRequest{state, facts, plan, nowMs, evictDistance, reinstall}` | The input of `Advance`: the current state (none when the actor has no record), the facts, the plan, the clock, the eviction distance (`EffectiveEvictDistance`: the setting or the smaller budget radius), and the reinstall demand. | `Lifecycle.h` |
 | `Reinstall` | `kIfChanged` or `kAlways`. A **reinstall** (`kAlways`) gives an in-range actor commands that retire everything installed and install the whole plan, without a model wait. A rebuild asks for it. | `Lifecycle.h` |
 | `Recheck` | `kNone`, `kWaiting` or `kStuck`. An actor with a pending model is **waiting** while a pending model is younger than `kModelWaitMs` plus `kPendingRecheckMs`, and **stuck** after that. | `Lifecycle.h` |
 
@@ -142,23 +145,25 @@ is the answer to "observe this actor again without an event?".
 
 ```
 engine event (Events.cpp)                                  engine/
-  │  Manager::MarkStale(actor)  marks the actor stale        Manager.cpp
+  │  Manager::MarkStale(actor) ──▶ SessionQueue task        Manager.cpp, SessionQueue.cpp
+  │  ApplicationService::RunActor ──▶ Manager::NoteStale    engine/ManagerFacts.cpp
   ▼
-Manager::SyncActor(actor) ── DecideActor                   engine/ManagerApply.cpp
-  │
+next tick: Manager::StaleActorOf(actor)                    engine/ManagerFacts.cpp
   │  ObserveActor({actor, settings, ...}, models, layout)   engine/ActorObservation.cpp
   │    ActorFacts: loaded (Loaded3D), distance (DistanceToPlayer,
   │    none for the player), pieces with refs, keys, model tokens, geometries
-  ▼
-  │  AppliedCatalog(debug)  one immutable catalog per publication  engine/RecipeStore.cpp
-  │  LiveClaims(state.claims, facts)                        actors/Lifecycle.cpp
+  │  AppliedCatalog(debug)  one immutable catalog per tick  engine/RecipeStore.cpp
+  │  LiveClaims(record.syncState.claims, facts)             actors/Lifecycle.cpp
   │  PlanActor({facts, catalog, view, claims})              actors/Planning.cpp
   │    MatchActor over the pieces that have a model ──▶ matches
   │    a claimed geometry resolves no recipe: it keeps its
   │    position in the matches and gets no placement
   │    matches converted to the ActorPlan by refs   ──▶ plan
+  │  ReinstallDue ──▶ StaleActor{facts, planned, reinstall}
   ▼
-  │  Advance({state, facts, plan, nowMs, evictDistance})    actors/Lifecycle.cpp
+RunSync ── SyncStale ── Decide                              orchestration/Sync.cpp
+  │  Advance({syncState, facts, plan, nowMs,                actors/Lifecycle.cpp
+  │           EffectiveEvictDistance, reinstall})
   │    not loaded            ──▶ no state, retire all installed
   │    claims = LiveClaims(state.claims, facts)
   │    InRange false         ──▶ state {plan, nothing installed, claims},
@@ -169,34 +174,40 @@ Manager::SyncActor(actor) ── DecideActor                   engine/ManagerApp
   │    else Reconcile(installed, plan) ──▶ commands         actors/Reconcile.cpp
   │    next installed = AfterCommands(installed, commands)
   │    plan, installed, pending and claims all empty ──▶ no state
+  │  KindOf ──▶ the sync log (World::syncLog)               actors/SyncLog.cpp
   ▼
-Manager::SyncActor, after DecideActor                      engine/ManagerApply.cpp
-  │  no state:    ForgetActor(actor)
-  │  no commands: RecordState(actor, state)
-  │  commands:    RetireActor(actor)
-  │               RecordState(actor, state)
-  │               if AnythingInstalled(state):
-  │                 LiveActorFor(actor, facts, matches)
-  │                   engine state from the observed model handles
-  │                   and the plan's matches; on failure ForgetActor
+RunSync, after Decide                                       orchestration/Sync.cpp
+  │  an install that InstallMayStart refuses: KeepModels,
+  │    the waiting installs, trace sync_deferred
+  │  no state:    Forget
+  │  no commands: KeepModels, syncState = state, SettleApplications
+  │  commands:    KeepModels, Retire (when something was installed),
+  │               syncState = state,
+  │               Install (when AnythingInstalled(state)), SettleApplications
+  ▼
+engine executors                                            engine/ManagerCommands.cpp
+  │  Retire ──▶ RetireActorResources
+  │  Install ──▶ InstallLiveActor ──▶ LiveActorFor
+  │    engine state from the observed model handles and the plan's
+  │    matches; on failure InstallFailed, and the core forgets the actor
   ▼
 installed plan == plan; the next sync with the same facts issues nothing
 
 
-Rechecks without an event                                  engine/ManagerTick.cpp
+Rechecks without an event (ObserveDue)                     orchestration/Sync.cpp
   every kPendingRecheckMs (100 ms)
-    MarkWaitingStale:  RecheckOf(state) == kWaiting       ──▶ MarkStale
+    RecheckOf(state) == kWaiting                          ──▶ Observe
   every kRecheckMs (1000 ms)
-    MarkRecheckStale:  RecheckOf(state) != kNone
-                       or RangeChanged(state)             ──▶ MarkStale
+    RecheckOf(state) != kNone or RangeChanged(state)      ──▶ Observe
   every tick
-    ClaimLostGeometries: a binding another system took
-                       ──▶ retire it, WithClaim, MarkStale
+    a claim from Manager::ClaimsOf (the geometry is already
+    retired) ──▶ WithClaim (RecordSyncResults), Observe
+    the next waiting install                              ──▶ Observe
 ```
 
-`Manager::SyncActor` does not yet perform the commands one by one. A sync
-with any command retires the actor's effects and installs them again whole.
-The commands set the new installed plan through `AfterCommands`.
+The tick core does not perform the commands one by one. A sync with any
+command retires the actor's effects and installs them again whole. The
+commands set the new installed plan through `AfterCommands`.
 
 ## The files
 
@@ -215,9 +226,11 @@ The commands set the new installed plan through `AfterCommands`.
 
 ## See also
 
-- `REFERENCE.md` → *Engine events, hooks and the manager* — the sync
+- `REFERENCE.md` → *Engine events, hooks and the manager*: the sync
   through the actor core, observation of worn pieces and models, the model
   wait and the waiting and stuck rechecks, claims, and distance eviction.
+- `REFERENCE.md` → *The sync step*, and `docs/components/orchestration.md`:
+  the tick core that calls `Advance`.
 - `docs/plans/actor-core-2026-10-03.md` → *Vocabulary*, *Decisions* and
   *Engine rules the core must keep*.
 - `docs/conventions.md` → *Glossary* — **ref**, **plan**, **matches**,

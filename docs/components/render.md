@@ -29,10 +29,12 @@ test covers it.
   `GeometryInputs` and the graphs and takes new sizes. The second instance
   draws before it is attached, because it holds its own copies of every
   input. A new instance from an install or a plan arrival is attached at once
-  and draws its slots hidden over several ticks (`engine/ActorResize.h`,
-  `StartFirstDraw`). The engine writes the material slots only when every
-  slot has drawn once. Both hidden draws share a budget of 4 ms of submit
-  time per tick (`planners/DrawPacing.h`).
+  and draws its slots unpublished over several ticks (`engine/ActorResize.h`,
+  `StartFirstDraw`). The engine writes the material slots once the tick core
+  ends the first draw: every slot has drawn, or 60 drawing ticks passed
+  (`FirstDrawDone`). Both unpublished draws share one budget of submit time
+  per tick, the setting `UnpublishedDrawBudgetMs` (4 ms by default), which
+  the core passes in the `DrawUnpublished` command (`planners/DrawPacing.h`).
 - `Compositor` (`Compositor.h`) is the process-wide entry point for stack
   rendering. It also owns the image cache (`LoadImage`), the mesh cache
   (`MeshOf`), the material analysis cache (`AnalyseMaterial`) and the studio's
@@ -257,7 +259,7 @@ clone.
 ```
 ActivateOutputs stack requests                planners/InstallProgram.cpp
   │  BuildActorRender: a cache hit, or BuildPlanFrom   planners/RenderPlanJob.h
-  │  on the plan worker (the sync on verification):
+  │  on the plan worker (the install executor on verification):
   │  CollectTextureDemand, then
   │  BuildRenderPlan = LowerRenderPlan + InlineFields   planners/RenderPlanLowering.cpp
   ▼

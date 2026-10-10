@@ -470,8 +470,20 @@ results.
 
 ### `Manager`
 
-- Owns actor application, retirement, event delivery, task scheduling, and
+- Owns event delivery, task scheduling, fact gathering, command execution and
   snapshot publication.
+- Runs the **tick core** (`Orchestration::Tick`) once per tick in `RunTick`.
+  The core makes every decision that reads or writes state shared across
+  actors. The manager makes no such decision.
+- Holds the core's state in `world_`. Only `RunTick` writes it, with the
+  core's output. Every other reader takes it as `const`.
+- Holds the resources of each actor by form id: `live_` (one `LiveActor`
+  per installed actor) and `models_` (one `ModelTable` per observed actor).
+  Only a command executor creates or destroys a resource. `CheckAgreement`
+  compares the resources with the core's phases before each tick.
+- Holds the inputs of the next tick: `results_` (the command results),
+  `stale_` (the actors to observe), `forgets_` (the actors to forget) and
+  `pendingSample_` (the memory sample).
 - `engine/LiveActor.h` holds the runtime records. Helpers over those records
   include the header without depending on the manager.
 
@@ -574,8 +586,10 @@ results.
   protects submission bookkeeping and is released before engine calls,
   because an engine call can re-enter the queue.
 - A live actor retains its actor handle and resolves an owning reference
-  during each tick. An unloaded or deleted actor retires through the same
-  cleanup path as an explicit retire.
+  during each tick. The core forgets an actor whose sighting has no loaded
+  3D. Its `Forget` executor (`ForgetActorResources`) retires the actor
+  through the same cleanup path as an explicit retire
+  (`RetireActorResources`).
 - A worn-piece enchantment is a form id, resolved when read.
 - A **light** retains the shadow scene that registered it and removes itself
   from that scene during teardown.
@@ -702,14 +716,15 @@ with these meanings and no other word for the same thing.
 | **installed** | What the engine side holds for an actor, in the shape of its plan (`ActorState::installed`). |
 | **state** | The per-actor record of the actor core: plan, installed plan, pending models and claims (`Actors::ActorState`). An actor without one has **no record**. |
 | **claim** | A geometry that another system took, with the token of its piece's model (`Actors::Claim`). Planning leaves a claimed geometry out until its piece gets a new model or the game loads. |
-| **retire** | To undo installed engine state: of a whole actor (`Manager::RetireActor`, which keeps the record) or of one entry (`RetireGeometry`, the `Retire*` commands). |
+| **retire** | To undo installed engine state: of a whole actor (the `Retire` command, `Manager::RetireActorResources`, which keeps the record) or of one entry (`RetireGeometry`, the `Retire*` commands). |
 | **reinstall** | To retire everything installed on an in-range actor and install its whole plan in one sync, even when the plan is unchanged (`Actors::Reinstall::kAlways`). A rebuild asks for it (`MarkReinstall`). |
-| **forget** | To retire an actor, stop its animation subscriptions and events, and erase its record (`Manager::ForgetActor`). |
-| **decide** | To observe, plan and advance one actor without performing the commands (`Manager::DecideActor`). |
-| **sync** | To decide one stale actor and perform the result (`Manager::SyncActor`). |
+| **forget** | To retire an actor, stop its animation subscriptions and events, and erase its record (the `Forget` command; `Manager::ForgetActorResources` in the engine, the record erase in `RunSync`). |
+| **decide** | To advance one stale actor's state from its facts and plan without issuing commands (`Decide` in `orchestration/Sync.cpp`). The engine observes and plans the actor before (`Manager::StaleActorOf`). |
+| **sync** | To decide one stale actor and issue the commands of the result (`SyncStale` in `orchestration/Sync.cpp`). The engine executes them in the same tick. |
+| **tick core** | The engine-free function that makes the decisions of one tick (`Orchestration::Tick`): it takes the `World` and the `TickFacts` and returns the next `World`, the commands and the trace and log records. |
 | **phase** | A step in a lifecycle: an application's `ApplicationPhase`, a gesture's `GesturePhase`. A part of the frame cost is a **section** (`Metrics::Section`), never a phase. |
-| **command** | An instruction a pure core issues for the engine side to perform (`Regression::Command`, `Actors::ActorCommand`). Never a trace scope, which is an **operation** (`Trace::Operation`). |
-| **stale** | Possibly out of date; observe or evaluate again. A stale render step is evaluated again. A stale actor (`Manager::MarkStale`) waits on the session queue for its sync. |
+| **command** | An instruction a pure core issues for the engine side to perform (`Regression::Command`, `Actors::ActorCommand`, `Orchestration::Command`). Never a trace scope, which is an **operation** (`Trace::Operation`). |
+| **stale** | Possibly out of date; observe or evaluate again. A stale render step is evaluated again. A stale actor (`Manager::MarkStale`) waits on the session queue. The queue's callback records it in `Manager::stale_`, and the next tick observes, plans and syncs it. |
 
 ## Gates
 
