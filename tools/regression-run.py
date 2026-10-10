@@ -18,6 +18,7 @@ BUDGETS_SPEC.loader.exec_module(budgets)
 NAME = 'BetterEnchantmentEffects'
 RUN_FILE = f'{NAME}-regression-run.json'
 GAME = 'SkyrimSE.exe'
+MO2 = 'ModOrganizer.exe'
 SETTINGS = {
     'MO2_EXE': 'the WSL path of ModOrganizer.exe',
     'MO2_PROFILE': 'the MO2 profile to launch',
@@ -170,10 +171,14 @@ def format_report(report: Report) -> str:
     return '\n'.join(line.rstrip() for line in text)
 
 
-def game_running(tasklist: str) -> bool:
-    listing = subprocess.run([tasklist, '/FI', f'IMAGENAME eq {GAME}', '/NH'],
+def running(tasklist: str, image: str) -> bool:
+    listing = subprocess.run([tasklist, '/FI', f'IMAGENAME eq {image}', '/NH'],
                              capture_output=True, text=True, check=False).stdout
-    return GAME.lower() in listing.lower()
+    return image.lower() in listing.lower()
+
+
+def game_running(tasklist: str) -> bool:
+    return running(tasklist, GAME)
 
 
 def missing_save(mods_dir: str, profile: str, save: str) -> Path | None:
@@ -315,6 +320,10 @@ def main() -> int:
         return 2
     if game_running(tasklist):
         print(f'{GAME} is running; quit it first', file=sys.stderr)
+        return 2
+    if args.profile and not args.manual and running(tasklist, MO2):
+        print(f'{MO2} is running; close it first, because a running MO2 launches the game '
+              'with its own selected profile and ignores --profile', file=sys.stderr)
         return 2
     segments = launches(args.cases)
     if isinstance(segments, str):

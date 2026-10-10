@@ -80,7 +80,8 @@ that starts SKSE) and `SKSE_LOG_DIR` (the WSL path of the SKSE log folder).
 `+` between case names starts a new launch, for example
 `tools/regression-run.py studio-save + studio-reload`. `--profile NAME`
 launches another MO2 profile for one run; the profile needs a `saves` folder
-of its own. Each run first copies the repository's
+of its own, and MO2 must be closed, because a running MO2 starts the game with
+its own selected profile. Each run first copies the repository's
 regression save from `tests/regression/saves` into the launched profile, and
 keeps a target copy that differs as `<file>.before-seed-<time>`. That save is a
 new character moved to QASmoke with `coc qasmoke` from the main menu, saved in
