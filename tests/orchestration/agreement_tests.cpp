@@ -327,6 +327,21 @@ void AForgetRequestAgreesEveryTick() {
   Equal(IssuedFor<Forget>(run.simulation, kForgotten).size(), std::size_t{1},
         "the forget request issues one forget");
 }
+void ASwapMismatchAgreesEveryTick() {
+  constexpr ActorId kMismatched{900};
+  Script script;
+  ActorScript actor = ScriptedActor(InView(0.6f, 300.0f));
+  actor.faults.swapMismatch.At(kFull) = true;
+  script.actors[kMismatched] = actor;
+  World world;
+  world.actors[kMismatched] =
+      RenderedRecord(LiveAt(kHalf), InView(0.6f, 300.0f));
+  const AgreementRun run = RanAgreeing(
+      Started(std::move(script), WithEstimate(std::move(world))), 200);
+  Agreed(run, "a swap mismatch");
+  Equal(ReportedOf<ResizeNotSwapped>(run.simulation, kMismatched).size(),
+        std::size_t{1}, "the swap mismatches once");
+}
 }
 
 int main() {
@@ -344,5 +359,6 @@ int main() {
   PressureDuringFirstDrawsAgreesEveryTick();
   AFailedPlanJobAgreesEveryTick();
   AForgetRequestAgreesEveryTick();
+  ASwapMismatchAgreesEveryTick();
   return test::Finish("orchestration_agreement");
 }

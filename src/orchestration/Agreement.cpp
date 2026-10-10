@@ -163,6 +163,11 @@ const InstalledRender *RenderOf(const World &a_world, ActorId a_actor) {
   return &*found->second.render;
 }
 
+bool AbandonsItsResize(const CommandResult &a_result) {
+  const ActorEvent *event = Get<ActorEvent>(a_result);
+  return event && Is<ResizeNotSwapped>(event->event);
+}
+
 void Append(std::vector<Disagreement> &a_into, ActorId a_actor,
             Findings a_findings) {
   for (std::string &what : a_findings) {
@@ -199,9 +204,10 @@ Disagreements(const World &a_world,
 }
 
 World SettledWorld(const World &a_world, const TickFacts &a_facts) {
-  TickFacts withoutJobs = a_facts;
-  withoutJobs.jobs.clear();
-  TickOutput synced = RecordSyncResults(a_world, withoutJobs);
-  return RecordRenderResults(std::move(synced.world), withoutJobs).world;
+  TickFacts settled = a_facts;
+  settled.jobs.clear();
+  std::erase_if(settled.results, AbandonsItsResize);
+  TickOutput synced = RecordSyncResults(a_world, settled);
+  return RecordRenderResults(std::move(synced.world), settled).world;
 }
 }
