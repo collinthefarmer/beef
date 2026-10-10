@@ -12,7 +12,7 @@ find_package(Python3 REQUIRED COMPONENTS Interpreter)
 file(GLOB_RECURSE NATIVE_MODULE_SOURCES CONFIGURE_DEPENDS
   src/recipe/*.cpp src/mesh/*.cpp src/studio/*.cpp
   src/planners/*.cpp src/diagnostics/*.cpp src/regression/*.cpp
-  src/actors/*.cpp)
+  src/actors/*.cpp src/orchestration/*.cpp)
 add_library(${PROJECT_NAME}Native STATIC src/Settings.cpp ${NATIVE_MODULE_SOURCES})
 target_include_directories(${PROJECT_NAME}Native PUBLIC src)
 target_include_directories(${PROJECT_NAME}Native SYSTEM PUBLIC src/extern)

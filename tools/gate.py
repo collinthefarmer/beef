@@ -16,7 +16,7 @@ LEGAL_NOTICES = (
      '// licenses/CommunityShaders-EXCEPTIONS.md.'),
 )
 ENGINE_FREE = ('Core.h', 'recipe', 'mesh', 'planners', 'diagnostics', 'studio', 'regression',
-               'actors')
+               'actors', 'orchestration')
 ADAPTER = ENGINE_FREE + ('render', 'PCH.h', 'Identity.h', 'Settings.h', 'SettingsFile.h')
 ALLOWS: dict[str, tuple[str, ...]] = {
     'Core.h': (),
@@ -34,6 +34,8 @@ ALLOWS: dict[str, tuple[str, ...]] = {
     'diagnostics': ('Core.h', 'diagnostics'),
     'regression': ('Core.h', 'recipe', 'regression'),
     'actors': ('Core.h', 'recipe', 'mesh', 'planners', 'studio', 'actors'),
+    'orchestration': ('Core.h', 'recipe', 'mesh', 'planners', 'studio', 'actors', 'diagnostics',
+                      'orchestration'),
     'studio': ENGINE_FREE,
     'validator': ENGINE_FREE,
     'render': ADAPTER,
