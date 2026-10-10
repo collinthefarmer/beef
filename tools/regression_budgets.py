@@ -98,7 +98,7 @@ def measure(events: list[dict], window: Window) -> dict[str, float]:
     total = lambda name: sum(number(beat, name) for beat in beats)
     per_frame = lambda micros: round(micros / max(frames, 1), 1)
     live = lambda total, held: number(last, total) - sum(
-        number(last, f'{holder}_{held}') for holder in ('pool', 'scratch', 'resident'))
+        number(last, f'{holder}_{held}') for holder in ('pool', 'resident'))
     gpu_us = sum(number(span, 'total_us') for span in inside(events, window, 'gpu_span')
                  if span.get('span') == 'RenderTick')
     ticks = inside(events, window, 'gpu_ticks')

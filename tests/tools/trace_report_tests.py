@@ -55,7 +55,7 @@ class TraceReportTests(unittest.TestCase):
 
     def test_metrics_events_summarize(self):
         (self.root / "beef-trace-9.jsonl").write_text(
-            event(1, "startup", build="b3", source_sha256="s")
+            event(1, "startup", build="b3", source="s")
             + event(2, "metrics", action="sync", actor="20", us="2000")
             + event(3, "metrics", action="sync", actor="21", us="6000")
             + event(4, "metrics", action="readback", op="mean", us="1500")
@@ -104,7 +104,7 @@ class TraceReportTests(unittest.TestCase):
 
     def test_survivors_are_grouped_by_owner_at_session_boundaries(self):
         (self.root / "beef-trace-10.jsonl").write_text(
-            event(1, "startup", build="b4", source_sha256="s")
+            event(1, "startup", build="b4", source="s")
             + event(2, "texture", action="acquire", target="1", owner="stack")
             + event(3, "texture", action="acquire", target="2", owner="stack")
             + event(4, "texture", action="acquire", target="3", owner="preview")
@@ -117,9 +117,21 @@ class TraceReportTests(unittest.TestCase):
                       result.stdout)
         self.assertIn("at end of trace: 1 (stack: 1)", result.stdout)
 
+    def test_retirements_name_the_reason_of_their_operation_start(self):
+        def scoped(seq, kind, operation, **fields):
+            return json.dumps({"seq": seq, "event": kind, "fields": fields,
+                               "session": 0, "operation": operation}) + "\n"
+        (self.root / "beef-trace-13.jsonl").write_text(
+            scoped(1, "operation", 5, reason="event.equip", parent="0")
+            + scoped(2, "operation", 5, action="regression.crowd", present="2")
+            + scoped(3, "retire", 5, action="begin"))
+        result = self.report(self.root / "beef-trace-13.jsonl")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("  5: event.equip: 1", result.stdout)
+
     def test_single_unrotated_file_reports_no_rotation(self):
         (self.root / "beef-trace-8.jsonl").write_text(
-            event(1, "startup", build="b2", source_sha256="s")
+            event(1, "startup", build="b2", source="s")
             + event(2, "page", page="Recipes", selection=""))
         result = self.report(self.root / "beef-trace-8.jsonl")
         self.assertEqual(result.returncode, 0, result.stderr)

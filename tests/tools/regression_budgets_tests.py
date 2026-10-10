@@ -109,20 +109,19 @@ class RegressionBudgetTests(unittest.TestCase):
             'soak-waves/wave-3: frame_max_us 600000 over 500000',
             'soak-waves/gap-*: targets_end grew by 6 from gap-1 to gap-3, over 2'])
 
-    def test_live_targets_exclude_the_pool_scratch_and_resident_targets(self):
+    def test_live_targets_exclude_the_pool_and_resident_targets(self):
         events = [
             {'unix_ms': 0, 'fields': {'action': 'regression.window', 'case': 'soak',
                                       'window': 'recovery', 'edge': 'begin'}},
             {'unix_ms': 500, 'fields': {
                 'action': 'heartbeat', 'frames': '60', 'targets': '20',
                 'target_bytes': '2000', 'pool_targets': '5', 'pool_bytes': '500',
-                'scratch_targets': '3', 'scratch_bytes': '300',
                 'resident_targets': '1', 'resident_bytes': '100'}},
             {'unix_ms': 1000, 'fields': {'action': 'regression.window', 'case': 'soak',
                                          'window': 'recovery', 'edge': 'end'}}]
         measured = budgets.measurements(events)[('soak', 'recovery')]
-        self.assertEqual(measured['live_targets_end'], 11)
-        self.assertEqual(measured['live_target_bytes_end'], 1100)
+        self.assertEqual(measured['live_targets_end'], 14)
+        self.assertEqual(measured['live_target_bytes_end'], 1400)
         self.assertEqual(measured['pool_bytes_end'], 500)
 
     def test_cost_is_split_per_phase_and_normalised_per_second(self):
