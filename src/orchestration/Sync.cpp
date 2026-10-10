@@ -373,7 +373,7 @@ bool RangeChanged(const Actors::ActorState &a_state,
 }
 
 namespace {
-ActorRecord *TrackedRecord(World &a_world, ActorId a_actor) {
+ActorRecord *TrackedActor(World &a_world, ActorId a_actor) {
   const auto found = a_world.actors.find(a_actor);
   return found == a_world.actors.end() ? nullptr : &found->second;
 }
@@ -389,7 +389,7 @@ void ChargeInstall(World &a_world, const ActorEvent &a_event) {
 void DropFailedInstall(World &a_world, const InstallFailed &a_failed) {
   a_world.waitingInstalls =
       Removed(std::move(a_world.waitingInstalls), FormOf(a_failed.actor));
-  ActorRecord *record = TrackedRecord(a_world, a_failed.actor);
+  ActorRecord *record = TrackedActor(a_world, a_failed.actor);
   if (!record) {
     return;
   }
@@ -397,7 +397,7 @@ void DropFailedInstall(World &a_world, const InstallFailed &a_failed) {
 }
 
 void RecordRetired(World &a_world, const Retired &a_retired) {
-  ActorRecord *record = TrackedRecord(a_world, a_retired.actor);
+  ActorRecord *record = TrackedActor(a_world, a_retired.actor);
   if (!record) {
     return;
   }
@@ -415,7 +415,7 @@ void RecordSyncResult(World &a_world, const CommandResult &a_result) {
 }
 
 void RecordClaim(World &a_world, const ClaimedGeometry &a_claimed) {
-  ActorRecord *record = TrackedRecord(a_world, a_claimed.actor);
+  ActorRecord *record = TrackedActor(a_world, a_claimed.actor);
   if (!record || !record->syncState) {
     return;
   }
