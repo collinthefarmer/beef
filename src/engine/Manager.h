@@ -308,10 +308,7 @@ private:
                                              const Settings &a_settings);
   [[nodiscard]] std::vector<Orchestration::PlanJobDone> DrainPlanJobs();
   void FailAwaitedRender(LiveActor &a_state, const std::string &a_problem);
-  [[nodiscard]] std::size_t PlaceGeometries(LiveActor &a_state,
-                                            const Settings &a_settings);
-  void PlaceOnGeometry(LiveActor &a_state, GeometryId a_geometry,
-                       const Settings &a_settings);
+  [[nodiscard]] OutputFilter ShownOutputs() const;
   void PlaceLightsOf(RE::Actor *a_actor, LiveActor &a_state);
 
   void TickInstance(LiveInstance &a_instance, float a_time, float a_delta);

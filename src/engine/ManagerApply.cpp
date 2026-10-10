@@ -200,100 +200,59 @@ std::size_t GeometryCount(const LiveActor &a_state) noexcept {
   return count;
 }
 
-void PreparePlacement(LiveActor &a_state,
-                      const GeometryPlacementPlan &placement,
-                      GeometryId a_geometry) {
-  const std::optional<LocatedGeometry> located =
-      LocateGeometry(a_state, a_geometry);
-  if (!located)
+void TraceGeometryScope(const LiveActor &a_state,
+                        const LocatedGeometry &a_located) {
+  const auto actor = a_state.actor.get();
+  if (!actor) {
     return;
-  LiveGeometry &bound = located->bound;
-  bound.placements = placement.sources;
-  bound.plan = placement.plan;
-  bound.stackPlan = PlanStacks(placement.placed, placement.plan);
-  bound.binding = PlanBinding(placement.placed, placement.plan);
-  for (const PlacementId source : placement.sources) {
-    const std::size_t k = IndexOf(source);
-    if (k >= a_state.placements.size() ||
-        k >= a_state.matches.placements.size()) {
+  }
+  const LiveGeometry &bound = a_located.bound;
+  Trace::EmitSafely(
+      Trace::Event::kBinding,
+      {{"action", "geometry_scope"},
+       {"actor", std::to_string(actor->GetFormID())},
+       {"armor", std::to_string(a_located.piece.armor)},
+       {"geometry", Trace::Pointer(bound.geometry.get())},
+       {"property", Trace::Pointer(bound.property.get())},
+       {"name", bound.name},
+       {"shell",
+        Trace::Pointer(bound.shell ? bound.shell->Geometry() : nullptr)}});
+}
+
+void BindShell(LiveActor &a_state, LiveGeometry &a_bound, InstanceId a_owner) {
+  const std::size_t owner = IndexOf(a_owner);
+  if (owner >= a_state.instances.size() || !a_state.instances[owner].recipe) {
+    return;
+  }
+  a_bound.shellOwner = owner;
+  a_bound.shell =
+      ShellBinding::Create(a_bound.geometry.get(), a_bound.property.get(),
+                           a_state.instances[owner].recipe->shell);
+}
+
+std::vector<BoundSurfaces>
+BindSurfaces(LiveActor &a_state, std::span<const GeometryBinding> a_geometries,
+             bool a_uniqueMaterial) {
+  std::vector<BoundSurfaces> bound;
+  bound.reserve(a_geometries.size());
+  for (const GeometryBinding &geometry : a_geometries) {
+    const std::optional<LocatedGeometry> located =
+        LocateGeometry(a_state, geometry.geometry);
+    if (!located) {
       continue;
     }
-    LivePlacement &live = a_state.placements[k];
-    live.geometry = a_geometry;
-    live.outputs.clear();
-    for (const OutputPlacement &output :
-         a_state.matches.placements[k].outputs) {
-      live.outputs.push_back(PlacedOutput{IndexOf(output.output), nullptr,
-                                          OutputInactive{output.problem}});
+    LiveGeometry &live = located->bound;
+    if (geometry.binding.material) {
+      live.material = MaterialBinding::Install(
+          live.geometry.get(), live.property.get(), a_uniqueMaterial);
     }
-  }
-}
-
-void InstallSurfaces(LiveActor &a_state, LiveGeometry &a_bound,
-                     bool a_uniqueMaterial) {
-  if (a_bound.binding.material) {
-    a_bound.material = MaterialBinding::Install(
-        a_bound.geometry.get(), a_bound.property.get(), a_uniqueMaterial);
-  }
-  if (a_bound.binding.shell) {
-    std::optional<std::size_t> ownerInstance;
-    if (a_bound.binding.shellOwner) {
-      if (const std::optional<InstanceId> owner =
-              InstanceOfPlaced(a_state.matches, a_bound.placements,
-                               IndexOf(*a_bound.binding.shellOwner))) {
-        ownerInstance = IndexOf(*owner);
-      }
+    if (geometry.binding.shell && geometry.shellOwner) {
+      BindShell(a_state, live, *geometry.shellOwner);
     }
-    if (ownerInstance && *ownerInstance < a_state.instances.size() &&
-        a_state.instances[*ownerInstance].recipe) {
-      a_bound.shellOwner = ownerInstance;
-      a_bound.shell =
-          ShellBinding::Create(a_bound.geometry.get(), a_bound.property.get(),
-                               a_state.instances[*ownerInstance].recipe->shell);
-    }
+    bound.push_back(BoundSurfacesOf(live, geometry.geometry));
+    TraceGeometryScope(a_state, *located);
   }
-}
-
-std::string ReplacerRecipeId(const LiveActor &a_state,
-                             const LiveGeometry &a_bound,
-                             const SlotPlan &a_slot,
-                             const SlotContribution &a_c) {
-  const std::optional<std::size_t> replacer = ReplacerOf(a_slot, a_c);
-  if (!replacer) {
-    return {};
-  }
-  const std::optional<InstanceId> instance =
-      InstanceOfPlaced(a_state.matches, a_bound.placements, *replacer);
-  if (!instance) {
-    return {};
-  }
-  const std::size_t instanceIndex = IndexOf(*instance);
-  if (instanceIndex >= a_state.instances.size() ||
-      !a_state.instances[instanceIndex].recipe) {
-    return {};
-  }
-  return a_state.instances[instanceIndex].recipe->id;
-}
-
-void MarkReplaced(LiveActor &a_state, LiveGeometry &a_bound) {
-  for (const SlotPlan &slot : a_bound.plan.slots) {
-    for (const SlotContribution &c : slot.replaced) {
-      const std::optional<ResolvedPlacement> resolved =
-          ResolvePlacement(a_state, a_bound, IndexOf(c.placed));
-      if (!resolved) {
-        continue;
-      }
-      PlacedOutput *output =
-          OutputAt(a_state.placements[resolved->placement], c.output);
-      if (!output) {
-        continue;
-      }
-      output->state =
-          WithProblem(output->state,
-                      std::format("replaced by recipe {}",
-                                  ReplacerRecipeId(a_state, a_bound, slot, c)));
-    }
-  }
+  return bound;
 }
 
 struct StackInputs {
@@ -1249,9 +1208,14 @@ RenderOutcome Manager::PlaceInstances(LiveActor &a_state, RE::FormID a_actorID,
   std::size_t geometries = 0;
   const std::expected<ActorRenderRequest, std::string> request =
       phases.Measure("geometry_us", [&] {
-        geometries = PlaceGeometries(a_state, a_settings);
-        return RenderRequestOf(a_state, a_actorID, SurfacePlanOf(a_state),
-                               BoundSurfacesOf(a_state), a_settings);
+        SurfacePlan plan =
+            PlanSurfaces(a_state.matches, RecipesOf(a_state), ShownOutputs());
+        KeepSurfacePlan(a_state, plan);
+        const std::vector<BoundSurfaces> bound =
+            BindSurfaces(a_state, plan.geometries, a_settings.uniqueMaterial);
+        geometries = plan.geometries.size();
+        return RenderRequestOf(a_state, a_actorID, std::move(plan), bound,
+                               a_settings);
       });
   RenderOutcome built = phases.Measure("render_us", [&] {
     return BuildRequestedRender(
@@ -1278,52 +1242,10 @@ void Manager::FailAwaitedRender(LiveActor &a_state,
              a_problem);
 }
 
-std::size_t Manager::PlaceGeometries(LiveActor &a_state,
-                                     const Settings &a_settings) {
-  const std::span<const Recipe> loaded = RecipesOf(a_state);
-  a_state.placements.clear();
-  a_state.placements.resize(a_state.matches.placements.size());
-  std::size_t flat = 0;
-  for (std::size_t p = 0; p < a_state.pieces.size(); ++p) {
-    for (std::size_t g = 0; g < a_state.pieces[p].geometries.size(); ++g) {
-      const auto placement = PlanGeometryPlacement(
-          a_state.matches, loaded, GeometryId{flat},
-          [this](const Recipe &recipe, std::size_t output) {
-            return editor_.CurrentView().OutputShown(recipe.id, output);
-          });
-      PreparePlacement(a_state, placement, GeometryId{flat});
-      PlaceOnGeometry(a_state, GeometryId{flat}, a_settings);
-      ++flat;
-    }
-  }
-  return flat;
-}
-
-void Manager::PlaceOnGeometry(LiveActor &a_state, GeometryId a_geometry,
-                              const Settings &a_settings) {
-  const std::optional<LocatedGeometry> located =
-      LocateGeometry(a_state, a_geometry);
-  if (!located) {
-    return;
-  }
-  LiveGeometry &bound = located->bound;
-
-  InstallSurfaces(a_state, bound, a_settings.uniqueMaterial);
-  MarkReplaced(a_state, bound);
-
-  const auto actor = a_state.actor.get();
-  if (actor) {
-    Trace::EmitSafely(
-        Trace::Event::kBinding,
-        {{"action", "geometry_scope"},
-         {"actor", std::to_string(actor->GetFormID())},
-         {"armor", std::to_string(located->piece.armor)},
-         {"geometry", Trace::Pointer(bound.geometry.get())},
-         {"property", Trace::Pointer(bound.property.get())},
-         {"name", bound.name},
-         {"shell",
-          Trace::Pointer(bound.shell ? bound.shell->Geometry() : nullptr)}});
-  }
+OutputFilter Manager::ShownOutputs() const {
+  return [this](const Recipe &a_recipe, std::size_t a_output) {
+    return editor_.CurrentView().OutputShown(a_recipe.id, a_output);
+  };
 }
 
 void Manager::PlaceLightsOf(RE::Actor *a_actor, LiveActor &a_state) {
