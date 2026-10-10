@@ -18,6 +18,28 @@ enum class InstallKind : std::uint8_t { kInstall, kReinstall };
 
 enum class ReleaseReason : std::uint8_t { kOutOfView, kBudget };
 
+struct TickActor;
+struct StartResize;
+struct SwapResize;
+struct AbandonResize;
+struct ReleaseIntermediates;
+struct SetAppliedLevel;
+struct DrawUnpublished;
+struct BuildAwaitedRender;
+struct FailAwaitedRender;
+struct Install;
+struct Retire;
+struct Forget;
+struct Observe;
+struct KeepModels;
+struct SettleApplications;
+
+using Command =
+    std::variant<TickActor, StartResize, SwapResize, AbandonResize,
+                 ReleaseIntermediates, SetAppliedLevel, DrawUnpublished,
+                 BuildAwaitedRender, FailAwaitedRender, Install, Retire, Forget,
+                 Observe, KeepModels, SettleApplications>;
+
 struct TickActor {
   ActorId actor{};
   bool drawStacks = false;
@@ -97,12 +119,6 @@ struct SettleApplications {
   bool equip = false;
   bool reinstall = false;
 };
-
-using Command =
-    std::variant<TickActor, StartResize, SwapResize, AbandonResize,
-                 ReleaseIntermediates, SetAppliedLevel, DrawUnpublished,
-                 BuildAwaitedRender, FailAwaitedRender, Install, Retire, Forget,
-                 Observe, KeepModels, SettleApplications>;
 
 enum class LogLevel : std::uint8_t { kInfo, kWarning };
 

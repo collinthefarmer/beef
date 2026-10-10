@@ -41,6 +41,11 @@ struct ClaimedGeometry {
   Actors::Claim claim;
 };
 
+struct PlanJobBuilt;
+struct PlanJobFailed;
+
+using PlanJobDone = std::variant<PlanJobBuilt, PlanJobFailed>;
+
 struct PlanJobBuilt {
   PlanJobId job{};
 };
@@ -50,7 +55,19 @@ struct PlanJobFailed {
   std::string problem;
 };
 
-using PlanJobDone = std::variant<PlanJobBuilt, PlanJobFailed>;
+struct PlanAwaited;
+struct Installed;
+struct InstalledWithoutRender;
+struct UnpublishedDrawn;
+struct ResizeStarted;
+struct ResizeNotStarted;
+struct ResizeSwapped;
+struct ResizeNotSwapped;
+
+using RenderEvent =
+    std::variant<PlanAwaited, Installed, InstalledWithoutRender,
+                 UnpublishedDrawn, ResizeStarted, ResizeNotStarted,
+                 ResizeSwapped, ResizeNotSwapped>;
 
 struct PlanAwaited {
   PlanJobId job{};
@@ -83,10 +100,11 @@ struct ResizeSwapped {};
 
 struct ResizeNotSwapped {};
 
-using RenderEvent =
-    std::variant<PlanAwaited, Installed, InstalledWithoutRender,
-                 UnpublishedDrawn, ResizeStarted, ResizeNotStarted,
-                 ResizeSwapped, ResizeNotSwapped>;
+struct ActorEvent;
+struct InstallFailed;
+struct Retired;
+
+using CommandResult = std::variant<ActorEvent, InstallFailed, Retired>;
 
 struct ActorEvent {
   ActorId actor{};
@@ -101,8 +119,6 @@ struct InstallFailed {
 struct Retired {
   ActorId actor{};
 };
-
-using CommandResult = std::variant<ActorEvent, InstallFailed, Retired>;
 
 struct TickFacts {
   Millis now = 0;
