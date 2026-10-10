@@ -136,10 +136,6 @@ public:
   [[nodiscard]] std::uint64_t ResidentTargets() const noexcept;
   [[nodiscard]] std::uint64_t ResidentBytes() const noexcept;
 
-  [[nodiscard]] TextureSize StackSize(const SurfaceOutput &output,
-                                      const GeometryInputs &inputs,
-                                      TextureSize requested,
-                                      TextureSize maximum) const;
   StackRender Render(RenderOutput &a_stack, const LayerFilter &a_filter,
                      const StackBase &a_base = {});
 

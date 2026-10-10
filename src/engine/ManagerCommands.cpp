@@ -118,7 +118,7 @@ Manager::Execute(const std::vector<Orchestration::Command> &a_commands,
                  return RunBuildAwaitedRender(a_command, a_context);
                },
                [&](const Orchestration::FailAwaitedRender &a_command) {
-                 return RunFailAwaitedRender(a_command, a_context);
+                 return RunFailAwaitedRender(a_command);
                },
                [&](const Orchestration::Install &a_command) {
                  return RunInstall(a_command, a_context);
@@ -256,9 +256,8 @@ CommandResults Manager::RunBuildAwaitedRender(
       BuildAwaitedRender(id, state, a_command.bound, a_context.settings));
 }
 
-CommandResults
-Manager::RunFailAwaitedRender(const Orchestration::FailAwaitedRender &a_command,
-                              const TickContext &a_context) {
+CommandResults Manager::RunFailAwaitedRender(
+    const Orchestration::FailAwaitedRender &a_command) {
   const RE::FormID id = FormOf(a_command.actor);
   const auto found = live_.find(id);
   if (found == live_.end()) {
@@ -266,7 +265,7 @@ Manager::RunFailAwaitedRender(const Orchestration::FailAwaitedRender &a_command,
                        "no resources await a plan");
     return {};
   }
-  FailAwaitedRender(id, found->second, a_command.problem, a_context.settings);
+  FailAwaitedRender(found->second, a_command.problem);
   return {};
 }
 

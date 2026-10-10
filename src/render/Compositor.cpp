@@ -1,28 +1,13 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #include "render/Compositor.h"
+#include "planners/TextureIdentity.h"
 #include "render/RenderInstance.h"
-#include "render/SourceSampling.h"
 
-#include <algorithm>
 #include <cctype>
 #include <cstdint>
 #include <format>
 
 namespace BetterEnchantmentEffects {
-namespace {
-TextureRef BaseMapFor(Slot a_slot, const MaterialInputs &a_material) {
-  return MaterialTexture(BaseMapOf(a_slot), a_material);
-}
-
-TextureSize SizeOverBase(TextureSize a_size, TextureSize a_maxSize,
-                         std::uint32_t a_largestSide) {
-  const std::uint32_t floor = a_size.Pixels();
-  const std::uint32_t ceiling = std::max(a_maxSize.Pixels(), floor);
-  return TextureSize(std::clamp(a_largestSide, floor, ceiling));
-}
-
-}
-
 bool LayerFilter::Hides(std::size_t a_index) const noexcept {
   for (const std::size_t h : hidden) {
     if (h == a_index) {
@@ -153,20 +138,6 @@ std::shared_ptr<TextureLab::RenderTarget> Compositor::NeutralHeight() {
   }
   neutralHeight_ = std::move(target);
   return neutralHeight_;
-}
-
-TextureSize Compositor::StackSize(const SurfaceOutput &output,
-                                  const GeometryInputs &inputs,
-                                  TextureSize requested,
-                                  TextureSize maximum) const {
-  if (output.slot == Slot::kHeight && inputs.material.flatDisplacement)
-    return requested;
-  const TextureRef base = BaseMapFor(output.slot, inputs.material);
-  if (!IsNonPlaceholderTexture(base))
-    return requested;
-  const auto extent = TextureLab::ExtentOf(base.get());
-  return SizeOverBase(requested, maximum,
-                      extent ? std::max(extent->width, extent->height) : 0u);
 }
 
 StackRender Compositor::Render(RenderOutput &stack, const LayerFilter &filter,

@@ -13,6 +13,7 @@
 #include "engine/Clock.h"
 #include "engine/EngineForms.h"
 #include "engine/GameObjectService.h"
+#include "engine/InstallStages.h"
 #include "engine/LogOnce.h"
 #include "engine/PhaseTrace.h"
 #include "engine/PlanJobs.h"
@@ -26,6 +27,7 @@
 #include "render/Compositor.h"
 #include "render/PBRMaterial.h"
 #include "render/RenderInstance.h"
+#include "render/SourceSampling.h"
 #include "render/TextureLab.h"
 #include "studio/Selection.h"
 
@@ -67,26 +69,6 @@ private:
   RE::FormID actor_;
 };
 
-struct LocatedGeometry {
-  LivePiece &piece;
-  LiveGeometry &bound;
-  GeometryId id;
-};
-
-[[nodiscard]] std::optional<LocatedGeometry>
-LocateGeometry(LiveActor &a_state, GeometryId a_geometry) noexcept {
-  std::size_t index = 0;
-  for (LivePiece &piece : a_state.pieces) {
-    for (LiveGeometry &geometry : piece.geometries) {
-      if (GeometryId{index} == a_geometry) {
-        return LocatedGeometry{piece, geometry, a_geometry};
-      }
-      ++index;
-    }
-  }
-  return std::nullopt;
-}
-
 std::shared_ptr<const RecipeGraph> InstanceGraph(const Recipe &a_recipe,
                                                  const Variant *a_variant) {
   if (!a_variant) {
@@ -107,46 +89,6 @@ RE::FormID EnchantmentForInstance(LiveActor &a_state, std::size_t a_instance) {
     }
   }
   return 0;
-}
-
-struct RuntimeTextureSizes {
-  TextureSize requested;
-  TextureSize native;
-};
-
-RuntimeTextureSizes RuntimeSizes(const Settings &a_settings,
-                                 const MaterialInputs &a_material) {
-  std::uint32_t native = 0;
-  const auto consider = [&native](const TextureRef &a_texture) {
-    if (const std::optional<TextureLab::Extent> extent =
-            TextureLab::ExtentOf(a_texture.get())) {
-      native = std::max({native, extent->width, extent->height});
-    }
-  };
-  consider(a_material.rmaos);
-  consider(a_material.diffuse);
-  consider(a_material.normal);
-  consider(a_material.displacement);
-  const TextureSize maxSize{native == 0 ? TextureSize::kMax : native};
-  std::uint32_t requested = maxSize.Pixels();
-  switch (a_settings.textureScale) {
-  case TextureScale::kQuarter:
-    requested /= 4;
-    break;
-  case TextureScale::kHalf:
-    requested /= 2;
-    break;
-  case TextureScale::kFull:
-    break;
-  }
-  return {TextureSize(requested), maxSize};
-}
-
-TextureSize SlotStackSize(TextureSize a_base, Slot a_slot,
-                          const std::optional<Resolution> &a_override) {
-  const Resolution resolution =
-      a_override.value_or(DefaultSlotResolution(a_slot));
-  return TextureSize(a_base.Pixels() / ResolutionDivisor(resolution));
 }
 
 EventRecord EquipEvent() {
@@ -354,31 +296,21 @@ void MarkReplaced(LiveActor &a_state, LiveGeometry &a_bound) {
   }
 }
 
-}
-struct LocatedStackOutput {
-  PlacementId placement;
-  const Recipe &recipe;
-  const RecipeGraph &graph;
-  std::size_t applicationContext;
-  const SurfaceOutput &surface;
-  PlacedOutput &placed;
-  EnchantmentValues enchantment;
+struct StackInputs {
+  std::shared_ptr<const Recipe> recipe;
+  std::shared_ptr<const RecipeGraph> graph;
+  std::shared_ptr<const SurfaceOutput> output;
+  GeometryInputs inputs;
 };
-struct ActorStackRequest {
-  StackTextureRequest texture;
-  GeometryId geometry;
-  LocatedStackOutput located;
-  SideRef side;
-};
-struct ActorStacks {
+
+struct ActorRenderRequest {
   RE::FormID actor = 0;
-  std::vector<ActorStackRequest> requests;
-  std::vector<TextureSize> sizes;
-  std::vector<SlotChainRequest> chains;
-  std::vector<GeometryInputs> geometries;
-  std::vector<LiveGeometry *> bound;
+  std::vector<GeometryBinding> geometries;
+  OutputActivation activation;
+  RenderBuildRequest build;
+  std::vector<StackInputs> stacks;
+  std::vector<GeometryInputs> inputs;
 };
-namespace {
 
 EnchantmentValues EnchantmentValuesOf(const LiveInstance &a_instance) {
   EnchantmentValues values;
@@ -392,146 +324,43 @@ EnchantmentValues EnchantmentValuesOf(const LiveInstance &a_instance) {
   return values;
 }
 
-std::optional<LocatedStackOutput>
-LocateStackOutput(LiveActor &a_state, const LiveGeometry &a_bound,
-                  const SlotContribution &a_contribution) {
-  const std::optional<ResolvedPlacement> resolved =
-      ResolvePlacement(a_state, a_bound, IndexOf(a_contribution.placed));
-  if (!resolved) {
-    return std::nullopt;
-  }
-  const Recipe *recipe = a_state.instances[resolved->instance].recipe.get();
-  if (!recipe) {
-    return std::nullopt;
-  }
-  const SurfaceOutput *surface =
-      SurfaceOutputOf(*recipe, a_contribution.output);
-  auto *output =
-      OutputAt(a_state.placements[resolved->placement], a_contribution.output);
-  const auto &graph = a_state.instances[resolved->instance].graph;
-  if (!surface || !output || !graph) {
-    return std::nullopt;
-  }
-  return LocatedStackOutput{
-      PlacementId{resolved->placement},
-      *recipe,
-      *graph,
-      resolved->instance + 1,
-      *surface,
-      *output,
-      EnchantmentValuesOf(a_state.instances[resolved->instance])};
-}
-
-std::string SurfaceProblem(LiveGeometry &a_bound, const SlotPlan &a_slot,
-                           const std::string &a_existingProblem) {
-  if (a_slot.surface == Surface::kShell && !a_bound.shell) {
-    return "shell could not be created";
-  }
-  if (a_slot.surface == Surface::kMaterial && !a_bound.material) {
-    return "material binding failed";
-  }
-  if (!a_existingProblem.empty()) {
-    return a_existingProblem;
-  }
-  SlotTarget *target = TargetFor(a_bound, a_slot.surface);
-  return target ? ProblemText(target->Problem(a_slot.slot))
-                : std::string{"the surface is not bound"};
-}
-
-void LogStackDiagnostics(const LocatedStackOutput &a_output,
-                         const std::string &a_geometry,
+void LogStackDiagnostics(const RenderOutput &a_stack, const Recipe &a_recipe,
+                         std::size_t a_output, const std::string &a_geometry,
                          WarningHistory &a_warnings) {
-  for (const Diagnostic &diagnostic : a_output.placed.stack->Diagnostics()) {
+  for (const Diagnostic &diagnostic : a_stack.Diagnostics()) {
     LogOnce(a_warnings, Severity::kWarning,
-            std::format("recipe {} output {} on '{}': {}: {}",
-                        a_output.recipe.id, a_output.placed.index, a_geometry,
-                        diagnostic.where, diagnostic.message));
+            std::format("recipe {} output {} on '{}': {}: {}", a_recipe.id,
+                        a_output, a_geometry, diagnostic.where,
+                        diagnostic.message));
   }
 }
 
-void RecordGeometry(ActorStacks &a_stacks, LiveGeometry &a_bound,
-                    GeometryId a_geometry) {
-  const std::size_t index = IndexOf(a_geometry);
-  if (a_stacks.geometries.size() <= index) {
-    a_stacks.geometries.resize(index + 1);
-    a_stacks.bound.resize(index + 1, nullptr);
-  }
-  a_stacks.geometries[index] = a_bound.inputs;
-  a_stacks.bound[index] = &a_bound;
-}
-
-SideRef SideFor(ActorStacks &a_stacks, TextureSize a_size) {
-  const auto found = std::ranges::find(a_stacks.sizes, a_size);
-  if (found != a_stacks.sizes.end()) {
-    return {static_cast<std::uint32_t>(found - a_stacks.sizes.begin())};
-  }
-  a_stacks.sizes.push_back(a_size);
-  return {static_cast<std::uint32_t>(a_stacks.sizes.size() - 1)};
-}
-
-void CollectChainStacks(LiveActor &a_state, const LocatedGeometry &a_geometry,
-                        const Settings &a_settings, ActorStacks &a_stacks) {
-  LiveGeometry &bound = a_geometry.bound;
-  RecordGeometry(a_stacks, bound, a_geometry.id);
-  const auto [size, maxSize] = RuntimeSizes(a_settings, bound.inputs.material);
-  Compositor *compositor = Compositor::GetSingleton();
-  for (const SlotPlan &slot : bound.plan.slots) {
-    SlotChainRequest chain{a_geometry.id, slot.surface, slot.slot, {}};
-    for (const SlotContribution &contribution : slot.chain) {
-      const std::optional<LocatedStackOutput> located =
-          LocateStackOutput(a_state, bound, contribution);
-      if (!located) {
-        continue;
-      }
-      PlacedOutput &output = located->placed;
-      std::string problem =
-          SurfaceProblem(bound, slot, std::string{ProblemOf(output.state)});
-      const bool blocked = !problem.empty();
-      output.state = Activated(std::move(problem));
-      if (blocked) {
-        continue;
-      }
-      const TextureSize slotSize =
-          SlotStackSize(size, slot.slot, located->surface.resolution);
-      GeometryInputs inputs = bound.inputs;
-      inputs.scope = {located->applicationContext, a_stacks.actor};
-      inputs.enchantment = located->enchantment;
-      const TextureSize stackSize =
-          compositor->StackSize(located->surface, inputs, slotSize, maxSize);
-      const SideRef side = SideFor(a_stacks, stackSize);
-      a_stacks.requests.push_back(
-          {{&located->recipe, &located->graph, &located->surface,
-            contribution.output, located->placement, inputs, stackSize},
-           a_geometry.id,
-           *located,
-           side});
-      chain.links.push_back({located->placement, contribution.output});
-    }
-    if (chain.links.size() > 1) {
-      a_stacks.chains.push_back(std::move(chain));
-    }
-  }
-}
-
-void CollectActorStacks(LiveActor &a_state, const Settings &a_settings,
-                        ActorStacks &a_stacks) {
-  std::size_t flat = 0;
+void DetachRender(LiveActor &a_state) {
   for (LivePiece &piece : a_state.pieces) {
     for (LiveGeometry &geometry : piece.geometries) {
-      CollectChainStacks(a_state, {piece, geometry, GeometryId{flat}},
-                         a_settings, a_stacks);
-      ++flat;
+      geometry.inputs.render.reset();
+      geometry.mergedSlots.clear();
     }
   }
 }
 
-void AttachRender(const ActorStacks &a_stacks,
+void AttachRender(LiveActor &a_state,
                   const std::shared_ptr<RenderInstance> &a_render) {
-  for (LiveGeometry *bound : a_stacks.bound) {
-    if (bound) {
-      bound->inputs.render = a_render;
+  for (LivePiece &piece : a_state.pieces) {
+    for (LiveGeometry &geometry : piece.geometries) {
+      geometry.inputs.render = a_render;
     }
   }
+}
+
+std::vector<GeometryInputs> GeometryInputsOf(const LiveActor &a_state) {
+  std::vector<GeometryInputs> inputs;
+  for (const LivePiece &piece : a_state.pieces) {
+    for (const LiveGeometry &geometry : piece.geometries) {
+      inputs.push_back(geometry.inputs);
+    }
+  }
+  return inputs;
 }
 
 std::vector<std::shared_ptr<const RecipeGraph>>
@@ -546,140 +375,214 @@ LiveGraphs(const LiveActor &a_state) {
   return graphs;
 }
 
-std::expected<PlanStackRequest, std::string>
-PlanStackRequestOf(const ActorStackRequest &a_request,
-                   const LiveActor &a_state) {
-  const StackTextureRequest &texture = a_request.texture;
-  const std::size_t context = texture.inputs.scope.context;
-  if (context == 0 || context > a_state.instances.size()) {
+std::expected<StackInputs, std::string>
+StackInputsOf(const LiveActor &a_state, const StackRequest &a_stack,
+              std::span<const GeometryInputs> a_geometries,
+              RE::FormID a_actor) {
+  const std::size_t instance = IndexOf(a_stack.instance);
+  const std::size_t geometry = IndexOf(a_stack.geometry);
+  if (instance >= a_state.instances.size() || geometry >= a_geometries.size()) {
     return std::unexpected(std::string{"a stack names no live instance"});
   }
-  const LiveInstance &instance = a_state.instances[context - 1];
-  if (!instance.graph || !instance.recipe || !texture.output ||
-      instance.graph.get() != texture.graph ||
-      instance.recipe.get() != texture.recipe) {
+  const LiveInstance &live = a_state.instances[instance];
+  const SurfaceOutput *output =
+      live.recipe ? SurfaceOutputOf(*live.recipe, a_stack.output) : nullptr;
+  if (!live.graph || !output) {
     return std::unexpected(
         std::string{"a stack does not match its live instance"});
   }
-  return PlanStackRequest{
-      instance.graph,
-      std::shared_ptr<const SurfaceOutput>{instance.recipe, texture.output},
-      instance.recipe->id,
-      texture.outputIndex,
-      texture.placement,
-      a_request.geometry,
-      context,
-      a_request.side,
-      std::make_shared<const IdentityFacts>(
-          IdentityFactsOf(*instance.graph, texture.inputs))};
+  GeometryInputs inputs = a_geometries[geometry];
+  inputs.scope = {instance + 1, a_actor};
+  inputs.enchantment = EnchantmentValuesOf(live);
+  return StackInputs{live.recipe, live.graph,
+                     std::shared_ptr<const SurfaceOutput>{live.recipe, output},
+                     std::move(inputs)};
 }
 
-std::expected<PlanBuildInput, std::string>
-PlanInputOf(const ActorStacks &a_stacks, const LiveActor &a_state) {
-  PlanBuildInput input;
-  input.requests.reserve(a_stacks.requests.size());
-  for (const ActorStackRequest &request : a_stacks.requests) {
-    std::expected<PlanStackRequest, std::string> owned =
-        PlanStackRequestOf(request, a_state);
-    if (!owned) {
-      return std::unexpected(std::move(owned.error()));
-    }
-    input.requests.push_back(std::move(*owned));
+std::uint32_t LargestSideOf(const TextureRef &a_texture) {
+  const std::optional<TextureLab::Extent> extent =
+      TextureLab::ExtentOf(a_texture.get());
+  return extent ? std::max(extent->width, extent->height) : 0;
+}
+
+StackSizeFacts StackSizeFactsOf(const SurfaceOutput &a_output,
+                                const MaterialInputs &a_material) {
+  StackSizeFacts facts{std::max({LargestSideOf(a_material.rmaos),
+                                 LargestSideOf(a_material.diffuse),
+                                 LargestSideOf(a_material.normal),
+                                 LargestSideOf(a_material.displacement)}),
+                       std::nullopt};
+  if (a_output.slot == Slot::kHeight && a_material.flatDisplacement) {
+    return facts;
   }
-  input.chains = a_stacks.chains;
+  const TextureRef base = MaterialTexture(BaseMapOf(a_output.slot), a_material);
+  if (!IsNonPlaceholderTexture(base)) {
+    return facts;
+  }
+  if (const std::optional<TextureLab::Extent> extent =
+          TextureLab::ExtentOf(base.get())) {
+    facts.baseLargest = std::max(extent->width, extent->height);
+  }
+  return facts;
+}
+
+std::vector<TextureSize> StackSizesOf(std::span<const StackRequest> a_stacks,
+                                      std::span<const StackInputs> a_inputs,
+                                      const Settings &a_settings) {
+  std::vector<TextureSize> sizes;
+  const Resolution scale = ScaleResolutionOf(a_settings.textureScale);
+  for (std::size_t i = 0; i < a_stacks.size() && i < a_inputs.size(); ++i) {
+    const StackInputs &stack = a_inputs[i];
+    sizes.push_back(
+        StackSizeOf(StackSizeFactsOf(*stack.output, stack.inputs.material),
+                    a_stacks[i].resolution, scale));
+  }
+  return sizes;
+}
+
+void FailRender(LiveActor &a_state, const OutputActivation &a_activation,
+                const std::string &a_problem) {
+  WriteOutputs(a_state, FailedOutputs(a_activation.placements,
+                                      a_activation.stacks, a_problem));
+}
+
+OutputActivation ActivationOf(LiveActor &a_state, const SurfacePlan &a_plan,
+                              std::span<const BoundSurfaces> a_bound) {
+  OutputActivation activation =
+      ActivateOutputs(a_plan, a_bound, a_state.matches, RecipesOf(a_state),
+                      CompiledInstancesOf(a_state));
+  WriteOutputs(a_state, activation.placements);
+  return activation;
+}
+
+std::expected<ActorRenderRequest, std::string>
+RenderRequestOf(LiveActor &a_state, RE::FormID a_actor, SurfacePlan a_plan,
+                std::span<const BoundSurfaces> a_bound,
+                const Settings &a_settings) {
+  DetachRender(a_state);
+  OutputActivation activation = ActivationOf(a_state, a_plan, a_bound);
+  std::vector<GeometryInputs> geometries = GeometryInputsOf(a_state);
+  std::vector<StackInputs> stacks;
+  stacks.reserve(activation.stacks.size());
+  for (const StackRequest &stack : activation.stacks) {
+    std::expected<StackInputs, std::string> inputs =
+        StackInputsOf(a_state, stack, geometries, a_actor);
+    if (!inputs) {
+      FailRender(a_state, activation, inputs.error());
+      return std::unexpected(std::move(inputs.error()));
+    }
+    stacks.push_back(std::move(*inputs));
+  }
+  std::expected<RenderBuildRequest, std::string> build = RenderBuildRequestOf(
+      activation, StackSizesOf(activation.stacks, stacks, a_settings));
+  if (!build) {
+    FailRender(a_state, activation, build.error());
+    return std::unexpected(std::move(build.error()));
+  }
+  return ActorRenderRequest{a_actor,
+                            std::move(a_plan.geometries),
+                            std::move(activation),
+                            std::move(*build),
+                            std::move(stacks),
+                            std::move(geometries)};
+}
+
+PlanBuildInput PlanInputOf(const ActorRenderRequest &a_request) {
+  PlanBuildInput input;
+  input.requests.reserve(a_request.stacks.size());
+  for (std::size_t i = 0;
+       i < a_request.build.stacks.size() && i < a_request.stacks.size(); ++i) {
+    const SidedStack &sided = a_request.build.stacks[i];
+    const StackInputs &stack = a_request.stacks[i];
+    input.requests.push_back(
+        {stack.graph, stack.output, stack.recipe->id, sided.request.output,
+         sided.request.placement, sided.request.geometry,
+         stack.inputs.scope.context, sided.side,
+         std::make_shared<const IdentityFacts>(
+             IdentityFactsOf(*stack.graph, stack.inputs))});
+  }
+  input.chains = a_request.build.chains;
   return input;
 }
 
-void FailStackOutputs(ActorStacks &a_stacks, const std::string &a_problem) {
-  for (ActorStackRequest &request : a_stacks.requests) {
-    request.located.placed.state =
-        WithProblem(request.located.placed.state, a_problem);
+PlacedOutput *PlacedOutputAt(LiveActor &a_state, PlacementId a_placement,
+                             std::size_t a_output) {
+  const std::size_t index = IndexOf(a_placement);
+  return index < a_state.placements.size()
+             ? OutputAt(a_state.placements[index], a_output)
+             : nullptr;
+}
+
+void AttachStack(LiveActor &a_state, const ActorRenderRequest &a_request,
+                 const StackAttachment &a_attached,
+                 const std::shared_ptr<RenderInstance> &a_render,
+                 WarningHistory &a_warnings) {
+  if (a_attached.stack >= a_request.build.stacks.size() ||
+      a_attached.stack >= a_request.stacks.size()) {
+    return;
+  }
+  const SidedStack &sided = a_request.build.stacks[a_attached.stack];
+  const StackInputs &stack = a_request.stacks[a_attached.stack];
+  PlacedOutput *output =
+      PlacedOutputAt(a_state, sided.request.placement, sided.request.output);
+  if (!output) {
+    return;
+  }
+  output->stack = std::make_unique<RenderOutput>(
+      a_render, a_attached.result, a_render->SizeAt(sided.side),
+      IsAnimated(*stack.graph, Output{*stack.output}));
+  if (const std::optional<LocatedGeometry> located =
+          LocateGeometry(a_state, sided.request.geometry)) {
+    LogStackDiagnostics(*output->stack, *stack.recipe, sided.request.output,
+                        located->bound.name, a_warnings);
   }
 }
 
-std::optional<StepOutputRef>
-StackOutputFor(const RenderPlan &a_plan, const StackTextureRequest &a_request,
-               GeometryId a_geometry) {
-  for (const StackOutputBinding &binding : a_plan.stackOutputs) {
-    if (binding.placement == a_request.placement &&
-        binding.output == a_request.outputIndex &&
-        binding.geometry == a_geometry) {
-      return binding.result;
-    }
+void AttachMerged(LiveActor &a_state, const MergedAttachment &a_merged,
+                  const std::shared_ptr<RenderInstance> &a_render) {
+  const std::optional<LocatedGeometry> located =
+      LocateGeometry(a_state, a_merged.geometry);
+  if (!located) {
+    return;
   }
-  return std::nullopt;
+  located->bound.mergedSlots.push_back(
+      {a_merged.surface, a_merged.slot, a_merged.links, a_merged.layerStarts,
+       a_merged.layerCount,
+       std::make_unique<RenderOutput>(a_render, a_merged.result,
+                                      a_render->SizeAt(a_merged.side),
+                                      a_merged.animated)});
 }
 
-const LiveGeometry *BoundAt(const ActorStacks &a_stacks,
-                            GeometryId a_geometry) {
-  const std::size_t index = IndexOf(a_geometry);
-  return index < a_stacks.bound.size() ? a_stacks.bound[index] : nullptr;
-}
-
-void AttachStackOutputs(ActorStacks &a_stacks,
-                        const std::shared_ptr<RenderInstance> &a_render,
-                        WarningHistory &a_warnings) {
-  for (ActorStackRequest &request : a_stacks.requests) {
-    const StackTextureRequest &texture = request.texture;
-    PlacedOutput &placed = request.located.placed;
-    if (const std::optional<StepOutputRef> result =
-            StackOutputFor(a_render->Plan(), texture, request.geometry)) {
-      placed.stack = std::make_unique<RenderOutput>(
-          a_render, *result, a_render->SizeAt(request.side),
-          IsAnimated(*texture.graph, Output{*texture.output}));
-    }
-    const LiveGeometry *bound = BoundAt(a_stacks, request.geometry);
-    if (!placed.stack) {
-      placed.state = WithProblem(placed.state, std::string{kStackNotLowered});
-    } else if (bound) {
-      LogStackDiagnostics(request.located, bound->name, a_warnings);
-    }
+void ApplyAttachments(LiveActor &a_state, const Attachments &a_attachments,
+                      const ActorRenderRequest &a_request,
+                      const std::shared_ptr<RenderInstance> &a_render,
+                      WarningHistory &a_warnings) {
+  for (const StackAttachment &attached : a_attachments.stacks) {
+    AttachStack(a_state, a_request, attached, a_render, a_warnings);
+  }
+  WriteOutputs(a_state, a_attachments.placements);
+  for (const MergedAttachment &merged : a_attachments.merged) {
+    AttachMerged(a_state, merged, a_render);
   }
 }
 
-void AttachMergedSlots(const ActorStacks &a_stacks,
-                       const std::shared_ptr<RenderInstance> &a_render) {
-  const RenderPlan &plan = a_render->Plan();
-  for (const MergedChainBinding &merged : plan.mergedChains) {
-    LiveGeometry *bound = IndexOf(merged.geometry) < a_stacks.bound.size()
-                              ? a_stacks.bound[IndexOf(merged.geometry)]
-                              : nullptr;
-    const auto *stack =
-        merged.result.step < plan.steps.size()
-            ? Get<CompositeStackStep>(plan.steps[merged.result.step].kind)
-            : nullptr;
-    if (!bound || !stack) {
-      continue;
-    }
-    const SlotStackPlan *slot =
-        SlotStackPlanOf(bound->stackPlan, merged.surface, merged.slot);
-    bound->mergedSlots.push_back(
-        {merged.surface, merged.slot, merged.links, merged.layerStarts,
-         merged.layerCount,
-         std::make_unique<RenderOutput>(
-             a_render, merged.result,
-             a_render->SizeAt(stack->requirements.side),
-             slot && slot->animated)});
-  }
-}
-
-std::optional<RenderPlanKey> PlanKeyOf(const ActorStacks &a_stacks) {
-  std::vector<GeometryInputs> actorless;
-  actorless.reserve(a_stacks.requests.size());
+std::optional<RenderPlanKey> PlanKeyOf(const ActorRenderRequest &a_request) {
   std::vector<StackKeyRequest> requests;
-  requests.reserve(a_stacks.requests.size());
-  for (const ActorStackRequest &request : a_stacks.requests) {
-    const StackTextureRequest &texture = request.texture;
-    GeometryInputs &inputs = actorless.emplace_back(texture.inputs);
-    inputs.scope.actor = 0;
+  requests.reserve(a_request.stacks.size());
+  for (std::size_t i = 0;
+       i < a_request.build.stacks.size() && i < a_request.stacks.size(); ++i) {
+    const SidedStack &sided = a_request.build.stacks[i];
+    const StackInputs &stack = a_request.stacks[i];
+    GeometryInputs actorless = stack.inputs;
+    actorless.scope.actor = 0;
     requests.push_back(
-        {texture.graph, texture.outputIndex, texture.placement,
-         request.geometry, inputs.scope.context, request.side,
-         MaterialIdentityOf(inputs.material), MeshHashIdentityOf(inputs),
-         texture.graph ? TextureValueBindings(*texture.graph, inputs)
-                       : ValueBindings{}});
+        {stack.graph.get(), sided.request.output, sided.request.placement,
+         sided.request.geometry, actorless.scope.context, sided.side,
+         MaterialIdentityOf(actorless.material), MeshHashIdentityOf(actorless),
+         stack.graph ? TextureValueBindings(*stack.graph, actorless)
+                     : ValueBindings{}});
   }
-  return RenderPlanKeyOf(requests, a_stacks.chains);
+  return RenderPlanKeyOf(requests, a_request.build.chains);
 }
 
 void LogPlanWarnings(const std::vector<std::string> &a_warnings,
@@ -754,16 +657,11 @@ void TracePlanJob(std::string_view a_result, std::optional<JobId> a_job,
 }
 
 std::expected<RenderPlan, std::string>
-FreshRenderPlan(const ActorStacks &a_stacks, const LiveActor &a_state,
+FreshRenderPlan(const ActorRenderRequest &a_request,
                 WarningHistory &a_warnings) {
-  std::expected<PlanBuildInput, std::string> input =
-      PlanInputOf(a_stacks, a_state);
-  if (!input) {
-    return std::unexpected(std::move(input.error()));
-  }
-  PlanBuildOutput output = BuildPlanFrom(*input);
+  PlanBuildOutput output = BuildPlanFrom(PlanInputOf(a_request));
   LogPlanWarnings(output.warnings, a_warnings);
-  EmitPlanBuild(a_stacks.actor, "main", a_stacks.requests.size(), output);
+  EmitPlanBuild(a_request.actor, "main", a_request.build.stacks.size(), output);
   return std::move(output.plan);
 }
 
@@ -801,149 +699,186 @@ OutcomeOf(std::expected<RenderPlan, std::string> a_plan) {
 }
 
 std::optional<JobId> SubmitPlanJob(const LiveActor &a_state,
-                                   const ActorStacks &a_stacks,
+                                   const ActorRenderRequest &a_request,
                                    const RenderPlanKey &a_key,
                                    RenderStores a_stores) {
   const Metrics::Stopwatch watch;
-  std::expected<PlanBuildInput, std::string> input =
-      PlanInputOf(a_stacks, a_state);
-  if (!input) {
-    return std::nullopt;
-  }
+  PlanBuildInput input = PlanInputOf(a_request);
   const std::uint64_t inputsUs = watch.Micros();
   const std::expected<JobId, JobRefusal> job =
-      a_stores.queue.Submit(std::move(*input));
+      a_stores.queue.Submit(std::move(input));
   if (!job) {
-    TracePlanJob("refused", std::nullopt, a_stacks.actor,
+    TracePlanJob("refused", std::nullopt, a_request.actor,
                  {{"reason", std::string{RefusalName(job.error())}}});
     return std::nullopt;
   }
-  a_stores.jobs = Opened(
-      std::move(a_stores.jobs),
-      {*job, a_key, GraphsNamedBy(a_key, LiveGraphs(a_state)), a_stacks.actor});
-  TracePlanJob("submitted", *job, a_stacks.actor,
+  a_stores.jobs =
+      Opened(std::move(a_stores.jobs),
+             {*job, a_key, GraphsNamedBy(a_key, LiveGraphs(a_state)),
+              a_request.actor});
+  TracePlanJob("submitted", *job, a_request.actor,
                {{"shared", "false"},
-                {"requests", std::to_string(a_stacks.requests.size())},
+                {"requests", std::to_string(a_request.build.stacks.size())},
                 {"inputs_us", std::to_string(inputsUs)},
                 {"unfinished", std::to_string(a_stores.queue.Unfinished())}});
   return *job;
 }
 
-std::optional<JobId> AwaitPlanJob(const LiveActor &a_state,
-                                  const ActorStacks &a_stacks,
-                                  const RenderPlanKey &a_key,
-                                  RenderStores a_stores) {
-  if (const std::optional<JobId> open = OpenJobFor(a_stores.jobs, a_key)) {
-    TracePlanJob("submitted", *open, a_stacks.actor, {{"shared", "true"}});
-    return open;
-  }
-  return SubmitPlanJob(a_state, a_stacks, a_key, a_stores);
-}
-
-std::expected<PlanOrJob, std::string> RenderPlanFor(const LiveActor &a_state,
-                                                    const ActorStacks &a_stacks,
-                                                    const Settings &a_settings,
-                                                    RenderStores a_stores) {
-  if (!a_settings.renderPlanCache) {
-    return OutcomeOf(FreshRenderPlan(a_stacks, a_state, a_stores.warnings));
-  }
-  std::optional<RenderPlanKey> key = PlanKeyOf(a_stacks);
-  if (!key) {
-    TraceRenderPlanCache(a_stacks.actor, "uncacheable", a_stores.plans.Size());
-    return OutcomeOf(FreshRenderPlan(a_stacks, a_state, a_stores.warnings));
-  }
-  const bool verifies =
-      a_settings.verifyRenderPlanCache || RegressionVerifiesRenderPlans();
-  if (const RenderPlan *cached = a_stores.plans.Find(*key)) {
-    if (!verifies) {
-      TraceRenderPlanCache(a_stacks.actor, "hit", a_stores.plans.Size());
-      return *cached;
-    }
-    std::expected<RenderPlan, std::string> fresh =
-        FreshRenderPlan(a_stacks, a_state, a_stores.warnings);
-    if (fresh && SameStructure(*cached, *fresh)) {
-      TraceRenderPlanCache(a_stacks.actor, "hit_verified",
-                           a_stores.plans.Size());
-      return *cached;
-    }
-    LogOnce(a_stores.warnings, Severity::kWarning,
-            std::format("render plan cache: actor {:08X} reused a plan that "
-                        "differs from a fresh one",
-                        a_stacks.actor));
-    TraceRenderPlanCache(a_stacks.actor, "mismatch", a_stores.plans.Size());
-    if (fresh) {
-      StoreRenderPlan(a_stores.plans, std::move(*key), *fresh, a_state);
-    }
-    return OutcomeOf(std::move(fresh));
-  }
-  if (!verifies) {
-    if (const std::optional<JobId> job =
-            AwaitPlanJob(a_state, a_stacks, *key, a_stores)) {
-      TraceRenderPlanCache(a_stacks.actor, "miss", a_stores.plans.Size());
-      return Orchestration::PlanAwaited{PlanJobIdOf(*job)};
-    }
-  }
+std::expected<PlanOrJob, std::string> VerifiedRenderPlan(
+    const LiveActor &a_state, const ActorRenderRequest &a_request,
+    const RenderPlan &a_cached, RenderPlanKey a_key, RenderStores a_stores) {
   std::expected<RenderPlan, std::string> fresh =
-      FreshRenderPlan(a_stacks, a_state, a_stores.warnings);
-  if (fresh) {
-    StoreRenderPlan(a_stores.plans, std::move(*key), *fresh, a_state);
+      FreshRenderPlan(a_request, a_stores.warnings);
+  if (fresh && SameStructure(a_cached, *fresh)) {
+    TraceRenderPlanCache(a_request.actor, "hit_verified",
+                         a_stores.plans.Size());
+    return a_cached;
   }
-  TraceRenderPlanCache(a_stacks.actor, "miss", a_stores.plans.Size());
+  LogOnce(a_stores.warnings, Severity::kWarning,
+          std::format("render plan cache: actor {:08X} reused a plan that "
+                      "differs from a fresh one",
+                      a_request.actor));
+  TraceRenderPlanCache(a_request.actor, "mismatch", a_stores.plans.Size());
+  if (fresh) {
+    StoreRenderPlan(a_stores.plans, std::move(a_key), *fresh, a_state);
+  }
   return OutcomeOf(std::move(fresh));
 }
 
-RenderOutcome BuildActorRender(const LiveActor &a_state, ActorStacks &a_stacks,
+std::expected<PlanOrJob, std::string> StoredFreshRenderPlan(
+    const LiveActor &a_state, const ActorRenderRequest &a_request,
+    std::optional<RenderPlanKey> a_key, RenderStores a_stores) {
+  std::expected<RenderPlan, std::string> fresh =
+      FreshRenderPlan(a_request, a_stores.warnings);
+  if (fresh && a_key) {
+    StoreRenderPlan(a_stores.plans, std::move(*a_key), *fresh, a_state);
+  }
+  TraceRenderPlanCache(a_request.actor, "miss", a_stores.plans.Size());
+  return OutcomeOf(std::move(fresh));
+}
+
+Orchestration::PlanAwaited AwaitedJob(const ActorRenderRequest &a_request,
+                                      JobId a_job, RenderStores a_stores) {
+  TraceRenderPlanCache(a_request.actor, "miss", a_stores.plans.Size());
+  return Orchestration::PlanAwaited{PlanJobIdOf(a_job)};
+}
+
+std::expected<PlanOrJob, std::string>
+RenderPlanFor(const LiveActor &a_state, const ActorRenderRequest &a_request,
+              const Settings &a_settings, RenderStores a_stores) {
+  std::optional<RenderPlanKey> key =
+      a_settings.renderPlanCache ? PlanKeyOf(a_request) : std::nullopt;
+  const RenderPlan *cached = key ? a_stores.plans.Find(*key) : nullptr;
+  const std::optional<JobId> open =
+      key ? OpenJobFor(a_stores.jobs, *key) : std::nullopt;
+  const PlanRoute route = PlanRouteOf(
+      {a_settings.renderPlanCache, key.has_value(), cached != nullptr,
+       a_settings.verifyRenderPlanCache || RegressionVerifiesRenderPlans(),
+       open.has_value()});
+  switch (route) {
+  case PlanRoute::kFresh:
+    return OutcomeOf(FreshRenderPlan(a_request, a_stores.warnings));
+  case PlanRoute::kUncacheable:
+    TraceRenderPlanCache(a_request.actor, "uncacheable", a_stores.plans.Size());
+    return OutcomeOf(FreshRenderPlan(a_request, a_stores.warnings));
+  case PlanRoute::kCached:
+    if (cached) {
+      TraceRenderPlanCache(a_request.actor, "hit", a_stores.plans.Size());
+      return *cached;
+    }
+    break;
+  case PlanRoute::kVerifyCached:
+    if (cached && key) {
+      return VerifiedRenderPlan(a_state, a_request, *cached, std::move(*key),
+                                a_stores);
+    }
+    break;
+  case PlanRoute::kShareJob:
+    if (open) {
+      TracePlanJob("submitted", *open, a_request.actor, {{"shared", "true"}});
+      return AwaitedJob(a_request, *open, a_stores);
+    }
+    break;
+  case PlanRoute::kSubmitJob:
+    if (const std::optional<JobId> job =
+            key ? SubmitPlanJob(a_state, a_request, *key, a_stores)
+                : std::nullopt) {
+      return AwaitedJob(a_request, *job, a_stores);
+    }
+    break;
+  case PlanRoute::kFreshStored:
+    break;
+  }
+  return StoredFreshRenderPlan(a_state, a_request, std::move(key), a_stores);
+}
+
+RenderOutcome AttachRenderPlan(LiveActor &a_state,
+                               const ActorRenderRequest &a_request,
+                               RenderPlan a_plan, const InstallBound &a_bound,
+                               WarningHistory &a_warnings,
+                               PhaseTrace &a_phases) {
+  std::expected<RenderBuild, std::string> build =
+      RenderBuildAt(a_plan, a_request.build.full, a_bound);
+  if (!build) {
+    FailRender(a_state, a_request.activation, build.error());
+    return RenderNotBuilt{};
+  }
+  a_phases.Measure("attach_us", [&] {
+    const std::shared_ptr<RenderInstance> render =
+        std::make_shared<RenderInstance>(std::move(a_plan), build->sizes,
+                                         a_request.inputs, LiveGraphs(a_state));
+    AttachRender(a_state, render);
+    ApplyAttachments(a_state,
+                     AttachmentsOf(render->Plan(), a_request.build,
+                                   a_request.geometries,
+                                   a_request.activation.placements),
+                     a_request, render, a_warnings);
+  });
+  a_phases.Add("plan", "built");
+  a_phases.Emit();
+  return std::move(*build);
+}
+
+RenderOutcome BuildActorRender(LiveActor &a_state,
+                               const ActorRenderRequest &a_request,
                                const Settings &a_settings,
                                RenderStores a_stores,
                                const InstallBound &a_bound) {
-  const PlanSizes full{a_stacks.sizes};
-  AttachRender(a_stacks, nullptr);
-  for (LiveGeometry *bound : a_stacks.bound) {
-    if (bound) {
-      bound->mergedSlots.clear();
-    }
-  }
-  if (a_stacks.requests.empty()) {
+  if (a_request.build.stacks.empty()) {
     return RenderNotBuilt{};
   }
-  PhaseTrace phases{Trace::Event::kMetrics, "actor_render", a_stacks.actor};
+  PhaseTrace phases{Trace::Event::kMetrics, "actor_render", a_request.actor};
   std::expected<PlanOrJob, std::string> outcome =
       phases.Measure("plan_us", [&] {
-        return RenderPlanFor(a_state, a_stacks, a_settings, a_stores);
+        return RenderPlanFor(a_state, a_request, a_settings, a_stores);
       });
   if (!outcome) {
-    FailStackOutputs(a_stacks, outcome.error());
+    FailRender(a_state, a_request.activation, outcome.error());
     return RenderNotBuilt{};
   }
-  if (const Orchestration::PlanAwaited *awaited =
-          Get<Orchestration::PlanAwaited>(*outcome)) {
-    phases.Add("plan", "awaited");
-    phases.Emit();
-    return *awaited;
-  }
-  RenderPlan *plan = Get<RenderPlan>(*outcome);
-  if (!plan) {
-    FailStackOutputs(a_stacks, "no render plan");
+  return Match(
+      std::move(*outcome),
+      [&](Orchestration::PlanAwaited a_awaited) -> RenderOutcome {
+        phases.Add("plan", "awaited");
+        phases.Emit();
+        return a_awaited;
+      },
+      [&](RenderPlan a_plan) -> RenderOutcome {
+        return AttachRenderPlan(a_state, a_request, std::move(a_plan), a_bound,
+                                a_stores.warnings, phases);
+      });
+}
+
+RenderOutcome BuildRequestedRender(
+    LiveActor &a_state,
+    const std::expected<ActorRenderRequest, std::string> &a_request,
+    const Settings &a_settings, RenderStores a_stores,
+    const InstallBound &a_bound) {
+  a_state.fullSizes = a_request ? a_request->build.full : PlanSizes{};
+  if (!a_request) {
     return RenderNotBuilt{};
   }
-  std::expected<RenderBuild, std::string> build =
-      RenderBuildAt(*plan, full, a_bound);
-  if (!build) {
-    FailStackOutputs(a_stacks, build.error());
-    return RenderNotBuilt{};
-  }
-  phases.Measure("attach_us", [&] {
-    const std::shared_ptr<RenderInstance> render =
-        std::make_shared<RenderInstance>(std::move(*plan), build->sizes,
-                                         a_stacks.geometries,
-                                         LiveGraphs(a_state));
-    AttachRender(a_stacks, render);
-    AttachStackOutputs(a_stacks, render, a_stores.warnings);
-    AttachMergedSlots(a_stacks, render);
-  });
-  phases.Add("plan", "built");
-  phases.Emit();
-  return std::move(*build);
+  return BuildActorRender(a_state, *a_request, a_settings, a_stores, a_bound);
 }
 
 std::string LevelText(const RenderOutcome &a_render) {
@@ -1311,16 +1246,18 @@ RenderOutcome Manager::PlaceInstances(LiveActor &a_state, RE::FormID a_actorID,
     }
   }
   PhaseTrace phases{Trace::Event::kMetrics, "actor_place", a_actorID};
-  ActorStacks stacks{.actor = a_actorID};
-  const std::size_t geometries = phases.Measure("geometry_us", [&] {
-    return PlaceGeometries(a_state, a_settings, stacks);
-  });
+  std::size_t geometries = 0;
+  const std::expected<ActorRenderRequest, std::string> request =
+      phases.Measure("geometry_us", [&] {
+        geometries = PlaceGeometries(a_state, a_settings);
+        return RenderRequestOf(a_state, a_actorID, SurfacePlanOf(a_state),
+                               BoundSurfacesOf(a_state), a_settings);
+      });
   RenderOutcome built = phases.Measure("render_us", [&] {
-    return BuildActorRender(
-        a_state, stacks, a_settings,
+    return BuildRequestedRender(
+        a_state, request, a_settings,
         {renderPlans_, warningHistory_, planQueue_, planJobs_}, a_bound);
   });
-  a_state.fullSizes = PlanSizes{stacks.sizes};
   phases.Add("geometries", std::to_string(geometries));
   phases.Add("level", LevelText(built));
   phases.Add("finest_level", std::string{LevelName(a_bound.finest)});
@@ -1333,18 +1270,16 @@ RenderOutcome Manager::PlaceInstances(LiveActor &a_state, RE::FormID a_actorID,
   return built;
 }
 
-void Manager::FailAwaitedRender(RE::FormID a_actorID, LiveActor &a_state,
-                                const std::string &a_problem,
-                                const Settings &a_settings) {
+void Manager::FailAwaitedRender(LiveActor &a_state,
+                                const std::string &a_problem) {
   a_state.awaitedPlan.reset();
-  ActorStacks stacks{.actor = a_actorID};
-  CollectActorStacks(a_state, a_settings, stacks);
-  FailStackOutputs(stacks, a_problem);
+  const std::vector<BoundSurfaces> bound = BoundSurfacesOf(a_state);
+  FailRender(a_state, ActivationOf(a_state, SurfacePlanOf(a_state), bound),
+             a_problem);
 }
 
 std::size_t Manager::PlaceGeometries(LiveActor &a_state,
-                                     const Settings &a_settings,
-                                     ActorStacks &a_stacks) {
+                                     const Settings &a_settings) {
   const std::span<const Recipe> loaded = RecipesOf(a_state);
   a_state.placements.clear();
   a_state.placements.resize(a_state.matches.placements.size());
@@ -1357,7 +1292,7 @@ std::size_t Manager::PlaceGeometries(LiveActor &a_state,
             return editor_.CurrentView().OutputShown(recipe.id, output);
           });
       PreparePlacement(a_state, placement, GeometryId{flat});
-      PlaceOnGeometry(a_state, GeometryId{flat}, a_settings, a_stacks);
+      PlaceOnGeometry(a_state, GeometryId{flat}, a_settings);
       ++flat;
     }
   }
@@ -1365,8 +1300,7 @@ std::size_t Manager::PlaceGeometries(LiveActor &a_state,
 }
 
 void Manager::PlaceOnGeometry(LiveActor &a_state, GeometryId a_geometry,
-                              const Settings &a_settings,
-                              ActorStacks &a_stacks) {
+                              const Settings &a_settings) {
   const std::optional<LocatedGeometry> located =
       LocateGeometry(a_state, a_geometry);
   if (!located) {
@@ -1376,7 +1310,6 @@ void Manager::PlaceOnGeometry(LiveActor &a_state, GeometryId a_geometry,
 
   InstallSurfaces(a_state, bound, a_settings.uniqueMaterial);
   MarkReplaced(a_state, bound);
-  CollectChainStacks(a_state, *located, a_settings, a_stacks);
 
   const auto actor = a_state.actor.get();
   if (actor) {
@@ -1538,12 +1471,13 @@ Manager::BuildAwaitedRender(RE::FormID a_actorID, LiveActor &a_state,
                             const Settings &a_settings) {
   const std::optional<JobId> arrived =
       std::exchange(a_state.awaitedPlan, std::nullopt);
-  ActorStacks stacks{.actor = a_actorID};
-  CollectActorStacks(a_state, a_settings, stacks);
-  const RenderOutcome built = BuildActorRender(
-      a_state, stacks, a_settings,
-      {renderPlans_, warningHistory_, planQueue_, planJobs_}, a_bound);
-  a_state.fullSizes = PlanSizes{stacks.sizes};
+  const std::vector<BoundSurfaces> bound = BoundSurfacesOf(a_state);
+  const RenderOutcome built = BuildRequestedRender(
+      a_state,
+      RenderRequestOf(a_state, a_actorID, SurfacePlanOf(a_state), bound,
+                      a_settings),
+      a_settings, {renderPlans_, warningHistory_, planQueue_, planJobs_},
+      a_bound);
   KeepRender(a_state, built);
   if (TextureLab *lab = TextureLab::GetSingleton()) {
     lab->InvalidatePreviews();

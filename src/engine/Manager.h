@@ -56,7 +56,6 @@
 #include <vector>
 
 namespace BetterEnchantmentEffects {
-struct ActorStacks;
 class TextureLab;
 
 struct RenderNotBuilt {};
@@ -240,8 +239,7 @@ private:
   RunBuildAwaitedRender(const Orchestration::BuildAwaitedRender &a_command,
                         const TickContext &a_context);
   [[nodiscard]] CommandResults
-  RunFailAwaitedRender(const Orchestration::FailAwaitedRender &a_command,
-                       const TickContext &a_context);
+  RunFailAwaitedRender(const Orchestration::FailAwaitedRender &a_command);
   [[nodiscard]] CommandResults
   RunInstall(const Orchestration::Install &a_command,
              const TickContext &a_context);
@@ -309,14 +307,11 @@ private:
                                              std::uint64_t a_replaced,
                                              const Settings &a_settings);
   [[nodiscard]] std::vector<Orchestration::PlanJobDone> DrainPlanJobs();
-  void FailAwaitedRender(RE::FormID a_actorID, LiveActor &a_state,
-                         const std::string &a_problem,
-                         const Settings &a_settings);
+  void FailAwaitedRender(LiveActor &a_state, const std::string &a_problem);
   [[nodiscard]] std::size_t PlaceGeometries(LiveActor &a_state,
-                                            const Settings &a_settings,
-                                            ActorStacks &a_stacks);
+                                            const Settings &a_settings);
   void PlaceOnGeometry(LiveActor &a_state, GeometryId a_geometry,
-                       const Settings &a_settings, ActorStacks &a_stacks);
+                       const Settings &a_settings);
   void PlaceLightsOf(RE::Actor *a_actor, LiveActor &a_state);
 
   void TickInstance(LiveInstance &a_instance, float a_time, float a_delta);
