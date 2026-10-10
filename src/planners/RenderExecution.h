@@ -57,7 +57,6 @@ public:
           const CompositeStackStep &, const T &)>;
   using ObserveStale =
       std::function<void(RenderStepId, std::optional<RenderValueRef>)>;
-  using ObserveRestore = std::function<void(RenderStepId)>;
 
   explicit RenderExecution(RenderPlan plan)
       : plan_(std::move(plan)), inputs_(plan_.inputs.size()),
@@ -102,13 +101,12 @@ public:
   [[nodiscard]] std::expected<ResolvedRenderInput<T>, std::string>
   Evaluate(RenderValueRef result, const ExecuteStep &execute,
            const SameValue &same, const SelectInputs &select,
-           const ObserveStale &stale = {},
-           const ObserveRestore &restored = {}) {
+           const ObserveStale &stale = {}) {
     if (!problem_.empty())
       return std::unexpected(problem_);
     if (!execute || !same || !select)
       return std::unexpected("render execution callbacks are incomplete");
-    Walk walk{execute, same, select, stale, restored, 0};
+    Walk walk{execute, same, select, stale, 0};
     return Materialize(result, walk, 0);
   }
   void SetClock(std::uint64_t a_now) noexcept { clock_ = a_now; }
@@ -146,7 +144,6 @@ private:
     const SameValue &same;
     const SelectInputs &select;
     const ObserveStale &stale;
-    const ObserveRestore &restored;
     std::size_t visits = 0;
   };
   using Version = std::expected<ChangeVersion, std::string>;
@@ -298,8 +295,6 @@ private:
       return Fail(id, produced.error());
     if (restoring) {
       ++restores_;
-      if (walk.restored)
-        walk.restored(id);
     } else if (!output.value || !walk.same(*output.value, *produced)) {
       if (output.changeVersion == std::numeric_limits<ChangeVersion>::max())
         return Fail(id, "output change version exhausted");

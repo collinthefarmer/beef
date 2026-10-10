@@ -54,11 +54,7 @@ public:
     if (!actor) {
       return kContinue;
     }
-    Trace::EmitSafely(Trace::Event::kOperation,
-                      {{"action", "equip"},
-                       {"actor", std::to_string(actor->GetFormID())},
-                       {"item", std::to_string(a_event->baseObject)},
-                       {"equipped", a_event->equipped ? "true" : "false"}});
+
     Manager *manager = Manager::GetSingleton();
     manager->MarkStale(actor);
     if (a_event->equipped) {
