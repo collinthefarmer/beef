@@ -3352,6 +3352,18 @@ Nothing in the engine calls it yet.
   `CanEvict`, so a first-drawing actor can still be evicted by the budget
   radius. `MayStepDown` holds only in `Live`: a level wanted during a first
   draw is queued as `FirstDrawing::next` instead.
+- `RunBudget` (`orchestration/Budget.*`) counts an actor in the estimate and
+  in the `BudgetActor` list only after its first rendered frame
+  (`InstalledRender::renderedFrame`), as `PlannedTargets` and
+  `BudgetActorsNow` did. `HeadroomOf`'s replaced holding uses the same rule,
+  so the core's `PlannedBytesOf(ActorRecord)` is the replaced holding of a
+  reinstall.
+- A release or a step down does not lower `BudgetState::planned` in the tick
+  that issues it. The next memory sample replaces the estimate, as the
+  heartbeat did.
+- The core does not know actor names. Its step-down and shrink lines say
+  `unnamed`, and the exhaustion warning lists each holding by form id with
+  its planned bytes as its own bytes and no shared bytes.
 
 ## Generated texture references
 
