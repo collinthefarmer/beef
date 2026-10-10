@@ -12,6 +12,7 @@ struct TickOutput {
   World world;
   std::vector<Command> commands;
   std::vector<TraceRecord> trace;
+  std::vector<LogRecord> logs;
 };
 
 [[nodiscard]] TickOutput RecordSyncResults(World a_world,

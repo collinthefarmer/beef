@@ -22,8 +22,8 @@ int main() {
   Check(world.actors.empty() && world.waitingInstalls.empty() && !world.radius,
         "a new world tracks no actor");
   const InstalledRender render;
-  Check(Is<Live>(render.phase) && !render.renderedFrame && !render.hasRender,
-        "a new render is live, unattached and never rendered");
+  Check(Is<Live>(render.phase) && !render.renderedFrame,
+        "a new render is live and never rendered");
   const TickFacts facts;
   Check(facts.sightings.empty() && facts.results.empty() && !facts.memory,
         "empty facts carry no sighting, result or memory sample");

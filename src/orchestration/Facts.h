@@ -33,6 +33,11 @@ struct StaleActor {
   Actors::PlannedActor planned;
 };
 
+struct ClaimedGeometry {
+  ActorId actor{};
+  Actors::Claim claim;
+};
+
 struct PlanJobBuilt {
   PlanJobId job{};
 };
@@ -103,6 +108,7 @@ struct TickFacts {
   std::vector<CommandResult> results;
   std::vector<PlanJobDone> jobs;
   std::vector<StaleActor> stale;
+  std::vector<ClaimedGeometry> claims;
   std::optional<BudgetSample> memory;
   FrameSyncs frameSyncs;
 };

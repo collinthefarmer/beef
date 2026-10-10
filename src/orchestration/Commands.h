@@ -86,11 +86,29 @@ struct Observe {
   ActorId actor{};
 };
 
+struct KeepModels {
+  ActorId actor{};
+  Actors::ActorPlan plan;
+};
+
+struct SettleApplications {
+  ActorId actor{};
+  bool equip = false;
+  bool reinstall = false;
+};
+
 using Command =
     std::variant<TickActor, StartResize, SwapResize, AbandonResize,
                  ReleaseIntermediates, SetAppliedLevel, DrawUnpublished,
                  BuildAwaitedRender, FailAwaitedRender, Install, Retire, Forget,
-                 Observe>;
+                 Observe, KeepModels, SettleApplications>;
+
+enum class LogLevel : std::uint8_t { kInfo, kWarning };
+
+struct LogRecord {
+  LogLevel level = LogLevel::kInfo;
+  std::string text;
+};
 
 struct TraceRecord {
   Trace::Event event = Trace::Event::kMetrics;

@@ -43,6 +43,10 @@ struct Live {
   std::optional<ResolutionLevel> failedLevel;
 };
 
+struct WithoutRender {
+  [[nodiscard]] bool operator==(const WithoutRender &) const = default;
+};
+
 struct AwaitingPlan {
   PlanJobId job{};
 };
@@ -66,7 +70,8 @@ struct Resizing {
   std::variant<ResizeQueued, ResizeRunning> stage;
 };
 
-using RenderPhase = std::variant<Live, AwaitingPlan, FirstDrawing, Resizing>;
+using RenderPhase =
+    std::variant<Live, WithoutRender, AwaitingPlan, FirstDrawing, Resizing>;
 
 [[nodiscard]] IntermediateHolding
 HoldingOf(const Intermediates &a_intermediates) noexcept;

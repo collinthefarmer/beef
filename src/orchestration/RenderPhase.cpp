@@ -25,6 +25,9 @@ TargetLevel(const RenderPhase &a_phase) noexcept {
       [](const Live &a_live) -> std::optional<ResolutionLevel> {
         return a_live.level;
       },
+      [](const WithoutRender &) -> std::optional<ResolutionLevel> {
+        return std::nullopt;
+      },
       [](const AwaitingPlan &) -> std::optional<ResolutionLevel> {
         return std::nullopt;
       },
@@ -42,6 +45,9 @@ AppliedLevel(const RenderPhase &a_phase) noexcept {
       a_phase,
       [](const Live &a_live) -> std::optional<ResolutionLevel> {
         return a_live.level;
+      },
+      [](const WithoutRender &) -> std::optional<ResolutionLevel> {
+        return std::nullopt;
       },
       [](const AwaitingPlan &) -> std::optional<ResolutionLevel> {
         return std::nullopt;
@@ -100,6 +106,7 @@ bool StepDownDue(const RenderPhase &a_phase, Millis a_now,
 std::string_view PhaseName(const RenderPhase &a_phase) noexcept {
   return Match(
       a_phase, [](const Live &) { return std::string_view{"live"}; },
+      [](const WithoutRender &) { return std::string_view{"without_render"}; },
       [](const AwaitingPlan &) { return std::string_view{"awaiting_plan"}; },
       [](const FirstDrawing &) { return std::string_view{"first_drawing"}; },
       [](const Resizing &a_resizing) {

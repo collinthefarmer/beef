@@ -27,6 +27,7 @@ Live LiveWith(Intermediates a_intermediates) {
 }
 RenderPhase LiveHeld() { return LiveWith(IntermediatesHeld{}); }
 RenderPhase LiveReleased() { return LiveWith(IntermediatesReleased{}); }
+RenderPhase Bare() { return WithoutRender{}; }
 RenderPhase Awaiting() { return AwaitingPlan{kJob}; }
 RenderPhase Drawing() {
   return FirstDrawing{kFull, UnpublishedDraw{3, 0, 1, 0}, std::nullopt};
@@ -48,9 +49,10 @@ bool Commands(const PhaseChange &a_change, std::size_t a_count) {
 }
 
 void EveryEventHasItsNextPhase() {
-  const std::array<std::pair<std::string_view, std::function<RenderPhase()>>, 6>
+  const std::array<std::pair<std::string_view, std::function<RenderPhase()>>, 7>
       phases{{{"live held", LiveHeld},
               {"live released", LiveReleased},
+              {"without render", Bare},
               {"awaiting", Awaiting},
               {"drawing", Drawing},
               {"queued", Queued},
@@ -65,19 +67,21 @@ void EveryEventHasItsNextPhase() {
       {"resize swapped", ResizeSwapped{}},
       {"resize not swapped", ResizeNotSwapped{}},
   }};
-  const std::array<std::array<std::string_view, 8>, 6> expected{{
-      {"awaiting_plan", "first_drawing", "live", "live", "live", "live", "live",
-       "live"},
-      {"awaiting_plan", "first_drawing", "live", "live", "live", "live", "live",
-       "live"},
-      {"awaiting_plan", "first_drawing", "live", "awaiting_plan",
+  const std::array<std::array<std::string_view, 8>, 7> expected{{
+      {"awaiting_plan", "first_drawing", "without_render", "live", "live",
+       "live", "live", "live"},
+      {"awaiting_plan", "first_drawing", "without_render", "live", "live",
+       "live", "live", "live"},
+      {"awaiting_plan", "first_drawing", "without_render", "without_render",
+       "without_render", "without_render", "without_render", "without_render"},
+      {"awaiting_plan", "first_drawing", "without_render", "awaiting_plan",
        "awaiting_plan", "awaiting_plan", "awaiting_plan", "awaiting_plan"},
-      {"awaiting_plan", "first_drawing", "live", "first_drawing",
+      {"awaiting_plan", "first_drawing", "without_render", "first_drawing",
        "first_drawing", "first_drawing", "first_drawing", "first_drawing"},
-      {"awaiting_plan", "first_drawing", "live", "resize_queued", "resizing",
-       "live", "resize_queued", "resize_queued"},
-      {"awaiting_plan", "first_drawing", "live", "resizing", "resizing",
-       "resizing", "live", "resize_queued"},
+      {"awaiting_plan", "first_drawing", "without_render", "resize_queued",
+       "resizing", "live", "resize_queued", "resize_queued"},
+      {"awaiting_plan", "first_drawing", "without_render", "resizing",
+       "resizing", "resizing", "live", "resize_queued"},
   }};
   for (std::size_t p = 0; p < phases.size(); ++p) {
     for (std::size_t e = 0; e < events.size(); ++e) {
@@ -227,19 +231,24 @@ void LiveStateResetsWithANewLive() {
 }
 
 void PlanFailuresMatchTheAwaitedJob() {
-  const PhaseChange stale = FailPlan(kActor, Awaiting(), kOtherJob);
+  const PhaseChange stale = FailPlan(Awaiting(), kOtherJob);
   Check(AwaitedJob(stale.phase) == kJob && Commands(stale, 0),
         "a failure of another job leaves the awaited job");
-  const PhaseChange failed = FailPlan(kActor, Awaiting(), kJob);
-  Check(PhaseName(failed.phase) == "live" && Commands(failed, 1),
-        "a failure of the awaited job ends live without a render");
-  Check(Commands(FailPlan(kActor, LiveHeld(), kJob), 0),
+  const PhaseChange failed = FailPlan(Awaiting(), kJob);
+  Check(PhaseName(failed.phase) == "without_render" && Commands(failed, 0) &&
+            !AppliedLevel(failed.phase),
+        "a failure of the awaited job leaves the actor without a render");
+  Check(Commands(FailPlan(LiveHeld(), kJob), 0),
         "a plan failure outside awaiting changes nothing");
 }
 
 void QueriesFollowThePhase() {
   Check(!TargetLevel(Awaiting()) && !AppliedLevel(Awaiting()),
         "an awaiting actor has no level yet");
+  Check(!AppliedLevel(Bare()) && !MayRelease(Bare()) && BudgetBusy(Bare()) &&
+            Commands(WantLevel(kActor, Bare(), kHalf), 0) &&
+            Commands(SeeActor(kActor, Bare(), OutOfView(100000)), 0),
+        "an actor without a render has no level and takes no decision");
   Check(TargetLevel(Running()) == kHalf && AppliedLevel(Running()) == kFull,
         "a resize targets its new level and applies its old one");
   Check(UnpublishedDrawOf(Drawing()) && UnpublishedDrawOf(Running()) &&

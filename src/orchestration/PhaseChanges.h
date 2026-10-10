@@ -27,8 +27,7 @@ struct SeenActor {
 [[nodiscard]] PhaseChange OnEvent(ActorId a_actor, RenderPhase a_phase,
                                   const RenderEvent &a_event,
                                   std::uint64_t a_frame);
-[[nodiscard]] PhaseChange FailPlan(ActorId a_actor, RenderPhase a_phase,
-                                   PlanJobId a_job);
+[[nodiscard]] PhaseChange FailPlan(RenderPhase a_phase, PlanJobId a_job);
 [[nodiscard]] PhaseChange WantLevel(ActorId a_actor, RenderPhase a_phase,
                                     ResolutionLevel a_level);
 [[nodiscard]] PhaseChange ReleaseForBudget(ActorId a_actor, RenderPhase a_phase,

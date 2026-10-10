@@ -87,9 +87,7 @@ PhaseChange OnEvent(ActorId a_actor, RenderPhase a_phase,
             a_installed.level);
       },
       [&](const InstalledWithoutRender &) -> PhaseChange {
-        return Applied(a_actor,
-                       LiveAt(ResolutionLevel::kFull, IntermediatesHeld{}),
-                       ResolutionLevel::kFull);
+        return {WithoutRender{}, {}};
       },
       [&](const UnpublishedDrawn &a_drawn) -> PhaseChange {
         return Drawn(std::move(a_phase), a_drawn);
@@ -108,12 +106,11 @@ PhaseChange OnEvent(ActorId a_actor, RenderPhase a_phase,
       });
 }
 
-PhaseChange FailPlan(ActorId a_actor, RenderPhase a_phase, PlanJobId a_job) {
+PhaseChange FailPlan(RenderPhase a_phase, PlanJobId a_job) {
   if (AwaitedJob(a_phase) != a_job) {
     return Unchanged(std::move(a_phase));
   }
-  return Applied(a_actor, LiveAt(ResolutionLevel::kFull, IntermediatesHeld{}),
-                 ResolutionLevel::kFull);
+  return {WithoutRender{}, {}};
 }
 
 PhaseChange WantLevel(ActorId a_actor, RenderPhase a_phase,

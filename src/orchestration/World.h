@@ -31,7 +31,6 @@ struct Sighting {
 struct InstalledRender {
   RenderPhase phase;
   PerLevel<std::optional<LevelCost>> levelCosts;
-  bool hasRender = false;
   std::optional<std::uint64_t> renderedFrame;
 };
 
