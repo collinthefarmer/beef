@@ -100,35 +100,69 @@ PhaseChange FailedResize(const Resizing &a_resizing,
           {}};
 }
 
-PhaseChange OnResize(ActorId a_actor, RenderPhase a_phase,
-                     const RenderEvent &a_event,
-                     const EventContext &a_context) {
+PhaseChange OnQueuedResize(RenderPhase a_phase, const RenderEvent &a_event,
+                           const EventContext &a_context) {
   Resizing *resizing = Get<Resizing>(a_phase);
   if (!resizing) {
     return Ignored(std::move(a_phase));
   }
-  const bool queued = Is<ResizeQueued>(resizing->stage);
-  if (const ResizeStarted *started = Get<ResizeStarted>(a_event);
-      started && queued) {
-    resizing->stage = ResizeRunning{UnpublishedDraw{
-        started->total, std::min(started->drawn, started->total),
-        a_context.frame, 0}};
-    return Unchanged(std::move(a_phase));
-  }
-  if (Is<ResizeNotStarted>(a_event) && queued) {
+
+  if (Is<ResizeNotStarted>(a_event)) {
     return FailedResize(*resizing, a_context);
   }
-  if (Is<ResizeSwapped>(a_event) && !queued) {
-    const ResolutionLevel to = resizing->to;
-    return Applied(a_actor, LiveAt(to, IntermediatesHeld{}, resizing->failed),
-                   to);
+
+  const ResizeStarted *started = Get<ResizeStarted>(a_event);
+  if (!started) {
+    return Ignored(std::move(a_phase));
   }
-  if (Is<ResizeNotSwapped>(a_event) && !queued) {
+  resizing->stage = ResizeRunning{
+      UnpublishedDraw{started->total, std::min(started->drawn, started->total),
+                      a_context.frame, 0}};
+  return Unchanged(std::move(a_phase));
+}
+
+PhaseChange OnRunningResize(ActorId a_actor, RenderPhase a_phase,
+                            const RenderEvent &a_event,
+                            const EventContext &a_context) {
+  const Resizing *resizing = Get<Resizing>(a_phase);
+  if (!resizing) {
+    return Ignored(std::move(a_phase));
+  }
+
+  if (Is<ResizeNotSwapped>(a_event)) {
     PhaseChange failed = FailedResize(*resizing, a_context);
     failed.commands.push_back(AbandonResize{a_actor});
     return failed;
   }
-  return Ignored(std::move(a_phase));
+
+  if (!Is<ResizeSwapped>(a_event)) {
+    return Ignored(std::move(a_phase));
+  }
+  const ResolutionLevel to = resizing->to;
+  return Applied(a_actor, LiveAt(to, IntermediatesHeld{}, resizing->failed),
+                 to);
+}
+
+PhaseChange OnResize(ActorId a_actor, RenderPhase a_phase,
+                     const RenderEvent &a_event,
+                     const EventContext &a_context) {
+  const Resizing *resizing = Get<Resizing>(a_phase);
+  if (!resizing) {
+    return Ignored(std::move(a_phase));
+  }
+  if (Is<ResizeQueued>(resizing->stage)) {
+    return OnQueuedResize(std::move(a_phase), a_event, a_context);
+  }
+  return OnRunningResize(a_actor, std::move(a_phase), a_event, a_context);
+}
+
+PhaseChange OnCreatingEvent(ActorId a_actor, RenderPhase a_phase,
+                            const RenderEvent &a_event,
+                            const EventContext &a_context) {
+  if (!Is<AwaitingPlan>(a_phase)) {
+    return Ignored(std::move(a_phase));
+  }
+  return Created(a_actor, a_event, a_context.frame);
 }
 }
 
@@ -143,10 +177,7 @@ std::optional<PhaseChange> PhaseFor(ActorId a_actor, const RenderEvent &a_event,
 PhaseChange OnEvent(ActorId a_actor, RenderPhase a_phase,
                     const RenderEvent &a_event, const EventContext &a_context) {
   if (CreatesAPhase(a_event)) {
-    if (!Is<AwaitingPlan>(a_phase)) {
-      return Ignored(std::move(a_phase));
-    }
-    return Created(a_actor, a_event, a_context.frame);
+    return OnCreatingEvent(a_actor, std::move(a_phase), a_event, a_context);
   }
   if (const UnpublishedDrawn *drawn = Get<UnpublishedDrawn>(a_event)) {
     return Drawn(std::move(a_phase), *drawn);
