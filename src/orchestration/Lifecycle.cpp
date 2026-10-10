@@ -348,21 +348,23 @@ void FinishFirstDraw(TickOutput &a_out, ActorId a_actor,
         "first_draw_ended");
 }
 
-std::map<ActorId, std::size_t>
-LastRetiredOf(const std::vector<CommandResult> &a_results) {
-  std::map<ActorId, std::size_t> last;
-  for (std::size_t i = 0; i < a_results.size(); ++i) {
-    if (const Retired *retired = Get<Retired>(a_results[i])) {
-      last[retired->actor] = i;
+std::vector<ActorEvent>
+SelectCurrentEvents(const std::vector<CommandResult> &a_results) {
+  std::set<ActorId> retiredLater;
+  std::vector<ActorEvent> current;
+  for (auto result = a_results.rbegin(); result != a_results.rend(); ++result) {
+    if (const Retired *retired = Get<Retired>(*result)) {
+      retiredLater.insert(retired->actor);
+      continue;
     }
+    const ActorEvent *event = Get<ActorEvent>(*result);
+    if (!event || retiredLater.contains(event->actor)) {
+      continue;
+    }
+    current.push_back(*event);
   }
-  return last;
-}
-
-bool RetiredAfter(const std::map<ActorId, std::size_t> &a_retired,
-                  ActorId a_actor, std::size_t a_index) {
-  const auto found = a_retired.find(a_actor);
-  return found != a_retired.end() && found->second > a_index;
+  std::ranges::reverse(current);
+  return current;
 }
 
 std::optional<DrawUnpublished>
@@ -427,16 +429,15 @@ std::string_view EventName(const RenderEvent &a_event) noexcept {
 TickOutput RecordRenderResults(World a_world, const TickFacts &a_facts) {
   TickOutput out{std::move(a_world), {}, {}, {}};
   RecordSightings(out.world, a_facts.sightings);
-  const std::map<ActorId, std::size_t> retired = LastRetiredOf(a_facts.results);
-  for (std::size_t i = 0; i < a_facts.results.size(); ++i) {
-    const ActorEvent *event = Get<ActorEvent>(a_facts.results[i]);
-    if (event && !RetiredAfter(retired, event->actor, i)) {
-      RecordEvent(out, *event, a_facts.frame);
-    }
+
+  for (const ActorEvent &event : SelectCurrentEvents(a_facts.results)) {
+    RecordEvent(out, event, a_facts.frame);
   }
+
   for (const PlanJobDone &done : a_facts.jobs) {
     RecordJob(out, done, a_facts.settings);
   }
+
   RecordRenderedFrames(out.world, a_facts.frame);
   return out;
 }
