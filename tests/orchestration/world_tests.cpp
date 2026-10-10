@@ -29,5 +29,9 @@ int main() {
   const TickFacts facts;
   Check(facts.sightings.empty() && facts.results.empty() && !facts.memory,
         "empty facts carry no sighting, result or memory sample");
+  const TickOutput empty = Tick(World{}, TickFacts{});
+  Check(empty.world.actors.empty() && empty.commands.empty() &&
+            empty.trace.empty() && empty.logs.empty(),
+        "a tick over an empty world decides nothing");
   return test::Finish("orchestration_world");
 }

@@ -19,12 +19,16 @@
 namespace BetterEnchantmentEffects::Orchestration {
 struct TickSettings {
   float evictDistance = 0.0f;
+  bool publishEffects = true;
+  bool verboseLogging = false;
+  std::uint32_t unpublishedDrawBudgetMs = 4;
+  Millis outOfViewReleaseDelayMs = 5000;
+  Millis screenStepDownHoldMs = 2000;
   [[nodiscard]] bool operator==(const TickSettings &) const = default;
 };
 
 struct StaleActor {
   ActorId actor{};
-  Sighting sight;
   Actors::ActorFacts facts;
   Actors::PlannedActor planned;
 };
@@ -51,7 +55,7 @@ struct PlanAwaited {
 
 struct Installed {
   ResolutionLevel level = ResolutionLevel::kFull;
-  std::size_t units = 0;
+  std::size_t total = 0;
   PerLevel<std::optional<LevelCost>> levelCosts;
   std::uint64_t chargedBytes = 0;
 };
@@ -64,7 +68,7 @@ struct UnpublishedDrawn {
 };
 
 struct ResizeStarted {
-  std::size_t units = 0;
+  std::size_t total = 0;
 };
 
 struct ResizeNotStarted {

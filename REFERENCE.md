@@ -3325,7 +3325,11 @@ Nothing in the engine calls it yet.
   `OnEvent` accepts a creating event (`PlanAwaited`, `Installed`,
   `InstalledWithoutRender`) only in `AwaitingPlan`, where it is the rebuild
   after a plan job. Anywhere else it is ignored, so a late install result
-  cannot replace a running resize and leak its work.
+  cannot replace a running resize and leak its work. An ignored creating
+  event is a core bug, not a runtime case: `Installed` only answers `Install`,
+  issued after `Retire`, or `BuildAwaitedRender`, issued only from
+  `AwaitingPlan`. R3 asserts it never happens, and R4's resource agreement
+  check finds a render the core does not track.
 - A swap ends `Live` at the new level with a fresh out-of-view hold, because
   the new render's draw ran every step. Before stage 3 of the ownership plan
   a swap kept `kReleased`, and the actor was never released again (audit 4b).
@@ -3335,7 +3339,8 @@ Nothing in the engine calls it yet.
   view during a resize holds again, because the attached render restores its
   intermediates when it draws.
 - A failed resize (`ResizeNotStarted`, `ResizeNotSwapped`) records
-  `FailedLevel{level, wantedThen}`. The level stays refused until the wanted
+  `FailedLevel{level, wantedThen}`. `Live` and `Resizing` both carry it, so
+  a resize to another level, or back to the old one, does not forget it. The level stays refused until the wanted
   level differs from `wantedThen`. Keying on the wanted level at the time, not
   on the failed level, covers a failed budget step-down too: there the failed
   level is coarser than the screen level, and a rule that cleared on any
@@ -3343,6 +3348,10 @@ Nothing in the engine calls it yet.
 - `WantLevel` at the current level returns the phase unchanged. A new `Live`
   would reset the screen step-down hold and the blocked step-up.
 - `UnpublishedDrawn::drawn` is clamped to the draw's `total`.
+- `MayEvict` holds in every phase except `Resizing`, matching today's
+  `CanEvict`, so a first-drawing actor can still be evicted by the budget
+  radius. `MayStepDown` holds only in `Live`: a level wanted during a first
+  draw is queued as `FirstDrawing::next` instead.
 
 ## Generated texture references
 

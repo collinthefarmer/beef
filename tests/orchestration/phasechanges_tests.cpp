@@ -217,10 +217,14 @@ void OnlyHeldLiveMayRelease() {
             !MayRelease(Drawing()) && !MayRelease(Queued()) &&
             !MayRelease(Running()),
         "only a live actor that holds its intermediates may release them");
-  Check(!BudgetBusy(LiveHeld()) && BudgetBusy(Bare()) &&
-            BudgetBusy(Awaiting()) && BudgetBusy(Drawing()) &&
-            BudgetBusy(Running()),
-        "every phase other than live is busy for the budget");
+  Check(MayStepDown(LiveHeld()) && MayStepDown(LiveReleased()) &&
+            !MayStepDown(Bare()) && !MayStepDown(Awaiting()) &&
+            !MayStepDown(Drawing()) && !MayStepDown(Queued()) &&
+            !MayStepDown(Running()),
+        "only a live actor may step down for the budget");
+  Check(MayEvict(LiveHeld()) && MayEvict(Bare()) && MayEvict(Awaiting()) &&
+            MayEvict(Drawing()) && !MayEvict(Queued()) && !MayEvict(Running()),
+        "every actor may be evicted except during a resize");
   for (const RenderPhase &phase :
        {LiveReleased(), Bare(), Awaiting(), Drawing(), Queued(), Running()}) {
     Check(Commands(ReleaseForBudget(kActor, phase, 64), 0),
@@ -301,6 +305,10 @@ void FirstDrawQueuesALevel() {
         "the first draw's end queues the wanted resize");
   Check(PhaseName(EndFirstDraw(Drawing()).phase) == "live",
         "a first draw without a wanted level ends live");
+  Check(PhaseName(
+            EndFirstDraw(WantLevel(kActor, Drawing(), kFull).phase).phase) ==
+            "live",
+        "a first draw that wants its own level ends live");
   for (const RenderPhase &phase : {LiveHeld(), Bare(), Awaiting(), Running()}) {
     Check(EndFirstDraw(phase).phase == phase,
           "ending a first draw outside one changes nothing");
@@ -332,6 +340,62 @@ void LevelRequestsKeepOrAbandonWork() {
         "an actor without a render takes no level");
 }
 
+void AFailedLevelSurvivesOtherResizes() {
+  RenderPhase phase = LiveWith(IntermediatesHeld{});
+  if (Live *live = Get<Live>(phase)) {
+    live->failed = FailedLevel{kHalf, kHalf};
+  }
+  const PhaseChange quarter = WantLevel(kActor, phase, kQuarter);
+  Check(FailedLevelOf(quarter.phase) == kHalf &&
+            Commands(WantLevel(kActor, quarter.phase, kHalf), 0) &&
+            TargetLevel(WantLevel(kActor, quarter.phase, kHalf).phase) ==
+                kQuarter,
+        "a queued resize keeps refusing the failed level");
+  const PhaseChange back = WantLevel(kActor, quarter.phase, kFull);
+  Check(Is<Live>(back.phase) && FailedLevelOf(back.phase) == kHalf &&
+            WantLevel(kActor, back.phase, kHalf).phase == back.phase,
+        "returning to the old level keeps the failed level");
+  const PhaseChange running =
+      OnEvent(kActor, quarter.phase, ResizeStarted{2}, {50, kHalf});
+  const PhaseChange swapped =
+      OnEvent(kActor, running.phase, ResizeSwapped{}, {51, kHalf});
+  Check(FailedLevelOf(swapped.phase) == kHalf,
+        "a swap to another level keeps the failed level");
+  const PhaseChange seen = SeeActor(kActor, quarter.phase, InView(1, kQuarter));
+  Check(!FailedLevelOf(seen.phase),
+        "a resize forgets the failed level once the wanted level changes");
+}
+
+void AwaitingTakesANewJobAndAnInstall() {
+  const PhaseChange rejob =
+      OnEvent(kActor, Awaiting(), PlanAwaited{kOtherJob}, kAtFrame30);
+  Check(AwaitedJob(rejob.phase) == kOtherJob,
+        "a rebuild that awaits again waits for the new job");
+  const PhaseChange installed =
+      OnEvent(kActor, Awaiting(), Installed{kQuarter, 2, {}, 0}, kAtFrame30);
+  const SetAppliedLevel *applied =
+      FirstCommandIs<SetAppliedLevel>(installed)
+          ? Get<SetAppliedLevel>(installed.commands.front())
+          : nullptr;
+  Check(applied && applied->level == kQuarter && applied->actor == kActor,
+        "an install applies its own level");
+}
+
+void HoldsRestartAndReset() {
+  PhaseChange step = SeeActor(kActor, LiveHeld(), OutOfView(1000));
+  step = SeeActor(kActor, std::move(step.phase), InView(4000, kFull));
+  step = SeeActor(kActor, std::move(step.phase), OutOfView(6000));
+  Check(Commands(step, 0), "coming into view restarts the out-of-view hold");
+  step = SeeActor(kActor, std::move(step.phase), OutOfView(11000));
+  Check(Commands(step, 1), "the restarted hold releases after its delay");
+  PhaseChange small =
+      SeeActor(kActor, LiveHeld(), {true, true, kFull, 1000, 5000, 0});
+  small = SeeActor(kActor, std::move(small.phase),
+                   {true, false, kFull, 2000, 5000, 0});
+  Check(!ScreenStepDownDue(small.phase, 9000, 2000),
+        "an actor no longer small clears its step-down hold");
+}
+
 void LiveStateResetsWithANewLive() {
   RenderPhase phase = LiveHeld();
   if (Live *live = Get<Live>(phase)) {
@@ -349,17 +413,34 @@ void LiveStateResetsWithANewLive() {
 }
 
 void PlanFailuresMatchTheAwaitedJob() {
-  const PhaseChange stale = FailPlan(Awaiting(), kOtherJob);
+  const PhaseChange stale =
+      FailPlan(kActor, Awaiting(), PlanJobFailed{kOtherJob, "lowering"});
   Check(AwaitedJob(stale.phase) == kJob && Commands(stale, 0),
         "a failure of another job leaves the awaited job");
-  const PhaseChange failed = FailPlan(Awaiting(), kJob);
-  Check(Is<WithoutRender>(failed.phase) && Commands(failed, 0) &&
-            !AppliedLevel(failed.phase),
-        "a failure of the awaited job leaves the actor without a render");
+  const PhaseChange failed =
+      FailPlan(kActor, Awaiting(), PlanJobFailed{kJob, "lowering"});
+  const FailAwaitedRender *command =
+      FirstCommandIs<FailAwaitedRender>(failed)
+          ? Get<FailAwaitedRender>(failed.commands.front())
+          : nullptr;
+  Check(Is<WithoutRender>(failed.phase) && command &&
+            command->problem == "lowering" && !AppliedLevel(failed.phase),
+        "a failure of the awaited job fails its render and leaves it bare");
   for (const RenderPhase &phase : {LiveHeld(), Bare(), Drawing(), Running()}) {
-    Check(FailPlan(phase, kJob).phase == phase,
+    Check(FailPlan(kActor, phase, PlanJobFailed{kJob, "lowering"}).phase ==
+              phase,
           "a plan failure outside awaiting changes nothing");
   }
+  const PhaseChange built = PlanBuilt(kActor, Awaiting(), kJob, {kHalf, 64});
+  const BuildAwaitedRender *build =
+      FirstCommandIs<BuildAwaitedRender>(built)
+          ? Get<BuildAwaitedRender>(built.commands.front())
+          : nullptr;
+  Check(built.phase == Awaiting() && build && build->bound.finest == kHalf,
+        "a built plan job asks for the awaited render with its bound");
+  Check(Commands(PlanBuilt(kActor, Awaiting(), kOtherJob, {}), 0) &&
+            Commands(PlanBuilt(kActor, LiveHeld(), kJob, {}), 0),
+        "only the awaited job builds the render");
 }
 
 void QueriesFollowThePhase() {
@@ -397,6 +478,9 @@ int main() {
   AFailedResizeStartsAFreshHold();
   FirstDrawQueuesALevel();
   LevelRequestsKeepOrAbandonWork();
+  AFailedLevelSurvivesOtherResizes();
+  AwaitingTakesANewJobAndAnInstall();
+  HoldsRestartAndReset();
   LiveStateResetsWithANewLive();
   PlanFailuresMatchTheAwaitedJob();
   QueriesFollowThePhase();

@@ -22,7 +22,7 @@ struct EventContext {
 };
 
 struct SeenThisTick {
-  bool inView = true;
+  bool inView = false;
   bool small = false;
   std::optional<ResolutionLevel> wanted;
   Millis now = 0;
@@ -35,7 +35,10 @@ PhaseFor(ActorId a_actor, const RenderEvent &a_event, std::uint64_t a_frame);
 [[nodiscard]] PhaseChange OnEvent(ActorId a_actor, RenderPhase a_phase,
                                   const RenderEvent &a_event,
                                   const EventContext &a_context);
-[[nodiscard]] PhaseChange FailPlan(RenderPhase a_phase, PlanJobId a_job);
+[[nodiscard]] PhaseChange PlanBuilt(ActorId a_actor, RenderPhase a_phase,
+                                    PlanJobId a_job, InstallBound a_bound);
+[[nodiscard]] PhaseChange FailPlan(ActorId a_actor, RenderPhase a_phase,
+                                   const PlanJobFailed &a_failed);
 [[nodiscard]] PhaseChange WantLevel(ActorId a_actor, RenderPhase a_phase,
                                     ResolutionLevel a_level);
 [[nodiscard]] PhaseChange ReleaseForBudget(ActorId a_actor, RenderPhase a_phase,

@@ -80,6 +80,7 @@ struct Resizing {
   ResolutionLevel to = ResolutionLevel::kFull;
   IntermediateHolding holding = IntermediateHolding::kHeld;
   std::variant<ResizeQueued, ResizeRunning> stage;
+  std::optional<FailedLevel> failed;
   [[nodiscard]] bool operator==(const Resizing &) const = default;
 };
 
@@ -95,7 +96,8 @@ TargetLevel(const RenderPhase &a_phase) noexcept;
 [[nodiscard]] std::optional<ResolutionLevel>
 AppliedLevel(const RenderPhase &a_phase) noexcept;
 [[nodiscard]] bool MayRelease(const RenderPhase &a_phase) noexcept;
-[[nodiscard]] bool BudgetBusy(const RenderPhase &a_phase) noexcept;
+[[nodiscard]] bool MayStepDown(const RenderPhase &a_phase) noexcept;
+[[nodiscard]] bool MayEvict(const RenderPhase &a_phase) noexcept;
 [[nodiscard]] const UnpublishedDraw *
 UnpublishedDrawOf(const RenderPhase &a_phase) noexcept;
 [[nodiscard]] std::optional<ResizeProgress>

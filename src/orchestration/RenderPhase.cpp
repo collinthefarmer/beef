@@ -65,8 +65,12 @@ bool MayRelease(const RenderPhase &a_phase) noexcept {
   return live && Is<IntermediatesHeld>(live->intermediates);
 }
 
-bool BudgetBusy(const RenderPhase &a_phase) noexcept {
-  return !Is<Live>(a_phase);
+bool MayStepDown(const RenderPhase &a_phase) noexcept {
+  return Is<Live>(a_phase);
+}
+
+bool MayEvict(const RenderPhase &a_phase) noexcept {
+  return !Is<Resizing>(a_phase);
 }
 
 const UnpublishedDraw *UnpublishedDrawOf(const RenderPhase &a_phase) noexcept {
@@ -101,11 +105,16 @@ std::optional<PlanJobId> AwaitedJob(const RenderPhase &a_phase) noexcept {
 
 std::optional<ResolutionLevel>
 FailedLevelOf(const RenderPhase &a_phase) noexcept {
-  const Live *live = Get<Live>(a_phase);
-  if (!live || !live->failed) {
+  const std::optional<FailedLevel> *failed = nullptr;
+  if (const Live *live = Get<Live>(a_phase)) {
+    failed = &live->failed;
+  } else if (const Resizing *resizing = Get<Resizing>(a_phase)) {
+    failed = &resizing->failed;
+  }
+  if (!failed || !*failed) {
     return std::nullopt;
   }
-  return live->failed->level;
+  return (*failed)->level;
 }
 
 bool ScreenStepDownDue(const RenderPhase &a_phase, Millis a_now,
