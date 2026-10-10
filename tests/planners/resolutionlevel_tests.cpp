@@ -161,6 +161,24 @@ void CoarserLevelsStepOnce() {
         "half is one step coarser than full");
 }
 
+void ADueStepDownStepsOneLevel() {
+  Check(LevelStepOf(ResolutionLevel::kFull, Seen(0.05f), true) ==
+            LevelStep{StepDownTo{ResolutionLevel::kHalf}},
+        "a due step-down steps one level, however small the actor");
+  Check(LevelStepOf(ResolutionLevel::kFull, Seen(0.05f), false) ==
+            LevelStep{KeepLevel{}},
+        "a step-down that is not due keeps the level");
+  Check(LevelStepOf(ResolutionLevel::kEighth, Seen(0.05f), true) ==
+            LevelStep{KeepLevel{}},
+        "the coarsest level does not step down");
+  Check(LevelStepOf(ResolutionLevel::kQuarter, Seen(0.6f), true) ==
+            LevelStep{StepUpTo{ResolutionLevel::kFull}},
+        "a larger wanted level steps up even when a step-down is due");
+  Check(LevelStepOf(ResolutionLevel::kHalf, {0.05f, true, ActorRole::kPlayer},
+                    true) == LevelStep{StepUpTo{ResolutionLevel::kFull}},
+        "the player steps up to full and never down");
+}
+
 int main() {
   IdealLevelHalvesWithScreenSize();
   InViewStepsUpAtOnce();
@@ -172,5 +190,6 @@ int main() {
   LargerOnScreenPutsUnmeasuredLast();
   SidesScaleAndStopAtTheMinimum();
   CoarserLevelsStepOnce();
+  ADueStepDownStepsOneLevel();
   return test::Finish("planners_resolutionlevel");
 }

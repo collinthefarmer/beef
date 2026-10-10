@@ -81,6 +81,9 @@ SmallSince(ResolutionLevel a_current, std::optional<float> a_screenFraction,
                                       const ActorSight &a_sight,
                                       std::optional<std::uint32_t> a_smallSince,
                                       std::uint32_t a_nowMS) noexcept;
+[[nodiscard]] LevelStep LevelStepOf(ResolutionLevel a_current,
+                                    const ActorSight &a_sight,
+                                    bool a_stepDownDue) noexcept;
 [[nodiscard]] bool LargerOnScreen(std::optional<float> a_left,
                                   std::optional<float> a_right) noexcept;
 [[nodiscard]] std::optional<ResolutionLevel>
