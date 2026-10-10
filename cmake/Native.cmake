@@ -52,6 +52,10 @@ foreach(source IN LISTS TEST_SOURCES)
     target_sources(${suite} PRIVATE src/engine/LiveActor.cpp)
     target_include_directories(${suite} BEFORE PRIVATE tests/engine/lifetime)
   endif()
+  if(suite STREQUAL "engine_installstages")
+    target_sources(${suite} PRIVATE src/engine/LiveActor.cpp src/engine/InstallStages.cpp)
+    target_include_directories(${suite} BEFORE PRIVATE tests/engine/lifetime)
+  endif()
   target_include_directories(${suite} PRIVATE tests)
   target_compile_definitions(${suite} PRIVATE
     BEEF_FIXTURES_DIR="${CMAKE_SOURCE_DIR}/tests/fixtures"
