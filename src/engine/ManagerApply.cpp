@@ -889,48 +889,6 @@ Orchestration::RenderEvent RenderEventOf(const LiveActor &a_state,
       build->levelCosts, build->chargedBytes};
 }
 
-std::optional<std::size_t> LightSourceInstance(const ActorLightPlan &a_plan,
-                                               const LightContribution &a_c) {
-  const std::size_t sourceIndex = IndexOf(a_c.placed);
-  if (sourceIndex >= a_plan.sources.size()) {
-    return std::nullopt;
-  }
-  return IndexOf(a_plan.sources[sourceIndex]);
-}
-
-LiveInstance *LightInstanceOf(LiveActor &a_state, const ActorLightPlan &a_plan,
-                              const LightContribution &a_c) {
-  const std::optional<std::size_t> instanceIndex =
-      LightSourceInstance(a_plan, a_c);
-  if (!instanceIndex || *instanceIndex >= a_state.instances.size()) {
-    return nullptr;
-  }
-  LiveInstance &instance = a_state.instances[*instanceIndex];
-  if (!instance.recipe || !instance.signals) {
-    return nullptr;
-  }
-  return &instance;
-}
-
-std::vector<RE::BSGeometry *> LightGeometriesOf(LiveActor &a_state,
-                                                std::size_t a_instance,
-                                                const LightOutput &a_light) {
-  std::vector<RE::BSGeometry *> geometries;
-  for (const GeometryId flat : ThirdPersonGeometriesOfInstance(
-           a_state.matches, InstanceId{a_instance})) {
-    const Geometry *geometry = GeometryAt(a_state.matches, flat);
-    if (!geometry || !LightEligible(*geometry, a_light)) {
-      continue;
-    }
-    if (const std::optional<LocatedGeometry> located =
-            LocateGeometry(a_state, flat);
-        located && located->bound.geometry) {
-      geometries.push_back(located->bound.geometry.get());
-    }
-  }
-  return geometries;
-}
-
 std::string LightProblemOf(const LiveInstance &a_instance,
                            const LightPlacements &a_placements) {
   if (a_instance.light) {
@@ -942,43 +900,68 @@ std::string LightProblemOf(const LiveInstance &a_instance,
   return "light preparation failed";
 }
 
+std::vector<RE::BSGeometry *> LightGeometriesOf(LiveActor &a_state,
+                                                const LightRequest &a_light) {
+  std::vector<RE::BSGeometry *> geometries;
+  for (const GeometryId geometry : a_light.geometries) {
+    if (const std::optional<LocatedGeometry> located =
+            LocateGeometry(a_state, geometry);
+        located && located->bound.geometry) {
+      geometries.push_back(located->bound.geometry.get());
+    }
+  }
+  return geometries;
+}
+
 std::vector<std::string> PlaceLight(LiveActor &a_state,
-                                    const ActorLightPlan &a_plan,
-                                    const LightContribution &a_c,
+                                    const LightRequest &a_light,
                                     RE::NiAVObject *a_root) {
-  const std::optional<std::size_t> instanceIndex =
-      LightSourceInstance(a_plan, a_c);
-  LiveInstance *instance = LightInstanceOf(a_state, a_plan, a_c);
-  if (!instanceIndex || !instance) {
+  const std::size_t index = IndexOf(a_light.instance);
+  if (index >= a_state.instances.size()) {
     return {};
   }
-  const LightOutput *light = LightOutputOf(*instance->recipe, a_c.output);
-  if (!light) {
-    return {};
-  }
+  LiveInstance &instance = a_state.instances[index];
+  const LightOutput *light =
+      instance.recipe ? LightOutputOf(*instance.recipe, a_light.output)
+                      : nullptr;
   const std::vector<RE::BSGeometry *> geometries =
-      LightGeometriesOf(a_state, *instanceIndex, *light);
-  if (geometries.empty()) {
+      LightGeometriesOf(a_state, a_light);
+  if (!light || !instance.signals || geometries.empty()) {
     return {};
   }
   const LightPlacements placements =
       PlaceLightNodes(light->bones, geometries, a_root,
-                      instance->signals->Resolve(light->offset));
+                      instance.signals->Resolve(light->offset));
   std::vector<std::string> faults;
   faults.reserve(placements.missingBones.size() + 1);
   for (const std::string &bone : placements.missingBones) {
     faults.push_back(std::format("recipe {}: light bone '{}' is not on the "
                                  "wearer",
-                                 instance->recipe->id, bone));
+                                 instance.recipe->id, bone));
   }
-  instance->light = LightBinding::Create(placements.placed, light->shadow);
-  instance->lightOutput = a_c.output;
-  instance->lightProblem = LightProblemOf(*instance, placements);
-  if (!instance->light) {
-    faults.push_back(std::format("recipe {}: {}", instance->recipe->id,
-                                 instance->lightProblem));
+  instance.light = LightBinding::Create(placements.placed, light->shadow);
+  instance.lightOutput = a_light.output;
+  instance.lightProblem = LightProblemOf(instance, placements);
+  if (!instance.light) {
+    faults.push_back(std::format("recipe {}: {}", instance.recipe->id,
+                                 instance.lightProblem));
   }
   return faults;
+}
+
+void PlaceLights(LiveActor &a_state, const LightProgram &a_program,
+                 RE::NiAVObject *a_root, WarningHistory &a_warnings) {
+  for (const InstanceLightProblem &problem : a_program.problems) {
+    const std::size_t index = IndexOf(problem.instance);
+    if (index < a_state.instances.size()) {
+      a_state.instances[index].lightProblem = problem.problem;
+    }
+  }
+  for (const LightRequest &light : a_program.lights) {
+    for (const std::string &fault : PlaceLight(a_state, light, a_root)) {
+      LogOnce(a_warnings, Severity::kWarning, fault);
+    }
+  }
 }
 
 std::string FormName(RE::FormID a_form) {
@@ -1248,49 +1231,6 @@ OutputFilter Manager::ShownOutputs() const {
   };
 }
 
-void Manager::PlaceLightsOf(RE::Actor *a_actor, LiveActor &a_state) {
-  const std::span<const Recipe> loaded = RecipesOf(a_state);
-  const ActorLightPlan plan = PlanActorLights(
-      a_state.matches, loaded,
-      [this](const Recipe &recipe, std::size_t output) {
-        return editor_.CurrentView().OutputShown(recipe.id, output);
-      });
-  for (std::size_t i = 0; i < plan.sources.size(); ++i) {
-    const std::size_t instance = IndexOf(plan.sources[i]);
-    if (instance < a_state.instances.size()) {
-      LiveInstance &live = a_state.instances[instance];
-      live.lightProblem =
-          live.recipe && std::ranges::any_of(live.recipe->outputs,
-                                             [](const Output &a_output) {
-                                               return Get<LightOutput>(
-                                                          a_output) != nullptr;
-                                             })
-              ? "no eligible light output"
-              : "";
-    }
-  }
-  for (const LightContribution &c : plan.plan.replaced) {
-    const std::size_t placed = IndexOf(c.placed);
-    const std::optional<std::size_t> replacer = ReplacerOf(plan.plan, c);
-    if (placed >= plan.sources.size() || !replacer ||
-        *replacer >= plan.placed.size() || !plan.placed[*replacer].recipe) {
-      continue;
-    }
-    const std::size_t instance = IndexOf(plan.sources[placed]);
-    if (instance < a_state.instances.size()) {
-      a_state.instances[instance].lightProblem =
-          std::format("actor-wide lights replaced by recipe {}",
-                      plan.placed[*replacer].recipe->id);
-    }
-  }
-  RE::NiAVObject *root = a_actor ? a_actor->Get3D(false) : nullptr;
-  for (const LightContribution &c : plan.plan.shown) {
-    for (const std::string &fault : PlaceLight(a_state, plan, c, root)) {
-      LogOnce(warningHistory_, Severity::kWarning, fault);
-    }
-  }
-}
-
 std::size_t Manager::RetireActorResources(RE::FormID a_actorID) {
   const auto it = live_.find(a_actorID);
   if (it == live_.end()) {
@@ -1371,7 +1311,11 @@ Manager::InstallLiveActor(RE::Actor &a_actor,
                           a_command.replacedBytes, settings);
   });
   KeepRender(*state, built);
-  phases.Measure("lights_us", [&] { PlaceLightsOf(&a_actor, *state); });
+  phases.Measure("lights_us", [&] {
+    PlaceLights(*state,
+                PlanLightsOf(state->matches, RecipesOf(*state), ShownOutputs()),
+                a_actor.Get3D(false), warningHistory_);
+  });
   phases.Measure("report_us", [&] {
     ReportApplied(a_actor, *state, settings,
                   a_command.kind == Orchestration::InstallKind::kReinstall

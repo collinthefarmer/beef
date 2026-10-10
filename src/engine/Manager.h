@@ -309,7 +309,6 @@ private:
   [[nodiscard]] std::vector<Orchestration::PlanJobDone> DrainPlanJobs();
   void FailAwaitedRender(LiveActor &a_state, const std::string &a_problem);
   [[nodiscard]] OutputFilter ShownOutputs() const;
-  void PlaceLightsOf(RE::Actor *a_actor, LiveActor &a_state);
 
   void TickInstance(LiveInstance &a_instance, float a_time, float a_delta);
   void RenderGeometry(LiveActor &a_state, LiveGeometry &a_bound,
