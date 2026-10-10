@@ -187,8 +187,6 @@ private:
   void PostTask(std::function<void()> a_task);
   [[nodiscard]] std::uint32_t EditorClockMS() const;
 
-  void SyncStale(RE::FormID a_actorID,
-                 const std::vector<ApplicationToken> &a_tokens);
   void NoteStale(RE::FormID a_actorID,
                  const std::vector<ApplicationToken> &a_tokens);
   void RunTick(std::uint32_t a_nowMS, const Settings &a_settings);
@@ -257,20 +255,9 @@ private:
                      const InstallBound &a_bound, const Settings &a_settings);
   [[nodiscard]] std::size_t RetireActorResources(RE::FormID a_actorID);
   void ForgetActorResources(RE::FormID a_actorID);
-  enum class SyncOutcome { kSettled, kInstalled, kDeferred };
-  [[nodiscard]] SyncOutcome SyncActor(RE::Actor *a_actor);
-  void DeferInstall(RE::FormID a_actorID, Actors::SyncKind a_kind);
-  void RunWaitingInstalls(std::uint32_t a_nowMS);
   struct CatalogMatches {
     std::shared_ptr<const RecipeCatalog> catalog;
     ActorMatches matches;
-  };
-  struct ActorDecision {
-    Actors::ActorFacts facts;
-    CatalogMatches planned;
-    Actors::Transition next;
-    Actors::SyncKind kind = Actors::SyncKind::kUnchanged;
-    std::uint32_t observedAt = 0;
   };
   void EmitHeartbeat(const Metrics::Snapshot &a_measured,
                      const BudgetSample &a_sample, std::uint32_t a_intervalMs);
@@ -280,50 +267,12 @@ private:
                           std::uint32_t a_intervalMs);
   [[nodiscard]] BudgetSample SampleBudget(const Metrics::Snapshot &a_measured,
                                           const Settings &a_settings);
-  void UpdateBudget(const BudgetSample &a_sample, std::uint64_t a_planned,
-                    const Settings &a_settings);
-  struct BudgetActors {
-    std::vector<BudgetActor> actors;
-    bool resizeBusy = false;
-  };
-  struct BlockedStepUp {
-    RE::FormID actor = 0;
-    PreemptionRequest request;
-  };
-  [[nodiscard]] BudgetActors BudgetActorsNow(const Settings &a_settings);
-  [[nodiscard]] std::vector<BlockedStepUp>
-  BlockedStepUps(const Settings &a_settings);
-  void PreemptForBlockedStepUp(const Settings &a_settings);
-  void RelieveBudget(std::uint64_t a_goal, const Settings &a_settings);
-  void StepDownForBudget(RE::FormID a_actorID, LiveActor &a_state,
-                         const StepDownOption &a_option,
-                         std::optional<RE::FormID> a_preemptedBy);
-  [[nodiscard]] bool ShrinkBudgetRadius(std::span<const BudgetActor> a_actors);
-  void GrowBudgetRadius(const Settings &a_settings);
-  void ReportRadiusGrowth(const RadiusGrowth &a_growth);
-  [[nodiscard]] std::optional<float> FarthestTrackedDistance() const;
-  [[nodiscard]] std::vector<EvictedActor> EvictedActors() const;
-  [[nodiscard]] std::uint64_t LargestReturnBytes() const;
-  [[nodiscard]] float EvictDistanceNow(const Settings &a_settings) const;
-  [[nodiscard]] bool AdmitStepUp(RE::FormID a_actorID, LiveActor &a_state,
-                                 ResolutionLevel a_from, ResolutionLevel a_to);
-  void InstallActor(RE::Actor &a_actor, ActorDecision a_decision,
-                    std::uint64_t a_replaced, const Settings &a_settings);
-  [[nodiscard]] ActorDecision DecideActor(RE::Actor &a_actor,
-                                          const Settings &a_settings);
   void NoteMaterialLayout(MaterialLayout a_before);
   void NoteArmorWithoutGeometry(const Actors::ActorFacts &a_facts);
-  void RecordState(RE::FormID a_actorID,
-                   std::optional<Actors::ActorState> a_state);
-  [[nodiscard]] Actors::ActorPlan InstalledPlanOf(RE::FormID a_actorID) const;
-  void MarkWaitingStale(std::uint32_t a_nowMS);
-  void MarkRecheckStale(std::uint32_t a_nowMS, float a_evictDistance);
   [[nodiscard]] std::expected<LiveActor, std::string>
   LiveActorFor(RE::Actor &a_actor, const Actors::ActorFacts &a_facts,
                const ModelTable &a_models, CatalogMatches a_planned,
                const Settings &a_settings);
-  std::size_t RetireActor(RE::FormID a_actorID);
-  void ForgetActor(RE::FormID a_actorID);
   void ChangeAndRebuildActors(std::string a_reportRecipe,
                               const std::function<void()> &a_action);
   [[nodiscard]] std::vector<RE::FormID> LoadedActorIDs() const;
@@ -332,7 +281,6 @@ private:
   ActorsApplying(std::string_view a_recipeID) const;
   void PrepareApplications(RE::FormID a_actor,
                            const std::vector<ApplicationToken> &a_tokens);
-  void FinishApplications(RE::FormID a_actor, LiveActor &a_state);
   void FinishApplications(RE::FormID a_actor, LiveActor &a_state,
                           bool a_inView);
   void AbandonApplications(RE::FormID a_actor);
@@ -346,26 +294,12 @@ private:
   [[nodiscard]] std::optional<std::size_t>
   InstanceFor(LiveActor &a_state, InstanceId a_matchedInstance,
               RE::FormID a_enchantment, const Settings &a_settings);
-  [[nodiscard]] InstallBound InstallBoundOf(RE::FormID a_actorID,
-                                            RE::Actor &a_actor,
-                                            std::uint64_t a_replaced,
-                                            const Settings &a_settings) const;
-  void KeepInstallLevel(RE::FormID a_actorID, ResolutionLevel a_level);
-  void ReleaseWhileHidden(RE::FormID a_actorID, LiveActor &a_state);
-  void RequestLevelStep(RE::FormID a_actorID, RE::Actor &a_actor,
-                        LiveActor &a_state, const Settings &a_settings);
-  void AdvanceResizes(const Settings &a_settings);
   [[nodiscard]] RenderOutcome PlaceInstances(LiveActor &a_state,
                                              RE::FormID a_actorID,
                                              const InstallBound &a_bound,
                                              std::uint64_t a_replaced,
                                              const Settings &a_settings);
-  void KeepActorRender(RE::FormID a_actorID, LiveActor &a_state,
-                       const RenderOutcome &a_render);
-  void DrainPlanJobs(const Settings &a_settings);
   [[nodiscard]] std::vector<Orchestration::PlanJobDone> DrainPlanJobs();
-  void RebuildAwaitedRender(RE::FormID a_actorID, LiveActor &a_state,
-                            JobId a_arrived, const Settings &a_settings);
   void FailAwaitedRender(RE::FormID a_actorID, LiveActor &a_state,
                          const std::string &a_problem,
                          const Settings &a_settings);
@@ -376,11 +310,7 @@ private:
                        const Settings &a_settings, ActorStacks &a_stacks);
   void PlaceLightsOf(RE::Actor *a_actor, LiveActor &a_state);
 
-  void Tick(std::uint32_t a_nowMS, const Settings &a_settings);
   void TickInstance(LiveInstance &a_instance, float a_time, float a_delta);
-  void DrawHidden(std::span<const UnpublishedDrawCandidate> a_candidates);
-  void AttachFirstDraw(RE::FormID a_actorID, LiveActor &a_state);
-  void ClaimLostGeometries(RE::FormID a_actorID, LiveActor &a_state);
   void RenderGeometry(LiveActor &a_state, LiveGeometry &a_bound,
                       bool a_pieceHidden, bool a_inspected,
                       const RenderFlags &a_flags);
@@ -418,27 +348,13 @@ private:
   PlanJobBook planJobs_;
   PlanQueue planQueue_{BuildPlanFrom, kPlanJobCapacity};
 
-  struct TrackedActor {
-    std::optional<Actors::ActorState> state;
-    ModelTable models;
-    std::optional<ResolutionLevel> targetResolution;
-    std::optional<std::uint64_t> returnBytes;
-  };
-  std::unordered_map<RE::FormID, TrackedActor> tracked_;
   std::optional<IdleCameraHold> menuIdleHold_;
-  std::uint32_t lastWaitingCheckMS_ = 0;
   std::uint64_t regressionPaintSession_ = 0;
   std::uint32_t lastTickMS_ = 0;
   std::uint32_t lastMetricsMS_ = 0;
   std::uint32_t holdingStep_ = 0;
   VideoMemoryProbe videoMemory_;
-  BudgetState budget_;
-  std::optional<BudgetRadius> budgetRadius_;
-  std::vector<Actors::SyncRecord> syncLog_;
-  FrameSyncs frameSyncs_;
-  std::vector<WaitingInstall> waitingInstalls_;
   std::uint32_t lastSweepMS_ = 0;
-  std::uint32_t lastRecheckMS_ = 0;
   Orchestration::World world_;
   std::unordered_map<RE::FormID, ModelTable> models_;
   std::vector<Orchestration::CommandResult> results_;

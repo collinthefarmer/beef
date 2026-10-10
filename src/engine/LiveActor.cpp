@@ -52,7 +52,9 @@ void RetireGeometry(LiveActor &a_actor, LiveGeometry &a_geometry) {
 }
 
 void RetireActorEffects(LiveActor &a_actor) {
-  a_actor.resize = ResizeIdle{};
+  a_actor.resize.reset();
+  a_actor.firstDraw.reset();
+  a_actor.awaitedPlan.reset();
   a_actor.applications.clear();
   for (auto &instance : a_actor.instances)
     instance.light.reset();
@@ -66,7 +68,6 @@ void RetireActorEffects(LiveActor &a_actor) {
 }
 
 void SetAppliedResolution(LiveActor &a_actor, ResolutionLevel a_level) {
-  a_actor.appliedResolution = a_level;
   for (LiveInstance &instance : a_actor.instances) {
     if (instance.environment) {
       instance.environment->SetAppliedResolution(a_level);

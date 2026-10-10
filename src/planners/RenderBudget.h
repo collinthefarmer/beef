@@ -176,13 +176,6 @@ StepDownOf(ResolutionLevel a_level, const LevelCost &a_current,
 [[nodiscard]] std::optional<std::size_t>
 PreemptionCandidate(const PreemptionRequest &a_request,
                     std::span<const BudgetActor> a_actors) noexcept;
-inline constexpr std::uint32_t kHiddenReleaseMS = 5000;
-
-[[nodiscard]] std::optional<std::uint32_t>
-HiddenSince(bool a_inView, std::optional<std::uint32_t> a_since,
-            std::uint32_t a_nowMS) noexcept;
-[[nodiscard]] bool HiddenReleaseDue(std::optional<std::uint32_t> a_since,
-                                    std::uint32_t a_nowMS) noexcept;
 [[nodiscard]] BudgetResponse
 RespondToPressure(std::uint64_t a_planned, std::uint64_t a_goal,
                   std::span<const BudgetActor> a_actors, bool a_resizeBusy);

@@ -12,7 +12,6 @@
 #include "planners/RenderBudget.h"
 #include "planners/RenderPlan.h"
 #include "planners/ResolutionLevel.h"
-#include "planners/ResolutionResize.h"
 #include "planners/StackPlan.h"
 #include "recipe/Merge.h"
 #include "recipe/Recipe.h"
@@ -27,7 +26,6 @@
 #include <optional>
 #include <span>
 #include <string>
-#include <variant>
 #include <vector>
 
 namespace BetterEnchantmentEffects {
@@ -105,13 +103,10 @@ struct ResizedStack {
 };
 
 struct ResizeInFlight {
-  ResizeProgress progress;
   ResolutionLevel to = ResolutionLevel::kFull;
   std::shared_ptr<RenderInstance> render;
   std::vector<ResizedStack> stacks;
 };
-
-using LiveResize = std::variant<ResizeIdle, ResizePending, ResizeInFlight>;
 
 struct HiddenSlot {
   std::size_t piece = 0;
@@ -121,26 +116,15 @@ struct HiddenSlot {
 };
 
 struct FirstDraw {
-  std::uint64_t beganFrame = 0;
-  std::uint64_t drawTicks = 0;
   std::vector<HiddenSlot> slots;
 };
 
 struct LiveActor {
   RE::ActorHandle actor;
-  bool inView = true;
-  std::optional<float> screenFraction;
-  ResolutionLevel appliedResolution = ResolutionLevel::kFull;
   PlanSizes fullSizes;
-  LiveResize resize;
+  std::optional<ResizeInFlight> resize;
   std::optional<FirstDraw> firstDraw;
-  PerLevel<std::optional<LevelCost>> levelCosts;
-  IntermediateHolding intermediates = IntermediateHolding::kHeld;
-  std::optional<ResolutionLevel> stepUpBlockedFrom;
-  std::optional<std::uint32_t> smallSinceMS;
-  std::optional<std::uint32_t> hiddenSinceMS;
   std::optional<JobId> awaitedPlan;
-  std::uint64_t renderedFrame = 0;
   ResolutionLevel renderLevel = ResolutionLevel::kFull;
   IntermediateHolding holding = IntermediateHolding::kHeld;
   std::shared_ptr<const RecipeCatalog> catalog;

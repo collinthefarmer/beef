@@ -73,14 +73,6 @@ using LevelStep = std::variant<KeepLevel, StepUpTo, StepDownTo>;
 WantedLevel(const ActorSight &a_sight) noexcept;
 [[nodiscard]] bool SmallFor(std::optional<float> a_screenFraction,
                             ResolutionLevel a_current) noexcept;
-[[nodiscard]] std::optional<std::uint32_t>
-SmallSince(ResolutionLevel a_current, std::optional<float> a_screenFraction,
-           std::optional<std::uint32_t> a_since,
-           std::uint32_t a_nowMS) noexcept;
-[[nodiscard]] LevelStep NextLevelStep(ResolutionLevel a_current,
-                                      const ActorSight &a_sight,
-                                      std::optional<std::uint32_t> a_smallSince,
-                                      std::uint32_t a_nowMS) noexcept;
 [[nodiscard]] LevelStep LevelStepOf(ResolutionLevel a_current,
                                     const ActorSight &a_sight,
                                     bool a_stepDownDue) noexcept;

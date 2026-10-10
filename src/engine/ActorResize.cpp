@@ -152,51 +152,10 @@ std::shared_ptr<RenderInstance> AttachedRender(const LiveActor &a_state) {
   return nullptr;
 }
 
-void RequestResize(LiveActor &a_state, ResolutionLevel a_level) {
-  a_state.resize = ResizePending{a_level};
-}
-
-std::expected<void, std::string> StartResize(LiveActor &a_state,
-                                             std::uint64_t a_frame) {
-  const ResizePending *pending = Get<ResizePending>(a_state.resize);
-  if (!pending) {
-    return {};
-  }
-  ResizeInFlight inFlight{{a_state.appliedResolution, pending->level, a_frame},
-                          pending->level,
-                          nullptr,
-                          {}};
-  const std::shared_ptr<RenderInstance> current = AttachedRender(a_state);
-  if (current) {
-    std::expected<PlanSizes, std::string> sizes =
-        SizesFor(current->Plan(),
-                 AtLevel(a_state.fullSizes, inFlight.progress.to).sizes);
-    if (!sizes) {
-      a_state.resize = ResizeIdle{};
-      return std::unexpected(sizes.error());
-    }
-    inFlight.render = current->AtSizes(std::move(*sizes));
-    const std::vector<StackHolder> holders = StackHolders(a_state);
-    const std::vector<bool> covered = DrawnByMergedChains(a_state);
-    for (std::size_t i = 0; i < holders.size(); ++i) {
-      std::unique_ptr<RenderOutput> stack =
-          (*holders[i])->DrawnBy(inFlight.render);
-      if (!stack) {
-        a_state.resize = ResizeIdle{};
-        return std::unexpected("a stack output names no stack of the plan");
-      }
-      inFlight.stacks.push_back(
-          {std::move(stack), i < covered.size() && covered[i]});
-    }
-  }
-  a_state.resize = std::move(inFlight);
-  return {};
-}
-
 DrawPace DrawResize(LiveActor &a_state, std::uint64_t a_frame,
                     std::uint64_t a_nowMS, WarningHistory &a_warnings,
                     DrawPace a_pace, std::uint64_t a_budgetUs) {
-  ResizeInFlight *inFlight = Get<ResizeInFlight>(a_state.resize);
+  ResizeInFlight *inFlight = a_state.resize ? &*a_state.resize : nullptr;
   TextureLab *lab = TextureLab::GetSingleton();
   Compositor *compositor = Compositor::GetSingleton();
   if (!inFlight || !inFlight->render || !lab || !compositor ||
@@ -223,50 +182,8 @@ DrawPace DrawResize(LiveActor &a_state, std::uint64_t a_frame,
   return a_pace;
 }
 
-std::optional<ResizeSwap> FinishResize(LiveActor &a_state,
-                                       std::uint64_t a_frame) {
-  ResizeInFlight *inFlight = Get<ResizeInFlight>(a_state.resize);
-  if (!inFlight) {
-    return std::nullopt;
-  }
-  const std::size_t drawn = DrawnStacks(*inFlight);
-  if (!SwapDue(inFlight->progress,
-               DrawOf({.inView = a_state.inView,
-                       .drawn = drawn,
-                       .stacks = inFlight->stacks.size()}),
-               a_frame)) {
-    return std::nullopt;
-  }
-  const std::vector<StackHolder> holders = StackHolders(a_state);
-  const std::shared_ptr<RenderInstance> current = AttachedRender(a_state);
-  if (!StacksMatch(holders, inFlight->stacks) ||
-      static_cast<bool>(current) != static_cast<bool>(inFlight->render)) {
-    a_state.resize = ResizePending{inFlight->progress.to};
-    return std::nullopt;
-  }
-  for (std::size_t i = 0; i < holders.size(); ++i) {
-    *holders[i] = std::move(inFlight->stacks[i].stack);
-  }
-  SwapRender(a_state, current, inFlight->render);
-  if (!a_state.inView) {
-    ConcealStackSlots(a_state);
-  }
-  const ResizeSwap swap{
-      inFlight->progress.from,
-      inFlight->progress.to,
-      a_frame - std::min(a_frame, inFlight->progress.beganFrame),
-      inFlight->stacks.size(),
-      drawn,
-      inFlight->render ? CostOf(inFlight->render->Targets().withIntermediates)
-                       : TargetCost{}};
-  SetAppliedResolution(a_state, inFlight->progress.to);
-  a_state.resize = ResizeIdle{};
-  return swap;
-}
-
 const RenderInstance *ResizingInstance(const LiveActor &a_state) noexcept {
-  const ResizeInFlight *inFlight = Get<ResizeInFlight>(a_state.resize);
-  return inFlight ? inFlight->render.get() : nullptr;
+  return a_state.resize ? a_state.resize->render.get() : nullptr;
 }
 
 std::expected<std::size_t, std::string> StartResize(LiveActor &a_state,
@@ -280,10 +197,7 @@ std::expected<std::size_t, std::string> StartResize(LiveActor &a_state,
   if (!sizes) {
     return std::unexpected(std::move(sizes.error()));
   }
-  ResizeInFlight inFlight{{a_state.renderLevel, a_to, 0},
-                          a_to,
-                          current->AtSizes(std::move(*sizes)),
-                          {}};
+  ResizeInFlight inFlight{a_to, current->AtSizes(std::move(*sizes)), {}};
   const std::vector<StackHolder> holders = StackHolders(a_state);
   const std::vector<bool> covered = DrawnByMergedChains(a_state);
   for (std::size_t i = 0; i < holders.size(); ++i) {
@@ -302,7 +216,7 @@ std::expected<std::size_t, std::string> StartResize(LiveActor &a_state,
 }
 
 std::expected<ResizeSwap, std::string> FinishResize(LiveActor &a_state) {
-  ResizeInFlight *inFlight = Get<ResizeInFlight>(a_state.resize);
+  ResizeInFlight *inFlight = a_state.resize ? &*a_state.resize : nullptr;
   const std::shared_ptr<RenderInstance> current = AttachedRender(a_state);
   if (!inFlight || !inFlight->render || !current) {
     return std::unexpected(std::string{"no resize to swap"});
@@ -317,11 +231,8 @@ std::expected<ResizeSwap, std::string> FinishResize(LiveActor &a_state) {
   }
   SwapRender(a_state, current, inFlight->render);
   ConcealStackSlots(a_state);
-  const ResizeSwap swap{a_state.renderLevel,
-                        inFlight->to,
-                        0,
-                        inFlight->stacks.size(),
-                        DrawnStacks(*inFlight),
+  const ResizeSwap swap{a_state.renderLevel, inFlight->to,
+                        inFlight->stacks.size(), DrawnStacks(*inFlight),
                         CostOf(inFlight->render->Targets().withIntermediates)};
   a_state.renderLevel = inFlight->to;
   a_state.holding = IntermediateHolding::kHeld;
@@ -329,10 +240,10 @@ std::expected<ResizeSwap, std::string> FinishResize(LiveActor &a_state) {
   return swap;
 }
 
-void DropResize(LiveActor &a_state) { a_state.resize = ResizeIdle{}; }
+void DropResize(LiveActor &a_state) { a_state.resize.reset(); }
 
 const ResizeInFlight *InFlightOf(const LiveActor &a_state) noexcept {
-  return Get<ResizeInFlight>(a_state.resize);
+  return a_state.resize ? &*a_state.resize : nullptr;
 }
 
 std::size_t DrawnStacks(const ResizeInFlight &a_inFlight) noexcept {
@@ -342,14 +253,12 @@ std::size_t DrawnStacks(const ResizeInFlight &a_inFlight) noexcept {
       }));
 }
 
-void StartFirstDraw(LiveActor &a_state) { StartFirstDraw(a_state, 0); }
-
-void StartFirstDraw(LiveActor &a_state, std::uint64_t a_frame) {
+void StartFirstDraw(LiveActor &a_state) {
   a_state.firstDraw.reset();
   if (!AttachedRender(a_state)) {
     return;
   }
-  FirstDraw draw{a_frame, 0, {}};
+  FirstDraw draw;
   for (std::size_t p = 0; p < a_state.pieces.size(); ++p) {
     const LivePiece &piece = a_state.pieces[p];
     for (std::size_t g = 0; g < piece.geometries.size(); ++g) {
@@ -360,14 +269,6 @@ void StartFirstDraw(LiveActor &a_state, std::uint64_t a_frame) {
     }
   }
   a_state.firstDraw = std::move(draw);
-}
-
-FirstDrawProgress ProgressOf(const FirstDraw &a_draw) noexcept {
-  return {a_draw.drawTicks, a_draw.slots.size(),
-          static_cast<std::size_t>(
-              std::ranges::count_if(a_draw.slots, [](const HiddenSlot &a_slot) {
-                return a_slot.drawn;
-              }))};
 }
 
 std::size_t DrawnSlots(const FirstDraw &a_draw) noexcept {

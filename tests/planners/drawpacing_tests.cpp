@@ -2,6 +2,7 @@
 #include "planners/DrawPacing.h"
 #include "test_support.h"
 
+#include <cstdint>
 #include <optional>
 #include <vector>
 
@@ -9,11 +10,13 @@ using namespace BetterEnchantmentEffects;
 using test::Check;
 
 namespace {
+constexpr std::uint64_t kBudgetUs = 4000;
+
 void BudgetDrawsAtLeastOneStack() {
-  Check(MayDrawStack({}), "a tick draws its first stack");
-  Check(MayDrawStack(Drew({}, kUnpublishedDrawBudgetUs - 1)),
+  Check(MayDrawStack({}, kBudgetUs), "a tick draws its first stack");
+  Check(MayDrawStack(Drew({}, kBudgetUs - 1), kBudgetUs),
         "a tick inside the budget draws another stack");
-  Check(!MayDrawStack(Drew({}, kUnpublishedDrawBudgetUs)),
+  Check(!MayDrawStack(Drew({}, kBudgetUs), kBudgetUs),
         "a tick that spent the budget draws no further stack");
   const DrawPace twice = Drew(Drew({}, 1000), 1500);
   Check(twice.stacks == 2 && twice.spentUs == 2500,
@@ -27,13 +30,6 @@ void BudgetIsAnArgument() {
         "a tick that spent the given budget draws no further stack");
   Check(MayDrawStack(spent, 2001),
         "a tick inside the given budget draws another stack");
-  Check(MayDrawStack(Drew({}, kUnpublishedDrawBudgetUs - 1)) ==
-                MayDrawStack(Drew({}, kUnpublishedDrawBudgetUs - 1),
-                             kUnpublishedDrawBudgetUs) &&
-            MayDrawStack(Drew({}, kUnpublishedDrawBudgetUs)) ==
-                MayDrawStack(Drew({}, kUnpublishedDrawBudgetUs),
-                             kUnpublishedDrawBudgetUs),
-        "the default budget is the fixed one");
 }
 
 void PlayerThenLargestOnScreen() {

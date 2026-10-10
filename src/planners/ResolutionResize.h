@@ -9,15 +9,6 @@
 #include <span>
 
 namespace BetterEnchantmentEffects {
-struct ResizeIdle {
-  [[nodiscard]] bool operator==(const ResizeIdle &) const = default;
-};
-
-struct ResizePending {
-  ResolutionLevel level = ResolutionLevel::kFull;
-  [[nodiscard]] bool operator==(const ResizePending &) const = default;
-};
-
 struct ResizeProgress {
   ResolutionLevel from = ResolutionLevel::kFull;
   ResolutionLevel to = ResolutionLevel::kFull;

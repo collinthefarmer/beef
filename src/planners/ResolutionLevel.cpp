@@ -52,24 +52,6 @@ bool SmallFor(std::optional<float> a_screenFraction,
   return *a_screenFraction < kStepDownBand * LowerBound(a_current);
 }
 
-std::optional<std::uint32_t> SmallSince(ResolutionLevel a_current,
-                                        std::optional<float> a_screenFraction,
-                                        std::optional<std::uint32_t> a_since,
-                                        std::uint32_t a_nowMS) noexcept {
-  if (!SmallFor(a_screenFraction, a_current)) {
-    return std::nullopt;
-  }
-  return a_since.value_or(a_nowMS);
-}
-
-LevelStep NextLevelStep(ResolutionLevel a_current, const ActorSight &a_sight,
-                        std::optional<std::uint32_t> a_smallSince,
-                        std::uint32_t a_nowMS) noexcept {
-  return LevelStepOf(a_current, a_sight,
-                     a_smallSince &&
-                         a_nowMS - *a_smallSince >= kStepDownHoldMS);
-}
-
 LevelStep LevelStepOf(ResolutionLevel a_current, const ActorSight &a_sight,
                       bool a_stepDownDue) noexcept {
   if (const std::optional<ResolutionLevel> wanted = WantedLevel(a_sight);

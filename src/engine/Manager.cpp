@@ -110,7 +110,6 @@ void Manager::Clear() {
   for (auto &[actorID, state] : live_)
     RetireActorEffects(state);
   live_.clear();
-  tracked_.clear();
   world_ = {};
   models_.clear();
   results_.clear();
@@ -128,8 +127,6 @@ void Manager::Clear() {
   loggedNonPBRArmor_.clear();
   warningHistory_.Clear();
   carriedTimes_.Clear();
-  waitingInstalls_.clear();
-  frameSyncs_ = {};
   Compositor::GetSingleton()->ClearStepOutputs();
   Compositor::GetSingleton()->ClearMeshes();
   Compositor::GetSingleton()->ClearMaterials();

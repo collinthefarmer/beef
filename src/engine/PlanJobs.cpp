@@ -29,25 +29,6 @@ BookAfterClose Closed(PlanJobBook a_book, JobId a_job) {
   return {std::move(a_book), std::move(closed)};
 }
 
-PlanArrival ArrivalOf(
-    const std::optional<OpenPlanJob> &a_job,
-    const std::expected<PlanBuildOutput, std::string> &a_result) noexcept {
-  if (!a_job) {
-    return PlanArrival::kStale;
-  }
-  return a_result && a_result->plan ? PlanArrival::kBuilt
-                                    : PlanArrival::kFailed;
-}
-
-AwaiterStep StepFor(std::optional<JobId> a_awaited, JobId a_arrived,
-                    PlanArrival a_arrival) noexcept {
-  if (a_awaited != a_arrived) {
-    return AwaiterStep::kIgnore;
-  }
-  return a_arrival == PlanArrival::kFailed ? AwaiterStep::kFail
-                                           : AwaiterStep::kRebuild;
-}
-
 Orchestration::PlanJobId PlanJobIdOf(JobId a_job) noexcept {
   return Orchestration::PlanJobId{static_cast<std::uint64_t>(a_job)};
 }

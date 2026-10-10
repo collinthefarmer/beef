@@ -215,10 +215,6 @@ void Manager::PrepareApplications(
   }
 }
 
-void Manager::FinishApplications(RE::FormID a_actor, LiveActor &a_state) {
-  FinishApplications(a_actor, a_state, a_state.inView);
-}
-
 void Manager::FinishApplications(RE::FormID a_actor, LiveActor &a_state,
                                  bool a_inView) {
   if (a_state.applications.empty()) {

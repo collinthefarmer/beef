@@ -5,7 +5,6 @@
 
 #include "Identity.h"
 #include "SettingsFile.h"
-#include "actors/Lifecycle.h"
 #include "actors/Planning.h"
 #include "actors/Reconcile.h"
 #include "engine/ActorBudget.h"
@@ -20,9 +19,7 @@
 #include "engine/RecipeStore.h"
 #include "engine/RegressionRun.h"
 #include "mesh/TextureSize.h"
-#include "planners/Eviction.h"
 #include "planners/IdentityFacts.h"
-#include "planners/InstallPacing.h"
 #include "planners/RenderPlanCache.h"
 #include "planners/RenderPlanJob.h"
 #include "planners/RenderPlanKey.h"
@@ -1184,207 +1181,6 @@ void Manager::ReapplyAll() {
   PostTask([this] { ChangeAndRebuildActors({}, [] {}); });
 }
 
-void Manager::SyncStale(RE::FormID a_actorID,
-                        const std::vector<ApplicationToken> &a_tokens) {
-  const Metrics::Stopwatch watch;
-  const RE::NiPointer<RE::Actor> actor{
-      RE::TESForm::LookupByID<RE::Actor>(a_actorID)};
-  SyncOutcome outcome = SyncOutcome::kSettled;
-  if (!actor) {
-    ForgetActor(a_actorID);
-  } else {
-    outcome = SyncActor(actor.get());
-  }
-  ReconcileAnimationEvents(a_actorID);
-  if (outcome != SyncOutcome::kDeferred) {
-    PrepareApplications(a_actorID, a_tokens);
-  }
-  frameSyncs_ =
-      Synced(frameSyncs_, watch.Micros(), outcome == SyncOutcome::kInstalled);
-}
-
-void Manager::DeferInstall(RE::FormID a_actorID, Actors::SyncKind a_kind) {
-  const std::uint32_t now = NowMS();
-  waitingInstalls_ = Deferred(std::move(waitingInstalls_), a_actorID, now);
-  Metrics::CountSyncDeferral();
-  Trace::EmitSafely(
-      Trace::Event::kQueue,
-      {{"action", "sync_deferred"},
-       {"actor", std::to_string(a_actorID)},
-       {"kind", std::string{Actors::SyncKindName(a_kind)}},
-       {"frame_us", std::to_string(frameSyncs_.spentUs)},
-       {"frame_installs", std::to_string(frameSyncs_.installs)},
-       {"waited_ms",
-        std::to_string(WaitedMS(waitingInstalls_, a_actorID, now).value_or(0))},
-       {"waiting", std::to_string(waitingInstalls_.size())}});
-}
-
-Manager::SyncOutcome Manager::SyncActor(RE::Actor *a_actor) {
-  if (!a_actor) {
-    return SyncOutcome::kSettled;
-  }
-  const Settings settings = GetSettings();
-  const RE::FormID actorID = a_actor->GetFormID();
-  const SyncMeter meter{actorID};
-  Trace::EmitSafely(
-      Trace::Event::kApplication,
-      {{"action", "sync_begin"}, {"actor", std::to_string(actorID)}});
-  ActorDecision decision = DecideActor(*a_actor, settings);
-  const bool installs = !decision.next.commands.empty() &&
-                        Actors::AnythingInstalled(decision.next.state);
-  if (installs && !InstallMayStart(frameSyncs_)) {
-    KeepModels(tracked_[actorID].models, InstalledPlanOf(actorID),
-               decision.observedAt);
-    DeferInstall(actorID, decision.kind);
-    return SyncOutcome::kDeferred;
-  }
-  KeepModels(tracked_[actorID].models,
-             decision.next.state ? decision.next.state->installed
-                                 : Actors::ActorPlan{},
-             decision.observedAt);
-  if (const std::optional<std::uint32_t> waited =
-          WaitedMS(waitingInstalls_, actorID, NowMS());
-      waited && installs) {
-    Metrics::CountInstallWait(*waited);
-  }
-  waitingInstalls_ = Removed(std::move(waitingInstalls_), actorID);
-  applications_.ClearReinstall(actorID);
-  if (decision.kind != Actors::SyncKind::kUnchanged) {
-    const char *name = a_actor->GetName();
-    syncLog_ = Actors::Recorded(
-        std::move(syncLog_),
-        {actorID,
-         name && *name ? std::string{name} : std::format("{:08X}", actorID),
-         decision.kind, NowMS()});
-  }
-  if (!decision.next.state) {
-    ForgetActor(actorID);
-    (void)applications_.TakeEquipped(actorID);
-    return SyncOutcome::kSettled;
-  }
-  if (decision.next.commands.empty()) {
-    const bool waiting = Actors::RecheckOf(decision.next.state, NowMS()) ==
-                         Actors::Recheck::kWaiting;
-    RecordState(actorID, std::move(decision.next.state));
-    if (!waiting) {
-      (void)applications_.TakeEquipped(actorID);
-    }
-    return SyncOutcome::kSettled;
-  }
-  const auto installed = live_.find(actorID);
-  const std::uint64_t replaced =
-      installed != live_.end() ? PlannedBytesOf(installed->second) : 0;
-  const std::size_t retired = RetireActor(actorID);
-  RecordState(actorID, std::move(decision.next.state));
-  if (installs) {
-    InstallActor(*a_actor, std::move(decision), replaced, settings);
-    return SyncOutcome::kInstalled;
-  }
-  if (retired > 0 && settings.verboseLogging) {
-    logger::info("actor {:08X}: retired {} recipe(s)", actorID, retired);
-  }
-  return SyncOutcome::kSettled;
-}
-
-void Manager::InstallActor(RE::Actor &a_actor, ActorDecision a_decision,
-                           std::uint64_t a_replaced,
-                           const Settings &a_settings) {
-  const RE::FormID actorID = a_actor.GetFormID();
-  PhaseTrace phases{Trace::Event::kMetrics, "actor_install", actorID};
-  std::expected<LiveActor, std::string> state = phases.Measure("live_us", [&] {
-    return LiveActorFor(a_actor, a_decision.facts, tracked_[actorID].models,
-                        std::move(a_decision.planned), a_settings);
-  });
-  if (!state) {
-    logger::error("actor {:08X} ({}): {}; nothing installed", actorID,
-                  a_actor.GetName(), state.error());
-    ForgetActor(actorID);
-    return;
-  }
-  if (TextureLab *lab = TextureLab::GetSingleton()) {
-    lab->InvalidatePreviews();
-  }
-  if (state->matches.placements.empty()) {
-    if (a_settings.verboseLogging) {
-      logger::info("actor {:08X} ({}): {} piece(s), no recipe placed", actorID,
-                   a_actor.GetName(), state->pieces.size());
-    }
-    return;
-  }
-  phases.Measure("place_us", [&] {
-    const InstallBound bound =
-        InstallBoundOf(actorID, a_actor, a_replaced, a_settings);
-    const RenderOutcome built =
-        PlaceInstances(*state, actorID, bound, a_replaced, a_settings);
-    budget_ = Released(budget_, a_replaced);
-    KeepActorRender(actorID, *state, built);
-  });
-  phases.Measure("lights_us", [&] { PlaceLightsOf(&a_actor, *state); });
-  phases.Measure("report_us", [&] {
-    ReportApplied(a_actor, *state, a_settings, a_decision.kind);
-  });
-  phases.Emit();
-  live_[actorID] = std::move(*state);
-
-  if (applications_.TakeEquipped(actorID)) {
-    FireEquip(actorID);
-  }
-}
-
-Manager::ActorDecision Manager::DecideActor(RE::Actor &a_actor,
-                                            const Settings &a_settings) {
-  const RE::FormID actorID = a_actor.GetFormID();
-  TrackedActor &tracked = tracked_[actorID];
-  std::shared_ptr<const RecipeCatalog> catalog =
-      AppliedCatalog(a_settings.showDebugRecipes ? DebugRecipes::kShown
-                                                 : DebugRecipes::kHidden);
-  const std::span<const Recipe> recipes = catalog->Recipes();
-  const std::uint32_t observedAt = NowMS();
-  const MaterialLayout layoutBefore = materialLayout_;
-  PhaseTrace phases{Trace::Event::kApplication, "actor_decide", actorID};
-  Actors::ActorFacts facts = phases.Measure("observe_us", [&] {
-    return ObserveActor({a_actor, a_settings,
-                         a_settings.enableShaders && emissivePathEnabled_,
-                         recipes, observedAt},
-                        tracked.models, materialLayout_);
-  });
-  NoteMaterialLayout(layoutBefore);
-  if (a_settings.verboseLogging) {
-    NoteArmorWithoutGeometry(facts);
-  }
-  Actors::PlannedActor planned = phases.Measure("plan_us", [&] {
-    const std::vector<Actors::Claim> claims =
-        tracked.state ? Actors::LiveClaims(tracked.state->claims, facts)
-                      : std::vector<Actors::Claim>{};
-    return Actors::PlanActor({facts, *catalog, editor_.CurrentView(), claims});
-  });
-  const Actors::Reinstall reinstall = applications_.ReinstallDue(actorID)
-                                          ? Actors::Reinstall::kAlways
-                                          : Actors::Reinstall::kIfChanged;
-  Actors::Transition next = phases.Measure("advance_us", [&] {
-    return Actors::Advance({tracked.state, facts, planned.plan, NowMS(),
-                            EvictDistanceNow(a_settings), reinstall});
-  });
-  const Actors::SyncKind kind = Actors::KindOf(tracked.state, next, reinstall);
-  const std::optional<Actors::ActorState> &state = next.state;
-  phases.Add("record", state ? "kept" : "forgotten");
-  phases.Add("planned",
-             std::to_string(state ? state->plan.placements.size() : 0));
-  phases.Add("installed",
-             std::to_string(state ? state->installed.placements.size() : 0));
-  phases.Add("claims", std::to_string(state ? state->claims.size() : 0));
-  phases.Add("pieces", std::to_string(facts.pieces.size()));
-  phases.Add("pending", std::to_string(state ? state->pending.size() : 0));
-  phases.Add("commands", std::to_string(next.commands.size()));
-  phases.Add("kind", std::string{Actors::SyncKindName(kind)});
-  phases.Emit();
-  return {std::move(facts),
-          {std::move(catalog), std::move(planned.matches)},
-          std::move(next),
-          kind,
-          observedAt};
-}
-
 void Manager::NoteMaterialLayout(MaterialLayout a_before) {
   if (materialLayout_ == a_before) {
     return;
@@ -1407,24 +1203,6 @@ void Manager::NoteArmorWithoutGeometry(const Actors::ActorFacts &a_facts) {
                    piece.itemID, ArmorNameOf(piece.itemID));
     }
   }
-}
-
-void Manager::RecordState(RE::FormID a_actorID,
-                          std::optional<Actors::ActorState> a_state) {
-  if (!a_state) {
-    tracked_.erase(a_actorID);
-    return;
-  }
-  tracked_[a_actorID].state = std::move(a_state);
-}
-
-Actors::ActorPlan Manager::InstalledPlanOf(RE::FormID a_actorID) const {
-  const auto tracked = tracked_.find(a_actorID);
-  if (tracked == tracked_.end()) {
-    return {};
-  }
-  const std::optional<Actors::ActorState> &state = tracked->second.state;
-  return state ? state->installed : Actors::ActorPlan{};
 }
 
 std::expected<LiveActor, std::string>
@@ -1494,7 +1272,6 @@ std::optional<std::size_t> Manager::InstanceFor(LiveActor &a_state,
   instance.environment = std::make_unique<ActorEnvironment>(
       actor.get(), RE::TESForm::LookupByID<RE::MagicItem>(a_enchantment),
       planned->effectKey);
-  instance.environment->SetAppliedResolution(a_state.appliedResolution);
   instance.startMS = NowMS();
   CarryInstanceTime(instance, actor->GetFormID(), *recipe, a_settings);
   a_state.instances[instanceIndex] = std::move(instance);
@@ -1551,97 +1328,6 @@ RenderOutcome Manager::PlaceInstances(LiveActor &a_state, RE::FormID a_actorID,
   return built;
 }
 
-void Manager::KeepActorRender(RE::FormID a_actorID, LiveActor &a_state,
-                              const RenderOutcome &a_render) {
-  KeepRender(a_state, a_render);
-  if (const RenderBuild *build = Get<RenderBuild>(a_render)) {
-    SetAppliedResolution(a_state, build->level);
-    a_state.levelCosts = build->levelCosts;
-    KeepInstallLevel(a_actorID, build->level);
-    budget_ = Charged(budget_, build->chargedBytes);
-  }
-  if (a_state.firstDraw) {
-    a_state.firstDraw->beganFrame = renderFrame_;
-  }
-}
-
-void Manager::DrainPlanJobs(const Settings &a_settings) {
-  for (JobDone<PlanBuildOutput> &done : planQueue_.TakeDone()) {
-    BookAfterClose closed = Closed(std::move(planJobs_), done.id);
-    planJobs_ = std::move(closed.book);
-    const PlanArrival arrival = ArrivalOf(closed.job, done.result);
-    const RE::FormID submitter = closed.job ? closed.job->actor : 0;
-    const std::string problem = ProblemOf(done);
-    switch (arrival) {
-    case PlanArrival::kStale:
-      TracePlanJob("dropped", done.id, submitter,
-                   Appended({{"reason", "stale"}}, TimingFields(done.timing)));
-      break;
-    case PlanArrival::kFailed:
-      if (done.result) {
-        LogPlanWarnings(done.result->warnings, warningHistory_);
-      }
-      TracePlanJob("failed", done.id, submitter,
-                   Appended({{"problem", problem}}, TimingFields(done.timing)));
-      break;
-    case PlanArrival::kBuilt:
-      if (!closed.job || !done.result || !done.result->plan) {
-        break;
-      }
-      LogPlanWarnings(done.result->warnings, warningHistory_);
-      EmitPlanBuild(submitter, "worker", closed.job->key.stacks.size(),
-                    *done.result);
-      TracePlanJob(
-          "done", done.id, submitter,
-          Appended(TimingFields(done.timing),
-                   {{"steps", std::to_string(done.result->plan->steps.size())},
-                    {"unfinished", std::to_string(planQueue_.Unfinished())}}));
-      renderPlans_.Store(std::move(closed.job->key),
-                         std::move(*done.result->plan),
-                         std::move(closed.job->graphs));
-      break;
-    }
-    for (auto &[actorID, state] : live_) {
-      switch (StepFor(state.awaitedPlan, done.id, arrival)) {
-      case AwaiterStep::kIgnore:
-        break;
-      case AwaiterStep::kRebuild:
-        RebuildAwaitedRender(actorID, state, done.id, a_settings);
-        break;
-      case AwaiterStep::kFail:
-        FailAwaitedRender(actorID, state, problem, a_settings);
-        break;
-      }
-    }
-  }
-}
-
-void Manager::RebuildAwaitedRender(RE::FormID a_actorID, LiveActor &a_state,
-                                   JobId a_arrived,
-                                   const Settings &a_settings) {
-  a_state.awaitedPlan.reset();
-  const RE::NiPointer<RE::Actor> actor = a_state.actor.get();
-  if (!actor) {
-    return;
-  }
-  ActorStacks stacks{.actor = a_actorID};
-  CollectActorStacks(a_state, a_settings, stacks);
-  const InstallBound bound = InstallBoundOf(a_actorID, *actor, 0, a_settings);
-  const RenderOutcome built = BuildActorRender(
-      a_state, stacks, a_settings,
-      {renderPlans_, warningHistory_, planQueue_, planJobs_}, bound);
-  a_state.fullSizes = PlanSizes{stacks.sizes};
-  KeepActorRender(a_actorID, a_state, built);
-  if (TextureLab *lab = TextureLab::GetSingleton()) {
-    lab->InvalidatePreviews();
-  }
-  TracePlanJob(ResultText(built), a_state.awaitedPlan.value_or(a_arrived),
-               a_actorID,
-               {{"level", LevelText(built)},
-                {"finest_level", std::string{LevelName(bound.finest)}},
-                {"admitted_bytes", std::to_string(ChargedBytesOf(built))}});
-}
-
 void Manager::FailAwaitedRender(RE::FormID a_actorID, LiveActor &a_state,
                                 const std::string &a_problem,
                                 const Settings &a_settings) {
@@ -1649,39 +1335,6 @@ void Manager::FailAwaitedRender(RE::FormID a_actorID, LiveActor &a_state,
   ActorStacks stacks{.actor = a_actorID};
   CollectActorStacks(a_state, a_settings, stacks);
   FailStackOutputs(stacks, a_problem);
-}
-
-InstallBound Manager::InstallBoundOf(RE::FormID a_actorID, RE::Actor &a_actor,
-                                     std::uint64_t a_replaced,
-                                     const Settings &a_settings) const {
-  const auto tracked = tracked_.find(a_actorID);
-  if (tracked == tracked_.end()) {
-    return {};
-  }
-  const std::optional<ResolutionLevel> level = tracked->second.targetResolution;
-  if (a_actor.IsPlayerRef()) {
-    return {level.value_or(ResolutionLevel::kFull), std::nullopt};
-  }
-  if (level) {
-    return {*level, HeadroomOf(budget_, a_replaced)};
-  }
-  if (!RegressionScreenResolution().value_or(a_settings.sizeByScreen)) {
-    return {};
-  }
-  const std::optional<ResolutionLevel> wanted = WantedLevel(
-      {ScreenFraction(a_actor),
-       !a_settings.cullOutOfView || InCameraView(a_actor), ActorRole::kOther});
-  if (!wanted) {
-    return {};
-  }
-  return {*wanted, HeadroomOf(budget_, a_replaced)};
-}
-
-void Manager::KeepInstallLevel(RE::FormID a_actorID, ResolutionLevel a_level) {
-  const auto tracked = tracked_.find(a_actorID);
-  if (tracked != tracked_.end()) {
-    tracked->second.targetResolution = a_level;
-  }
 }
 
 std::size_t Manager::PlaceGeometries(LiveActor &a_state,
@@ -1776,38 +1429,6 @@ void Manager::PlaceLightsOf(RE::Actor *a_actor, LiveActor &a_state) {
       LogOnce(warningHistory_, Severity::kWarning, fault);
     }
   }
-}
-
-void Manager::ForgetActor(RE::FormID a_actorID) {
-  animations_.Stop(a_actorID);
-  ForgetAnimEvents(a_actorID);
-  if (const std::size_t retired = RetireActor(a_actorID);
-      retired > 0 && GetSettings().verboseLogging) {
-    logger::info("actor {:08X}: retired {} recipe(s)", a_actorID, retired);
-  }
-  applications_.ClearReinstall(a_actorID);
-  waitingInstalls_ = Removed(std::move(waitingInstalls_), a_actorID);
-  tracked_.erase(a_actorID);
-}
-
-std::size_t Manager::RetireActor(RE::FormID a_actorID) {
-  const auto tracked = tracked_.find(a_actorID);
-  if (tracked != tracked_.end()) {
-    if (std::optional<Actors::ActorState> &state = tracked->second.state) {
-      state->installed = {};
-    }
-  }
-  const auto it = live_.find(a_actorID);
-  if (it == live_.end()) {
-    return 0;
-  }
-  if (tracked != tracked_.end()) {
-    if (const std::optional<std::uint64_t> bytes =
-            ReturnBytesOf(it->second, tracked->second.targetResolution)) {
-      tracked->second.returnBytes = bytes;
-    }
-  }
-  return RetireActorResources(a_actorID);
 }
 
 std::size_t Manager::RetireActorResources(RE::FormID a_actorID) {

@@ -21,10 +21,6 @@ using PlanQueue = JobQueue<PlanBuildInput, PlanBuildOutput>;
 
 inline constexpr std::size_t kPlanJobCapacity = 16;
 
-struct PlanAwaited {
-  JobId job{};
-};
-
 struct OpenPlanJob {
   JobId job{};
   RenderPlanKey key;
@@ -41,20 +37,10 @@ struct BookAfterClose {
   std::optional<OpenPlanJob> job;
 };
 
-enum class PlanArrival { kBuilt, kFailed, kStale };
-
-enum class AwaiterStep { kIgnore, kRebuild, kFail };
-
 [[nodiscard]] std::optional<JobId> OpenJobFor(const PlanJobBook &a_book,
                                               const RenderPlanKey &a_key);
 [[nodiscard]] PlanJobBook Opened(PlanJobBook a_book, OpenPlanJob a_job);
 [[nodiscard]] BookAfterClose Closed(PlanJobBook a_book, JobId a_job);
-[[nodiscard]] PlanArrival
-ArrivalOf(const std::optional<OpenPlanJob> &a_job,
-          const std::expected<PlanBuildOutput, std::string> &a_result) noexcept;
-[[nodiscard]] AwaiterStep StepFor(std::optional<JobId> a_awaited,
-                                  JobId a_arrived,
-                                  PlanArrival a_arrival) noexcept;
 [[nodiscard]] Orchestration::PlanJobId PlanJobIdOf(JobId a_job) noexcept;
 [[nodiscard]] JobId JobIdOf(Orchestration::PlanJobId a_job) noexcept;
 [[nodiscard]] Orchestration::PlanJobDone

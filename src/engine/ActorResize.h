@@ -11,14 +11,12 @@
 #include <cstdint>
 #include <expected>
 #include <memory>
-#include <optional>
 #include <string>
 
 namespace BetterEnchantmentEffects {
 struct ResizeSwap {
   ResolutionLevel from = ResolutionLevel::kFull;
   ResolutionLevel to = ResolutionLevel::kFull;
-  std::uint64_t frames = 0;
   std::size_t stacks = 0;
   std::size_t drawn = 0;
   TargetCost targets;
@@ -26,9 +24,6 @@ struct ResizeSwap {
 
 [[nodiscard]] std::shared_ptr<RenderInstance>
 AttachedRender(const LiveActor &a_state);
-void RequestResize(LiveActor &a_state, ResolutionLevel a_level);
-[[nodiscard]] std::expected<void, std::string>
-StartResize(LiveActor &a_state, std::uint64_t a_frame);
 [[nodiscard]] std::expected<std::size_t, std::string>
 StartResize(LiveActor &a_state, ResolutionLevel a_to);
 [[nodiscard]] DrawPace DrawResize(LiveActor &a_state, std::uint64_t a_frame,
@@ -42,13 +37,9 @@ void DropResize(LiveActor &a_state);
 InFlightOf(const LiveActor &a_state) noexcept;
 [[nodiscard]] std::size_t
 DrawnStacks(const ResizeInFlight &a_inFlight) noexcept;
-[[nodiscard]] std::optional<ResizeSwap> FinishResize(LiveActor &a_state,
-                                                     std::uint64_t a_frame);
 [[nodiscard]] const RenderInstance *
 ResizingInstance(const LiveActor &a_state) noexcept;
-void StartFirstDraw(LiveActor &a_state, std::uint64_t a_frame);
 void StartFirstDraw(LiveActor &a_state);
-[[nodiscard]] FirstDrawProgress ProgressOf(const FirstDraw &a_draw) noexcept;
 [[nodiscard]] std::size_t DrawnSlots(const FirstDraw &a_draw) noexcept;
 [[nodiscard]] LiveGeometry *GeometryOf(LiveActor &a_state,
                                        const HiddenSlot &a_slot) noexcept;

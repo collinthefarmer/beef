@@ -58,37 +58,14 @@ void AResetBookMakesResultsStale() {
   Check(!closed.job.has_value(), "a reset book does not know the old job");
   const std::expected<PlanBuildOutput, std::string> built =
       PlanBuildOutput{RenderPlan{}, {}, {}};
-  const std::expected<PlanBuildOutput, std::string> unlowered =
-      PlanBuildOutput{std::unexpected(std::string{"no plan"}), {}, {}};
   const std::expected<PlanBuildOutput, std::string> thrown =
       std::unexpected(std::string{"the job threw"});
-  const std::optional<OpenPlanJob> open = JobOf(1, 1);
-  Check(ArrivalOf(closed.job, built) == PlanArrival::kStale,
-        "a built plan for a job the book dropped is stale");
-  Check(ArrivalOf(std::nullopt, thrown) == PlanArrival::kStale,
-        "a failed job the book dropped is stale, not a failure");
-  Check(ArrivalOf(open, built) == PlanArrival::kBuilt, "an open job builds");
-  Check(ArrivalOf(open, unlowered) == PlanArrival::kFailed,
-        "an open job can fail to lower");
-  Check(ArrivalOf(open, thrown) == PlanArrival::kFailed,
-        "an open job can fail in the worker");
-}
-
-void AwaitersFollowTheirJob() {
-  Check(StepFor(std::nullopt, JobId{1}, PlanArrival::kBuilt) ==
-            AwaiterStep::kIgnore,
-        "an actor that awaits nothing ignores a result");
-  Check(StepFor(JobId{2}, JobId{1}, PlanArrival::kBuilt) ==
-            AwaiterStep::kIgnore,
-        "an actor that reinstalled onto another job ignores the old one");
-  Check(StepFor(JobId{1}, JobId{1}, PlanArrival::kBuilt) ==
-            AwaiterStep::kRebuild,
-        "an actor rebuilds from a built plan");
-  Check(StepFor(JobId{1}, JobId{1}, PlanArrival::kStale) ==
-            AwaiterStep::kRebuild,
-        "an actor whose job went stale asks again");
-  Check(StepFor(JobId{1}, JobId{1}, PlanArrival::kFailed) == AwaiterStep::kFail,
-        "an actor whose job failed fails its outputs");
+  Check(Is<Orchestration::PlanJobBuilt>(
+            PlanJobDoneOf(JobId{1}, closed.job, built)),
+        "a built plan for a job the book dropped asks its awaiter again");
+  Check(Is<Orchestration::PlanJobBuilt>(
+            PlanJobDoneOf(JobId{1}, std::nullopt, thrown)),
+        "a failed job the book dropped is not a failure");
 }
 
 void JobIdsConvertBothWays() {
@@ -153,7 +130,6 @@ int main() {
   OneJobPerKey();
   ClosingFreesTheKey();
   AResetBookMakesResultsStale();
-  AwaitersFollowTheirJob();
   BookHoldsGraphsUntilClosed();
   JobIdsConvertBothWays();
   DoneJobsBecomeCoreFacts();

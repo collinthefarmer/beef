@@ -12,7 +12,6 @@
 #include <vector>
 
 namespace BetterEnchantmentEffects {
-inline constexpr std::uint64_t kUnpublishedDrawBudgetUs = 4000;
 inline constexpr std::uint64_t kFirstDrawAttachAfterTicks = 60;
 
 struct DrawPace {
@@ -34,7 +33,6 @@ struct FirstDrawProgress {
 
 enum class FirstDrawEnd { kDrawn, kTickLimit };
 
-[[nodiscard]] bool MayDrawStack(DrawPace a_pace) noexcept;
 [[nodiscard]] bool MayDrawStack(DrawPace a_pace,
                                 std::uint64_t a_budgetUs) noexcept;
 [[nodiscard]] DrawPace Drew(DrawPace a_pace, std::uint64_t a_us) noexcept;
