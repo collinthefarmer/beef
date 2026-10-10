@@ -74,6 +74,11 @@ struct RenderFlags {
 using RenderOutcome =
     std::variant<RenderBuild, Orchestration::PlanAwaited, RenderNotBuilt>;
 
+struct PlacedRender {
+  RenderOutcome built;
+  std::vector<GeometrySlot> unpublished;
+};
+
 using CommandResults = std::vector<Orchestration::CommandResult>;
 
 struct GatheredFacts {
@@ -301,11 +306,11 @@ private:
   [[nodiscard]] std::optional<std::size_t>
   InstanceFor(LiveActor &a_state, InstanceId a_matchedInstance,
               RE::FormID a_enchantment, const Settings &a_settings);
-  [[nodiscard]] RenderOutcome PlaceInstances(LiveActor &a_state,
-                                             RE::FormID a_actorID,
-                                             const InstallBound &a_bound,
-                                             std::uint64_t a_replaced,
-                                             const Settings &a_settings);
+  [[nodiscard]] PlacedRender PlaceInstances(LiveActor &a_state,
+                                            RE::FormID a_actorID,
+                                            const InstallBound &a_bound,
+                                            std::uint64_t a_replaced,
+                                            const Settings &a_settings);
   [[nodiscard]] std::vector<Orchestration::PlanJobDone> DrainPlanJobs();
   void FailAwaitedRender(LiveActor &a_state, const std::string &a_problem);
   [[nodiscard]] OutputFilter ShownOutputs() const;

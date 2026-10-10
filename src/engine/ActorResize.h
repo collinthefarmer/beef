@@ -4,6 +4,7 @@
 #include "diagnostics/WarningHistory.h"
 #include "engine/LiveActor.h"
 #include "planners/DrawPacing.h"
+#include "planners/InstallProgram.h"
 #include "planners/ResolutionLevel.h"
 #include "planners/TargetCost.h"
 
@@ -11,6 +12,7 @@
 #include <cstdint>
 #include <expected>
 #include <memory>
+#include <span>
 #include <string>
 
 namespace BetterEnchantmentEffects {
@@ -39,7 +41,7 @@ InFlightOf(const LiveActor &a_state) noexcept;
 DrawnStacks(const ResizeInFlight &a_inFlight) noexcept;
 [[nodiscard]] const RenderInstance *
 ResizingInstance(const LiveActor &a_state) noexcept;
-void StartFirstDraw(LiveActor &a_state);
+void StartFirstDraw(LiveActor &a_state, std::span<const GeometrySlot> a_slots);
 [[nodiscard]] std::size_t DrawnSlots(const FirstDraw &a_draw) noexcept;
 [[nodiscard]] LiveGeometry *GeometryOf(LiveActor &a_state,
                                        const HiddenSlot &a_slot) noexcept;

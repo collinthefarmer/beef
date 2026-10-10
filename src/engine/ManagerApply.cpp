@@ -840,6 +840,12 @@ RenderOutcome BuildRequestedRender(
   return BuildActorRender(a_state, *a_request, a_settings, a_stores, a_bound);
 }
 
+std::vector<GeometrySlot> UnpublishedSlotsOf(
+    const std::expected<ActorRenderRequest, std::string> &a_request) {
+  return a_request ? UnpublishedSlotsOf(a_request->geometries)
+                   : std::vector<GeometrySlot>{};
+}
+
 std::string LevelText(const RenderOutcome &a_render) {
   if (const RenderBuild *build = Get<RenderBuild>(a_render)) {
     return std::string{LevelName(build->level)};
@@ -859,7 +865,8 @@ std::uint64_t ChargedBytesOf(const RenderOutcome &a_render) {
   return build ? build->chargedBytes : 0;
 }
 
-void KeepRender(LiveActor &a_state, const RenderOutcome &a_render) {
+void KeepRender(LiveActor &a_state, const RenderOutcome &a_render,
+                std::span<const GeometrySlot> a_unpublished) {
   if (const Orchestration::PlanAwaited *awaited =
           Get<Orchestration::PlanAwaited>(a_render)) {
     a_state.awaitedPlan = JobIdOf(awaited->job);
@@ -871,11 +878,11 @@ void KeepRender(LiveActor &a_state, const RenderOutcome &a_render) {
     a_state.renderLevel = build->level;
     a_state.holding = IntermediateHolding::kHeld;
   }
-  StartFirstDraw(a_state);
+  StartFirstDraw(a_state, a_unpublished);
 }
 
-Orchestration::RenderEvent RenderEventOf(const LiveActor &a_state,
-                                         const RenderOutcome &a_render) {
+Orchestration::RenderEvent RenderEventOf(const RenderOutcome &a_render,
+                                         std::size_t a_unpublished) {
   if (const Orchestration::PlanAwaited *awaited =
           Get<Orchestration::PlanAwaited>(a_render)) {
     return *awaited;
@@ -884,9 +891,8 @@ Orchestration::RenderEvent RenderEventOf(const LiveActor &a_state,
   if (!build) {
     return Orchestration::InstalledWithoutRender{};
   }
-  return Orchestration::Installed{
-      build->level, a_state.firstDraw ? a_state.firstDraw->slots.size() : 0,
-      build->levelCosts, build->chargedBytes};
+  return Orchestration::Installed{build->level, a_unpublished,
+                                  build->levelCosts, build->chargedBytes};
 }
 
 std::string LightProblemOf(const LiveInstance &a_instance,
@@ -1178,10 +1184,10 @@ void Manager::CarryInstanceTime(LiveInstance &a_instance, RE::FormID a_actor,
   }
 }
 
-RenderOutcome Manager::PlaceInstances(LiveActor &a_state, RE::FormID a_actorID,
-                                      const InstallBound &a_bound,
-                                      std::uint64_t a_replaced,
-                                      const Settings &a_settings) {
+PlacedRender Manager::PlaceInstances(LiveActor &a_state, RE::FormID a_actorID,
+                                     const InstallBound &a_bound,
+                                     std::uint64_t a_replaced,
+                                     const Settings &a_settings) {
   for (LiveInstance &instance : a_state.instances) {
     if (instance.signals && instance.environment) {
       instance.signals->Tick(*instance.environment, {0.0f, 0.0f});
@@ -1214,7 +1220,7 @@ RenderOutcome Manager::PlaceInstances(LiveActor &a_state, RE::FormID a_actorID,
     phases.Add("admitted_bytes", std::to_string(ChargedBytesOf(built)));
   }
   phases.Emit();
-  return built;
+  return {std::move(built), UnpublishedSlotsOf(request)};
 }
 
 void Manager::FailAwaitedRender(LiveActor &a_state,
@@ -1306,11 +1312,11 @@ Manager::InstallLiveActor(RE::Actor &a_actor,
     return Orchestration::ActorEvent{id,
                                      Orchestration::InstalledWithoutRender{}};
   }
-  const RenderOutcome built = phases.Measure("place_us", [&] {
+  const PlacedRender placed = phases.Measure("place_us", [&] {
     return PlaceInstances(*state, actorID, a_command.bound,
                           a_command.replacedBytes, settings);
   });
-  KeepRender(*state, built);
+  KeepRender(*state, placed.built, placed.unpublished);
   phases.Measure("lights_us", [&] {
     PlaceLights(*state,
                 PlanLightsOf(state->matches, RecipesOf(*state), ShownOutputs()),
@@ -1323,7 +1329,8 @@ Manager::InstallLiveActor(RE::Actor &a_actor,
                       : Actors::SyncKind::kInstalled);
   });
   phases.Emit();
-  Orchestration::ActorEvent event{id, RenderEventOf(*state, built)};
+  Orchestration::ActorEvent event{
+      id, RenderEventOf(placed.built, placed.unpublished.size())};
   live_[actorID] = std::move(*state);
   if (applications_.TakeEquipped(actorID)) {
     FireEquip(actorID);
@@ -1338,13 +1345,14 @@ Manager::BuildAwaitedRender(RE::FormID a_actorID, LiveActor &a_state,
   const std::optional<JobId> arrived =
       std::exchange(a_state.awaitedPlan, std::nullopt);
   const std::vector<BoundSurfaces> bound = BoundSurfacesOf(a_state);
-  const RenderOutcome built = BuildRequestedRender(
-      a_state,
+  const std::expected<ActorRenderRequest, std::string> request =
       RenderRequestOf(a_state, a_actorID, SurfacePlanOf(a_state), bound,
-                      a_settings),
-      a_settings, {renderPlans_, warningHistory_, planQueue_, planJobs_},
-      a_bound);
-  KeepRender(a_state, built);
+                      a_settings);
+  const RenderOutcome built = BuildRequestedRender(
+      a_state, request, a_settings,
+      {renderPlans_, warningHistory_, planQueue_, planJobs_}, a_bound);
+  const std::vector<GeometrySlot> unpublished = UnpublishedSlotsOf(request);
+  KeepRender(a_state, built, unpublished);
   if (TextureLab *lab = TextureLab::GetSingleton()) {
     lab->InvalidatePreviews();
   }
@@ -1353,7 +1361,7 @@ Manager::BuildAwaitedRender(RE::FormID a_actorID, LiveActor &a_state,
                {{"level", LevelText(built)},
                 {"finest_level", std::string{LevelName(a_bound.finest)}},
                 {"admitted_bytes", std::to_string(ChargedBytesOf(built))}});
-  return RenderEventOf(a_state, built);
+  return RenderEventOf(built, unpublished.size());
 }
 
 std::vector<Orchestration::PlanJobDone> Manager::DrainPlanJobs() {

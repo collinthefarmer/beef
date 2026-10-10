@@ -77,6 +77,20 @@ std::vector<bool> DrawnByMergedChains(const LiveActor &a_state) {
   return covered;
 }
 
+std::optional<HiddenSlot> HiddenSlotOf(const LiveActor &a_state,
+                                       const GeometrySlot &a_slot) {
+  std::size_t flat = 0;
+  for (std::size_t p = 0; p < a_state.pieces.size(); ++p) {
+    const std::size_t geometries = a_state.pieces[p].geometries.size();
+    const std::size_t index = IndexOf(a_slot.geometry);
+    if (index < flat + geometries) {
+      return HiddenSlot{p, index - flat, a_slot.slot, false};
+    }
+    flat += geometries;
+  }
+  return std::nullopt;
+}
+
 void ConcealStackSlots(LiveGeometry &a_geometry) {
   for (const SlotStackPlan &slot : a_geometry.stackPlan.slots) {
     if (SlotTarget *target = TargetFor(a_geometry, slot.surface)) {
@@ -253,19 +267,15 @@ std::size_t DrawnStacks(const ResizeInFlight &a_inFlight) noexcept {
       }));
 }
 
-void StartFirstDraw(LiveActor &a_state) {
+void StartFirstDraw(LiveActor &a_state, std::span<const GeometrySlot> a_slots) {
   a_state.firstDraw.reset();
   if (!AttachedRender(a_state)) {
     return;
   }
   FirstDraw draw;
-  for (std::size_t p = 0; p < a_state.pieces.size(); ++p) {
-    const LivePiece &piece = a_state.pieces[p];
-    for (std::size_t g = 0; g < piece.geometries.size(); ++g) {
-      const std::size_t slots = piece.geometries[g].stackPlan.slots.size();
-      for (std::size_t s = 0; s < slots; ++s) {
-        draw.slots.push_back({p, g, s, false});
-      }
+  for (const GeometrySlot &slot : a_slots) {
+    if (const std::optional<HiddenSlot> hidden = HiddenSlotOf(a_state, slot)) {
+      draw.slots.push_back(*hidden);
     }
   }
   a_state.firstDraw = std::move(draw);
