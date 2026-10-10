@@ -5,7 +5,11 @@
 
 namespace BetterEnchantmentEffects {
 bool MayDrawStack(DrawPace a_pace) noexcept {
-  return a_pace.stacks == 0 || a_pace.spentUs < kUnpublishedDrawBudgetUs;
+  return MayDrawStack(a_pace, kUnpublishedDrawBudgetUs);
+}
+
+bool MayDrawStack(DrawPace a_pace, std::uint64_t a_budgetUs) noexcept {
+  return a_pace.stacks == 0 || a_pace.spentUs < a_budgetUs;
 }
 
 DrawPace Drew(DrawPace a_pace, std::uint64_t a_us) noexcept {
