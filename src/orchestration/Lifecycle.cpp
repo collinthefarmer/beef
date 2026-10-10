@@ -383,7 +383,7 @@ TickActor TickActorFor(ActorId a_actor, const RenderPhase &a_phase,
   const bool unpublished = firstDrawing || Is<AwaitingPlan>(a_phase);
   return {a_actor,      a_sight.inView,
           unpublished,  !a_settings.publishEffects || unpublished,
-          firstDrawing, !firstDrawing || !a_sight.inView};
+          firstDrawing, !unpublished || !a_sight.inView};
 }
 
 std::string_view EventName(const RenderEvent &a_event) noexcept {

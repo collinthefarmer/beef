@@ -3406,6 +3406,11 @@ Nothing in the engine calls it yet.
   The engine builds the render and its first-draw list first; a `TickActor`
   without `concealSlots` would then publish the render before it draws. The
   agreement check over the R3 scenarios found this.
+- `TickActor` finishes applications in `AwaitingPlan` and `FirstDrawing` only
+  out of view. In view, a render built from the plan this tick is unpublished,
+  and its applications would report a render the player cannot see. Before
+  R4, the engine built awaited renders before the tick loop, which finished
+  nothing for a first draw in view.
 - `actor_phase` carries `from`, `to` and `event`; `actor_phase_ignored`
   carries `phase` and `event`. A phase created from nothing has the phase
   name `none`. The event names are the `RenderEvent` names in snake case,
