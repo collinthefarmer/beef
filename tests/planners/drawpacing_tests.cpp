@@ -20,6 +20,22 @@ void BudgetDrawsAtLeastOneStack() {
         "each drawn stack adds its time and itself");
 }
 
+void BudgetIsAnArgument() {
+  const DrawPace spent = Drew({}, 2000);
+  Check(MayDrawStack({}, 1000), "a tick draws its first stack at any budget");
+  Check(!MayDrawStack(spent, 2000),
+        "a tick that spent the given budget draws no further stack");
+  Check(MayDrawStack(spent, 2001),
+        "a tick inside the given budget draws another stack");
+  Check(MayDrawStack(Drew({}, kUnpublishedDrawBudgetUs - 1)) ==
+                MayDrawStack(Drew({}, kUnpublishedDrawBudgetUs - 1),
+                             kUnpublishedDrawBudgetUs) &&
+            MayDrawStack(Drew({}, kUnpublishedDrawBudgetUs)) ==
+                MayDrawStack(Drew({}, kUnpublishedDrawBudgetUs),
+                             kUnpublishedDrawBudgetUs),
+        "the default budget is the fixed one");
+}
+
 void PlayerThenLargestOnScreen() {
   const std::vector<UnpublishedDrawCandidate> candidates{
       {1, ActorRole::kOther, 0.2f},
@@ -48,6 +64,7 @@ void AttachWaitsForEveryStack() {
 
 int main() {
   BudgetDrawsAtLeastOneStack();
+  BudgetIsAnArgument();
   PlayerThenLargestOnScreen();
   AttachWaitsForEveryStack();
   return test::Finish("planners_drawpacing");

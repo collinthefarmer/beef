@@ -74,6 +74,26 @@ int main() {
   Check(parsed.animationFPS == kMinAnimationFPS &&
             parsed.animationSpeed == kMaxAnimationSpeed,
         "parser and publication share numeric bounds");
+  Check(Settings{}.unpublishedDrawBudgetMs == 4,
+        "the unpublished draw budget defaults to 4 ms");
+  Check(Settings::Parse("UnpublishedDrawBudgetMs=0").unpublishedDrawBudgetMs ==
+                kMinUnpublishedDrawBudgetMs &&
+            Settings::Parse("UnpublishedDrawBudgetMs=99")
+                    .unpublishedDrawBudgetMs == kMaxUnpublishedDrawBudgetMs &&
+            Settings::Parse("UnpublishedDrawBudgetMs=8")
+                    .unpublishedDrawBudgetMs == 8,
+        "the parser bounds the unpublished draw budget to 1 to 16 ms");
+  Settings unbounded;
+  unbounded.unpublishedDrawBudgetMs = 0;
+  publication.Publish(unbounded);
+  Check(publication.Read().unpublishedDrawBudgetMs ==
+            kMinUnpublishedDrawBudgetMs,
+        "publication bounds a zero unpublished draw budget");
+  unbounded.unpublishedDrawBudgetMs = 1000;
+  publication.Publish(unbounded);
+  Check(publication.Read().unpublishedDrawBudgetMs ==
+            kMaxUnpublishedDrawBudgetMs,
+        "publication bounds an excessive unpublished draw budget");
   Check(!SettingsDiffer(parsed, Settings::Parse(parsed.Serialize())),
         "checked settings round trip through INI");
   Check(ReadText("BetterEnchantmentEffects.ini").value_or("") ==

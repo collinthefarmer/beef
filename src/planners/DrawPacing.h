@@ -35,6 +35,8 @@ struct FirstDrawProgress {
 enum class FirstDrawEnd { kDrawn, kTickLimit };
 
 [[nodiscard]] bool MayDrawStack(DrawPace a_pace) noexcept;
+[[nodiscard]] bool MayDrawStack(DrawPace a_pace,
+                                std::uint64_t a_budgetUs) noexcept;
 [[nodiscard]] DrawPace Drew(DrawPace a_pace, std::uint64_t a_us) noexcept;
 [[nodiscard]] std::vector<std::uint32_t>
 UnpublishedDrawOrder(std::span<const UnpublishedDrawCandidate> a_candidates);

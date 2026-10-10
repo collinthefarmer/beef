@@ -89,6 +89,12 @@ constexpr std::array kTable{
     SettingDesc{"General", "AnimationFPS", "Animation FPS",
                 "Animation update rate.", &Settings::animationFPS,
                 kMinAnimationFPS, kMaxAnimationFPS, W::kIntSlider, false},
+    SettingDesc{"General", "UnpublishedDrawBudgetMs", "Unpublished draw budget",
+                "The most milliseconds per tick that the plugin spends drawing "
+                "new and resized effects before it shows them. A higher value "
+                "shows them sooner and costs more frame time.",
+                &Settings::unpublishedDrawBudgetMs, kMinUnpublishedDrawBudgetMs,
+                kMaxUnpublishedDrawBudgetMs, W::kIntSlider, false},
     SettingDesc{"General", "AnimationSpeed", "Animation speed",
                 "Time multiplier for the EFSH animation.",
                 &Settings::animationSpeed, kMinAnimationSpeed,
