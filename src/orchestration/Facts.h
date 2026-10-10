@@ -33,30 +33,55 @@ struct StaleActor {
   Actors::PlannedActor planned;
 };
 
-struct PlanJobDone {
+struct PlanJobBuilt {
   PlanJobId job{};
-  bool built = false;
+};
+
+struct PlanJobFailed {
+  PlanJobId job{};
   std::string problem;
 };
 
-struct AwaitsPlan {
+using PlanJobDone = std::variant<PlanJobBuilt, PlanJobFailed>;
+
+struct PlanAwaited {
   PlanJobId job{};
 };
 
-struct WithRender {
+struct Installed {
   ResolutionLevel level = ResolutionLevel::kFull;
-  std::size_t firstDrawSlots = 0;
+  std::size_t units = 0;
   PerLevel<std::optional<LevelCost>> levelCosts;
   std::uint64_t chargedBytes = 0;
 };
 
-struct WithoutRender {};
+struct InstalledWithoutRender {};
 
-using RenderOutcome = std::variant<AwaitsPlan, WithRender, WithoutRender>;
+struct UnpublishedDrawn {
+  std::size_t drawn = 0;
+  bool drewThisTick = false;
+};
 
-struct InstallDone {
+struct ResizeStarted {
+  std::size_t units = 0;
+};
+
+struct ResizeNotStarted {
+  std::string reason;
+};
+
+struct ResizeSwapped {};
+
+struct ResizeNotSwapped {};
+
+using RenderEvent =
+    std::variant<PlanAwaited, Installed, InstalledWithoutRender,
+                 UnpublishedDrawn, ResizeStarted, ResizeNotStarted,
+                 ResizeSwapped, ResizeNotSwapped>;
+
+struct ActorEvent {
   ActorId actor{};
-  RenderOutcome outcome;
+  RenderEvent event;
 };
 
 struct InstallFailed {
@@ -64,43 +89,11 @@ struct InstallFailed {
   std::string reason;
 };
 
-struct BuildAwaitedRenderDone {
-  ActorId actor{};
-  RenderOutcome outcome;
-};
-
-struct RetireDone {
+struct Retired {
   ActorId actor{};
 };
 
-struct StartResizeDone {
-  ActorId actor{};
-  std::size_t stacks = 0;
-};
-
-struct StartResizeFailed {
-  ActorId actor{};
-  std::string reason;
-};
-
-struct SwapResizeDone {
-  ActorId actor{};
-};
-
-struct SwapResizeFailed {
-  ActorId actor{};
-};
-
-struct DrawHiddenDone {
-  ActorId actor{};
-  std::size_t drawn = 0;
-  bool drewThisTick = false;
-};
-
-using CommandResult =
-    std::variant<InstallDone, InstallFailed, BuildAwaitedRenderDone, RetireDone,
-                 StartResizeDone, StartResizeFailed, SwapResizeDone,
-                 SwapResizeFailed, DrawHiddenDone>;
+using CommandResult = std::variant<ActorEvent, InstallFailed, Retired>;
 
 struct TickFacts {
   Millis now = 0;

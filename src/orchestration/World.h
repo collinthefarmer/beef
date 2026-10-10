@@ -3,10 +3,9 @@
 
 #include "actors/Actor.h"
 #include "actors/SyncLog.h"
-#include "planners/ActorPhase.h"
+#include "orchestration/RenderPhase.h"
 #include "planners/ActorRole.h"
 #include "planners/BudgetRadius.h"
-#include "planners/DrawPacing.h"
 #include "planners/Hold.h"
 #include "planners/InstallPacing.h"
 #include "planners/RenderBudget.h"
@@ -20,19 +19,6 @@
 
 namespace BetterEnchantmentEffects::Orchestration {
 using ActorId = Actors::ActorId;
-
-enum class PlanJobId : std::uint64_t {};
-
-struct ResizeDrawProgress {
-  std::size_t stacks = 0;
-  std::size_t drawn = 0;
-  [[nodiscard]] bool operator==(const ResizeDrawProgress &) const = default;
-};
-
-using RenderPhase =
-    ActorPhase<PlanJobId, FirstDrawProgress, ResizeDrawProgress>;
-using RenderEvent =
-    PhaseEvent<PlanJobId, FirstDrawProgress, ResizeDrawProgress>;
 
 struct Sighting {
   bool loaded3D = false;

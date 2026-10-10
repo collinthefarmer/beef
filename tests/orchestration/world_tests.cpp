@@ -13,7 +13,8 @@ static_assert(kAlternativesNothrowMovable<RenderEvent>);
 static_assert(kAlternativesNothrowMovable<CommandResult>);
 static_assert(kAlternativesNothrowMovable<Command>);
 static_assert(std::is_nothrow_move_constructible_v<World>);
-static_assert(kAlternativesNothrowMovable<RenderOutcome>);
+static_assert(kAlternativesNothrowMovable<PlanJobDone>);
+static_assert(kAlternativesNothrowMovable<Intermediates>);
 static_assert(std::is_nothrow_move_constructible_v<TickOutput>);
 
 int main() {

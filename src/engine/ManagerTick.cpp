@@ -966,7 +966,7 @@ void Manager::Tick(std::uint32_t a_nowMS, const Settings &a_settings) {
   frozenLastTick_ = view.freeze;
   const std::optional<RE::FormID> inspected = InspectedActor(a_nowMS);
   AdvanceResizes(a_settings);
-  std::vector<HiddenDrawCandidate> candidates;
+  std::vector<UnpublishedDrawCandidate> candidates;
   for (auto it = live_.begin(); it != live_.end();) {
     LiveActor &state = it->second;
     const auto actor = state.actor.get();
@@ -1021,13 +1021,14 @@ void Manager::Tick(std::uint32_t a_nowMS, const Settings &a_settings) {
   DrawHidden(candidates);
 }
 
-void Manager::DrawHidden(std::span<const HiddenDrawCandidate> a_candidates) {
+void Manager::DrawHidden(
+    std::span<const UnpublishedDrawCandidate> a_candidates) {
   const SectionTimer renderTimer{Metrics::Section::kRender};
   const Studio::View &view = editor_.CurrentView();
   const std::optional<RE::FormID> inspected = InspectedActor(tickNowMS_);
   const bool publish = GetSettings().publishEffects;
   DrawPace pace;
-  for (const std::uint32_t actor : HiddenDrawOrder(a_candidates)) {
+  for (const std::uint32_t actor : UnpublishedDrawOrder(a_candidates)) {
     const auto found = live_.find(actor);
     if (found == live_.end()) {
       continue;

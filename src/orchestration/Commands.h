@@ -15,7 +15,7 @@
 #include <vector>
 
 namespace BetterEnchantmentEffects::Orchestration {
-enum class ReleaseReason : std::uint8_t { kHidden, kBudget };
+enum class ReleaseReason : std::uint8_t { kOutOfView, kBudget };
 
 struct TickActor {
   ActorId actor{};
@@ -41,11 +41,16 @@ struct AbandonResize {
 
 struct ReleaseIntermediates {
   ActorId actor{};
-  ReleaseReason reason = ReleaseReason::kHidden;
+  ReleaseReason reason = ReleaseReason::kOutOfView;
   std::uint64_t bytes = 0;
 };
 
-struct DrawHidden {
+struct SetAppliedLevel {
+  ActorId actor{};
+  ResolutionLevel level = ResolutionLevel::kFull;
+};
+
+struct DrawUnpublished {
   std::vector<ActorId> order;
   std::uint64_t budgetUs = 0;
 };
@@ -83,8 +88,9 @@ struct Observe {
 
 using Command =
     std::variant<TickActor, StartResize, SwapResize, AbandonResize,
-                 ReleaseIntermediates, DrawHidden, BuildAwaitedRender,
-                 FailAwaitedRender, Install, Retire, Forget, Observe>;
+                 ReleaseIntermediates, SetAppliedLevel, DrawUnpublished,
+                 BuildAwaitedRender, FailAwaitedRender, Install, Retire, Forget,
+                 Observe>;
 
 struct TraceRecord {
   Trace::Event event = Trace::Event::kMetrics;

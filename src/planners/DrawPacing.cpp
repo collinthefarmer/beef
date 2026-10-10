@@ -5,7 +5,7 @@
 
 namespace BetterEnchantmentEffects {
 bool MayDrawStack(DrawPace a_pace) noexcept {
-  return a_pace.stacks == 0 || a_pace.spentUs < kHiddenDrawBudgetUs;
+  return a_pace.stacks == 0 || a_pace.spentUs < kUnpublishedDrawBudgetUs;
 }
 
 DrawPace Drew(DrawPace a_pace, std::uint64_t a_us) noexcept {
@@ -15,11 +15,11 @@ DrawPace Drew(DrawPace a_pace, std::uint64_t a_us) noexcept {
 }
 
 std::vector<std::uint32_t>
-HiddenDrawOrder(std::span<const HiddenDrawCandidate> a_candidates) {
-  std::vector<HiddenDrawCandidate> sorted(a_candidates.begin(),
-                                          a_candidates.end());
-  std::ranges::stable_sort(sorted, [](const HiddenDrawCandidate &a_left,
-                                      const HiddenDrawCandidate &a_right) {
+UnpublishedDrawOrder(std::span<const UnpublishedDrawCandidate> a_candidates) {
+  std::vector<UnpublishedDrawCandidate> sorted(a_candidates.begin(),
+                                               a_candidates.end());
+  std::ranges::stable_sort(sorted, [](const UnpublishedDrawCandidate &a_left,
+                                      const UnpublishedDrawCandidate &a_right) {
     if (a_left.role != a_right.role) {
       return a_left.role == ActorRole::kPlayer;
     }
@@ -27,7 +27,7 @@ HiddenDrawOrder(std::span<const HiddenDrawCandidate> a_candidates) {
   });
   std::vector<std::uint32_t> order;
   order.reserve(sorted.size());
-  for (const HiddenDrawCandidate &candidate : sorted) {
+  for (const UnpublishedDrawCandidate &candidate : sorted) {
     order.push_back(candidate.actor);
   }
   return order;

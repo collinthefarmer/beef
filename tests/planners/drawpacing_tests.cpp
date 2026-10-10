@@ -11,9 +11,9 @@ using test::Check;
 namespace {
 void BudgetDrawsAtLeastOneStack() {
   Check(MayDrawStack({}), "a tick draws its first stack");
-  Check(MayDrawStack(Drew({}, kHiddenDrawBudgetUs - 1)),
+  Check(MayDrawStack(Drew({}, kUnpublishedDrawBudgetUs - 1)),
         "a tick inside the budget draws another stack");
-  Check(!MayDrawStack(Drew({}, kHiddenDrawBudgetUs)),
+  Check(!MayDrawStack(Drew({}, kUnpublishedDrawBudgetUs)),
         "a tick that spent the budget draws no further stack");
   const DrawPace twice = Drew(Drew({}, 1000), 1500);
   Check(twice.stacks == 2 && twice.spentUs == 2500,
@@ -21,14 +21,15 @@ void BudgetDrawsAtLeastOneStack() {
 }
 
 void PlayerThenLargestOnScreen() {
-  const std::vector<HiddenDrawCandidate> candidates{
+  const std::vector<UnpublishedDrawCandidate> candidates{
       {1, ActorRole::kOther, 0.2f},
       {2, ActorRole::kOther, 0.8f},
       {3, ActorRole::kPlayer, 0.1f},
       {4, ActorRole::kOther, 0.5f}};
-  Check(HiddenDrawOrder(candidates) == std::vector<std::uint32_t>{3, 2, 4, 1},
+  Check(UnpublishedDrawOrder(candidates) ==
+            std::vector<std::uint32_t>{3, 2, 4, 1},
         "the player draws first, then actors by screen fraction");
-  Check(HiddenDrawOrder({}).empty(), "no candidates draw nothing");
+  Check(UnpublishedDrawOrder({}).empty(), "no candidates draw nothing");
 }
 
 void AttachWaitsForEveryStack() {

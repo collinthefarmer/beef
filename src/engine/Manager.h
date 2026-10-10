@@ -262,7 +262,7 @@ private:
 
   void Tick(std::uint32_t a_nowMS, const Settings &a_settings);
   void TickInstance(LiveInstance &a_instance, float a_time, float a_delta);
-  void DrawHidden(std::span<const HiddenDrawCandidate> a_candidates);
+  void DrawHidden(std::span<const UnpublishedDrawCandidate> a_candidates);
   void AttachFirstDraw(RE::FormID a_actorID, LiveActor &a_state);
   void ClaimLostGeometries(RE::FormID a_actorID, LiveActor &a_state);
   void RenderGeometry(LiveActor &a_state, LiveGeometry &a_bound, bool a_hidden,
