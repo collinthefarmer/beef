@@ -396,7 +396,7 @@ void DropFailedInstall(World &a_world, const InstallFailed &a_failed) {
   record->syncState.reset();
 }
 
-void RecordRetired(World &a_world, const Retired &a_retired) {
+void ForgetRetiredRender(World &a_world, const Retired &a_retired) {
   ActorRecord *record = TrackedActor(a_world, a_retired.actor);
   if (!record) {
     return;
@@ -404,17 +404,19 @@ void RecordRetired(World &a_world, const Retired &a_retired) {
   RetireRender(*record);
 }
 
-void RecordSyncResult(World &a_world, const CommandResult &a_result) {
+void ApplySyncResult(World &a_world, const CommandResult &a_result) {
   Match(
       a_result,
       [&](const ActorEvent &a_event) { ChargeInstall(a_world, a_event); },
       [&](const InstallFailed &a_failed) {
         DropFailedInstall(a_world, a_failed);
       },
-      [&](const Retired &a_retired) { RecordRetired(a_world, a_retired); });
+      [&](const Retired &a_retired) {
+        ForgetRetiredRender(a_world, a_retired);
+      });
 }
 
-void RecordClaim(World &a_world, const ClaimedGeometry &a_claimed) {
+void AddClaim(World &a_world, const ClaimedGeometry &a_claimed) {
   ActorRecord *record = TrackedActor(a_world, a_claimed.actor);
   if (!record || !record->syncState) {
     return;
@@ -426,11 +428,11 @@ void RecordClaim(World &a_world, const ClaimedGeometry &a_claimed) {
 
 TickOutput RecordSyncResults(World a_world, const TickFacts &a_facts) {
   for (const CommandResult &result : a_facts.results) {
-    RecordSyncResult(a_world, result);
+    ApplySyncResult(a_world, result);
   }
 
   for (const ClaimedGeometry &claimed : a_facts.claims) {
-    RecordClaim(a_world, claimed);
+    AddClaim(a_world, claimed);
   }
 
   return {std::move(a_world), {}, {}, {}};
