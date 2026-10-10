@@ -372,37 +372,61 @@ bool RangeChanged(const Actors::ActorState &a_state,
          Actors::InRange(installed, a_distance, a_evictDistance) != installed;
 }
 
+namespace {
+ActorRecord *TrackedRecord(World &a_world, ActorId a_actor) {
+  const auto found = a_world.actors.find(a_actor);
+  return found == a_world.actors.end() ? nullptr : &found->second;
+}
+
+void ChargeInstall(World &a_world, const ActorEvent &a_event) {
+  if (const Installed *installed = Get<Installed>(a_event.event)) {
+    a_world.budget = Charged(a_world.budget, installed->chargedBytes);
+  }
+}
+
+void DropFailedInstall(World &a_world, const InstallFailed &a_failed) {
+  a_world.waitingInstalls =
+      Removed(std::move(a_world.waitingInstalls), FormOf(a_failed.actor));
+  if (ActorRecord *record = TrackedRecord(a_world, a_failed.actor)) {
+    record->syncState.reset();
+  }
+}
+
+void RecordRetired(World &a_world, const Retired &a_retired) {
+  if (ActorRecord *record = TrackedRecord(a_world, a_retired.actor)) {
+    RetireRender(*record);
+  }
+}
+
+void RecordSyncResult(World &a_world, const CommandResult &a_result) {
+  Match(
+      a_result,
+      [&](const ActorEvent &a_event) { ChargeInstall(a_world, a_event); },
+      [&](const InstallFailed &a_failed) {
+        DropFailedInstall(a_world, a_failed);
+      },
+      [&](const Retired &a_retired) { RecordRetired(a_world, a_retired); });
+}
+
+void RecordClaim(World &a_world, const ClaimedGeometry &a_claimed) {
+  ActorRecord *record = TrackedRecord(a_world, a_claimed.actor);
+  if (!record || !record->syncState) {
+    return;
+  }
+  record->syncState =
+      Actors::WithClaim(std::move(*record->syncState), a_claimed.claim);
+}
+}
+
 TickOutput RecordSyncResults(World a_world, const TickFacts &a_facts) {
   for (const CommandResult &result : a_facts.results) {
-    if (const ActorEvent *event = Get<ActorEvent>(result)) {
-      if (const Installed *installed = Get<Installed>(event->event)) {
-        a_world.budget = Charged(a_world.budget, installed->chargedBytes);
-      }
-      continue;
-    }
-    if (const InstallFailed *failed = Get<InstallFailed>(result)) {
-      a_world.waitingInstalls =
-          Removed(std::move(a_world.waitingInstalls), FormOf(failed->actor));
-      if (const auto record = a_world.actors.find(failed->actor);
-          record != a_world.actors.end()) {
-        record->second.syncState.reset();
-      }
-      continue;
-    }
-    if (const Retired *retired = Get<Retired>(result)) {
-      if (const auto record = a_world.actors.find(retired->actor);
-          record != a_world.actors.end()) {
-        RetireRender(record->second);
-      }
-    }
+    RecordSyncResult(a_world, result);
   }
+
   for (const ClaimedGeometry &claimed : a_facts.claims) {
-    const auto record = a_world.actors.find(claimed.actor);
-    if (record != a_world.actors.end() && record->second.syncState) {
-      record->second.syncState = Actors::WithClaim(
-          std::move(*record->second.syncState), claimed.claim);
-    }
+    RecordClaim(a_world, claimed);
   }
+
   return {std::move(a_world), {}, {}, {}};
 }
 
