@@ -1,14 +1,26 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #include "orchestration/PhaseChanges.h"
 
+#include <algorithm>
 #include <utility>
 
 namespace BetterEnchantmentEffects::Orchestration {
 namespace {
 PhaseChange Unchanged(RenderPhase a_phase) { return {std::move(a_phase), {}}; }
 
+PhaseChange Ignored(RenderPhase a_phase) {
+  return {std::move(a_phase), {}, true};
+}
+
+Intermediates IntermediatesFrom(IntermediateHolding a_holding) {
+  if (a_holding == IntermediateHolding::kReleased) {
+    return IntermediatesReleased{};
+  }
+  return IntermediatesHeld{};
+}
+
 Live LiveAt(ResolutionLevel a_level, Intermediates a_intermediates,
-            std::optional<ResolutionLevel> a_failed = std::nullopt) {
+            std::optional<FailedLevel> a_failed = std::nullopt) {
   return Live{a_level, std::move(a_intermediates), {}, std::nullopt, a_failed};
 }
 
@@ -18,92 +30,113 @@ PhaseChange Applied(ActorId a_actor, RenderPhase a_phase,
 }
 
 PhaseChange ResizeOrStay(ResolutionLevel a_from, ResolutionLevel a_to,
-                         Intermediates a_intermediates) {
+                         IntermediateHolding a_holding) {
   if (a_from == a_to) {
-    return {LiveAt(a_from, std::move(a_intermediates)), {}};
+    return {LiveAt(a_from, IntermediatesFrom(a_holding)), {}};
   }
-  return {Resizing{a_from, a_to, std::move(a_intermediates), ResizeQueued{}},
-          {}};
+  return {Resizing{a_from, a_to, a_holding, ResizeQueued{}}, {}};
+}
+
+PhaseChange Created(ActorId a_actor, const RenderEvent &a_event,
+                    std::uint64_t a_frame) {
+  if (const PlanAwaited *awaited = Get<PlanAwaited>(a_event)) {
+    return {AwaitingPlan{awaited->job}, {}};
+  }
+  if (const Installed *installed = Get<Installed>(a_event)) {
+    return Applied(
+        a_actor,
+        FirstDrawing{installed->level,
+                     UnpublishedDraw{installed->units, 0, a_frame, 0},
+                     std::nullopt},
+        installed->level);
+  }
+  return {WithoutRender{}, {}};
+}
+
+bool CreatesAPhase(const RenderEvent &a_event) noexcept {
+  return Is<PlanAwaited>(a_event) || Is<Installed>(a_event) ||
+         Is<InstalledWithoutRender>(a_event);
+}
+
+UnpublishedDraw *UnpublishedDrawIn(RenderPhase &a_phase) noexcept {
+  if (FirstDrawing *drawing = Get<FirstDrawing>(a_phase)) {
+    return &drawing->draw;
+  }
+  if (Resizing *resizing = Get<Resizing>(a_phase)) {
+    if (ResizeRunning *running = Get<ResizeRunning>(resizing->stage)) {
+      return &running->draw;
+    }
+  }
+  return nullptr;
 }
 
 PhaseChange Drawn(RenderPhase a_phase, const UnpublishedDrawn &a_drawn) {
-  UnpublishedDraw *draw = nullptr;
-  if (FirstDrawing *drawing = Get<FirstDrawing>(a_phase)) {
-    draw = &drawing->draw;
-  } else if (Resizing *resizing = Get<Resizing>(a_phase)) {
-    if (ResizeRunning *running = Get<ResizeRunning>(resizing->stage)) {
-      draw = &running->draw;
-    }
+  UnpublishedDraw *draw = UnpublishedDrawIn(a_phase);
+  if (!draw) {
+    return Ignored(std::move(a_phase));
   }
-  if (draw) {
-    draw->drawn = a_drawn.drawn;
-    draw->drawTicks += a_drawn.drewThisTick ? 1 : 0;
-  }
+  draw->drawn = std::min(a_drawn.drawn, draw->total);
+  draw->drawTicks += a_drawn.drewThisTick ? 1 : 0;
   return Unchanged(std::move(a_phase));
 }
 
+PhaseChange FailedResize(const Resizing &a_resizing,
+                         const EventContext &a_context) {
+  return {LiveAt(a_resizing.from, IntermediatesFrom(a_resizing.holding),
+                 FailedLevel{a_resizing.to, a_context.wanted}),
+          {}};
+}
+
 PhaseChange OnResize(ActorId a_actor, RenderPhase a_phase,
-                     const RenderEvent &a_event, std::uint64_t a_frame) {
+                     const RenderEvent &a_event,
+                     const EventContext &a_context) {
   Resizing *resizing = Get<Resizing>(a_phase);
   if (!resizing) {
-    return Unchanged(std::move(a_phase));
+    return Ignored(std::move(a_phase));
   }
   const bool queued = Is<ResizeQueued>(resizing->stage);
   if (const ResizeStarted *started = Get<ResizeStarted>(a_event);
       started && queued) {
     resizing->stage =
-        ResizeRunning{UnpublishedDraw{started->units, 0, a_frame, 0}};
+        ResizeRunning{UnpublishedDraw{started->units, 0, a_context.frame, 0}};
     return Unchanged(std::move(a_phase));
   }
   if (Is<ResizeNotStarted>(a_event) && queued) {
-    return {LiveAt(resizing->from, std::move(resizing->intermediates),
-                   resizing->to),
-            {}};
+    return FailedResize(*resizing, a_context);
   }
   if (Is<ResizeSwapped>(a_event) && !queued) {
     const ResolutionLevel to = resizing->to;
     return Applied(a_actor, LiveAt(to, IntermediatesHeld{}), to);
   }
   if (Is<ResizeNotSwapped>(a_event) && !queued) {
-    resizing->stage = ResizeQueued{};
+    PhaseChange failed = FailedResize(*resizing, a_context);
+    failed.commands.push_back(AbandonResize{a_actor});
+    return failed;
   }
-  return Unchanged(std::move(a_phase));
+  return Ignored(std::move(a_phase));
 }
 }
 
+std::optional<PhaseChange> PhaseFor(ActorId a_actor, const RenderEvent &a_event,
+                                    std::uint64_t a_frame) {
+  if (!CreatesAPhase(a_event)) {
+    return std::nullopt;
+  }
+  return Created(a_actor, a_event, a_frame);
+}
+
 PhaseChange OnEvent(ActorId a_actor, RenderPhase a_phase,
-                    const RenderEvent &a_event, std::uint64_t a_frame) {
-  return Match(
-      a_event,
-      [&](const PlanAwaited &a_awaited) -> PhaseChange {
-        return {AwaitingPlan{a_awaited.job}, {}};
-      },
-      [&](const Installed &a_installed) -> PhaseChange {
-        return Applied(
-            a_actor,
-            FirstDrawing{a_installed.level,
-                         UnpublishedDraw{a_installed.units, 0, a_frame, 0},
-                         std::nullopt},
-            a_installed.level);
-      },
-      [&](const InstalledWithoutRender &) -> PhaseChange {
-        return {WithoutRender{}, {}};
-      },
-      [&](const UnpublishedDrawn &a_drawn) -> PhaseChange {
-        return Drawn(std::move(a_phase), a_drawn);
-      },
-      [&](const ResizeStarted &) -> PhaseChange {
-        return OnResize(a_actor, std::move(a_phase), a_event, a_frame);
-      },
-      [&](const ResizeNotStarted &) -> PhaseChange {
-        return OnResize(a_actor, std::move(a_phase), a_event, a_frame);
-      },
-      [&](const ResizeSwapped &) -> PhaseChange {
-        return OnResize(a_actor, std::move(a_phase), a_event, a_frame);
-      },
-      [&](const ResizeNotSwapped &) -> PhaseChange {
-        return OnResize(a_actor, std::move(a_phase), a_event, a_frame);
-      });
+                    const RenderEvent &a_event, const EventContext &a_context) {
+  if (CreatesAPhase(a_event)) {
+    if (!Is<AwaitingPlan>(a_phase)) {
+      return Ignored(std::move(a_phase));
+    }
+    return Created(a_actor, a_event, a_context.frame);
+  }
+  if (const UnpublishedDrawn *drawn = Get<UnpublishedDrawn>(a_event)) {
+    return Drawn(std::move(a_phase), *drawn);
+  }
+  return OnResize(a_actor, std::move(a_phase), a_event, a_context);
 }
 
 PhaseChange FailPlan(RenderPhase a_phase, PlanJobId a_job) {
@@ -120,18 +153,18 @@ PhaseChange WantLevel(ActorId a_actor, RenderPhase a_phase,
     return Unchanged(std::move(a_phase));
   }
   if (Live *live = Get<Live>(a_phase)) {
-    if (live->failedLevel == a_level) {
+    if (live->level == a_level ||
+        (live->failed && live->failed->level == a_level)) {
       return Unchanged(std::move(a_phase));
     }
-    return ResizeOrStay(live->level, a_level, std::move(live->intermediates));
+    return ResizeOrStay(live->level, a_level, HoldingOf(live->intermediates));
   }
   if (Resizing *resizing = Get<Resizing>(a_phase)) {
     if (resizing->to == a_level) {
       return Unchanged(std::move(a_phase));
     }
     const bool running = Is<ResizeRunning>(resizing->stage);
-    PhaseChange next = ResizeOrStay(resizing->from, a_level,
-                                    std::move(resizing->intermediates));
+    PhaseChange next = ResizeOrStay(resizing->from, a_level, resizing->holding);
     if (running) {
       next.commands.push_back(AbandonResize{a_actor});
     }
@@ -142,22 +175,29 @@ PhaseChange WantLevel(ActorId a_actor, RenderPhase a_phase,
 
 PhaseChange ReleaseForBudget(ActorId a_actor, RenderPhase a_phase,
                              std::uint64_t a_bytes) {
-  if (!MayRelease(a_phase)) {
+  Live *live = Get<Live>(a_phase);
+  if (!live || !Is<IntermediatesHeld>(live->intermediates)) {
     return Unchanged(std::move(a_phase));
   }
-  Get<Live>(a_phase)->intermediates = IntermediatesReleased{};
+  live->intermediates = IntermediatesReleased{};
   return {std::move(a_phase),
           {ReleaseIntermediates{a_actor, ReleaseReason::kBudget, a_bytes}}};
 }
 
 PhaseChange SeeActor(ActorId a_actor, RenderPhase a_phase,
-                     const SeenActor &a_seen) {
+                     const SeenThisTick &a_seen) {
+  if (Resizing *resizing = Get<Resizing>(a_phase)) {
+    if (a_seen.inView) {
+      resizing->holding = IntermediateHolding::kHeld;
+    }
+    return Unchanged(std::move(a_phase));
+  }
   Live *live = Get<Live>(a_phase);
   if (!live) {
     return Unchanged(std::move(a_phase));
   }
-  if (live->failedLevel != a_seen.wanted) {
-    live->failedLevel.reset();
+  if (live->failed && live->failed->wantedThen != a_seen.wanted) {
+    live->failed.reset();
   }
   live->smallOnScreen = live->smallOnScreen.Update(a_seen.small, a_seen.now);
   if (a_seen.inView) {
@@ -179,11 +219,11 @@ PhaseChange SeeActor(ActorId a_actor, RenderPhase a_phase,
 }
 
 PhaseChange EndFirstDraw(RenderPhase a_phase) {
-  FirstDrawing *drawing = Get<FirstDrawing>(a_phase);
+  const FirstDrawing *drawing = Get<FirstDrawing>(a_phase);
   if (!drawing) {
     return Unchanged(std::move(a_phase));
   }
   return ResizeOrStay(drawing->level, drawing->next.value_or(drawing->level),
-                      IntermediatesHeld{});
+                      IntermediateHolding::kHeld);
 }
 }

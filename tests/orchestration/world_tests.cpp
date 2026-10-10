@@ -22,8 +22,10 @@ int main() {
   Check(world.actors.empty() && world.waitingInstalls.empty() && !world.radius,
         "a new world tracks no actor");
   const InstalledRender render;
-  Check(Is<Live>(render.phase) && !render.renderedFrame,
-        "a new render is live and never rendered");
+  Check(Is<WithoutRender>(render.phase) && !render.renderedFrame,
+        "a render record made without an event claims no render");
+  Check(FormOf(ActorOf(0x14)) == 0x14u,
+        "an actor id converts to a form id and back");
   const TickFacts facts;
   Check(facts.sightings.empty() && facts.results.empty() && !facts.memory,
         "empty facts carry no sighting, result or memory sample");

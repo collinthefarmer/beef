@@ -35,43 +35,56 @@ struct UnpublishedDraw {
   [[nodiscard]] bool operator==(const UnpublishedDraw &) const = default;
 };
 
-struct Live {
+struct FailedLevel {
   ResolutionLevel level = ResolutionLevel::kFull;
-  Intermediates intermediates;
-  Hold smallOnScreen;
-  std::optional<ResolutionLevel> stepUpBlockedFrom;
-  std::optional<ResolutionLevel> failedLevel;
+  std::optional<ResolutionLevel> wantedThen;
+  [[nodiscard]] bool operator==(const FailedLevel &) const = default;
 };
 
 struct WithoutRender {
   [[nodiscard]] bool operator==(const WithoutRender &) const = default;
 };
 
+struct Live {
+  ResolutionLevel level = ResolutionLevel::kFull;
+  Intermediates intermediates;
+  Hold smallOnScreen;
+  std::optional<ResolutionLevel> stepUpBlockedFrom;
+  std::optional<FailedLevel> failed;
+  [[nodiscard]] bool operator==(const Live &) const = default;
+};
+
 struct AwaitingPlan {
   PlanJobId job{};
+  [[nodiscard]] bool operator==(const AwaitingPlan &) const = default;
 };
 
 struct FirstDrawing {
   ResolutionLevel level = ResolutionLevel::kFull;
   UnpublishedDraw draw;
   std::optional<ResolutionLevel> next;
+  [[nodiscard]] bool operator==(const FirstDrawing &) const = default;
 };
 
-struct ResizeQueued {};
+struct ResizeQueued {
+  [[nodiscard]] bool operator==(const ResizeQueued &) const = default;
+};
 
 struct ResizeRunning {
   UnpublishedDraw draw;
+  [[nodiscard]] bool operator==(const ResizeRunning &) const = default;
 };
 
 struct Resizing {
   ResolutionLevel from = ResolutionLevel::kFull;
   ResolutionLevel to = ResolutionLevel::kFull;
-  Intermediates intermediates;
+  IntermediateHolding holding = IntermediateHolding::kHeld;
   std::variant<ResizeQueued, ResizeRunning> stage;
+  [[nodiscard]] bool operator==(const Resizing &) const = default;
 };
 
 using RenderPhase =
-    std::variant<Live, WithoutRender, AwaitingPlan, FirstDrawing, Resizing>;
+    std::variant<WithoutRender, Live, AwaitingPlan, FirstDrawing, Resizing>;
 
 [[nodiscard]] IntermediateHolding
 HoldingOf(const Intermediates &a_intermediates) noexcept;
@@ -89,7 +102,9 @@ UnpublishedDrawOf(const RenderPhase &a_phase) noexcept;
 ResizeProgressOf(const RenderPhase &a_phase) noexcept;
 [[nodiscard]] std::optional<PlanJobId>
 AwaitedJob(const RenderPhase &a_phase) noexcept;
-[[nodiscard]] bool StepDownDue(const RenderPhase &a_phase, Millis a_now,
-                               Millis a_delay) noexcept;
+[[nodiscard]] std::optional<ResolutionLevel>
+FailedLevelOf(const RenderPhase &a_phase) noexcept;
+[[nodiscard]] bool ScreenStepDownDue(const RenderPhase &a_phase, Millis a_now,
+                                     Millis a_delay) noexcept;
 [[nodiscard]] std::string_view PhaseName(const RenderPhase &a_phase) noexcept;
 }

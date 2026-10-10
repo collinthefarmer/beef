@@ -15,11 +15,12 @@ LEGAL_NOTICES = (
      '// Community Shaders-derived portions: see THIRD_PARTY_NOTICES.md and',
      '// licenses/CommunityShaders-EXCEPTIONS.md.'),
 )
-ENGINE_FREE = ('Core.h', 'recipe', 'mesh', 'planners', 'diagnostics', 'studio', 'regression',
-               'actors', 'orchestration')
+ENGINE_FREE = ('Core.h', 'TraceTypes.h', 'recipe', 'mesh', 'planners', 'diagnostics', 'studio',
+               'regression', 'actors', 'orchestration')
 ADAPTER = ENGINE_FREE + ('render', 'PCH.h', 'Identity.h', 'Settings.h', 'SettingsFile.h')
 ALLOWS: dict[str, tuple[str, ...]] = {
     'Core.h': (),
+    'TraceTypes.h': (),
     'Identity.h': (),
     'PCH.h': (),
     'Settings.h': (),
@@ -31,10 +32,10 @@ ALLOWS: dict[str, tuple[str, ...]] = {
     'recipe': ('Core.h', 'recipe'),
     'mesh': ('Core.h', 'recipe', 'mesh'),
     'planners': ('Core.h', 'recipe', 'mesh', 'planners'),
-    'diagnostics': ('Core.h', 'diagnostics'),
+    'diagnostics': ('Core.h', 'TraceTypes.h', 'diagnostics'),
     'regression': ('Core.h', 'recipe', 'regression'),
     'actors': ('Core.h', 'recipe', 'mesh', 'planners', 'studio', 'actors'),
-    'orchestration': ('Core.h', 'recipe', 'mesh', 'planners', 'studio', 'actors', 'diagnostics',
+    'orchestration': ('Core.h', 'TraceTypes.h', 'recipe', 'mesh', 'planners', 'studio', 'actors',
                       'orchestration'),
     'studio': ENGINE_FREE,
     'validator': ENGINE_FREE,

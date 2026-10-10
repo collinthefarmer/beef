@@ -1663,8 +1663,8 @@ them:
 - During the first draw, `RenderGeometry` writes the slots as hidden and
   hides the shells, as for a waiting plan. The material keeps the vanilla
   look. The actor's lights are hidden. `FinishApplications` waits.
-- After the actor loop, `DrawHidden` draws the slots of the first draws and
-  the stacks of the 7c-2 resizes. It draws only actors in view. The player
+- After the actor loop, `DrawHidden` draws the unpublished slots of the first
+  draws and the unpublished stacks of the 7c-2 resizes. It draws only actors in view. The player
   draws first, then the actors by screen fraction, largest first
   (`UnpublishedDrawOrder`).
 - The tick draws stacks until it spent 4 ms (`kUnpublishedDrawBudgetUs`,
@@ -3311,6 +3311,38 @@ stores an `RE::` pointer.
   needs and selects the highest-priority shell contribution as `shellOwner`.
   It does not describe incremental restoration: application rebuilds actors;
   material ownership and restoration belong to `render/Binding`.
+
+## orchestration (`orchestration/RenderPhase.h`, `orchestration/PhaseChanges.h`)
+
+The tick core of `docs/plans/pure-tick-2026-10-10.md` (branch `pure-tick`).
+Nothing in the engine calls it yet.
+
+- An `ActorRecord` without `render` is an actor with nothing installed. A
+  `render` in `WithoutRender` is an actor whose install built no render, or
+  whose plan job failed. The two differ for the budget radius: only the first
+  counts as evicted.
+- A phase is created only by `PhaseFor`, from the first event of an install.
+  `OnEvent` accepts a creating event (`PlanAwaited`, `Installed`,
+  `InstalledWithoutRender`) only in `AwaitingPlan`, where it is the rebuild
+  after a plan job. Anywhere else it is ignored, so a late install result
+  cannot replace a running resize and leak its work.
+- A swap ends `Live` at the new level with a fresh out-of-view hold, because
+  the new render's draw ran every step. Before stage 3 of the ownership plan
+  a swap kept `kReleased`, and the actor was never released again (audit 4b).
+- `Resizing` keeps only the attached render's `IntermediateHolding`, not its
+  hold. A resize that returns to `Live` starts the out-of-view hold again, so
+  a hold from before the resize cannot release the actor at once. An actor in
+  view during a resize holds again, because the attached render restores its
+  intermediates when it draws.
+- A failed resize (`ResizeNotStarted`, `ResizeNotSwapped`) records
+  `FailedLevel{level, wantedThen}`. The level stays refused until the wanted
+  level differs from `wantedThen`. Keying on the wanted level at the time, not
+  on the failed level, covers a failed budget step-down too: there the failed
+  level is coarser than the screen level, and a rule that cleared on any
+  difference would let the budget retry every tick.
+- `WantLevel` at the current level returns the phase unchanged. A new `Live`
+  would reset the screen step-down hold and the blocked step-up.
+- `UnpublishedDrawn::drawn` is clamped to the draw's `total`.
 
 ## Generated texture references
 

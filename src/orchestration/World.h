@@ -20,10 +20,19 @@
 namespace BetterEnchantmentEffects::Orchestration {
 using ActorId = Actors::ActorId;
 
+[[nodiscard]] constexpr std::uint32_t FormOf(ActorId a_actor) noexcept {
+  return static_cast<std::uint32_t>(a_actor);
+}
+
+[[nodiscard]] constexpr ActorId ActorOf(std::uint32_t a_form) noexcept {
+  return ActorId{a_form};
+}
+
 struct Sighting {
+  ActorRole role = ActorRole::kOther;
   bool loaded3D = false;
   bool inView = false;
-  std::optional<float> sizingFraction;
+  std::optional<float> screenFraction;
   std::optional<float> distance;
   [[nodiscard]] bool operator==(const Sighting &) const = default;
 };
@@ -35,7 +44,6 @@ struct InstalledRender {
 };
 
 struct ActorRecord {
-  ActorRole role = ActorRole::kOther;
   Sighting sight;
   std::optional<Actors::ActorState> syncState;
   std::optional<ResolutionLevel> reinstallLevel;

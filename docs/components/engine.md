@@ -457,8 +457,8 @@ write it to the material.
 | `SlotChain` | The rendered outputs of one slot: their `SurfaceOutput`s, resolved values, the final texture, a shown flag, and a pending flag when a stack returned `kPending`. | `ManagerTick.cpp` |
 | `FrameSyncs`, `InstallMayStart`, `Synced` | The sync time and the install count of the current frame, and the rule that starts an install. | `planners/InstallPacing.h` |
 | `WaitingInstall`, `NextInstall`, `Deferred`, `Removed`, `WaitedMS` | A deferred install with its role, view, screen fraction and first deferral time; the next entry to run; the list with an entry added or removed; the wait of an entry. | `planners/InstallPacing.h` |
-| `DrawPace`, `MayDrawStack`, `Drew` | The hidden draw time and stack count of the current tick, and the rule that draws another stack. | `planners/DrawPacing.h` |
-| `UnpublishedDrawCandidate`, `UnpublishedDrawOrder` | An actor that draws hidden, by FormID, role and screen fraction, and the order of the draws as FormIDs. | `planners/DrawPacing.h` |
+| `DrawPace`, `MayDrawStack`, `Drew` | The unpublished draw time and stack count of the current tick, and the rule that draws another stack. | `planners/DrawPacing.h` |
+| `UnpublishedDrawCandidate`, `UnpublishedDrawOrder` | An actor with an unpublished draw, by FormID, role and screen fraction, and the order of the draws as FormIDs. | `planners/DrawPacing.h` |
 | `FirstDrawProgress`, `FirstDrawEnd`, `FirstDrawDone` | The drawing ticks, slots and drawn slots of a first draw, and the rule that ends it. | `planners/DrawPacing.h` |
 | `SlotWrite` | The texture, scalars and colour that `WriteSlot` writes to one `SlotTarget`. | `ManagerTick.cpp` |
 

@@ -10,6 +10,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <map>
 #include <optional>
 #include <string>
 #include <variant>
@@ -21,14 +22,9 @@ struct TickSettings {
   [[nodiscard]] bool operator==(const TickSettings &) const = default;
 };
 
-struct ActorSighting {
-  ActorId actor{};
-  ActorRole role = ActorRole::kOther;
-  Sighting sight;
-};
-
 struct StaleActor {
   ActorId actor{};
+  Sighting sight;
   Actors::ActorFacts facts;
   Actors::PlannedActor planned;
 };
@@ -72,7 +68,7 @@ struct ResizeStarted {
 };
 
 struct ResizeNotStarted {
-  std::string reason;
+  std::string problem;
 };
 
 struct ResizeSwapped {};
@@ -91,7 +87,7 @@ struct ActorEvent {
 
 struct InstallFailed {
   ActorId actor{};
-  std::string reason;
+  std::string problem;
 };
 
 struct Retired {
@@ -104,7 +100,7 @@ struct TickFacts {
   Millis now = 0;
   std::uint64_t frame = 0;
   TickSettings settings;
-  std::vector<ActorSighting> sightings;
+  std::map<ActorId, Sighting> sightings;
   std::vector<CommandResult> results;
   std::vector<PlanJobDone> jobs;
   std::vector<StaleActor> stale;

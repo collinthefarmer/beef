@@ -1,10 +1,9 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #pragma once
 
+#include "TraceTypes.h"
 #include "actors/Actor.h"
 #include "actors/Planning.h"
-#include "actors/SyncLog.h"
-#include "diagnostics/Trace.h"
 #include "orchestration/World.h"
 #include "planners/RenderBudget.h"
 #include "planners/ResolutionLevel.h"
@@ -15,6 +14,8 @@
 #include <vector>
 
 namespace BetterEnchantmentEffects::Orchestration {
+enum class InstallKind : std::uint8_t { kInstall, kReinstall };
+
 enum class ReleaseReason : std::uint8_t { kOutOfView, kBudget };
 
 struct TickActor {
@@ -69,7 +70,7 @@ struct Install {
   ActorId actor{};
   Actors::ActorFacts facts;
   Actors::PlannedActor planned;
-  Actors::SyncKind kind = Actors::SyncKind::kInstalled;
+  InstallKind kind = InstallKind::kInstall;
   InstallBound bound;
   std::uint64_t replacedBytes = 0;
 };

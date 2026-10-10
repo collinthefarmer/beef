@@ -13,7 +13,7 @@ IntermediateHolding HoldingOf(const RenderPhase &a_phase) noexcept {
     return HoldingOf(live->intermediates);
   }
   if (const Resizing *resizing = Get<Resizing>(a_phase)) {
-    return HoldingOf(resizing->intermediates);
+    return resizing->holding;
   }
   return IntermediateHolding::kHeld;
 }
@@ -88,8 +88,10 @@ ResizeProgressOf(const RenderPhase &a_phase) noexcept {
     return std::nullopt;
   }
   const ResizeRunning *running = Get<ResizeRunning>(resizing->stage);
-  return ResizeProgress{resizing->from, resizing->to,
-                        running ? running->draw.beganFrame : 0};
+  if (!running) {
+    return std::nullopt;
+  }
+  return ResizeProgress{resizing->from, resizing->to, running->draw.beganFrame};
 }
 
 std::optional<PlanJobId> AwaitedJob(const RenderPhase &a_phase) noexcept {
@@ -97,8 +99,17 @@ std::optional<PlanJobId> AwaitedJob(const RenderPhase &a_phase) noexcept {
   return awaiting ? std::optional<PlanJobId>{awaiting->job} : std::nullopt;
 }
 
-bool StepDownDue(const RenderPhase &a_phase, Millis a_now,
-                 Millis a_delay) noexcept {
+std::optional<ResolutionLevel>
+FailedLevelOf(const RenderPhase &a_phase) noexcept {
+  const Live *live = Get<Live>(a_phase);
+  if (!live || !live->failed) {
+    return std::nullopt;
+  }
+  return live->failed->level;
+}
+
+bool ScreenStepDownDue(const RenderPhase &a_phase, Millis a_now,
+                       Millis a_delay) noexcept {
   const Live *live = Get<Live>(a_phase);
   return live && live->smallOnScreen.Due(a_now, a_delay);
 }
@@ -112,7 +123,7 @@ std::string_view PhaseName(const RenderPhase &a_phase) noexcept {
       [](const Resizing &a_resizing) {
         return Is<ResizeQueued>(a_resizing.stage)
                    ? std::string_view{"resize_queued"}
-                   : std::string_view{"resizing"};
+                   : std::string_view{"resize_running"};
       });
 }
 }

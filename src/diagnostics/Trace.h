@@ -1,6 +1,8 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #pragma once
 
+#include "TraceTypes.h"
+
 #include <atomic>
 #include <cstdint>
 #include <deque>
@@ -15,30 +17,6 @@
 #include <vector>
 
 namespace BetterEnchantmentEffects::Trace {
-enum class Event {
-  kStartup,
-  kSettings,
-  kRecipe,
-  kOperation,
-  kPage,
-  kQueue,
-  kLoad,
-  kApplication,
-  kRetire,
-  kBinding,
-  kRestore,
-  kTexture,
-  kShell,
-  kPreview,
-  kMetrics,
-  kCaptureFailure,
-};
-
-struct Field {
-  std::string name;
-  std::string value;
-};
-
 struct Context {
   std::uint64_t operation = 0;
   std::uint64_t session = 0;

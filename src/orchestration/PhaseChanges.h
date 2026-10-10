@@ -13,9 +13,15 @@ namespace BetterEnchantmentEffects::Orchestration {
 struct PhaseChange {
   RenderPhase phase;
   std::vector<Command> commands;
+  bool ignored = false;
 };
 
-struct SeenActor {
+struct EventContext {
+  std::uint64_t frame = 0;
+  std::optional<ResolutionLevel> wanted;
+};
+
+struct SeenThisTick {
   bool inView = true;
   bool small = false;
   std::optional<ResolutionLevel> wanted;
@@ -24,15 +30,17 @@ struct SeenActor {
   std::uint64_t releasableBytes = 0;
 };
 
+[[nodiscard]] std::optional<PhaseChange>
+PhaseFor(ActorId a_actor, const RenderEvent &a_event, std::uint64_t a_frame);
 [[nodiscard]] PhaseChange OnEvent(ActorId a_actor, RenderPhase a_phase,
                                   const RenderEvent &a_event,
-                                  std::uint64_t a_frame);
+                                  const EventContext &a_context);
 [[nodiscard]] PhaseChange FailPlan(RenderPhase a_phase, PlanJobId a_job);
 [[nodiscard]] PhaseChange WantLevel(ActorId a_actor, RenderPhase a_phase,
                                     ResolutionLevel a_level);
 [[nodiscard]] PhaseChange ReleaseForBudget(ActorId a_actor, RenderPhase a_phase,
                                            std::uint64_t a_bytes);
 [[nodiscard]] PhaseChange SeeActor(ActorId a_actor, RenderPhase a_phase,
-                                   const SeenActor &a_seen);
+                                   const SeenThisTick &a_seen);
 [[nodiscard]] PhaseChange EndFirstDraw(RenderPhase a_phase);
 }
