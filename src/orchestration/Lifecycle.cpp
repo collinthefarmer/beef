@@ -380,13 +380,10 @@ TickActor TickActorFor(ActorId a_actor, const RenderPhase &a_phase,
                        const Sighting &a_sight,
                        const TickSettings &a_settings) noexcept {
   const bool firstDrawing = Is<FirstDrawing>(a_phase);
-  return {a_actor,
-          a_sight.inView,
-          firstDrawing,
-          !a_settings.publishEffects || firstDrawing ||
-              Is<AwaitingPlan>(a_phase),
-          firstDrawing,
-          !firstDrawing || !a_sight.inView};
+  const bool unpublished = firstDrawing || Is<AwaitingPlan>(a_phase);
+  return {a_actor,      a_sight.inView,
+          unpublished,  !a_settings.publishEffects || unpublished,
+          firstDrawing, !firstDrawing || !a_sight.inView};
 }
 
 std::string_view EventName(const RenderEvent &a_event) noexcept {

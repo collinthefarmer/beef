@@ -3396,6 +3396,12 @@ Nothing in the engine calls it yet.
   level gets no bound, as today's `InstallBoundOf`.
 - `renderedFrame` is set in `RecordRenderResults` for every actor with a render
   in view with loaded 3D, because its `TickActor` draws it in the same tick.
+- `TickActor` conceals the slots in `AwaitingPlan` as well as in
+  `FirstDrawing`. `BuildAwaitedRender` comes from `RecordRenderResults`, before
+  the `TickActor` of the same tick, while the phase is still `AwaitingPlan`.
+  The engine builds the render and its first-draw list first; a `TickActor`
+  without `concealSlots` would then publish the render before it draws. The
+  agreement check over the R3 scenarios found this.
 - `actor_phase` carries `from`, `to` and `event`; `actor_phase_ignored`
   carries `phase` and `event`. A phase created from nothing has the phase
   name `none`. The event names are the `RenderEvent` names in snake case,

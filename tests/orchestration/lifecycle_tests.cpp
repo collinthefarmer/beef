@@ -523,9 +523,10 @@ void TheTickFlagsFollowThePhase() {
   const std::optional<TickActor> awaiting = TickOf(
       Lifecycle(WorldOf({{kActor, Record(AwaitingPlan{kJob}, InView(0.3f))}})),
       kActor);
-  Check(awaiting && awaiting->hideShells && !awaiting->concealSlots &&
+  Check(awaiting && awaiting->hideShells && awaiting->concealSlots &&
             awaiting->finishApplications,
-        "an actor awaiting a plan hides its shells");
+        "an actor awaiting a plan hides its shells and conceals the slots of "
+        "a render built from the plan this tick");
   TickSettings unpublished;
   unpublished.publishEffects = false;
   const std::optional<TickActor> live =
