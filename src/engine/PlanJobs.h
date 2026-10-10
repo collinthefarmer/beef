@@ -2,6 +2,8 @@
 #pragma once
 
 #include "engine/JobQueue.h"
+#include "orchestration/Facts.h"
+#include "orchestration/RenderPhase.h"
 #include "planners/RenderPlanJob.h"
 #include "planners/RenderPlanKey.h"
 #include "recipe/RecipeGraph.h"
@@ -53,4 +55,9 @@ ArrivalOf(const std::optional<OpenPlanJob> &a_job,
 [[nodiscard]] AwaiterStep StepFor(std::optional<JobId> a_awaited,
                                   JobId a_arrived,
                                   PlanArrival a_arrival) noexcept;
+[[nodiscard]] Orchestration::PlanJobId PlanJobIdOf(JobId a_job) noexcept;
+[[nodiscard]] JobId JobIdOf(Orchestration::PlanJobId a_job) noexcept;
+[[nodiscard]] Orchestration::PlanJobDone
+PlanJobDoneOf(JobId a_job, const std::optional<OpenPlanJob> &a_open,
+              const std::expected<PlanBuildOutput, std::string> &a_result);
 }

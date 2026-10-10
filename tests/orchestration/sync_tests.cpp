@@ -382,6 +382,48 @@ void AnActorWithout3DIsForgotten() {
         "an actor without 3D is forgotten");
 }
 
+void AForgetRequestForgetsLikeAnUnload() {
+  ActorRecord record;
+  record.syncState = InstalledState(CircuitPlan());
+  record.render = LiveRender(ResolutionLevel::kFull);
+  World world = WorldWith(kActor, record);
+  world.waitingInstalls.push_back({.actor = FormOf(kActor)});
+  TickFacts requested = FactsAt(kNow);
+  requested.sightings[kActor] = Seen();
+  requested.forgets.push_back(kActor);
+  TickFacts unloaded = FactsAt(kNow);
+  unloaded.sightings[kActor] = Sighting{};
+  const TickOutput forgotten = RunSync(world, requested);
+  const TickOutput gone = RunSync(world, unloaded);
+  Check(!forgotten.world.actors.contains(kActor) &&
+            forgotten.world.waitingInstalls.empty(),
+        "a forget request drops the rendered actor");
+  Equal(CountOf<Forget>(forgotten.commands), std::size_t{1},
+        "a forget request issues one forget");
+  Equal(CountOf<Retire>(forgotten.commands), CountOf<Retire>(gone.commands),
+        "a forget request retires the same way an unload does");
+  Equal(forgotten.commands.size(), gone.commands.size(),
+        "a forget request issues the commands of an unload");
+}
+
+void AForgetRequestWithoutARecordDoesNothing() {
+  ActorRecord record;
+  record.syncState = InstalledState(CircuitPlan());
+  const World world = WorldWith(kActor, std::move(record));
+  TickFacts plain = FactsAt(kNow);
+  plain.sightings[kActor] = Seen();
+  TickFacts facts = plain;
+  facts.forgets.push_back(kOther);
+  const TickOutput out = RunSync(world, facts);
+  const TickOutput baseline = RunSync(world, plain);
+  Equal(CountOf<Forget>(out.commands), std::size_t{0},
+        "a forget request for an unknown actor issues no forget");
+  Equal(out.commands.size(), baseline.commands.size(),
+        "a forget request for an unknown actor adds no command");
+  Check(out.world.actors.contains(kActor) && !out.world.actors.contains(kOther),
+        "a forget request for an unknown actor changes no record");
+}
+
 void AnActorOutOfRangeIsEvicted() {
   ActorRecord record;
   record.syncState = InstalledState(CircuitPlan());
@@ -539,6 +581,8 @@ int main() {
   AnActorWaitingForAModelKeepsItsEquip();
   AnUnloadedStaleActorIsForgotten();
   AnActorWithout3DIsForgotten();
+  AForgetRequestForgetsLikeAnUnload();
+  AForgetRequestWithoutARecordDoesNothing();
   AnActorOutOfRangeIsEvicted();
   AWaitingModelIsRecheckedSoon();
   ARangeChangeIsRechecked();

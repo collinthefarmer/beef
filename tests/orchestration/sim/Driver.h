@@ -35,7 +35,7 @@ EngineActorOf(const InstalledRender &a_render) {
       [&](const WithoutRender &) { actor.withoutRender = true; },
       [&](const Live &a_live) {
         actor.render = EngineRender{
-            a_live.level, HoldingOf(a_live.intermediates), costs, {}};
+            a_live.level, HoldingOf(a_live.intermediates), costs, std::nullopt};
       },
       [&](const AwaitingPlan &a_awaiting) {
         actor.awaiting = AwaitedPlanJob{a_awaiting.job, false};
@@ -46,8 +46,8 @@ EngineActorOf(const InstalledRender &a_render) {
             UnpublishedWork{a_drawing.draw.total, a_drawing.draw.drawn}};
       },
       [&](const Resizing &a_resizing) {
-        actor.render =
-            EngineRender{a_resizing.from, a_resizing.holding, costs, {}};
+        actor.render = EngineRender{a_resizing.from, a_resizing.holding, costs,
+                                    std::nullopt};
         if (const ResizeRunning *running =
                 Get<ResizeRunning>(a_resizing.stage)) {
           actor.resize =

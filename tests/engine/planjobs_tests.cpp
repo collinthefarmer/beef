@@ -7,6 +7,7 @@
 #include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 
 using namespace BetterEnchantmentEffects;
 using test::Check;
@@ -90,6 +91,47 @@ void AwaitersFollowTheirJob() {
         "an actor whose job failed fails its outputs");
 }
 
+void JobIdsConvertBothWays() {
+  Check(PlanJobIdOf(JobId{7}) == Orchestration::PlanJobId{7},
+        "an engine job id keeps its number in the core");
+  Check(JobIdOf(Orchestration::PlanJobId{7}) == JobId{7},
+        "a core job id keeps its number in the engine");
+  Check(JobIdOf(PlanJobIdOf(JobId{0xFFFF'FFFF'FFFF})) ==
+            JobId{0xFFFF'FFFF'FFFF},
+        "a job id survives the round trip");
+}
+
+void DoneJobsBecomeCoreFacts() {
+  const std::expected<PlanBuildOutput, std::string> built =
+      PlanBuildOutput{RenderPlan{}, {}, {}};
+  const std::expected<PlanBuildOutput, std::string> unlowered =
+      PlanBuildOutput{std::unexpected(std::string{"no plan"}), {}, {}};
+  const std::expected<PlanBuildOutput, std::string> thrown =
+      std::unexpected(std::string{"the job threw"});
+  const std::optional<OpenPlanJob> open = JobOf(3, 1);
+  const Orchestration::PlanJobDone fromBuilt =
+      PlanJobDoneOf(JobId{3}, open, built);
+  const auto *builtJob = Get<Orchestration::PlanJobBuilt>(fromBuilt);
+  Check(builtJob && builtJob->job == Orchestration::PlanJobId{3},
+        "a built plan reports its job as built");
+  const Orchestration::PlanJobDone fromUnlowered =
+      PlanJobDoneOf(JobId{3}, open, unlowered);
+  const auto *unloweredJob = Get<Orchestration::PlanJobFailed>(fromUnlowered);
+  Check(unloweredJob && unloweredJob->job == Orchestration::PlanJobId{3} &&
+            unloweredJob->problem == "no plan",
+        "a plan that did not lower fails with its problem");
+  const Orchestration::PlanJobDone fromThrown =
+      PlanJobDoneOf(JobId{3}, open, thrown);
+  const auto *thrownJob = Get<Orchestration::PlanJobFailed>(fromThrown);
+  Check(thrownJob && thrownJob->problem == "the job threw",
+        "a job that failed in the worker fails with its problem");
+  const Orchestration::PlanJobDone fromStale =
+      PlanJobDoneOf(JobId{3}, std::nullopt, thrown);
+  const auto *staleJob = Get<Orchestration::PlanJobBuilt>(fromStale);
+  Check(staleJob && staleJob->job == Orchestration::PlanJobId{3},
+        "a job the book dropped reports built so its awaiter asks again");
+}
+
 void BookHoldsGraphsUntilClosed() {
   const std::shared_ptr<const RecipeGraph> graph =
       std::make_shared<const RecipeGraph>(RecipeGraph::Compile(Recipe{}));
@@ -113,5 +155,7 @@ int main() {
   AResetBookMakesResultsStale();
   AwaitersFollowTheirJob();
   BookHoldsGraphsUntilClosed();
+  JobIdsConvertBothWays();
+  DoneJobsBecomeCoreFacts();
   return test::Finish("engine_planjobs");
 }

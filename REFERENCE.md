@@ -1569,6 +1569,10 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
   makes its actors ask again and never leaves them waiting.
 - An actor whose job failed records the problem on every stack output
   (`FailStackOutputs`), as a synchronous failure does.
+- `PlanJobDoneOf` turns a finished job into the tick core's fact. A stale job
+  is `PlanJobBuilt`, so its awaiter rebuilds and asks again, as `StepFor`
+  does (decision Q3 of `docs/plans/pure-tick-r4-2026-10-10.md`). A failed job
+  is `PlanJobFailed` with the worker's problem or the lowering's problem.
 - The book entry of an open job holds the graphs its key names. The cache
   entry takes them when the plan is stored, so no graph address in a stored
   key can be freed and reused while the plan lives.
@@ -3410,8 +3414,11 @@ Nothing in the engine calls it yet.
 
 ### The sync step (`orchestration/Sync.cpp`)
 
-- `RunSync` forgets first: an actor whose sighting has no loaded 3D, or whose
-  install failed, gets `Forget` and its record is erased. The engine reports
+- `RunSync` forgets first: an actor whose sighting has no loaded 3D, whose
+  install failed, or that the engine asks to forget (`TickFacts::forgets`) gets
+  `Forget` and its record is erased. A forget request for an actor without a
+  record does nothing. The engine sends a forget request for an unload event,
+  `RetireAll` and the regression retire, where the actor can still have 3D. The engine reports
   no `Retired` for a forget, so the erase happens in `RunSync`.
 - Stale actors are decided in order: those already waiting for an install
   first, in `NextInstall` precedence, then the rest. Each goes through
@@ -3440,6 +3447,38 @@ Nothing in the engine calls it yet.
   waiting install.
 - The sync log names an actor by `Sighting::name`, or by its form id in hex
   when the name is empty.
+
+### Boundary facts (`planners/ViewFacts.*`, `planners/TickClock.h`)
+
+- `InViewOf` and `ScreenFractionOf` are today's `ShownThisTick` and
+  `SizingFraction` (`engine/ManagerTick.cpp`) without the engine. The engine
+  reads the camera only for a non-player with `CullOutOfView` on, so the
+  `kCull` timer and `actors_in_view` count only those reads. An unread camera
+  counts as out of view.
+- `ScreenFractionOf` gives `1.0` when screen sizing is off, so the core sees
+  every actor full-size. The regression override replaces the setting.
+- `ClockAfter` builds `TickFacts::now` from 32-bit `NowMS` readings. The first
+  reading starts the clock at its own value, so the low 32 bits of `now` stay
+  equal to `NowMS`, and `PlannerMs(now)` matches the 32-bit times the engine
+  stores. Each later reading adds the unsigned 32-bit difference, so the
+  clock runs on past the wrap at 49.7 days.
+
+### The agreement check (`orchestration/Agreement.cpp`)
+
+- `Disagreements` compares each actor's `RenderPhase` with the resources the
+  engine holds for it (`HeldResources`). The engine runs it at the start of a
+  tick, against `SettledWorld`: the last world after `RecordSyncResults` and
+  `RecordRenderResults` of this tick's results. At that moment every command
+  of the last tick has run and its results are recorded, so both sides
+  describe the same moment.
+- `SettledWorld` drops `TickFacts::jobs`. A finished plan job moves an
+  `AwaitingPlan` actor only through `BuildAwaitedRender`, which the engine has
+  not run yet.
+- An actor in `WithoutRender` may have no store entry, because an install
+  that places no recipe stores nothing. A store entry for an actor without a
+  `render` is a resource the core does not track.
+- `FirstDrawing` has no holding to compare: the core does not track the
+  holding of a render before it is published.
 
 ## Generated texture references
 

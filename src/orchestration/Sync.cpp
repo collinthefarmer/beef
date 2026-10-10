@@ -280,6 +280,11 @@ void ForgetUnloaded(TickOutput &a_output, const TickFacts &a_facts) {
       gone.push_back(failed->actor);
     }
   }
+  for (const ActorId actor : a_facts.forgets) {
+    if (a_output.world.actors.contains(actor)) {
+      gone.push_back(actor);
+    }
+  }
   for (const ActorId actor : gone) {
     if (!ForgottenThisTick(a_output, actor)) {
       ForgetActor(a_output, actor);

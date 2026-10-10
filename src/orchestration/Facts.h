@@ -114,5 +114,6 @@ struct TickFacts {
   std::vector<ClaimedGeometry> claims;
   std::optional<BudgetSample> memory;
   FrameSyncs frameSyncs;
+  std::vector<ActorId> forgets;
 };
 }

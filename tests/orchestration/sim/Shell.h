@@ -44,6 +44,7 @@ struct ActorScript {
   std::optional<std::uint64_t> planTicks;
   bool withoutRender = false;
   Faults faults;
+  std::vector<std::uint64_t> forgets;
 };
 
 struct MemoryScript {
@@ -68,7 +69,7 @@ struct EngineRender {
   ResolutionLevel level = ResolutionLevel::kFull;
   IntermediateHolding holding = IntermediateHolding::kHeld;
   PerLevel<std::optional<LevelCost>> levelCosts;
-  UnpublishedWork firstDraw;
+  std::optional<UnpublishedWork> firstDraw;
 };
 
 struct EngineResize {
@@ -271,6 +272,11 @@ inline void MarkFinished(Shell &a_shell,
   for (const auto &[id, record] : a_world.actors) {
     facts.sightings[id] = SightingAt(a_shell.script, id, tick);
   }
+  for (const auto &[id, actor] : a_shell.script.actors) {
+    if (std::ranges::contains(actor.forgets, tick)) {
+      facts.forgets.push_back(id);
+    }
+  }
   return {std::move(a_shell), std::move(facts)};
 }
 
@@ -335,6 +341,9 @@ struct Executor {
     }
     if (a_command.drawStacks && found->second.render) {
       found->second.render->holding = IntermediateHolding::kHeld;
+    }
+    if (!a_command.concealSlots && found->second.render) {
+      found->second.render->firstDraw.reset();
     }
   }
 
@@ -408,7 +417,10 @@ struct Executor {
     if (a_actor.resize) {
       return &a_actor.resize->draw;
     }
-    return a_actor.render ? &a_actor.render->firstDraw : nullptr;
+    if (a_actor.render && a_actor.render->firstDraw) {
+      return &*a_actor.render->firstDraw;
+    }
+    return nullptr;
   }
 
   void operator()(const DrawUnpublished &a_command) {
