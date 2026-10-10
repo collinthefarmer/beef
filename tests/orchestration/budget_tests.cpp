@@ -190,6 +190,20 @@ void EstimateCountsEachRenderAtItsLevelAndHolding() {
   Check(PlannedBytesOf(world) == MiB(600), "the world sums its records");
 }
 
+void TheMeasuredHeldBytesSetThePlannedBytes() {
+  World world;
+  world.actors[kFirst] = Rendered(LiveAt(kFull), InView(0.6f));
+  world.actors[kSecond] = Rendered(LiveAt(kFull), InView(0.6f));
+  TickFacts facts = FactsWithCap(MiB(4000));
+  facts.memory->heldBytes = MiB(500);
+  Check(RunBudget(world, facts).world.budget.planned == MiB(500),
+        "the engine's held bytes, a shared target counted once, set the "
+        "planned bytes");
+  facts.memory->heldBytes.reset();
+  Check(RunBudget(world, facts).world.budget.planned == MiB(800),
+        "without held bytes the planned bytes are the sum of the records");
+}
+
 void NoSampleRunsNothing() {
   World world;
   world.actors[kFirst] = Rendered(LiveAt(kFull), OutOfView());
@@ -517,6 +531,7 @@ void PreemptsForABlockedStepUp() {
 }
 
 int main() {
+  TheMeasuredHeldBytesSetThePlannedBytes();
   EstimateCountsEachRenderAtItsLevelAndHolding();
   NoSampleRunsNothing();
   PressureStartsAndEndsWithItsRecords();

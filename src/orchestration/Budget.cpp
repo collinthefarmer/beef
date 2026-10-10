@@ -476,7 +476,8 @@ TickOutput RunBudget(World a_world, const TickFacts &a_facts) {
   const BudgetSample &sample = *a_facts.memory;
   const BudgetState before = output.world.budget;
   output.world.budget =
-      NextBudget(before, AllowanceOf(sample), PlannedBytesOf(output.world));
+      NextBudget(before, AllowanceOf(sample),
+                 sample.heldBytes.value_or(PlannedBytesOf(output.world)));
   RecordPressure(output, sample, before);
   const BudgetState &budget = output.world.budget;
   if (IsOver(budget.pressure) && budget.allowance) {

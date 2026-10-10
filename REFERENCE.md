@@ -3420,6 +3420,14 @@ The engine runs it once per tick. "The engine runs the core" below says how.
 - `ResizeStarted::drawn` counts the stacks a resize holds as drawn when it
   starts. `StartResize` marks the stacks that merged chains draw as drawn
   already. Run 20261010T165001-1 started a resize with 30 of 55 stacks drawn.
+- `BudgetSample::heldBytes` is the bytes of the targets the rendered actors
+  hold, measured by the engine with `PlannedTargets`. `CostOf` counts a target
+  with a `sharedKey` once across actors. `RunBudget` sets the planned bytes from
+  it on each sample, as the engine did before R4. The sum of the records'
+  level costs counts a shared target once per actor: run 20261010T172714-1
+  measured it at a median of 1.49 times the held bytes and at most 3.03 times,
+  largest in crowds that wear the same recipes. The heartbeat's
+  `estimated_bytes` is that sum; `planned_bytes` is the budget's figure.
 - `actor_phase` carries `from`, `to` and `event`; `actor_phase_ignored`
   carries `phase` and `event`. A phase created from nothing has the phase
   name `none`. The event names are the `RenderEvent` names in snake case,

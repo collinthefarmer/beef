@@ -31,6 +31,7 @@ struct BudgetSample {
   std::optional<VideoMemory> memory;
   std::uint64_t pluginBytes = 0;
   std::uint64_t capBytes = 0;
+  std::optional<std::uint64_t> heldBytes;
 };
 
 enum class AllowanceLimit : std::uint8_t { kCap, kFreeVideoMemory };

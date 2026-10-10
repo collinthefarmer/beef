@@ -323,6 +323,7 @@ BudgetSample Manager::SampleBudget(const Metrics::Snapshot &a_measured,
   const std::uint64_t capMiB = RegressionRenderTargetBudgetMiB().value_or(
       a_settings.renderTargetBudgetMiB);
   return {memory ? std::optional<VideoMemory>{*memory} : std::nullopt,
-          a_measured.targetBytes, capMiB * kMebibyte};
+          a_measured.targetBytes, capMiB * kMebibyte,
+          PlannedTargets(live_, world_).bytes};
 }
 }
