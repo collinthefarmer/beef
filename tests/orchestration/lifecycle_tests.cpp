@@ -588,6 +588,29 @@ void TheCommandsFollowTheStepOrder() {
         "releases come before the tick commands and the draw comes last");
 }
 
+void EventsBeforeARetireAreDropped() {
+  World world;
+  world.actors[kActor].sight = InView(0.3f);
+  const TickOutput out = Results(
+      std::move(world),
+      {ActorEvent{kActor, Installed{kFull, 18, Costs(), 0}}, Retired{kActor},
+       ActorEvent{kActor, Installed{kFull, 12, Costs(), 0}}});
+  const RenderPhase *phase = PhaseOf(out, kActor);
+  const UnpublishedDraw *draw = phase ? UnpublishedDrawOf(*phase) : nullptr;
+  Check(draw && draw->total == 12,
+        "an install after a retire creates the render, and the install the "
+        "retire replaced is dropped");
+  Check(std::ranges::none_of(
+            out.trace,
+            [](const TraceRecord &a_record) {
+              return std::ranges::any_of(
+                  a_record.fields, [](const Trace::Field &a_field) {
+                    return a_field.value == "actor_phase_ignored";
+                  });
+            }),
+        "a dropped event is not reported as ignored");
+}
+
 void ATickCarriesAnInstallToItsFirstTick() {
   World world;
   world.actors[kActor].sight = InView(0.3f);
@@ -628,6 +651,7 @@ int main() {
   AFirstDrawEndsAtTheTickLimit();
   AFirstDrawWithANewLevelQueuesAResize();
   TheTickFlagsFollowThePhase();
+  EventsBeforeARetireAreDropped();
   AnActorWithout3DDecidesNothing();
   UnpublishedDrawsComeLastInPacingOrder();
   TheCommandsFollowTheStepOrder();

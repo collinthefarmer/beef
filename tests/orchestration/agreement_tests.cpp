@@ -342,6 +342,24 @@ void ASwapMismatchAgreesEveryTick() {
   Equal(ReportedOf<ResizeNotSwapped>(run.simulation, kMismatched).size(),
         std::size_t{1}, "the swap mismatches once");
 }
+
+void AResizeStartingPartlyDrawnAgreesEveryTick() {
+  constexpr ActorId kCovered{901};
+  Script script;
+  script.drawUnitsPerTick = 1;
+  ActorScript actor = ScriptedActor(InView(0.6f, 300.0f));
+  actor.stacks = 8;
+  actor.stacksDrawnAtStart = 5;
+  script.actors[kCovered] = actor;
+  World world;
+  world.actors[kCovered] = RenderedRecord(LiveAt(kHalf), InView(0.6f, 300.0f));
+  const AgreementRun run = RanAgreeing(
+      Started(std::move(script), WithEstimate(std::move(world))), 200);
+  Agreed(run, "a resize starting partly drawn");
+  const auto started = ReportedOf<ResizeStarted>(run.simulation, kCovered);
+  Check(!started.empty() && started.front().event.drawn == 5,
+        "the resize starts with the stacks already drawn");
+}
 }
 
 int main() {
@@ -360,5 +378,6 @@ int main() {
   AFailedPlanJobAgreesEveryTick();
   AForgetRequestAgreesEveryTick();
   ASwapMismatchAgreesEveryTick();
+  AResizeStartingPartlyDrawnAgreesEveryTick();
   return test::Finish("orchestration_agreement");
 }

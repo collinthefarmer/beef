@@ -72,6 +72,7 @@ struct UnpublishedDrawn {
 
 struct ResizeStarted {
   std::size_t total = 0;
+  std::size_t drawn = 0;
 };
 
 struct ResizeNotStarted {

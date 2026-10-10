@@ -3411,6 +3411,15 @@ The engine runs it once per tick. "The engine runs the core" below says how.
   and its applications would report a render the player cannot see. Before
   R4, the engine built awaited renders before the tick loop, which finished
   nothing for a first draw in view.
+- `RecordRenderResults` drops an actor's events that come before a `Retired`
+  for the same actor in one tick's results. The engine runs commands in order,
+  so a `BuildAwaitedRender` from step 2 can run before `RunSync`'s reinstall
+  retires it. Its `Installed` describes a render that no longer exists. Run
+  20261010T165001-1 recorded the player's first draw as 18 slots where the
+  engine held 12, and the first draw never ended.
+- `ResizeStarted::drawn` counts the stacks a resize holds as drawn when it
+  starts. `StartResize` marks the stacks that merged chains draw as drawn
+  already. Run 20261010T165001-1 started a resize with 30 of 55 stacks drawn.
 - `actor_phase` carries `from`, `to` and `event`; `actor_phase_ignored`
   carries `phase` and `event`. A phase created from nothing has the phase
   name `none`. The event names are the `RenderEvent` names in snake case,

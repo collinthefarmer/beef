@@ -166,7 +166,10 @@ Manager::RunStartResize(const Orchestration::StartResize &a_command) {
     return Reported(a_command.actor,
                     Orchestration::ResizeNotStarted{started.error()});
   }
-  return Reported(a_command.actor, Orchestration::ResizeStarted{*started});
+  const ResizeInFlight *inFlight = InFlightOf(found->second);
+  return Reported(a_command.actor,
+                  Orchestration::ResizeStarted{
+                      *started, inFlight ? DrawnStacks(*inFlight) : 0});
 }
 
 CommandResults

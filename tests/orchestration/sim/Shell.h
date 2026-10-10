@@ -41,6 +41,7 @@ struct ActorScript {
   PerLevel<std::optional<LevelCost>> levelCosts;
   std::size_t slots = 4;
   std::size_t stacks = 4;
+  std::size_t stacksDrawnAtStart = 0;
   std::optional<std::uint64_t> planTicks;
   bool withoutRender = false;
   Faults faults;
@@ -361,9 +362,11 @@ struct Executor {
       Report(a_command.actor, ResizeNotStarted{"injected: resize not started"});
       return;
     }
+    const std::size_t drawn =
+        std::min(script.stacksDrawnAtStart, script.stacks);
     actor.resize =
-        EngineResize{a_command.to, UnpublishedWork{script.stacks, 0}};
-    Report(a_command.actor, ResizeStarted{script.stacks});
+        EngineResize{a_command.to, UnpublishedWork{script.stacks, drawn}};
+    Report(a_command.actor, ResizeStarted{script.stacks, drawn});
   }
 
   void operator()(const SwapResize &a_command) {

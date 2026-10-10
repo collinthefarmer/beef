@@ -110,8 +110,9 @@ PhaseChange OnResize(ActorId a_actor, RenderPhase a_phase,
   const bool queued = Is<ResizeQueued>(resizing->stage);
   if (const ResizeStarted *started = Get<ResizeStarted>(a_event);
       started && queued) {
-    resizing->stage =
-        ResizeRunning{UnpublishedDraw{started->total, 0, a_context.frame, 0}};
+    resizing->stage = ResizeRunning{UnpublishedDraw{
+        started->total, std::min(started->drawn, started->total),
+        a_context.frame, 0}};
     return Unchanged(std::move(a_phase));
   }
   if (Is<ResizeNotStarted>(a_event) && queued) {

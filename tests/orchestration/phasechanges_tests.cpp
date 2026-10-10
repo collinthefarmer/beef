@@ -166,8 +166,19 @@ void DrawsCountUnitsAndTicks() {
   const PhaseChange started =
       OnEvent(kActor, Queued(), ResizeStarted{4}, {40, kHalf});
   const UnpublishedDraw *resize = UnpublishedDrawOf(started.phase);
-  Check(resize && resize->total == 4 && resize->beganFrame == 40,
+  Check(resize && resize->total == 4 && resize->drawn == 0 &&
+            resize->beganFrame == 40,
         "a started resize draws its units from the frame it began");
+  const PhaseChange covered =
+      OnEvent(kActor, Queued(), ResizeStarted{4, 3}, {40, kHalf});
+  const UnpublishedDraw *partly = UnpublishedDrawOf(covered.phase);
+  Check(partly && partly->drawn == 3,
+        "a resize starts with the units the engine had drawn already");
+  const PhaseChange overCovered =
+      OnEvent(kActor, Queued(), ResizeStarted{4, 9}, {40, kHalf});
+  const UnpublishedDraw *clampedStart = UnpublishedDrawOf(overCovered.phase);
+  Check(clampedStart && clampedStart->drawn == 4,
+        "a resize never starts with more units drawn than it has");
   for (const RenderPhase &phase : {LiveHeld(), Queued()}) {
     const PhaseChange drawn =
         OnEvent(kActor, phase, UnpublishedDrawn{2, true}, kAtFrame30);

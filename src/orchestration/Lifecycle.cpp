@@ -348,6 +348,23 @@ void FinishFirstDraw(TickOutput &a_out, ActorId a_actor,
         "first_draw_ended");
 }
 
+std::map<ActorId, std::size_t>
+LastRetiredOf(const std::vector<CommandResult> &a_results) {
+  std::map<ActorId, std::size_t> last;
+  for (std::size_t i = 0; i < a_results.size(); ++i) {
+    if (const Retired *retired = Get<Retired>(a_results[i])) {
+      last[retired->actor] = i;
+    }
+  }
+  return last;
+}
+
+bool RetiredAfter(const std::map<ActorId, std::size_t> &a_retired,
+                  ActorId a_actor, std::size_t a_index) {
+  const auto found = a_retired.find(a_actor);
+  return found != a_retired.end() && found->second > a_index;
+}
+
 std::optional<DrawUnpublished>
 UnpublishedDraws(const World &a_world, const std::set<ActorId> &a_swapping,
                  const TickSettings &a_settings) {
@@ -410,8 +427,10 @@ std::string_view EventName(const RenderEvent &a_event) noexcept {
 TickOutput RecordRenderResults(World a_world, const TickFacts &a_facts) {
   TickOutput out{std::move(a_world), {}, {}, {}};
   RecordSightings(out.world, a_facts.sightings);
-  for (const CommandResult &result : a_facts.results) {
-    if (const ActorEvent *event = Get<ActorEvent>(result)) {
+  const std::map<ActorId, std::size_t> retired = LastRetiredOf(a_facts.results);
+  for (std::size_t i = 0; i < a_facts.results.size(); ++i) {
+    const ActorEvent *event = Get<ActorEvent>(a_facts.results[i]);
+    if (event && !RetiredAfter(retired, event->actor, i)) {
       RecordEvent(out, *event, a_facts.frame);
     }
   }
