@@ -25,6 +25,7 @@
 #include "planners/InstallPacing.h"
 #include "planners/InstallProgram.h"
 #include "planners/RenderBudget.h"
+#include "planners/RenderMemory.h"
 #include "planners/RenderPlanCache.h"
 #include "planners/ResolutionLevel.h"
 #include "planners/TargetCost.h"
@@ -269,6 +270,9 @@ private:
     Actors::SyncKind kind = Actors::SyncKind::kUnchanged;
     std::uint32_t observedAt = 0;
   };
+  void EmitHeartbeat(const Metrics::Snapshot &a_measured,
+                     const BudgetSample &a_sample, std::uint32_t a_intervalMs);
+  [[nodiscard]] std::vector<ActorTargets> RenderedTargets() const;
   void ReportRenderMemory(const Metrics::Snapshot &a_measured,
                           const TargetCost &a_planned,
                           std::uint32_t a_intervalMs);

@@ -59,7 +59,7 @@ void CollectActor(const LiveActor &a_state, HolderSets &a_sets,
       CollectOutput(output.stack, a_sets);
     }
   }
-  if (const ResizeInFlight *inFlight = Get<ResizeInFlight>(a_state.resize)) {
+  if (const ResizeInFlight *inFlight = InFlightOf(a_state)) {
     if (inFlight->render) {
       a_instances.insert(inFlight->render.get());
     }
@@ -84,9 +84,15 @@ HolderSet SlotTargetsOf(const LiveActor &a_state) {
   return slots;
 }
 
+bool InViewNow(const Orchestration::World &a_world, RE::FormID a_actor) {
+  const auto found = a_world.actors.find(Orchestration::ActorOf(a_actor));
+  return found != a_world.actors.end() && found->second.sight.inView;
+}
+
 std::string
 SlotOnlyText(const std::unordered_map<RE::FormID, LiveActor> &a_live,
-             const HolderSets &a_sets, std::span<const LiveTarget> a_targets) {
+             const Orchestration::World &a_world, const HolderSets &a_sets,
+             std::span<const LiveTarget> a_targets) {
   std::unordered_map<std::uintptr_t, const LiveTarget *> byId;
   for (const LiveTarget &target : a_targets) {
     byId.emplace(target.id, &target);
@@ -116,8 +122,8 @@ SlotOnlyText(const std::unordered_map<RE::FormID, LiveActor> &a_live,
     }
     text += std::format(
         "{}actor {} level {} {} bytes {} sides {}", text.empty() ? "" : "; ",
-        id, LevelName(state.appliedResolution),
-        state.inView ? "in view" : "out of view", bytes, sideText);
+        id, LevelName(state.renderLevel),
+        InViewNow(a_world, id) ? "in view" : "out of view", bytes, sideText);
   }
   return text;
 }
@@ -145,8 +151,9 @@ HolderSets HolderSetsOf(const std::unordered_map<RE::FormID, LiveActor> &a_live,
 }
 }
 
-void EmitTargetHolders(
-    const std::unordered_map<RE::FormID, LiveActor> &a_live) {
+void EmitTargetHolders(const std::unordered_map<RE::FormID, LiveActor> &a_live,
+                       const Orchestration::World &a_world,
+                       std::uint64_t a_disagreements) {
   Trace::Safely([&] {
     Instances instances;
     const HolderSets sets = HolderSetsOf(a_live, instances);
@@ -168,7 +175,8 @@ void EmitTargetHolders(
         {"live_instances", std::to_string(RenderInstance::LiveCount())},
         {"attached_instances", std::to_string(instances.size())},
         {"unplanned", unplannedText},
-        {"slot_only", SlotOnlyText(a_live, sets, live)}};
+        {"slot_only", SlotOnlyText(a_live, a_world, sets, live)},
+        {"resource_disagreements", std::to_string(a_disagreements)}};
     for (const TargetHolder holder : kTargetHolders) {
       const HeldTally &tally = TallyOf(tallies, holder);
       fields.push_back({std::format("{}_targets", HolderName(holder)),

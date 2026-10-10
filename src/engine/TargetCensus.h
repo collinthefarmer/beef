@@ -3,9 +3,13 @@
 
 #include "PCH.h"
 #include "engine/LiveActor.h"
+#include "orchestration/World.h"
 
+#include <cstdint>
 #include <unordered_map>
 
 namespace BetterEnchantmentEffects {
-void EmitTargetHolders(const std::unordered_map<RE::FormID, LiveActor> &a_live);
+void EmitTargetHolders(const std::unordered_map<RE::FormID, LiveActor> &a_live,
+                       const Orchestration::World &a_world,
+                       std::uint64_t a_disagreements);
 }
