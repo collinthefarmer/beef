@@ -17,7 +17,7 @@ namespace {
 BudgetActor At(std::optional<float> a_distance, std::uint64_t a_planned = 0) {
   BudgetActor actor;
   actor.distance = a_distance;
-  actor.plannedBytes = a_planned;
+  actor.costs.planned = a_planned;
   return actor;
 }
 
@@ -73,13 +73,13 @@ void ShrinkEvictsTheFarthest() {
 
 void PlayerAndResizesAreNeverCandidates() {
   BudgetActor player = At(std::nullopt, 900);
-  player.role = ActorRole::kPlayer;
+  player.visibility.role = ActorRole::kPlayer;
   const std::vector<BudgetActor> alone{player};
   Check(!ShrinkRadius(alone, std::nullopt, 0),
         "the player alone leaves nothing to shrink");
 
   BudgetActor farPlayer = At(9000.0f);
-  farPlayer.role = ActorRole::kPlayer;
+  farPlayer.visibility.role = ActorRole::kPlayer;
   const std::vector<BudgetActor> withPlayer =
       Numbered({farPlayer, At(1000.0f)});
   const std::optional<RadiusShrink> shrink =

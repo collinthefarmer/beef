@@ -253,7 +253,7 @@ CommandResults Manager::RunBuildAwaitedRender(
   }
   return Reported(
       a_command.actor,
-      BuildAwaitedRender(id, state, a_command.bound, a_context.settings));
+      BuildAwaitedRender(id, state, a_command.bounds, a_context.settings));
 }
 
 CommandResults Manager::RunFailAwaitedRender(

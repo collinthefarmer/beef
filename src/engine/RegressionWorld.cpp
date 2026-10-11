@@ -735,7 +735,7 @@ Regression::CrowdFacts CrowdOf(const RunWorld &a_world,
     if (a_facts[i].awaitingView) {
       ++view.awaitingView;
     }
-    if (a_facts[i].live && !a_facts[i].inView) {
+    if (a_facts[i].live && !a_facts[i].shown) {
       ++view.outOfView;
     }
   }

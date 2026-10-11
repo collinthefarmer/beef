@@ -39,14 +39,14 @@ const Sighting &LatestSighting(const World &a_world, const TickFacts &a_facts,
   if (const Sighting *sighted = Lookup(a_facts.sightings, a_actor)) {
     return *sighted;
   }
-  if (const ActorRecord *record = TrackedActor(a_world, a_actor)) {
+  if (const TrackedActor *record = FindActor(a_world, a_actor)) {
     return record->sight;
   }
   return unseen;
 }
 
 std::string NameOf(const World &a_world, ActorId a_actor) {
-  const ActorRecord *record = TrackedActor(a_world, a_actor);
+  const TrackedActor *record = FindActor(a_world, a_actor);
   if (!record || record->sight.name.empty()) {
     return std::format("{:08X}", FormOf(a_actor));
   }
@@ -70,7 +70,7 @@ void ForgetActor(TickOutput &a_output, ActorId a_actor) {
 
 WaitingInstall Refreshed(WaitingInstall a_entry, const Sighting &a_sight) {
   a_entry.role = a_sight.role;
-  a_entry.inView = a_sight.role == ActorRole::kPlayer || a_sight.inView;
+  a_entry.shown = a_sight.role == ActorRole::kPlayer || a_sight.shown;
   a_entry.screenFraction = a_sight.screenFraction;
   return a_entry;
 }
@@ -115,7 +115,7 @@ struct SyncDecision {
 };
 
 SyncState SyncStateOf(const World &a_world, ActorId a_actor) {
-  const ActorRecord *record = TrackedActor(a_world, a_actor);
+  const TrackedActor *record = FindActor(a_world, a_actor);
   return record ? record->syncState : std::nullopt;
 }
 
@@ -186,8 +186,9 @@ void ApplySyncState(TickOutput &a_output, ActorId a_actor, SyncState a_state) {
 void Settle(TickOutput &a_output, SyncDecision a_decision,
             std::uint32_t a_now) {
   const ActorId actor = a_decision.stale.actor;
-  const bool modelsLoading = Actors::RecheckOf(a_decision.next.state, a_now) ==
-                             Actors::Recheck::kWaiting;
+  const bool modelsLoading =
+      Actors::ModelLoadOf(a_decision.next.state, a_now) ==
+      Actors::ModelLoad::kLoading;
   const Actors::ActorPlan installed = InstalledPlanOf(a_decision.next.state);
 
   ApplySyncState(a_output, actor, std::move(a_decision.next.state));
@@ -198,7 +199,7 @@ void Settle(TickOutput &a_output, SyncDecision a_decision,
                                      .reinstall = true});
 }
 
-void DropRender(ActorRecord &a_record) {
+void DropRender(TrackedActor &a_record) {
   if (!a_record.render) {
     return;
   }
@@ -213,23 +214,23 @@ struct ChangePlan {
   bool replaces = false;
   bool installs = false;
   std::uint64_t replacedBytes = 0;
-  InstallBound bound;
+  InstallBounds bound;
 };
 
 ChangePlan PlanChange(const World &a_world, const SyncDecision &a_decision,
                       const TickFacts &a_facts) {
-  static const ActorRecord untracked{};
+  static const TrackedActor untracked{};
   const ActorId actor = a_decision.stale.actor;
-  const ActorRecord *tracked = TrackedActor(a_world, actor);
-  const ActorRecord &record = tracked ? *tracked : untracked;
+  const TrackedActor *tracked = FindActor(a_world, actor);
+  const TrackedActor &record = tracked ? *tracked : untracked;
   const std::uint64_t replaced = PlannedBytesOf(record);
   return {.replaces = record.render.has_value() ||
                       Actors::AnythingInstalled(a_decision.before),
           .installs = WouldInstall(a_decision),
           .replacedBytes = replaced,
           .bound =
-              InstallBoundOf(record, LatestSighting(a_world, a_facts, actor),
-                             a_world.budget, replaced, a_facts.settings)};
+              InstallBoundsOf(record, LatestSighting(a_world, a_facts, actor),
+                              a_world.budget, replaced, a_facts.settings)};
 }
 
 void RetireForChange(TickOutput &a_output, ActorId a_actor) {
@@ -385,35 +386,35 @@ struct DueChecks {
 
 DueChecks DueChecksAt(const Timers &a_timers, Millis a_now) noexcept {
   return {.loadingModels =
-              a_now - a_timers.lastWaitingCheck >= Actors::kPendingRecheckMs,
-          .slowChecks = a_now - a_timers.lastRecheck >= Actors::kRecheckMs};
+              a_now - a_timers.lastLoadingCheck >= Actors::kLoadingCheckMs,
+          .slowChecks = a_now - a_timers.lastSlowCheck >= Actors::kSlowCheckMs};
 }
 
 void ApplyTimers(TickOutput &a_output, DueChecks a_checks, Millis a_now) {
   Timers &timers = a_output.world.timers;
   if (a_checks.loadingModels) {
-    timers.lastWaitingCheck = a_now;
+    timers.lastLoadingCheck = a_now;
   }
   if (a_checks.slowChecks) {
-    timers.lastRecheck = a_now;
+    timers.lastSlowCheck = a_now;
   }
 }
 
 ActorList ActorsWhere(const World &a_world, const TickFacts &a_facts,
-                      bool (*a_rule)(Actors::Recheck)) {
+                      bool (*a_rule)(Actors::ModelLoad)) {
   const std::uint32_t now = PlannerMs(a_facts.now);
   return Choose(a_world.actors, [&](const auto &a_entry) {
     const auto &[actor, record] = a_entry;
-    return ActorIf(a_rule(Actors::RecheckOf(record.syncState, now)), actor);
+    return ActorIf(a_rule(Actors::ModelLoadOf(record.syncState, now)), actor);
   });
 }
 
-bool ModelsLoading(Actors::Recheck a_load) noexcept {
-  return a_load == Actors::Recheck::kWaiting;
+bool ModelsLoading(Actors::ModelLoad a_load) noexcept {
+  return a_load == Actors::ModelLoad::kLoading;
 }
 
-bool ModelsMissing(Actors::Recheck a_load) noexcept {
-  return a_load != Actors::Recheck::kNone;
+bool ModelsMissing(Actors::ModelLoad a_load) noexcept {
+  return a_load != Actors::ModelLoad::kNone;
 }
 
 ActorList ActorsWithLoadingModels(const World &a_world,
@@ -491,7 +492,7 @@ std::uint32_t PlannerMs(Millis a_now) noexcept {
   return static_cast<std::uint32_t>(a_now);
 }
 
-MaybeBytes ReturnBytesOf(const ActorRecord &a_record) noexcept {
+MaybeBytes ReturnBytesOf(const TrackedActor &a_record) noexcept {
   if (!a_record.render) {
     return std::nullopt;
   }
@@ -524,7 +525,7 @@ void ChargeInstall(World &a_world, const ActorEvent &a_event) {
 
 void DropFailedInstall(World &a_world, const InstallFailed &a_failed) {
   ClearWaitingInstall(a_world, a_failed.actor);
-  ActorRecord *record = TrackedActor(a_world, a_failed.actor);
+  TrackedActor *record = FindActor(a_world, a_failed.actor);
   if (!record) {
     return;
   }
@@ -532,7 +533,7 @@ void DropFailedInstall(World &a_world, const InstallFailed &a_failed) {
 }
 
 void ForgetRetiredRender(World &a_world, const Retired &a_retired) {
-  ActorRecord *record = TrackedActor(a_world, a_retired.actor);
+  TrackedActor *record = FindActor(a_world, a_retired.actor);
   if (!record) {
     return;
   }
@@ -552,7 +553,7 @@ void ApplySyncResult(World &a_world, const CommandResult &a_result) {
 }
 
 void AddClaim(World &a_world, const ClaimedGeometry &a_claimed) {
-  ActorRecord *record = TrackedActor(a_world, a_claimed.actor);
+  TrackedActor *record = FindActor(a_world, a_claimed.actor);
   if (!record || !record->syncState) {
     return;
   }
@@ -579,7 +580,7 @@ TickOutput RunSync(World a_world, const TickFacts &a_facts) {
   ForgetGone(output, gone);
   output.world.waitingInstalls = RefreshedWaiting(a_facts, output.world);
 
-  FrameSyncs frame = a_facts.frameSyncs;
+  FrameSyncs frame;
   const FormIds installOrder =
       InstallOrder(output.world.waitingInstalls, PlannerMs(a_facts.now));
   for (const StaleActor *stale :

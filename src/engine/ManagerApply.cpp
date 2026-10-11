@@ -770,11 +770,11 @@ RenderPlanFor(const LiveActor &a_state, const ActorRenderRequest &a_request,
 
 RenderOutcome AttachRenderPlan(LiveActor &a_state,
                                const ActorRenderRequest &a_request,
-                               RenderPlan a_plan, const InstallBound &a_bound,
+                               RenderPlan a_plan, const InstallBounds &a_bounds,
                                WarningHistory &a_warnings,
                                PhaseTrace &a_phases) {
   std::expected<RenderBuild, std::string> build =
-      RenderBuildAt(a_plan, a_request.build.full, a_bound);
+      RenderBuildAt(a_plan, a_request.build.full, a_bounds);
   if (!build) {
     FailRender(a_state, a_request.activation, build.error());
     return RenderNotBuilt{};
@@ -799,7 +799,7 @@ RenderOutcome BuildActorRender(LiveActor &a_state,
                                const ActorRenderRequest &a_request,
                                const Settings &a_settings,
                                RenderStores a_stores,
-                               const InstallBound &a_bound) {
+                               const InstallBounds &a_bounds) {
   if (a_request.build.stacks.empty()) {
     return RenderNotBuilt{};
   }
@@ -820,7 +820,7 @@ RenderOutcome BuildActorRender(LiveActor &a_state,
         return a_awaited;
       },
       [&](RenderPlan a_plan) -> RenderOutcome {
-        return AttachRenderPlan(a_state, a_request, std::move(a_plan), a_bound,
+        return AttachRenderPlan(a_state, a_request, std::move(a_plan), a_bounds,
                                 a_stores.warnings, phases);
       });
 }
@@ -829,12 +829,12 @@ RenderOutcome BuildRequestedRender(
     LiveActor &a_state,
     const std::expected<ActorRenderRequest, std::string> &a_request,
     const Settings &a_settings, RenderStores a_stores,
-    const InstallBound &a_bound) {
+    const InstallBounds &a_bounds) {
   a_state.fullSizes = a_request ? a_request->build.full : PlanSizes{};
   if (!a_request) {
     return RenderNotBuilt{};
   }
-  return BuildActorRender(a_state, *a_request, a_settings, a_stores, a_bound);
+  return BuildActorRender(a_state, *a_request, a_settings, a_stores, a_bounds);
 }
 
 std::vector<GeometrySlot> UnpublishedSlotsOf(
@@ -1182,7 +1182,7 @@ void Manager::CarryInstanceTime(LiveInstance &a_instance, RE::FormID a_actor,
 }
 
 PlacedRender Manager::PlaceInstances(LiveActor &a_state, RE::FormID a_actorID,
-                                     const InstallBound &a_bound,
+                                     const InstallBounds &a_bounds,
                                      std::uint64_t a_replaced,
                                      const Settings &a_settings) {
   for (LiveInstance &instance : a_state.instances) {
@@ -1206,14 +1206,14 @@ PlacedRender Manager::PlaceInstances(LiveActor &a_state, RE::FormID a_actorID,
   RenderOutcome built = phases.Measure("render_us", [&] {
     return BuildRequestedRender(
         a_state, request, a_settings,
-        {renderPlans_, warningHistory_, planQueue_, planJobs_}, a_bound);
+        {renderPlans_, warningHistory_, planQueue_, planJobs_}, a_bounds);
   });
   phases.Add("geometries", std::to_string(geometries));
   phases.Add("level", LevelText(built));
-  phases.Add("finest_level", std::string{LevelName(a_bound.finest)});
-  if (a_bound.headroom) {
+  phases.Add("finest_level", std::string{LevelName(a_bounds.finestLevel)});
+  if (a_bounds.headroom) {
     phases.Add("replaced_bytes", std::to_string(a_replaced));
-    phases.Add("headroom_bytes", std::to_string(*a_bound.headroom));
+    phases.Add("headroom_bytes", std::to_string(*a_bounds.headroom));
     phases.Add("admitted_bytes", std::to_string(ChargedBytesOf(built)));
   }
   phases.Emit();
@@ -1310,7 +1310,7 @@ Manager::InstallLiveActor(RE::Actor &a_actor,
                                      Orchestration::InstalledWithoutRender{}};
   }
   const PlacedRender placed = phases.Measure("place_us", [&] {
-    return PlaceInstances(*state, actorID, a_command.bound,
+    return PlaceInstances(*state, actorID, a_command.bounds,
                           a_command.replacedBytes, settings);
   });
   KeepRender(*state, placed.built, placed.unpublished);
@@ -1337,7 +1337,7 @@ Manager::InstallLiveActor(RE::Actor &a_actor,
 
 Orchestration::RenderEvent
 Manager::BuildAwaitedRender(RE::FormID a_actorID, LiveActor &a_state,
-                            const InstallBound &a_bound,
+                            const InstallBounds &a_bounds,
                             const Settings &a_settings) {
   const std::optional<JobId> arrived =
       std::exchange(a_state.awaitedPlan, std::nullopt);
@@ -1347,7 +1347,7 @@ Manager::BuildAwaitedRender(RE::FormID a_actorID, LiveActor &a_state,
                       a_settings);
   const RenderOutcome built = BuildRequestedRender(
       a_state, request, a_settings,
-      {renderPlans_, warningHistory_, planQueue_, planJobs_}, a_bound);
+      {renderPlans_, warningHistory_, planQueue_, planJobs_}, a_bounds);
   const std::vector<GeometrySlot> unpublished = UnpublishedSlotsOf(request);
   KeepRender(a_state, built, unpublished);
   if (TextureLab *lab = TextureLab::GetSingleton()) {
@@ -1356,7 +1356,7 @@ Manager::BuildAwaitedRender(RE::FormID a_actorID, LiveActor &a_state,
   TracePlanJob(ResultText(built),
                a_state.awaitedPlan ? a_state.awaitedPlan : arrived, a_actorID,
                {{"level", LevelText(built)},
-                {"finest_level", std::string{LevelName(a_bound.finest)}},
+                {"finest_level", std::string{LevelName(a_bounds.finestLevel)}},
                 {"admitted_bytes", std::to_string(ChargedBytesOf(built))}});
   return RenderEventOf(built, unpublished.size());
 }

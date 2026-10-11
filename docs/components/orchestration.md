@@ -12,7 +12,7 @@ Its `ALLOWS` row in `tools/gate.py` is `'orchestration': ('Core.h',
 
 ## What it owns
 
-**The world.** `World` is the core's whole state: one `ActorRecord` per
+**The world.** `World` is the core's whole state: one `TrackedActor` per
 actor, the budget, the budget radius, the waiting installs, the sync log and
 the recheck timers. The engine keeps it in `Manager::world_` and reads it
 only as `const`.
@@ -59,7 +59,7 @@ is unknown to the core.
 | `ActorId`, `FormOf`, `ActorOf` | The actor's id (`Actors::ActorId`) and the conversions to and from a 32-bit form id. | `World.h` |
 | `Sighting` | One tick's sight of an actor: its role, whether its 3D is loaded, whether it is in view, its optional screen fraction, its optional distance to the player and its name. | `World.h` |
 | `InstalledRender` | The render of an actor with installed effects: its `RenderPhase`, its `LevelCost` per level (`levelCosts`), and the frame it was first drawn in view (`renderedFrame`). | `World.h` |
-| `ActorRecord` | One actor: its last `Sighting`, its actor-core state (`syncState`), the level and the **return bytes** kept from its last retire (`reinstallLevel`, `returnBytes`), and its optional `InstalledRender`. | `World.h` |
+| `TrackedActor` | One actor: its last `Sighting`, its actor-core state (`syncState`), the level and the **return bytes** kept from its last retire (`reinstallLevel`, `returnBytes`), and its optional `InstalledRender`. | `World.h` |
 | `Timers` | The last waiting check and the last recheck. | `World.h` |
 | `World` | The records by `ActorId`, the `BudgetState`, the optional `BudgetRadius`, the `WaitingInstall` list, the `Actors::SyncRecord` log and the `Timers`. | `World.h` |
 
@@ -76,7 +76,7 @@ phase variant by hand. `PhaseChanges.h` changes it.
 | `UnpublishedDraw` | A draw before publication: the slot or stack count (`total`), the drawn count, the frame it began and the ticks that drew. | `RenderPhase.h` |
 | `FailedLevel` | A level whose resize did not start or did not swap, and the wanted level at that time (`wantedThen`). | `RenderPhase.h` |
 | `Empty` | An install that built no render, or a plan job that failed. It has no level. | `RenderPhase.h` |
-| `Shown` | A published render: its level, its `Intermediates`, the hold of a small screen fraction (`smallOnScreen`), the level of a blocked step up (`stepUpBlockedFrom`) and an optional `FailedLevel`. | `RenderPhase.h` |
+| `Shown` | A published render: its level, its `Intermediates`, the hold of a small screen fraction (`smallOnScreen`), the level of a blocked step up (`waitingForRoomFrom`) and an optional `FailedLevel`. | `RenderPhase.h` |
 | `Planning` | An install that waits for a plan job. | `RenderPhase.h` |
 | `Drawing` | A new render that draws before publication: its level, its `UnpublishedDraw` and a level wanted meanwhile (`next`). | `RenderPhase.h` |
 | `Resize` | A level change: the old and new levels (`from`, `to`), the attached render's `IntermediateHolding` and an optional `FailedLevel`. | `RenderPhase.h` |
@@ -122,8 +122,8 @@ the next tick.
 | `ReleaseIntermediates`, `ReleaseReason` | Release the attached render's intermediates, out of view (`kOutOfView`) or for the budget (`kBudget`), with the bytes the core expects to free. | `Commands.h` |
 | `SetAppliedLevel` | Give every instance environment of the actor a level. | `Commands.h` |
 | `DrawUnpublished` | Draw unpublished slots and stacks of the listed actors, in order, within `budgetUs`. | `Commands.h` |
-| `BuildAwaitedRender`, `FailAwaitedRender` | Build the render from a finished plan job within an `InstallBound`, or fail the actor's outputs with the job's problem. | `Commands.h` |
-| `Install`, `InstallKind` | Install the actor from its facts and plan, as a first install or a reinstall, with its `InstallBound` and its replaced bytes. | `Commands.h` |
+| `BuildAwaitedRender`, `FailAwaitedRender` | Build the render from a finished plan job within an `InstallBounds`, or fail the actor's outputs with the job's problem. | `Commands.h` |
+| `Install`, `InstallKind` | Install the actor from its facts and plan, as a first install or a reinstall, with its `InstallBounds` and its replaced bytes. | `Commands.h` |
 | `Retire`, `Forget`, `Observe`, `KeepModels`, `SettleApplications` | Undo the actor's effects and keep its tracking; drop everything held for it; observe it again; keep the models of a plan; end its equip and reinstall applications as flagged. | `Commands.h` |
 | `Command` | The variant of the fifteen commands. | `Commands.h` |
 | `LogLevel`, `LogRecord`, `TraceRecord` | One log line and one trace event that the engine writes for the core. | `Commands.h` |
@@ -138,12 +138,14 @@ the helpers that tests and the engine's heartbeat also read.
 | `TickOutput` | The next `World`, the commands, the trace records and the log lines. | `Tick.h` |
 | `RecordSyncResults`, `RecordRenderResults`, `RunBudget`, `RunSync`, `RunLifecycle`, `Tick` | The five steps and their composition. | `Tick.h` |
 | `PlannedBytesOf` | The bytes the budget counts for one rendered actor or for the world: the level cost at the applied level and holding, plus the target level's full cost while a resize runs. | `Budget.h` |
-| `InstallBoundOf` | The bound of an install: the target level, else the reinstall level, else the wanted level, with `HeadroomOf` the budget. The player gets no headroom. | `Budget.h` |
+| `InstallBoundsOf` | The bound of an install: the target level, else the reinstall level, else the wanted level, with `HeadroomOf` the budget. The player gets no headroom. | `Budget.h` |
 | `BudgetActors`, `BudgetActorOf`, `BudgetActorsOf` | The planners' `BudgetActor` for each rendered actor, and whether any actor resizes. | `Budget.h` |
-| `BlockedStepUp`, `WaitingStepUpsOf` | Each live actor in view with a blocked step up, with its preemption request, largest screen fraction first. | `Budget.h` |
+| `WaitingStepUp`, `WaitingStepUpsOf` | Each live actor in view with a blocked step up, with its preemption request, largest screen fraction first. | `Budget.h` |
 | `EvictedActorsOf`, `LargestReturnBytes`, `FarthestTrackedDistance` | The evicted actors with their distances and return bytes, the largest return bytes, and the distance of the farthest actor with a state. | `Budget.h` |
 | `PlannerMs`, `ReturnBytesOf`, `RangeChanged` | The 32-bit planner time, the return bytes of a record, and whether an actor's range differs from what it has installed. | `Sync.h` |
-| `ActorSightOf`, `TickActorFor`, `EventName` | The planners' `ActorSight` of a sighting, the `TickActor` flags of a phase, and the trace name of an event. | `Lifecycle.h` |
+| `TickActorFor`, `EventName` | The `TickActor` flags of a phase, and the trace name of an event. | `Lifecycle.h` |
+| `VisibilityOf` | The planners' `ActorVisibility` of a sighting. | `World.h` |
+| `ApplyPhaseChange`, `TracePhase`, `TraceIgnored` | Write a `PhaseChange` to a render and append its commands, tracing `actor_phase` when the phase name changes and `actor_phase_ignored` when the event did not apply. The lifecycle and the budget both change phases through it. | `Output.h` |
 
 ### The agreement check
 
@@ -198,7 +200,8 @@ Manager::Execute: one executor per command, in order       engine/ManagerCommand
 
 | File | What it owns |
 |---|---|
-| `World.h` | `Sighting`, `InstalledRender`, `ActorRecord`, `Timers`, `World`, `FormOf`, `ActorOf`. |
+| `World.h` | `Sighting`, `VisibilityOf`, `InstalledRender`, `TrackedActor`, `Timers`, `World`, `FormOf`, `ActorOf`, `FindActor`. |
+| `Output.h`/`.cpp` | The writers over a `TickOutput`: `Append`, `Issue`, `AddTrace`, `AddLog`, `ApplyBudget`, `ApplyPressure`, `ApplyRadius`, `ActorText` and `ApplyPhaseChange`. |
 | `RenderPhase.h`/`.cpp` | The render phase variant and its queries. |
 | `PhaseChanges.h`/`.cpp` | `PhaseChange` and the phase transitions. |
 | `Facts.h` | `TickSettings`, the stale actors, claims, job outcomes, render events, results and `TickFacts`. |

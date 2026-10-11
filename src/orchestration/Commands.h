@@ -80,7 +80,7 @@ struct DrawUnpublished {
 
 struct BuildAwaitedRender {
   ActorId actor{};
-  InstallBound bound;
+  InstallBounds bounds;
 };
 
 struct FailAwaitedRender {
@@ -93,7 +93,7 @@ struct Install {
   Actors::ActorFacts facts;
   Actors::PlannedActor planned;
   InstallKind kind = InstallKind::kInstall;
-  InstallBound bound;
+  InstallBounds bounds;
   std::uint64_t replacedBytes = 0;
 };
 

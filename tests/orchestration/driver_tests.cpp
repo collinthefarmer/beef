@@ -43,7 +43,7 @@ void SightsWorldAndStaleActors() {
   arrival.stale.push_back({3, {}});
   script.actors[kArrival] = arrival;
   World world;
-  world.actors[kActor] = ActorRecord{};
+  world.actors[kActor] = TrackedActor{};
   const Simulation simulation = Ran(Started(script, world), 4);
   Check(simulation.history.at(0).facts.sightings.size() == 1 &&
             simulation.history.at(0).facts.sightings.contains(kActor),
@@ -61,7 +61,7 @@ void SamplesMemoryOnItsCadence() {
   const Simulation simulation = Ran(Started(script), 30);
   std::size_t samples = 0;
   for (const TickRecord &record : simulation.history) {
-    samples += record.facts.memory ? 1 : 0;
+    samples += record.facts.budgetSample ? 1 : 0;
   }
   Equal(samples, std::size_t{3}, "one memory sample every ten ticks");
 }
@@ -70,8 +70,8 @@ void ReportsViolationsWithTheirTick() {
   Script script;
   script.actors[kActor] = ScriptedActor(InView(0.6f, 200.0f));
   World world;
-  world.actors[kActor] =
-      RecordOf(RenderIn(ShownAt(ResolutionLevel::kFull)), InView(0.6f, 200.0f));
+  world.actors[kActor] = TrackedOf(RenderIn(ShownAt(ResolutionLevel::kFull)),
+                                   InView(0.6f, 200.0f));
   Simulation started = Started(std::move(script), std::move(world));
   if (EngineActor *engine = &started.shell.actors[kActor]; engine->render) {
     engine->render->levelCosts = HalvingCosts(2 * kFullBytes);

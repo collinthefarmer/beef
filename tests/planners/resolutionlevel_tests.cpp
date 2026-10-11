@@ -22,11 +22,11 @@ void IdealLevelHalvesWithScreenSize() {
         "each halving of the screen size halves the side, down to an eighth");
 }
 
-ActorSight Seen(float a_fraction) {
+ActorVisibility Seen(float a_fraction) {
   return {a_fraction, true, ActorRole::kOther};
 }
 
-ActorSight Unseen(float a_fraction) {
+ActorVisibility Unseen(float a_fraction) {
   return {a_fraction, false, ActorRole::kOther};
 }
 
@@ -43,7 +43,7 @@ void InViewStepsUpAtOnce() {
 }
 
 void OutOfViewNeverStepsUp() {
-  Check(WantedLevel(Unseen(0.9f)) == ResolutionLevel::kEighth,
+  Check(LevelFor(Unseen(0.9f)) == ResolutionLevel::kEighth,
         "an actor out of view wants the coarsest level");
   Check(LevelStepOf(ResolutionLevel::kEighth, Unseen(0.9f), false) ==
             LevelStep{KeepLevel{}},
@@ -110,8 +110,8 @@ void WalkingAwayAndBackSettles() {
 }
 
 void UnmeasuredSizeKeepsTheLevel() {
-  const ActorSight unmeasured{std::nullopt, true, ActorRole::kOther};
-  Check(!WantedLevel(unmeasured), "an unmeasured actor wants nothing");
+  const ActorVisibility unmeasured{std::nullopt, true, ActorRole::kOther};
+  Check(!LevelFor(unmeasured), "an unmeasured actor wants nothing");
   Check(!SmallFor(std::nullopt, ResolutionLevel::kFull),
         "an unmeasured actor is never small");
   Check(LevelStepOf(ResolutionLevel::kEighth, unmeasured, false) ==
@@ -120,7 +120,7 @@ void UnmeasuredSizeKeepsTheLevel() {
 }
 
 void PlayerStaysFull() {
-  const ActorSight player{0.01f, true, ActorRole::kPlayer};
+  const ActorVisibility player{0.01f, true, ActorRole::kPlayer};
   Check(LevelStepOf(ResolutionLevel::kFull, player, true) ==
             LevelStep{KeepLevel{}},
         "the player stays full however small");

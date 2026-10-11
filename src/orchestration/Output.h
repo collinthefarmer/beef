@@ -1,11 +1,13 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #pragma once
 
+#include "orchestration/PhaseChanges.h"
 #include "orchestration/Tick.h"
 
 #include <iterator>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -43,4 +45,15 @@ inline void ApplyRadius(TickOutput &a_output,
                         const std::optional<BudgetRadius> &a_radius) {
   a_output.world.radius = a_radius;
 }
+
+[[nodiscard]] std::string ActorText(ActorId a_actor);
+
+void TracePhase(TickOutput &a_output, ActorId a_actor, std::string_view a_from,
+                std::string_view a_to, std::string_view a_event);
+void TraceIgnored(TickOutput &a_output, ActorId a_actor,
+                  std::string_view a_phase, std::string_view a_event);
+
+void ApplyPhaseChange(TickOutput &a_output, ActorId a_actor,
+                      InstalledRender &a_render, PhaseChange a_change,
+                      std::string_view a_event);
 }

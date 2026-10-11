@@ -22,7 +22,8 @@ bool CanEvict(const BudgetActor &a_actor) noexcept { return !a_actor.resizing; }
 std::optional<float> InsideOf(const BudgetActor &a_actor,
                               float a_bound) noexcept {
   const std::optional<float> distance = UsableDistance(a_actor.distance);
-  if (a_actor.role == ActorRole::kPlayer || !distance || *distance > a_bound) {
+  if (a_actor.visibility.role == ActorRole::kPlayer || !distance ||
+      *distance > a_bound) {
     return std::nullopt;
   }
   return distance;
@@ -88,7 +89,7 @@ ShrinkRadius(std::span<const BudgetActor> a_actors,
       std::min(std::max(evicted * kRadiusShrinkFactor, kept), bound);
   const BudgetActor &evictee = a_actors[*chosen];
   return RadiusShrink{evictee.actor, BudgetRadius{radius, a_nowMs},
-                      evictee.plannedBytes};
+                      evictee.costs.planned};
 }
 
 std::vector<RingActor> RingOf(std::span<const EvictedActor> a_evicted,

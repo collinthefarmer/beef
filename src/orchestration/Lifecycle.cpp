@@ -31,51 +31,12 @@ struct ScreenStep {
   bool up = false;
 };
 
-std::string ActorText(ActorId a_actor) {
-  return std::to_string(FormOf(a_actor));
-}
-
 std::string FractionText(std::optional<float> a_fraction) {
   return a_fraction ? std::format("{:.3f}", *a_fraction)
                     : std::string{"unmeasured"};
 }
 
-TraceRecord Metrics(std::vector<Trace::Field> a_fields) {
-  return {Trace::Event::kMetrics, std::move(a_fields)};
-}
-
-TraceRecord PhaseTrace(ActorId a_actor, std::string_view a_from,
-                       std::string_view a_to, std::string_view a_event) {
-  return Metrics({{"action", "actor_phase"},
-                  {"actor", ActorText(a_actor)},
-                  {"from", std::string{a_from}},
-                  {"to", std::string{a_to}},
-                  {"event", std::string{a_event}}});
-}
-
-TraceRecord IgnoredTrace(ActorId a_actor, std::string_view a_phase,
-                         std::string_view a_event) {
-  return Metrics({{"action", "actor_phase_ignored"},
-                  {"actor", ActorText(a_actor)},
-                  {"phase", std::string{a_phase}},
-                  {"event", std::string{a_event}}});
-}
-
-void Apply(TickOutput &a_out, ActorId a_actor, InstalledRender &a_render,
-           PhaseChange a_change, std::string_view a_event) {
-  const std::string_view before = PhaseName(a_render.phase);
-  if (a_change.ignored) {
-    AddTrace(a_out, IgnoredTrace(a_actor, before, a_event));
-  }
-  a_render.phase = a_change.phase;
-  if (const std::string_view after = PhaseName(a_render.phase);
-      after != before) {
-    AddTrace(a_out, PhaseTrace(a_actor, before, after, a_event));
-  }
-  Append(a_out.commands, std::move(a_change.commands));
-}
-
-bool RenderLoaded(const ActorRecord &a_record) noexcept {
+bool RenderLoaded(const TrackedActor &a_record) noexcept {
   return a_record.render.has_value() && a_record.sight.loaded3D;
 }
 
@@ -101,14 +62,14 @@ void CreateRender(TickOutput &a_out, const ActorEvent &a_event,
   std::optional<PhaseChange> created =
       PhaseFor(a_event.actor, a_event.event, a_frame);
   if (!created) {
-    AddTrace(a_out, IgnoredTrace(a_event.actor, kNoPhase, event));
+    TraceIgnored(a_out, a_event.actor, kNoPhase, event);
     return;
   }
-  ActorRecord &record = a_out.world.actors[a_event.actor];
+  TrackedActor &record = a_out.world.actors[a_event.actor];
   record.render =
       InstalledRender{created->phase, CostsOf(a_event.event), std::nullopt};
-  AddTrace(a_out, PhaseTrace(a_event.actor, kNoPhase,
-                             PhaseName(record.render->phase), event));
+  TracePhase(a_out, a_event.actor, kNoPhase, PhaseName(record.render->phase),
+             event);
   Append(a_out.commands, std::move(created->commands));
 }
 
@@ -121,7 +82,7 @@ void RecordEvent(TickOutput &a_out, const ActorEvent &a_event,
   }
   InstalledRender &render = *found->second.render;
   const EventContext context{a_frame,
-                             WantedLevel(ActorSightOf(found->second.sight))};
+                             LevelFor(VisibilityOf(found->second.sight))};
   PhaseChange change =
       OnEvent(a_event.actor, render.phase, a_event.event, context);
   if (!change.ignored) {
@@ -129,8 +90,8 @@ void RecordEvent(TickOutput &a_out, const ActorEvent &a_event,
       render.levelCosts = installed->levelCosts;
     }
   }
-  Apply(a_out, a_event.actor, render, std::move(change),
-        EventName(a_event.event));
+  ApplyPhaseChange(a_out, a_event.actor, render, std::move(change),
+                   EventName(a_event.event));
 }
 
 PlanJobId JobOf(const PlanJobDone &a_done) noexcept {
@@ -148,21 +109,22 @@ void RecordJob(TickOutput &a_out, const PlanJobDone &a_done,
     }
     InstalledRender &render = *record.render;
     if (const PlanJobFailed *failed = Get<PlanJobFailed>(a_done)) {
-      Apply(a_out, actor, render, FailPlan(actor, render.phase, *failed),
-            "plan_failed");
+      ApplyPhaseChange(a_out, actor, render,
+                       FailPlan(actor, render.phase, *failed), "plan_failed");
       continue;
     }
-    Apply(a_out, actor, render,
-          PlanBuilt(actor, render.phase, job,
-                    InstallBoundOf(record, record.sight, a_out.world.budget, 0,
-                                   a_settings)),
-          "plan_built");
+    ApplyPhaseChange(
+        a_out, actor, render,
+        PlanBuilt(actor, render.phase, job,
+                  InstallBoundsOf(record, record.sight, a_out.world.budget, 0,
+                                  a_settings)),
+        "plan_built");
   }
 }
 
 void RecordRenderedFrames(World &a_world, std::uint64_t a_frame) {
   for (auto &[actor, record] : a_world.actors) {
-    if (RenderLoaded(record) && record.sight.inView) {
+    if (RenderLoaded(record) && record.sight.shown) {
       record.render->renderedFrame = a_frame;
     }
   }
@@ -177,29 +139,31 @@ std::uint64_t ReleasableBytes(const InstalledRender &a_render) noexcept {
   return cost ? IntermediateBytes(*cost) : 0;
 }
 
-void See(TickOutput &a_out, ActorId a_actor, ActorRecord &a_record,
+void See(TickOutput &a_out, ActorId a_actor, TrackedActor &a_record,
          const TickFacts &a_facts) {
   InstalledRender &render = *a_record.render;
-  const ActorSight sight = ActorSightOf(a_record.sight);
+  const ActorVisibility visibility = VisibilityOf(a_record.sight);
   const std::optional<ResolutionLevel> target = TargetLevel(render.phase);
-  const SeenThisTick seen{sight.inView,
-                          target && SmallFor(sight.screenFraction, *target),
-                          WantedLevel(sight),
+  const SeenThisTick seen{visibility.shown,
+                          target &&
+                              SmallFor(visibility.screenFraction, *target),
+                          LevelFor(visibility),
                           a_facts.now,
                           a_facts.settings.outOfViewReleaseDelayMs,
                           ReleasableBytes(render)};
-  Apply(a_out, a_actor, render, SeeActor(a_actor, render.phase, seen), "seen");
+  ApplyPhaseChange(a_out, a_actor, render,
+                   SeeActor(a_actor, render.phase, seen), "seen");
 }
 
 std::optional<ScreenStep> ScreenStepOf(const InstalledRender &a_render,
-                                       const ActorSight &a_sight,
+                                       const ActorVisibility &a_visibility,
                                        const TickFacts &a_facts) noexcept {
   const std::optional<ResolutionLevel> current = TargetLevel(a_render.phase);
   if (!current) {
     return std::nullopt;
   }
   const LevelStep step =
-      LevelStepOf(*current, a_sight,
+      LevelStepOf(*current, a_visibility,
                   ScreenStepDownDue(a_render.phase, a_facts.now,
                                     a_facts.settings.screenStepDownHoldMs));
   if (const StepUpTo *up = Get<StepUpTo>(step)) {
@@ -215,20 +179,20 @@ void BlockStepUp(TickOutput &a_out, ActorId a_actor, InstalledRender &a_render,
                  const ScreenStep &a_step, Admission a_admission,
                  std::uint64_t a_added) {
   Shown *shown = Get<Shown>(a_render.phase);
-  if (!shown || shown->stepUpBlockedFrom == a_step.from) {
+  if (!shown || shown->waitingForRoomFrom == a_step.from) {
     return;
   }
-  shown->stepUpBlockedFrom = a_step.from;
+  shown->waitingForRoomFrom = a_step.from;
   const BudgetState &budget = a_out.world.budget;
-  AddTrace(a_out, Metrics({{"action", "resolution_blocked"},
-                           {"actor", ActorText(a_actor)},
-                           {"from", std::string{LevelName(a_step.from)}},
-                           {"to", std::string{LevelName(a_step.to)}},
-                           {"reason", std::string{AdmissionName(a_admission)}},
-                           {"added_bytes", std::to_string(a_added)},
-                           {"planned_bytes", std::to_string(budget.planned)},
-                           {"allowance_bytes",
-                            std::to_string(budget.allowance.value_or(0))}}));
+  AddTrace(a_out,
+           {{"action", "resolution_blocked"},
+            {"actor", ActorText(a_actor)},
+            {"from", std::string{LevelName(a_step.from)}},
+            {"to", std::string{LevelName(a_step.to)}},
+            {"reason", std::string{AdmissionName(a_admission)}},
+            {"added_bytes", std::to_string(a_added)},
+            {"planned_bytes", std::to_string(budget.planned)},
+            {"allowance_bytes", std::to_string(budget.allowance.value_or(0))}});
 }
 
 bool AdmitStepUp(TickOutput &a_out, ActorId a_actor, InstalledRender &a_render,
@@ -244,27 +208,28 @@ bool AdmitStepUp(TickOutput &a_out, ActorId a_actor, InstalledRender &a_render,
   return true;
 }
 
-void StepLevel(TickOutput &a_out, ActorId a_actor, ActorRecord &a_record,
+void StepLevel(TickOutput &a_out, ActorId a_actor, TrackedActor &a_record,
                const TickFacts &a_facts) {
   InstalledRender &render = *a_record.render;
-  const ActorSight sight = ActorSightOf(a_record.sight);
-  const std::optional<ScreenStep> step = ScreenStepOf(render, sight, a_facts);
+  const ActorVisibility visibility = VisibilityOf(a_record.sight);
+  const std::optional<ScreenStep> step =
+      ScreenStepOf(render, visibility, a_facts);
   if (!step || FailedLevelOf(render.phase) == step->to) {
     return;
   }
-  if (step->up && sight.role != ActorRole::kPlayer &&
+  if (step->up && visibility.role != ActorRole::kPlayer &&
       !AdmitStepUp(a_out, a_actor, render, *step)) {
     return;
   }
   AddTrace(a_out,
-           Metrics({{"action", "resolution_level"},
-                    {"actor", ActorText(a_actor)},
-                    {"from", std::string{LevelName(step->from)}},
-                    {"to", std::string{LevelName(step->to)}},
-                    {"reason", "screen"},
-                    {"screen_fraction", FractionText(sight.screenFraction)}}));
-  Apply(a_out, a_actor, render, WantLevel(a_actor, render.phase, step->to),
-        "level_wanted");
+           {{"action", "resolution_level"},
+            {"actor", ActorText(a_actor)},
+            {"from", std::string{LevelName(step->from)}},
+            {"to", std::string{LevelName(step->to)}},
+            {"reason", "screen"},
+            {"screen_fraction", FractionText(visibility.screenFraction)}});
+  ApplyPhaseChange(a_out, a_actor, render,
+                   WantLevel(a_actor, render.phase, step->to), "level_wanted");
 }
 
 struct ScheduledResizes {
@@ -290,7 +255,7 @@ ScheduledResizes ScheduleResizes(TickOutput &a_out, std::uint64_t a_frame) {
     const UnpublishedDraw *draw = UnpublishedDrawOf(phase);
     if (progress && draw && record.sight.loaded3D &&
         SwapDue(*progress,
-                DrawOf({record.sight.inView, draw->drawn, draw->total}),
+                DrawOf({record.sight.shown, draw->drawn, draw->total}),
                 a_frame)) {
       Issue(a_out, SwapResize{actor});
       swapping.insert(actor);
@@ -298,7 +263,7 @@ ScheduledResizes ScheduleResizes(TickOutput &a_out, std::uint64_t a_frame) {
       ++running;
     }
     if (record.sight.loaded3D && Is<Queued>(phase)) {
-      candidates.push_back({FormOf(actor), true, record.sight.inView,
+      candidates.push_back({FormOf(actor), true, record.sight.shown,
                             record.sight.screenFraction});
     }
   }
@@ -332,16 +297,15 @@ void FinishFirstDraw(TickOutput &a_out, ActorId a_actor,
   }
   AddTrace(
       a_out,
-      Metrics({{"action", "first_draw"},
-               {"actor", ActorText(a_actor)},
-               {"end", std::string{FirstDrawEndName(*end)}},
-               {"frames",
-                std::to_string(a_frame - std::min(a_frame, draw.beganFrame))},
-               {"draw_ticks", std::to_string(progress.drawTicks)},
-               {"stacks", std::to_string(progress.stacks)},
-               {"drawn", std::to_string(progress.drawn)}}));
-  Apply(a_out, a_actor, a_render, EndFirstDraw(a_render.phase),
-        "first_draw_ended");
+      {{"action", "first_draw"},
+       {"actor", ActorText(a_actor)},
+       {"end", std::string{FirstDrawEndName(*end)}},
+       {"frames", std::to_string(a_frame - std::min(a_frame, draw.beganFrame))},
+       {"draw_ticks", std::to_string(progress.drawTicks)},
+       {"stacks", std::to_string(progress.stacks)},
+       {"drawn", std::to_string(progress.drawn)}});
+  ApplyPhaseChange(a_out, a_actor, a_render, EndFirstDraw(a_render.phase),
+                   "first_draw_ended");
 }
 
 std::vector<ActorEvent>
@@ -368,7 +332,7 @@ UnpublishedDraws(const World &a_world, const std::set<ActorId> &a_swapping,
                  const TickSettings &a_settings) {
   std::vector<UnpublishedDrawCandidate> candidates;
   for (const auto &[actor, record] : a_world.actors) {
-    if (RenderLoaded(record) && record.sight.inView &&
+    if (RenderLoaded(record) && record.sight.shown &&
         UnpublishedDrawOf(record.render->phase) &&
         !a_swapping.contains(actor)) {
       candidates.push_back(
@@ -387,18 +351,14 @@ UnpublishedDraws(const World &a_world, const std::set<ActorId> &a_swapping,
 }
 }
 
-ActorSight ActorSightOf(const Sighting &a_sight) noexcept {
-  return {a_sight.screenFraction, a_sight.inView, a_sight.role};
-}
-
 TickActor TickActorFor(ActorId a_actor, const RenderPhase &a_phase,
                        const Sighting &a_sight,
                        const TickSettings &a_settings) noexcept {
   const bool firstDrawing = Is<Drawing>(a_phase);
   const bool unpublished = firstDrawing || Is<Planning>(a_phase);
-  return {a_actor,      a_sight.inView,
+  return {a_actor,      a_sight.shown,
           unpublished,  !a_settings.publishEffects || unpublished,
-          firstDrawing, !unpublished || !a_sight.inView};
+          firstDrawing, !unpublished || !a_sight.shown};
 }
 
 std::string_view EventName(const RenderEvent &a_event) noexcept {

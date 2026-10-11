@@ -40,7 +40,7 @@ void ASettledCrowdKeepsEveryInvariant() {
         form % 2 == 0 ? InView(0.6f, 200.0f) : OutOfView(1500.0f);
     script.actors[actor] = ScriptedActor(sight);
     world.actors[actor] =
-        RecordOf(RenderIn(ShownAt(ResolutionLevel::kFull)), sight);
+        TrackedOf(RenderIn(ShownAt(ResolutionLevel::kFull)), sight);
   }
   const Simulation simulation =
       Ran(Started(std::move(script), WithEstimate(std::move(world))), 300);
@@ -51,15 +51,15 @@ void ASettledCrowdKeepsEveryInvariant() {
 
 struct CrowdMember {
   ActorId actor{};
-  bool inView = false;
+  bool shown = false;
   std::optional<float> screenFraction;
 };
 
 bool InstalledBefore(const CrowdMember &a_left, const CrowdMember &a_right) {
-  if (a_left.inView != a_right.inView) {
-    return a_left.inView;
+  if (a_left.shown != a_right.shown) {
+    return a_left.shown;
   }
-  return !a_left.inView || a_left.screenFraction >= a_right.screenFraction;
+  return !a_left.shown || a_left.screenFraction >= a_right.screenFraction;
 }
 
 void ACrowdArrivesAtOnce() {
@@ -68,16 +68,16 @@ void ACrowdArrivesAtOnce() {
   std::map<ActorId, CrowdMember> crowd;
   for (std::uint32_t k = 0; k < 12; ++k) {
     const ActorId actor = ActorOf(200 + k);
-    const bool inView = k % 3 != 2;
-    const Sighting sight = inView ? InView(0.06f + 0.05f * k, 300.0f)
-                                  : OutOfView(400.0f + 10.0f * k);
+    const bool shown = k % 3 != 2;
+    const Sighting sight = shown ? InView(0.06f + 0.05f * k, 300.0f)
+                                 : OutOfView(400.0f + 10.0f * k);
     ActorScript member =
         Arriving(sight, 1, PlanNamed("crowd" + std::to_string(k), 0x800 + k));
-    if (!inView) {
+    if (!shown) {
       member.sightings.push_back({150, InView(0.1f, 400.0f)});
     }
     script.actors[actor] = std::move(member);
-    crowd[actor] = {actor, inView, sight.screenFraction};
+    crowd[actor] = {actor, shown, sight.screenFraction};
   }
   const Simulation sim = Ran(Started(std::move(script)), 400);
   Check(sim.violations.empty(), Report(sim));
@@ -120,7 +120,7 @@ void AnActorLeavesTheViewDuringAResize() {
   actor.sightings.push_back({12, OutOfView(300.0f)});
   script.actors[kActor] = actor;
   World world;
-  world.actors[kActor] = RenderedRecord(ShownAt(kHalf), InView(0.6f, 300.0f));
+  world.actors[kActor] = RenderedActor(ShownAt(kHalf), InView(0.6f, 300.0f));
   world = WithEstimate(std::move(world));
   const Simulation sim = Ran(Started(std::move(script), world), 200);
   Check(sim.violations.empty(), Report(sim));
@@ -129,7 +129,7 @@ void AnActorLeavesTheViewDuringAResize() {
   Check(swaps.size() == 1, "the resize swaps once");
   const TickRecord *swapTick =
       swaps.empty() ? nullptr : RecordAt(sim, swaps.front().tick);
-  Check(swapTick && !swapTick->facts.sightings.at(kActor).inView,
+  Check(swapTick && !swapTick->facts.sightings.at(kActor).shown,
         "the swap happens out of view");
   const std::vector<Reported<UnpublishedDrawn>> drawn =
       ReportedOf<UnpublishedDrawn>(sim, kActor);
@@ -167,7 +167,7 @@ void PressureDuringABurstOfFirstDraws() {
     const Sighting sight = k < 2 ? OutOfView(200.0f + 100.0f * k)
                                  : InView(0.6f, 200.0f + 100.0f * k);
     script.actors[actor] = ScriptedActor(sight);
-    world.actors[actor] = RenderedRecord(ShownAt(kFull), sight);
+    world.actors[actor] = RenderedActor(ShownAt(kFull), sight);
   }
   for (std::uint32_t k = 0; k < 6; ++k) {
     const ActorId actor = ActorOf(410 + k);
@@ -221,7 +221,7 @@ Simulation StartedAtHalf(ActorId a_actor, ActorScript a_script) {
   Script script;
   script.actors[a_actor] = std::move(a_script);
   World world;
-  world.actors[a_actor] = RenderedRecord(
+  world.actors[a_actor] = RenderedActor(
       ShownAt(kHalf), script.actors[a_actor].sightings.front().sighting);
   return Started(std::move(script), WithEstimate(std::move(world)));
 }

@@ -16,22 +16,22 @@ struct BudgetActors {
   bool resizeBusy = false;
 };
 
-struct BlockedStepUp {
+struct WaitingStepUp {
   ActorId actor{};
   PreemptionRequest request;
 };
 
 [[nodiscard]] std::uint64_t
-PlannedBytesOf(const ActorRecord &a_record) noexcept;
+PlannedBytesOf(const TrackedActor &a_record) noexcept;
 [[nodiscard]] std::uint64_t PlannedBytesOf(const World &a_world) noexcept;
-[[nodiscard]] InstallBound
-InstallBoundOf(const ActorRecord &a_record, const Sighting &a_sight,
-               const BudgetState &a_budget, std::uint64_t a_replaced,
-               const TickSettings &a_settings) noexcept;
+[[nodiscard]] InstallBounds
+InstallBoundsOf(const TrackedActor &a_record, const Sighting &a_sight,
+                const BudgetState &a_budget, std::uint64_t a_replaced,
+                const TickSettings &a_settings) noexcept;
 [[nodiscard]] std::optional<BudgetActor>
-BudgetActorOf(ActorId a_actor, const ActorRecord &a_record) noexcept;
+BudgetActorOf(ActorId a_actor, const TrackedActor &a_record) noexcept;
 [[nodiscard]] BudgetActors BudgetActorsOf(const World &a_world);
-[[nodiscard]] std::vector<BlockedStepUp> WaitingStepUpsOf(const World &a_world);
+[[nodiscard]] std::vector<WaitingStepUp> WaitingStepUpsOf(const World &a_world);
 [[nodiscard]] std::vector<EvictedActor> EvictedActorsOf(const World &a_world);
 [[nodiscard]] std::uint64_t LargestReturnBytes(const World &a_world) noexcept;
 [[nodiscard]] std::optional<float>

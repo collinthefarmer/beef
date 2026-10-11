@@ -407,19 +407,19 @@ PerLevel<std::optional<LevelCost>> LevelCostsOf(const RenderPlan &a_plan,
 
 std::expected<RenderBuild, std::string>
 RenderBuildAt(const RenderPlan &a_plan, const PlanSizes &a_full,
-              const InstallBound &a_bound) {
+              const InstallBounds &a_bounds) {
   PerLevel<std::optional<LevelCost>> costs = LevelCostsOf(a_plan, a_full);
-  ResolutionLevel level = a_bound.finest;
+  ResolutionLevel level = a_bounds.finestLevel;
   std::uint64_t charged = 0;
-  if (a_bound.headroom) {
+  if (a_bounds.headroom) {
     LevelBytes bytes;
-    for (std::optional<ResolutionLevel> at = a_bound.finest; at;
+    for (std::optional<ResolutionLevel> at = a_bounds.finestLevel; at;
          at = CoarserLevel(*at)) {
       if (const std::optional<LevelCost> &cost = costs.At(*at)) {
         bytes.At(*at) = cost->withIntermediates;
       }
     }
-    level = FittingLevel(a_bound.finest, bytes, a_bound.headroom);
+    level = FittingLevel(a_bounds.finestLevel, bytes, a_bounds.headroom);
     charged = bytes.At(level).value_or(0);
   }
   std::expected<PlanSizes, std::string> sizes =

@@ -133,13 +133,13 @@ struct StepsOutcome {
   case Field::kActorSet:
     return "the actor set";
   case Field::kSight:
-    return "ActorRecord::sight";
+    return "TrackedActor::sight";
   case Field::kSyncState:
-    return "ActorRecord::syncState";
+    return "TrackedActor::syncState";
   case Field::kReinstallLevel:
-    return "ActorRecord::reinstallLevel";
+    return "TrackedActor::reinstallLevel";
   case Field::kReturnBytes:
-    return "ActorRecord::returnBytes";
+    return "TrackedActor::returnBytes";
   case Field::kRenderCreated:
     return "render created";
   case Field::kRenderErased:
@@ -203,7 +203,7 @@ struct StepsOutcome {
 [[nodiscard]] inline bool SameWaiting(const WaitingInstall &a_left,
                                       const WaitingInstall &a_right) {
   return a_left.actor == a_right.actor && a_left.role == a_right.role &&
-         a_left.inView == a_right.inView &&
+         a_left.shown == a_right.shown &&
          a_left.screenFraction == a_right.screenFraction &&
          a_left.sinceMS == a_right.sinceMS;
 }
@@ -223,8 +223,8 @@ SameWaiting(const std::vector<WaitingInstall> &a_left,
 }
 
 inline void RecordWrites(std::vector<WrittenField> &a_written, ActorId a_actor,
-                         const ActorRecord &a_before,
-                         const ActorRecord &a_after, bool a_inserted) {
+                         const TrackedActor &a_before,
+                         const TrackedActor &a_after, bool a_inserted) {
   const auto wrote = [&a_written, a_actor](Field a_field) {
     a_written.push_back({a_field, a_actor});
   };
@@ -259,7 +259,7 @@ inline void RecordWrites(std::vector<WrittenField> &a_written, ActorId a_actor,
 [[nodiscard]] inline std::vector<WrittenField>
 WrittenFields(const World &a_before, const World &a_after) {
   std::vector<WrittenField> written;
-  const ActorRecord absent;
+  const TrackedActor absent;
   for (const auto &[id, after] : a_after.actors) {
     const auto found = a_before.actors.find(id);
     const bool inserted = found == a_before.actors.end();

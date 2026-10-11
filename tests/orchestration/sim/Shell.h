@@ -254,7 +254,7 @@ inline void MarkFinished(Shell &a_shell,
   facts.results = std::exchange(a_shell.results, {});
   facts.jobs = FinishedJobs(a_shell.jobs, tick);
   MarkFinished(a_shell, facts.jobs);
-  facts.memory = MemorySampleAt(a_shell);
+  facts.budgetSample = MemorySampleAt(a_shell);
   std::vector<ActorId> stale = std::exchange(a_shell.observed, {});
   for (const auto &[id, actor] : a_shell.script.actors) {
     if (StaleAt(a_shell.script, id, tick)) {
@@ -298,7 +298,7 @@ struct Executor {
     return script ? *script : ActorScript{};
   }
 
-  void Build(ActorId a_actor, const InstallBound &a_bound) {
+  void Build(ActorId a_actor, const InstallBounds &a_bounds) {
     const ActorScript script = ScriptFor(a_actor);
     EngineActor &actor = shell.actors[a_actor];
     actor.awaiting.reset();
@@ -315,7 +315,7 @@ struct Executor {
                : std::nullopt;
     }
     const ResolutionLevel level =
-        FittingLevel(a_bound.finest, bytes, a_bound.headroom);
+        FittingLevel(a_bounds.finestLevel, bytes, a_bounds.headroom);
     actor.render =
         EngineRender{level, IntermediateHolding::kHeld, script.levelCosts,
                      UnpublishedWork{script.slots, 0}};
@@ -447,7 +447,7 @@ struct Executor {
     if (!actor.awaiting || !actor.awaiting->finished) {
       Disagree(a_command.actor, "build without a finished plan job");
     }
-    Build(a_command.actor, a_command.bound);
+    Build(a_command.actor, a_command.bounds);
   }
 
   void operator()(const FailAwaitedRender &a_command) {
@@ -487,7 +487,7 @@ struct Executor {
       Report(a_command.actor, PlanAwaited{job});
       return;
     }
-    Build(a_command.actor, a_command.bound);
+    Build(a_command.actor, a_command.bounds);
   }
 
   void operator()(const Retire &a_command) {

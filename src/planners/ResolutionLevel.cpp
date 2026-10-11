@@ -31,17 +31,18 @@ ResolutionLevel IdealLevel(float a_screenFraction) noexcept {
   return ResolutionLevel::kEighth;
 }
 
-std::optional<ResolutionLevel> WantedLevel(const ActorSight &a_sight) noexcept {
-  if (a_sight.role == ActorRole::kPlayer) {
+std::optional<ResolutionLevel>
+LevelFor(const ActorVisibility &a_visibility) noexcept {
+  if (a_visibility.role == ActorRole::kPlayer) {
     return ResolutionLevel::kFull;
   }
-  if (!a_sight.screenFraction) {
+  if (!a_visibility.screenFraction) {
     return std::nullopt;
   }
-  if (!a_sight.inView) {
+  if (!a_visibility.shown) {
     return ResolutionLevel::kEighth;
   }
-  return IdealLevel(*a_sight.screenFraction);
+  return IdealLevel(*a_visibility.screenFraction);
 }
 
 bool SmallFor(std::optional<float> a_screenFraction,
@@ -52,13 +53,14 @@ bool SmallFor(std::optional<float> a_screenFraction,
   return *a_screenFraction < kStepDownBand * LowerBound(a_current);
 }
 
-LevelStep LevelStepOf(ResolutionLevel a_current, const ActorSight &a_sight,
+LevelStep LevelStepOf(ResolutionLevel a_current,
+                      const ActorVisibility &a_visibility,
                       bool a_stepDownDue) noexcept {
-  if (const std::optional<ResolutionLevel> wanted = WantedLevel(a_sight);
+  if (const std::optional<ResolutionLevel> wanted = LevelFor(a_visibility);
       wanted && Halvings(*wanted) < Halvings(a_current)) {
     return StepUpTo{*wanted};
   }
-  if (a_sight.role == ActorRole::kPlayer || !a_stepDownDue) {
+  if (a_visibility.role == ActorRole::kPlayer || !a_stepDownDue) {
     return KeepLevel{};
   }
   if (const std::optional<ResolutionLevel> coarser = CoarserLevel(a_current)) {

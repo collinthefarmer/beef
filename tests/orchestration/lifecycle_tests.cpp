@@ -65,14 +65,14 @@ RenderPhase RunningAt(std::size_t a_total, std::size_t a_drawn) {
                  UnpublishedDraw{a_total, a_drawn, kFrame, 1}};
 }
 
-ActorRecord Record(RenderPhase a_phase, Sighting a_sight) {
-  ActorRecord record;
+TrackedActor Tracked(RenderPhase a_phase, Sighting a_sight) {
+  TrackedActor record;
   record.sight = a_sight;
   record.render = InstalledRender{std::move(a_phase), Costs(), std::nullopt};
   return record;
 }
 
-World WorldOf(std::vector<std::pair<ActorId, ActorRecord>> a_records) {
+World WorldOf(std::vector<std::pair<ActorId, TrackedActor>> a_records) {
   World world;
   for (auto &[actor, record] : a_records) {
     world.actors[actor] = std::move(record);
@@ -155,7 +155,7 @@ TickOutput Results(World a_world, std::vector<CommandResult> a_results,
 
 void SightingsUpdateKnownActorsOnly() {
   const TickOutput out =
-      Results(WorldOf({{kActor, Record(ShownAt(kFull), InView(0.6f))}}), {},
+      Results(WorldOf({{kActor, Tracked(ShownAt(kFull), InView(0.6f))}}), {},
               {{kActor, OutOfView(0.2f)}, {kOther, InView(0.5f)}});
   Check(out.world.actors.at(kActor).sight == OutOfView(0.2f),
         "a sighting replaces the actor's last one");
@@ -208,7 +208,7 @@ void AnEventWithoutARenderIsIgnored() {
 
 void AnEventThePhaseCannotTakeIsIgnored() {
   const TickOutput out =
-      Results(WorldOf({{kActor, Record(ShownAt(kFull), InView(0.6f))}}),
+      Results(WorldOf({{kActor, Tracked(ShownAt(kFull), InView(0.6f))}}),
               {ActorEvent{kActor, ResizeSwapped{}}});
   Check(*PhaseOf(out, kActor) == RenderPhase{ShownAt(kFull)},
         "an ignored event leaves the phase as it was");
@@ -221,7 +221,7 @@ void AnEventThePhaseCannotTakeIsIgnored() {
 
 void AFailedResizeRemembersTheWantedLevel() {
   const TickOutput out = Results(
-      WorldOf({{kActor, Record(QueuedResize(kFull, kHalf), InView(0.6f))}}),
+      WorldOf({{kActor, Tracked(QueuedResize(kFull, kHalf), InView(0.6f))}}),
       {ActorEvent{kActor, ResizeNotStarted{"no stack"}}},
       {{kActor, InView(0.3f)}});
   const Shown *shown = Get<Shown>(*PhaseOf(out, kActor));
@@ -238,7 +238,7 @@ void AFailedResizeRemembersTheWantedLevel() {
 }
 
 void AnInstallAfterAPlanReplacesTheCosts() {
-  ActorRecord record = Record(Planning{kJob}, InView(0.6f));
+  TrackedActor record = Tracked(Planning{kJob}, InView(0.6f));
   record.render->levelCosts = {};
   const TickOutput out =
       Results(WorldOf({{kActor, std::move(record)}}),
@@ -256,7 +256,7 @@ TickOutput Jobs(World a_world, std::vector<PlanJobDone> a_jobs) {
 
 World PlanningWorld(Sighting a_sight,
                     std::optional<ResolutionLevel> a_reinstall) {
-  ActorRecord record = Record(Planning{kJob}, a_sight);
+  TrackedActor record = Tracked(Planning{kJob}, a_sight);
   record.reinstallLevel = a_reinstall;
   World world = WorldOf({{kActor, std::move(record)}});
   world.budget = BudgetState{5000, 1200, Pressure::kNone};
@@ -269,14 +269,14 @@ void ABuiltPlanBuildsTheAwaitedRender() {
   const std::vector<BuildAwaitedRender> builds =
       CommandsOf<BuildAwaitedRender>(reinstall);
   Check(builds.size() == 1 && builds.front().actor == kActor &&
-            builds.front().bound == InstallBound{kQuarter, 3800},
+            builds.front().bounds == InstallBounds{kQuarter, 3800},
         "a reinstall builds at its old level within the budget's headroom");
   const TickOutput fresh =
       Jobs(PlanningWorld(InView(0.3f), std::nullopt), {PlanJobBuilt{kJob}});
   const std::vector<BuildAwaitedRender> freshBuilds =
       CommandsOf<BuildAwaitedRender>(fresh);
   Check(freshBuilds.size() == 1 &&
-            freshBuilds.front().bound == InstallBound{kHalf, 3800},
+            freshBuilds.front().bounds == InstallBounds{kHalf, 3800},
         "a first install builds at the wanted level within the headroom");
   const TickOutput other = Jobs(PlanningWorld(InView(0.6f), std::nullopt),
                                 {PlanJobBuilt{PlanJobId{9}}});
@@ -285,13 +285,13 @@ void ABuiltPlanBuildsTheAwaitedRender() {
 }
 
 void ThePlayerBuildsWithoutHeadroom() {
-  ActorRecord record = Record(Planning{kJob}, PlayerSight());
+  TrackedActor record = Tracked(Planning{kJob}, PlayerSight());
   World world = WorldOf({{kPlayer, std::move(record)}});
   world.budget = BudgetState{5000, 1200, Pressure::kNone};
   const std::vector<BuildAwaitedRender> builds = CommandsOf<BuildAwaitedRender>(
       Jobs(std::move(world), {PlanJobBuilt{kJob}}));
   Check(builds.size() == 1 &&
-            builds.front().bound == InstallBound{kFull, std::nullopt},
+            builds.front().bounds == InstallBounds{kFull, std::nullopt},
         "the player's render builds at full with no headroom");
 }
 
@@ -310,8 +310,8 @@ void AFailedPlanEndsWithoutARender() {
 
 void ARenderInViewRecordsItsFrame() {
   const TickOutput out =
-      Results(WorldOf({{kActor, Record(ShownAt(kFull), InView(0.6f))},
-                       {kOther, Record(ShownAt(kFull), OutOfView(0.6f))}}),
+      Results(WorldOf({{kActor, Tracked(ShownAt(kFull), InView(0.6f))},
+                       {kOther, Tracked(ShownAt(kFull), OutOfView(0.6f))}}),
               {});
   Check(out.world.actors.at(kActor).render->renderedFrame == kFrame,
         "an actor in view records this frame as rendered");
@@ -327,7 +327,7 @@ TickOutput Lifecycle(World a_world, Millis a_now = kNow,
 }
 
 void OutOfViewReleasesAfterTheDelay() {
-  World world = WorldOf({{kActor, Record(ShownAt(kHalf), OutOfView(0.3f))}});
+  World world = WorldOf({{kActor, Tracked(ShownAt(kHalf), OutOfView(0.3f))}});
   TickOutput first = Lifecycle(std::move(world), kNow);
   Check(CommandsOf<ReleaseIntermediates>(first).empty(),
         "an actor that just left the view keeps its intermediates");
@@ -340,7 +340,7 @@ void OutOfViewReleasesAfterTheDelay() {
 }
 
 World StepUpWorld(BudgetState a_budget) {
-  World world = WorldOf({{kActor, Record(ShownAt(kHalf), InView(0.6f))}});
+  World world = WorldOf({{kActor, Tracked(ShownAt(kHalf), InView(0.6f))}});
   world.budget = a_budget;
   return world;
 }
@@ -370,7 +370,7 @@ void ABlockedStepUpIsRecordedOnce() {
   TickOutput first =
       Lifecycle(StepUpWorld(BudgetState{5000, 4500, Pressure::kNone}));
   const Shown *shown = Get<Shown>(*PhaseOf(first, kActor));
-  Check(shown && shown->stepUpBlockedFrom == kHalf &&
+  Check(shown && shown->waitingForRoomFrom == kHalf &&
             first.world.budget.planned == 4500,
         "a blocked step-up keeps the level, charges nothing and records "
         "where it was blocked");
@@ -388,7 +388,7 @@ void ABlockedStepUpIsRecordedOnce() {
 }
 
 void ThePlayerStepsUpWithoutAdmission() {
-  World world = WorldOf({{kPlayer, Record(ShownAt(kHalf), PlayerSight())}});
+  World world = WorldOf({{kPlayer, Tracked(ShownAt(kHalf), PlayerSight())}});
   world.budget = BudgetState{5000, 4500, Pressure::kOver};
   const TickOutput out = Lifecycle(std::move(world));
   Check(PhaseNameOf(out, kPlayer) == "resize_queued" &&
@@ -397,7 +397,7 @@ void ThePlayerStepsUpWithoutAdmission() {
 }
 
 void ASmallActorStepsDownAfterTheHold() {
-  World world = WorldOf({{kActor, Record(ShownAt(kFull), InView(0.3f))}});
+  World world = WorldOf({{kActor, Tracked(ShownAt(kFull), InView(0.3f))}});
   TickOutput first = Lifecycle(std::move(world), kNow);
   Check(PhaseNameOf(first, kActor) == "shown" && first.commands.size() == 1,
         "a small actor keeps its level while the hold runs");
@@ -411,7 +411,7 @@ void ASmallActorStepsDownAfterTheHold() {
 void AFailedLevelIsNotAskedAgain() {
   Shown live = ShownAt(kHalf);
   live.failed = FailedLevel{kFull, kFull};
-  World world = WorldOf({{kActor, Record(live, InView(0.6f))}});
+  World world = WorldOf({{kActor, Tracked(live, InView(0.6f))}});
   world.budget = BudgetState{5000, 1000, Pressure::kNone};
   const TickOutput out = Lifecycle(std::move(world));
   Check(PhaseNameOf(out, kActor) == "shown" &&
@@ -422,13 +422,13 @@ void AFailedLevelIsNotAskedAgain() {
 
 void OneResizeRunsAtATime() {
   const TickOutput busy = Lifecycle(WorldOf(
-      {{kActor, Record(RunningAt(3, 1), InView(0.3f))},
-       {kOther, Record(QueuedResize(kHalf, kQuarter), InView(0.15f))}}));
+      {{kActor, Tracked(RunningAt(3, 1), InView(0.3f))},
+       {kOther, Tracked(QueuedResize(kHalf, kQuarter), InView(0.15f))}}));
   Check(CommandsOf<StartResize>(busy).empty(),
         "no resize starts while another runs");
   const TickOutput idle = Lifecycle(WorldOf(
-      {{kActor, Record(QueuedResize(kHalf, kQuarter), OutOfView(0.6f))},
-       {kOther, Record(QueuedResize(kHalf, kQuarter), InView(0.15f))}}));
+      {{kActor, Tracked(QueuedResize(kHalf, kQuarter), OutOfView(0.6f))},
+       {kOther, Tracked(QueuedResize(kHalf, kQuarter), InView(0.15f))}}));
   const std::vector<StartResize> started = CommandsOf<StartResize>(idle);
   Check(started.size() == 1 && started.front().actor == kOther &&
             started.front().to == kQuarter,
@@ -437,8 +437,8 @@ void OneResizeRunsAtATime() {
 
 void ADrawnResizeSwapsAndFreesItsSlot() {
   const TickOutput out = Lifecycle(WorldOf(
-      {{kActor, Record(RunningAt(3, 3), InView(0.3f))},
-       {kOther, Record(QueuedResize(kHalf, kQuarter), InView(0.15f))}}));
+      {{kActor, Tracked(RunningAt(3, 3), InView(0.3f))},
+       {kOther, Tracked(QueuedResize(kHalf, kQuarter), InView(0.15f))}}));
   const std::vector<SwapResize> swapped = CommandsOf<SwapResize>(out);
   Check(swapped.size() == 1 && swapped.front().actor == kActor,
         "a fully drawn resize swaps");
@@ -453,18 +453,18 @@ void ADrawnResizeSwapsAndFreesItsSlot() {
 
 void AResizeOutOfViewSwapsAtOnce() {
   const TickOutput out =
-      Lifecycle(WorldOf({{kActor, Record(RunningAt(3, 0), OutOfView(0.6f))}}));
+      Lifecycle(WorldOf({{kActor, Tracked(RunningAt(3, 0), OutOfView(0.6f))}}));
   Check(CommandsOf<SwapResize>(out).size() == 1,
         "a resize out of view swaps without drawing");
   const TickOutput drawing =
-      Lifecycle(WorldOf({{kActor, Record(RunningAt(3, 0), InView(0.3f))}}));
+      Lifecycle(WorldOf({{kActor, Tracked(RunningAt(3, 0), InView(0.3f))}}));
   Check(CommandsOf<SwapResize>(drawing).empty(),
         "a resize in view that is still drawing does not swap");
 }
 
 void ADrawnFirstDrawEnds() {
   const TickOutput out =
-      Lifecycle(WorldOf({{kActor, Record(DrawingAt(3, 3, 2), InView(0.3f))}}));
+      Lifecycle(WorldOf({{kActor, Tracked(DrawingAt(3, 3, 2), InView(0.3f))}}));
   Check(PhaseNameOf(out, kActor) == "shown", "a drawn first draw goes live");
   const std::vector<TraceRecord> ends = TracesOf(out, "first_draw");
   Check(ends.size() == 1 && HasField(ends.front(), "end", "drawn") &&
@@ -483,13 +483,13 @@ void ADrawnFirstDrawEnds() {
 }
 
 void AFirstDrawEndsAtTheTickLimit() {
-  const TickOutput out =
-      Lifecycle(WorldOf({{kActor, Record(DrawingAt(3, 1, 60), InView(0.3f))}}));
+  const TickOutput out = Lifecycle(
+      WorldOf({{kActor, Tracked(DrawingAt(3, 1, 60), InView(0.3f))}}));
   const std::vector<TraceRecord> ends = TracesOf(out, "first_draw");
   Check(ends.size() == 1 && HasField(ends.front(), "end", "tick_limit"),
         "a first draw ends after its tick limit");
-  const TickOutput still =
-      Lifecycle(WorldOf({{kActor, Record(DrawingAt(3, 1, 59), InView(0.3f))}}));
+  const TickOutput still = Lifecycle(
+      WorldOf({{kActor, Tracked(DrawingAt(3, 1, 59), InView(0.3f))}}));
   Check(PhaseNameOf(still, kActor) == "drawing",
         "a first draw under the limit keeps drawing");
 }
@@ -497,7 +497,7 @@ void AFirstDrawEndsAtTheTickLimit() {
 void AFirstDrawWithANewLevelQueuesAResize() {
   Drawing drawing{kHalf, UnpublishedDraw{2, 2, 400, 1}, kFull};
   const TickOutput out =
-      Lifecycle(WorldOf({{kActor, Record(drawing, InView(0.6f))}}));
+      Lifecycle(WorldOf({{kActor, Tracked(drawing, InView(0.6f))}}));
   const Queued *queued = Get<Queued>(*PhaseOf(out, kActor));
   Check(queued && queued->resize.from == kHalf && queued->resize.to == kFull &&
             CommandsOf<StartResize>(out).empty(),
@@ -507,7 +507,7 @@ void AFirstDrawWithANewLevelQueuesAResize() {
 
 void TheTickFlagsFollowThePhase() {
   const std::optional<TickActor> drawing = TickOf(
-      Lifecycle(WorldOf({{kActor, Record(DrawingAt(3, 0, 0), InView(0.3f))}})),
+      Lifecycle(WorldOf({{kActor, Tracked(DrawingAt(3, 0, 0), InView(0.3f))}})),
       kActor);
   Check(drawing && drawing->drawStacks && drawing->concealSlots &&
             drawing->hideShells && drawing->hideLights &&
@@ -515,12 +515,12 @@ void TheTickFlagsFollowThePhase() {
         "a first draw in view conceals and hides and finishes nothing");
   const std::optional<TickActor> away =
       TickOf(Lifecycle(WorldOf(
-                 {{kActor, Record(DrawingAt(3, 0, 0), OutOfView(0.3f))}})),
+                 {{kActor, Tracked(DrawingAt(3, 0, 0), OutOfView(0.3f))}})),
              kActor);
   Check(away && !away->drawStacks && away->finishApplications,
         "a first draw out of view draws nothing and finishes applications");
   const std::optional<TickActor> awaiting = TickOf(
-      Lifecycle(WorldOf({{kActor, Record(Planning{kJob}, InView(0.3f))}})),
+      Lifecycle(WorldOf({{kActor, Tracked(Planning{kJob}, InView(0.3f))}})),
       kActor);
   Check(awaiting && awaiting->hideShells && awaiting->concealSlots &&
             !awaiting->finishApplications,
@@ -530,8 +530,8 @@ void TheTickFlagsFollowThePhase() {
   TickSettings unpublished;
   unpublished.publishEffects = false;
   const std::optional<TickActor> live = TickOf(
-      Lifecycle(WorldOf({{kActor, Record(ShownAt(kHalf), InView(0.3f))}}), kNow,
-                unpublished),
+      Lifecycle(WorldOf({{kActor, Tracked(ShownAt(kHalf), InView(0.3f))}}),
+                kNow, unpublished),
       kActor);
   Check(live && live->hideShells && !live->concealSlots && !live->hideLights,
         "unpublished effects hide the shells of every actor");
@@ -541,17 +541,17 @@ void AnActorWithout3DDecidesNothing() {
   Sighting sight = InView(0.6f);
   sight.loaded3D = false;
   const TickOutput out =
-      Lifecycle(WorldOf({{kActor, Record(DrawingAt(3, 0, 0), sight)}}));
+      Lifecycle(WorldOf({{kActor, Tracked(DrawingAt(3, 0, 0), sight)}}));
   Check(out.commands.empty() && out.trace.empty(),
         "an actor without 3D gets no command");
 }
 
 void UnpublishedDrawsComeLastInPacingOrder() {
   World world =
-      WorldOf({{kActor, Record(DrawingAt(3, 0, 0), InView(0.2f))},
-               {kOther, Record(DrawingAt(3, 0, 0), InView(0.4f))},
-               {kPlayer, Record(DrawingAt(3, 0, 0), PlayerSight())},
-               {ActorId{30}, Record(DrawingAt(3, 0, 0), OutOfView(0.9f))}});
+      WorldOf({{kActor, Tracked(DrawingAt(3, 0, 0), InView(0.2f))},
+               {kOther, Tracked(DrawingAt(3, 0, 0), InView(0.4f))},
+               {kPlayer, Tracked(DrawingAt(3, 0, 0), PlayerSight())},
+               {ActorId{30}, Tracked(DrawingAt(3, 0, 0), OutOfView(0.9f))}});
   TickSettings settings;
   settings.unpublishedDrawBudgetMs = 6;
   const TickOutput out = Lifecycle(std::move(world), kNow, settings);
@@ -566,14 +566,14 @@ void UnpublishedDrawsComeLastInPacingOrder() {
         "the player draws first, then larger actors, within the budget; "
         "actors out of view wait");
   const TickOutput none =
-      Lifecycle(WorldOf({{kActor, Record(ShownAt(kHalf), InView(0.3f))}}));
+      Lifecycle(WorldOf({{kActor, Tracked(ShownAt(kHalf), InView(0.3f))}}));
   Check(CommandsOf<DrawUnpublished>(none).empty(),
         "nothing unpublished draws nothing");
 }
 
 void TheCommandsFollowTheStepOrder() {
-  World world = WorldOf({{kActor, Record(ShownAt(kHalf), OutOfView(0.3f))},
-                         {kOther, Record(RunningAt(3, 1), InView(0.3f))}});
+  World world = WorldOf({{kActor, Tracked(ShownAt(kHalf), OutOfView(0.3f))},
+                         {kOther, Tracked(RunningAt(3, 1), InView(0.3f))}});
   TickOutput first = Lifecycle(std::move(world), kNow);
   const TickOutput out = Lifecycle(std::move(first.world), kNow + 5000);
   std::vector<std::size_t> kinds;

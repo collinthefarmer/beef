@@ -7,7 +7,7 @@ It is engine-free and holds no `RE::` pointer. Its `ALLOWS` row in
 `tools/gate.py` is `'actors': ('Core.h', 'recipe', 'mesh', 'planners',
 'studio', 'actors')`. The engine adapter calls `PlanActor` when it gathers facts
 (`engine/ManagerFacts.cpp`). The tick core calls `Advance`, `KindOf`,
-`RecheckOf`, `InRange` and `WithClaim` (`orchestration/Sync.cpp`).
+`ModelLoadOf`, `InRange` and `WithClaim` (`orchestration/Sync.cpp`).
 `ctest --preset native` runs its tests as the suites `actors_actor`,
 `actors_planning`, `actors_reconcile` and `actors_lifecycle`.
 
@@ -18,7 +18,7 @@ actor's facts, the loaded recipes and the studio view into a plan and
 the matches the planners read. `Reconcile` compares the installed plan with
 the plan and returns the commands that make them equal. `Advance` picks the
 actor's next state and calls `Reconcile` when the actor is loaded, in range
-and not waiting. `RecheckOf` tells the adapter when to observe an actor again
+and not waiting. `ModelLoadOf` tells the adapter when to observe an actor again
 without an engine event.
 
 The core is level-triggered. The same facts give the same plan and the same
@@ -94,8 +94,8 @@ plan, the pending models and the claims are all empty.
 | `PendingModel{piece, sinceMs}` | A **pending model**: a worn piece whose model has not attached, with the time the piece was first seen without a model. | `Actor.h` |
 | `Claim{geometry, model}` | A **claim**: a geometry that another system took, with the token of the piece's model at that time. | `Actor.h` |
 | `kModelWaitMs` | 1000 ms. While a third-person pending model is younger than this, an actor with an installed plan waits and gets no command. | `Lifecycle.h` |
-| `kPendingRecheckMs` | 100 ms. The interval of the waiting recheck. It is also added to `kModelWaitMs` to set the end of waiting. | `Lifecycle.h` |
-| `kRecheckMs` | 1000 ms. The interval of the stuck and range recheck. | `Lifecycle.h` |
+| `kLoadingCheckMs` | 100 ms. The interval of the check on a loading model. It is also added to `kModelWaitMs` to set the end of loading. | `Lifecycle.h` |
+| `kSlowCheckMs` | 1000 ms. The interval of the check on a late model and on the range. | `Lifecycle.h` |
 
 An **evicted** actor has a state with a plan and an empty installed plan.
 
@@ -119,7 +119,7 @@ the installed plan after the engine performs them.
 ### Requests
 
 The requests bundle the inputs of `PlanActor` and `Advance` by reference.
-`PlanRequest` reads the applied `RecipeCatalog` (`recipe/RecipeCatalog.h`). `Recheck`
+`PlanRequest` reads the applied `RecipeCatalog` (`recipe/RecipeCatalog.h`). `ModelLoad`
 is the answer to "observe this actor again without an event?".
 
 | Type | Description | Declared in |
@@ -127,7 +127,7 @@ is the answer to "observe this actor again without an event?".
 | `PlanRequest{facts, recipes, view, claims}` | The input of `PlanActor`: the facts, the catalog, the studio `View` (recipe set and isolation filter), and the actor's claims. | `Planning.h` |
 | `AdvanceRequest{state, facts, plan, nowMs, evictDistance, reinstall}` | The input of `Advance`: the current state (none when the actor has no record), the facts, the plan, the clock, the eviction distance (`EffectiveEvictDistance`: the setting or the smaller budget radius), and the reinstall demand. | `Lifecycle.h` |
 | `Reinstall` | `kIfChanged` or `kAlways`. A **reinstall** (`kAlways`) gives an in-range actor commands that retire everything installed and install the whole plan, without a model wait. A rebuild asks for it. | `Lifecycle.h` |
-| `Recheck` | `kNone`, `kWaiting` or `kStuck`. An actor with a pending model is **waiting** while a pending model is younger than `kModelWaitMs` plus `kPendingRecheckMs`, and **stuck** after that. | `Lifecycle.h` |
+| `ModelLoad` | `kNone`, `kLoading` or `kLate`. An actor with a pending model is **loading** while a pending model is younger than `kModelWaitMs` plus `kLoadingCheckMs`, and **late** after that. A late model is still checked every `kSlowCheckMs`. | `Lifecycle.h` |
 
 ### Functions over the state
 
@@ -136,7 +136,7 @@ is the answer to "observe this actor again without an event?".
 | `Advance` | Returns the `Transition` for one actor. The section *How an actor converges* gives its rules. | `Lifecycle.h` |
 | `InRange(installed, distance, evictDistance)` | Tells if an actor is in range. An actor with something installed stays in range out to 1.0 × `evictDistance`. An actor with nothing installed comes in range only inside 0.8 × `evictDistance`. An actor with no distance (the player) is always in range. An `evictDistance` of 0 or less puts every actor in range. | `Lifecycle.h` |
 | `AnythingInstalled(state)` | Tells if a state has a non-empty installed plan. | `Lifecycle.h` |
-| `RecheckOf(state, nowMs)` | Returns the `Recheck` of a state from its pending models. | `Lifecycle.h` |
+| `ModelLoadOf(state, nowMs)` | Returns the `ModelLoad` of a state from its pending models. | `Lifecycle.h` |
 | `LiveClaims(claims, facts)` | Keeps the claims whose piece still has the claimed `ModelToken`. A claim ends when its piece gets a new model (a re-equip or a 3D reload). | `Lifecycle.h` |
 | `WithClaim(state, claim)` | Returns the state with the claim added once. | `Lifecycle.h` |
 | `GeometryRefOf(piece, index)` | Returns the `GeometryRef` of a piece's geometry at an index, or none when the index is out of bounds. Planning and the adapter's `LivePiecesOf` share this identity rule. | `Planning.h` |
@@ -195,10 +195,10 @@ installed plan == plan; the next sync with the same facts issues nothing
 
 
 Rechecks without an event (ObserveDue)                     orchestration/Sync.cpp
-  every kPendingRecheckMs (100 ms)
-    RecheckOf(state) == kWaiting                          ──▶ Observe
-  every kRecheckMs (1000 ms)
-    RecheckOf(state) != kNone or RangeChanged(state)      ──▶ Observe
+  every kLoadingCheckMs (100 ms)
+    ModelLoadOf(state) == kLoading                          ──▶ Observe
+  every kSlowCheckMs (1000 ms)
+    ModelLoadOf(state) != kNone or RangeChanged(state)      ──▶ Observe
   every tick
     a claim from Manager::ClaimsOf (the geometry is already
     retired) ──▶ WithClaim (RecordSyncResults), Observe
@@ -216,7 +216,7 @@ commands set the new installed plan through `AfterCommands`.
 | `src/actors/Actor.h`/`.cpp` | The refs, facts, plan, state, pending model, claim and command types, and the three `Find` lookups by ref. |
 | `src/actors/Planning.h`/`.cpp` | `PlanRequest`, `PlannedActor`, `GeometryRefOf`, `PlannedPieces` (the pieces with a model) and `PlanActor`. |
 | `src/actors/Reconcile.h`/`.cpp` | `Reconcile`, `AfterCommand` and `AfterCommands`. |
-| `src/actors/Lifecycle.h`/`.cpp` | `kModelWaitMs`, `kPendingRecheckMs`, `kRecheckMs`, `Recheck`, `Reinstall`, `AdvanceRequest`, `Advance`, `InRange`, `AnythingInstalled`, `RecheckOf`, `LiveClaims` and `WithClaim`. |
+| `src/actors/Lifecycle.h`/`.cpp` | `kModelWaitMs`, `kLoadingCheckMs`, `kSlowCheckMs`, `ModelLoad`, `Reinstall`, `AdvanceRequest`, `Advance`, `InRange`, `AnythingInstalled`, `ModelLoadOf`, `LiveClaims` and `WithClaim`. |
 | `src/actors/SyncLog.h`/`.cpp` | `SyncKind`, `SyncKindName`, `KindOf`, `SyncRecord`, `Recorded` and `SyncSummary`: what a sync did, derived from the transition, and the last 2 s of syncs (at most 64) that the burst line names. |
 | `tests/actors/fixtures.h` | Shared builders for refs and placements (`Piece`, `Geo`, `Instance`, `Placed`). |
 | `tests/actors/actor_tests.cpp` | Ref equality by every field, and `Find` by ref. |

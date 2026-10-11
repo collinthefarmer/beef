@@ -8,7 +8,7 @@
 
 namespace BetterEnchantmentEffects {
 namespace {
-enum class InstallRank { kOverdue, kPlayer, kInView, kOther };
+enum class InstallRank { kOverdue, kPlayer, kShown, kOther };
 
 std::uint32_t WaitOf(const WaitingInstall &a_entry,
                      std::uint32_t a_nowMS) noexcept {
@@ -23,7 +23,7 @@ InstallRank RankOf(const WaitingInstall &a_entry,
   if (a_entry.role == ActorRole::kPlayer) {
     return InstallRank::kPlayer;
   }
-  return a_entry.inView ? InstallRank::kInView : InstallRank::kOther;
+  return a_entry.shown ? InstallRank::kShown : InstallRank::kOther;
 }
 
 bool Precedes(const WaitingInstall &a_left, const WaitingInstall &a_right,
@@ -33,7 +33,7 @@ bool Precedes(const WaitingInstall &a_left, const WaitingInstall &a_right,
   if (left != right) {
     return left < right;
   }
-  if (left == InstallRank::kInView &&
+  if (left == InstallRank::kShown &&
       a_left.screenFraction != a_right.screenFraction) {
     return LargerOnScreen(a_left.screenFraction, a_right.screenFraction);
   }

@@ -124,13 +124,15 @@ struct TickFacts {
   Millis now = 0;
   std::uint64_t frame = 0;
   TickSettings settings;
+
   std::map<ActorId, Sighting> sightings;
-  std::vector<CommandResult> results;
-  std::vector<PlanJobDone> jobs;
   std::vector<StaleActor> stale;
   std::vector<ClaimedGeometry> claims;
-  std::optional<BudgetSample> memory;
-  FrameSyncs frameSyncs;
+  std::optional<BudgetSample> budgetSample;
+
+  std::vector<CommandResult> results;
+  std::vector<PlanJobDone> jobs;
+
   std::vector<ActorId> forgets;
 };
 }

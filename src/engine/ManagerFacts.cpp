@@ -139,7 +139,7 @@ Manager::GatherFacts(std::uint32_t a_nowMS, const Settings &a_settings,
   facts.jobs = std::move(a_jobs);
   facts.forgets = ForgetRequests();
   facts.claims = ClaimsOf();
-  facts.memory = std::exchange(pendingSample_, std::nullopt);
+  facts.budgetSample = std::exchange(pendingSample_, std::nullopt);
   for (auto &[id, tokens] : std::exchange(stale_, {})) {
     facts.stale.push_back(
         StaleActorOf(id, *inputs.catalog, a_settings, inputs.observedAtMS));
@@ -174,9 +174,9 @@ Manager::SightingOf(RE::FormID a_actorID, const Settings &a_settings,
   if (!sighting.loaded3D) {
     return sighting;
   }
-  sighting.inView = InViewOf({sighting.role, a_settings.cullOutOfView,
-                              a_inspected == a_actorID,
-                              CameraViewOf(*actor, sighting.role, a_settings)});
+  sighting.shown = InViewOf({sighting.role, a_settings.cullOutOfView,
+                             a_inspected == a_actorID,
+                             CameraViewOf(*actor, sighting.role, a_settings)});
   sighting.screenFraction =
       ScreenFractionOf(ScreenFraction(*actor), a_settings.sizeByScreen,
                        RegressionScreenResolution());

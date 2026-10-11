@@ -49,8 +49,8 @@ const RenderEvent *OnlyEvent(const TickFacts &a_facts) {
   return event ? &event->event : nullptr;
 }
 
-Install InstallOf(ActorId a_actor, InstallBound a_bound = {}) {
-  return Install{a_actor, {}, {}, InstallKind::kInstall, a_bound, 0};
+Install InstallOf(ActorId a_actor, InstallBounds a_bounds = {}) {
+  return Install{a_actor, {}, {}, InstallKind::kInstall, a_bounds, 0};
 }
 
 void InstallBuildsARender() {
@@ -66,7 +66,7 @@ void InstallBuildsARender() {
 
   const Executing bounded =
       Execute(ShellFor(ScriptedActor(InView(0.5f, 100.0f))),
-              {InstallOf(kActor, InstallBound{kFull, kFullBytes / 3})});
+              {InstallOf(kActor, InstallBounds{kFull, kFullBytes / 3})});
   const RenderEvent *boundedEvent = OnlyEvent(bounded.facts);
   const Installed *fitted =
       boundedEvent ? Get<Installed>(*boundedEvent) : nullptr;
@@ -273,18 +273,18 @@ void ScriptedFacts() {
   shell.script.memory = MemoryScript{2, 100 * kMebibyte};
   shell.script.tickMs = 10;
   World world;
-  world.actors[kActor] = ActorRecord{};
+  world.actors[kActor] = TrackedActor{};
   Turn turn = NextFacts(std::move(shell), world);
-  Check(!turn.facts.sightings.at(kActor).inView && turn.facts.stale.empty() &&
-            !turn.facts.memory,
+  Check(!turn.facts.sightings.at(kActor).shown && turn.facts.stale.empty() &&
+            !turn.facts.budgetSample,
         "tick 1 sights the first keyframe, nothing stale, no sample");
   Equal(turn.facts.now, Millis{10}, "the time advances by the tick interval");
   turn = NextFacts(std::move(turn.shell), world);
-  Check(turn.facts.stale.size() == 1 && turn.facts.memory &&
-            AllowanceOf(*turn.facts.memory) == 100 * kMebibyte,
+  Check(turn.facts.stale.size() == 1 && turn.facts.budgetSample &&
+            AllowanceOf(*turn.facts.budgetSample) == 100 * kMebibyte,
         "tick 2 marks the actor stale and samples memory at the allowance");
   turn = NextFacts(std::move(turn.shell), world);
-  Check(turn.facts.sightings.at(kActor).inView,
+  Check(turn.facts.sightings.at(kActor).shown,
         "tick 3 sights the next keyframe");
   const Turn empty = NextFacts(Shell{}, World{});
   Check(empty.facts.sightings.empty(),

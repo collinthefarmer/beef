@@ -27,7 +27,7 @@ int main() {
   Check(FormOf(ActorOf(0x14)) == 0x14u,
         "an actor id converts to a form id and back");
   const TickFacts facts;
-  Check(facts.sightings.empty() && facts.results.empty() && !facts.memory,
+  Check(facts.sightings.empty() && facts.results.empty() && !facts.budgetSample,
         "empty facts carry no sighting, result or memory sample");
   const TickOutput empty = Tick(World{}, TickFacts{});
   Check(empty.world.actors.empty() && empty.commands.empty() &&

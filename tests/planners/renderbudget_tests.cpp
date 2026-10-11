@@ -17,11 +17,11 @@ BudgetActor Npc(ResolutionLevel a_level, float a_fraction,
                 std::uint64_t a_freed) {
   BudgetActor actor;
   actor.level = a_level;
-  actor.screenFraction = a_fraction;
+  actor.visibility.screenFraction = a_fraction;
   if (const std::optional<ResolutionLevel> coarser = CoarserLevel(a_level)) {
-    actor.stepDown = StepDownOption{*coarser, a_freed};
+    actor.costs.stepDown = StepDownOption{*coarser, a_freed};
   }
-  actor.surplusBytes = a_freed;
+  actor.costs.surplus = a_freed;
   return actor;
 }
 
@@ -42,8 +42,8 @@ std::vector<std::uint32_t> ReleasedActors(const BudgetResponse &a_response) {
 
 BudgetActor Hidden(std::uint64_t a_releasable) {
   BudgetActor actor = Npc(ResolutionLevel::kFull, 0.5f, a_releasable);
-  actor.inView = false;
-  actor.releasable = a_releasable;
+  actor.visibility.shown = false;
+  actor.costs.releasable = a_releasable;
   return actor;
 }
 
@@ -204,7 +204,7 @@ void HiddenActorsReleaseFirst() {
 
 void WidestGapThenMostFreedStepsDownFirst() {
   BudgetActor player = Npc(ResolutionLevel::kFull, 0.01f, 9 * kGiB);
-  player.role = ActorRole::kPlayer;
+  player.visibility.role = ActorRole::kPlayer;
   BudgetActor resizing = Npc(ResolutionLevel::kFull, 0.01f, 9 * kGiB);
   resizing.resizing = true;
   const std::vector<BudgetActor> actors =
@@ -228,7 +228,7 @@ void WidestGapThenMostFreedStepsDownFirst() {
 
 void PlayerIsNeverPicked() {
   BudgetActor player = Npc(ResolutionLevel::kFull, 0.0f, 9 * kGiB);
-  player.role = ActorRole::kPlayer;
+  player.visibility.role = ActorRole::kPlayer;
   const std::vector<BudgetActor> actors{player,
                                         Npc(ResolutionLevel::kEighth, 0.0f, 0)};
   const BudgetResponse response =
@@ -240,7 +240,7 @@ void PlayerIsNeverPicked() {
 
 void OutOfViewActorsStepDownFirst() {
   BudgetActor behind = Npc(ResolutionLevel::kFull, 0.6f, 1 * kGiB);
-  behind.inView = false;
+  behind.visibility.shown = false;
   const std::vector<BudgetActor> actors =
       Numbered({Npc(ResolutionLevel::kFull, 0.3f, 4 * kGiB), behind});
   const StepDown *stepDown =
@@ -254,7 +254,7 @@ void PreemptionTakesFromSmallerOrHiddenActors() {
   const PreemptionRequest requester{{0.6f, true, ActorRole::kOther},
                                     1 * kMebibyte};
   BudgetActor behind = Npc(ResolutionLevel::kFull, 0.7f, 1 * kGiB);
-  behind.inView = false;
+  behind.visibility.shown = false;
   const std::vector<BudgetActor> actors =
       Numbered({Npc(ResolutionLevel::kFull, 0.5f, 4 * kGiB),
                 Npc(ResolutionLevel::kFull, 0.3f, 2 * kGiB), behind});
@@ -272,7 +272,7 @@ void PreemptionTakesFromSmallerOrHiddenActors() {
                              actors),
         "a requester out of view takes nothing");
   BudgetActor player = Npc(ResolutionLevel::kFull, 0.01f, 9 * kGiB);
-  player.role = ActorRole::kPlayer;
+  player.visibility.role = ActorRole::kPlayer;
   BudgetActor resizing = Npc(ResolutionLevel::kFull, 0.01f, 9 * kGiB);
   resizing.resizing = true;
   Check(!PreemptionCandidate(requester, Numbered({player, resizing})),
@@ -281,8 +281,8 @@ void PreemptionTakesFromSmallerOrHiddenActors() {
 
 void PreemptionNeedsEnoughSurplus() {
   BudgetActor karita = Npc(ResolutionLevel::kFull, 0.2f, 1 * kMebibyte);
-  karita.inView = false;
-  karita.surplusBytes = 1398101;
+  karita.visibility.shown = false;
+  karita.costs.surplus = 1398101;
   BudgetActor thoring = karita;
   const std::vector<BudgetActor> actors = Numbered({karita, thoring});
   Check(!PreemptionCandidate({{0.6f, true, ActorRole::kOther}, 32 * kMebibyte},

@@ -866,7 +866,7 @@ Lab mechanics:
 
 The core's constants and rules come from engine behaviour, so their reasons
 sit with the adapter under *Engine events, hooks and the manager*: the
-pending model paragraph gives `kModelWaitMs`, `kPendingRecheckMs` and the
+pending model paragraph gives `kModelWaitMs`, `kLoadingCheckMs` and the
 third-person-only wait; the eviction paragraph gives the 0.8 restore factor
 of `EvictionFor` and `InRange`; the claim paragraph gives `Claim` and
 `LiveClaims`. `docs/components/actors.md` maps the
@@ -891,7 +891,7 @@ A **sync** runs one stale actor through the actor core (`src/actors/`, plan
 | Decide | `SyncStale` (`orchestration/Sync.cpp`), in the core's `RunSync` | Advances the actor's state (`Actors::Advance`) and issues the commands. |
 
 `StaleActorOf` traces `actor_decide` with `observe_us`, `plan_us`, `pieces`
-and `planned`. `ActorRecord::syncState` (`World.h`) holds the actor's
+and `planned`. `TrackedActor::syncState` (`World.h`) holds the actor's
 `ActorState`. An actor without a record in `World::actors` has no state.
 
 | Decision | Commands, in order |
@@ -941,13 +941,13 @@ first seen).
   list an item that has no first-person model (a helmet), and such a piece
   would delay every equip of the player by the full wait. A first-person
   piece stays pending until it attaches.
-- `RecheckOf` reports an actor as **waiting** while a pending model is
-  younger than the wait plus `kPendingRecheckMs` (100 ms). It reports the
-  actor as **stuck** after that. One observation therefore lands after the
+- `ModelLoadOf` reports an actor as **loading** while a pending model is
+  younger than the wait plus `kLoadingCheckMs` (100 ms). It reports the
+  actor as **late** after that. One observation therefore lands after the
   wait ends.
 - The core's `ObserveDue` (`orchestration/Sync.cpp`) issues `Observe` for
-  each waiting actor every `kPendingRecheckMs` and for each stuck actor every
-  `kRecheckMs` (1 s). The timers are `World::timers`.
+  each loading actor every `kLoadingCheckMs` and for each late actor every
+  `kSlowCheckMs` (1 s). The timers are `World::timers`.
 - A sync that leaves the actor waiting sends `SettleApplications` with
   `equip` false, so the equip flag stays. The equip signal fires when the
   late model installs.
@@ -1001,7 +1001,7 @@ Distance eviction is an `Advance` rule.
   radius applies also when `EvictDistance` is 0 or less. Every actor is in
   range when `EvictDistance` is 0 or less and no budget radius is set, so
   turning eviction off restores an evicted actor.
-- Every `kRecheckMs` (1 s), the core's `ObserveDue` reads the sighting
+- Every `kSlowCheckMs` (1 s), the core's `ObserveDue` reads the sighting
   distance (`DistanceToPlayer`) of each actor with a state. `RangeChanged`
   (`orchestration/Sync.h`) holds when `InRange` differs from "anything
   installed". The core then issues `Observe`. `RangeChanged` skips an actor
@@ -1120,7 +1120,7 @@ on (`CameraViewOf`).
 - The bound's radius is the root's bound radius (at least 96) × 1.25 + 64
   units. The tick runs before camera mods finish the frame, and a fast turn
   would otherwise show one stale frame.
-- An NPC out of view (`Sighting::inView` false) gets a `TickActor` with
+- An NPC out of view (`Sighting::shown` false) gets a `TickActor` with
   `drawStacks` false. It skips `RenderPieces` and nothing else. Its signals
   keep ticking, its lights keep updating, and its steps stay dirty, so the
   first demand back in view catches up.
@@ -1651,7 +1651,7 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
   key can be freed and reused while the plan lives.
 - `RunSync` releases the replaced actor's planned bytes when it issues the
   `Install`. The core gives `BuildAwaitedRender` its bound when the plan
-  arrives (`PlanBuilt`, `InstallBoundOf` with no replaced bytes), so the
+  arrives (`PlanBuilt`, `InstallBoundsOf` with no replaced bytes), so the
   headroom is that tick's. `RenderBuildAt` then chooses the level.
 - While an actor waits, its stack outputs have no `RenderOutput` and no
   problem. `WriteSlots` then writes no texture and zero strength. A material
@@ -1700,8 +1700,7 @@ them:
   install, a reinstall after an equip change and a return into the budget
   radius are installs.
 - `FrameSyncs` holds the install time spent and the install count.
-  `RunSync` starts each tick from `TickFacts::frameSyncs`, which the engine
-  always sends empty.
+  `RunSync` starts each tick from an empty `FrameSyncs`.
 - `CanInstallThisTick` lets an install start when no install ran yet or when
   less than 8 ms (`kInstallBudgetUs`) was spent. The core cannot measure
   install time, so it charges each issued install the full `kInstallBudgetUs`
@@ -2776,13 +2775,13 @@ cancel by the user instead of the load.
   the setting `ScreenResolution` off makes every actor full.
 - Each tick, the core's lifecycle step asks `LevelStepOf` for each actor with
   a target level (render-performance 7c-3, 2026-10-08; `StepLevel`,
-  `orchestration/Lifecycle.cpp`). `LevelStepOf` reads an `ActorSight`: the
-  screen fraction, `Sighting::inView` and the role. An actor that gets
+  `orchestration/Lifecycle.cpp`). `LevelStepOf` reads an `ActorVisibility`: the
+  screen fraction, `Sighting::shown` and the role. An actor that gets
   `SwapResize` or `StartResize` in the tick takes no level step.
 - An NPC in view steps to a finer level as soon as its screen fraction
   crosses a threshold. It goes straight to the level that the fraction needs
-  (`WantedLevel`).
-- An NPC out of view wants eighth (`WantedLevel`), so it never steps up. Its
+  (`LevelFor`).
+- An NPC out of view wants eighth (`LevelFor`), so it never steps up. Its
   level does not fall because it left the view. It keeps the detail it has
   when the camera turns back to it.
 - An NPC steps down one level when its screen fraction stays below 0.8 of
@@ -2895,12 +2894,12 @@ cancel by the user instead of the load.
   `resolution_levels`, written with the heartbeat, counts the actors at each
   applied level.
 - The first install bounds the level by the actor's screen fraction at that
-  moment (`InstallBoundOf`, `orchestration/Budget.h`), so a new actor is not
+  moment (`InstallBoundsOf`, `orchestration/Budget.h`), so a new actor is not
   built at full and rebuilt one tick later. The render target budget can
   take a coarser level at that install (`RenderBuildAt`).
 - The core keeps two levels per render. The target level (`TargetLevel`) is
   the level the core decided, after the budget. A retire keeps it as
-  `ActorRecord::reinstallLevel` for the next install. The applied level
+  `TrackedActor::reinstallLevel` for the next install. The applied level
   (`AppliedLevel`) is the level of the attached instance; the engine holds the
   same level as `LiveActor::renderLevel`. A render in `Empty` or
   `Planning` has neither.
@@ -2922,7 +2921,7 @@ cancel by the user instead of the load.
   the memory and carries out the commands.
 - The engine reads the DXGI local segment once per heartbeat (1 s), in
   `Manager::SampleBudget`. `RunTick` takes the sample when the heartbeat is
-  due and gives it to the core as `TickFacts::memory`, so `RunBudget` runs in
+  due and gives it to the core as `TickFacts::budgetSample`, so `RunBudget` runs in
   that tick only. `VideoMemoryProbe` gets the device from
   `RE::BSGraphics::Renderer::GetDevice`, queries `IDXGIDevice`, calls
   `GetAdapter`, and queries `IDXGIAdapter3`. It then calls
@@ -2993,7 +2992,7 @@ cancel by the user instead of the load.
   nothing, because the step is checked against the failed level first.
 - A blocked step up writes the trace event `resolution_blocked`, not a log
   line, because it repeats every tick.
-- `Shown::stepUpBlockedFrom` keeps the level at which a step up of the actor
+- `Shown::waitingForRoomFrom` keeps the level at which a step up of the actor
   is blocked. A blocked step up writes `resolution_blocked` only when the
   actor is not yet blocked at its current level. The event gives the first
   wanted level of the episode. A wanted level that changes with the screen
@@ -3019,7 +3018,7 @@ cancel by the user instead of the load.
   planned bytes plus the bytes of the requester's new instance, less the
   allowance (`ShortfallOf`). Each candidate's **surplus** is the bytes it
   frees when it steps down to the level it wants
-  (`BudgetActor::surplusBytes`). When the surplus of all candidates together
+  (`BudgetCosts::surplus`). When the surplus of all candidates together
   is under the shortfall, no candidate is chosen.
 - Without that rule, an NPC that could not fit took levels for nothing. In
   the session of 2026-10-08 an NPC with 24 stacks at eighth needed 79.8 MB
@@ -3044,19 +3043,19 @@ cancel by the user instead of the load.
   causes a reinstall. A spawned NPC equips piece by piece just after it
   appears, so its first reinstalls follow its first install within a second.
 - An NPC out of view at its first install has an ideal level of eighth
-  (`WantedLevel`). An unmeasured NPC takes full, as before 7c-3. Before
+  (`LevelFor`). An unmeasured NPC takes full, as before 7c-3. Before
   7c-3 an NPC behind the camera installed at the level of its distance.
 - The headroom is the allowance less the planned bytes, with the
   **replaced holding** subtracted from the planned bytes first (`HeadroomOf`).
   The replaced holding is the bytes that the core's estimate counts for the
-  actor just before the reinstall retires it (`PlannedBytesOf(ActorRecord)`).
+  actor just before the reinstall retires it (`PlannedBytesOf(TrackedActor)`).
   An actor that has not rendered replaces 0 bytes. Without the credit, an
   actor that fits is pushed down by its own bytes. Under pressure the
   headroom is the replaced holding, so a reinstall does not grow. A first
   install replaces 0 bytes, so under pressure it takes eighth. An unknown
   allowance gives no headroom, and the install takes its bound level.
 - `RunSync` computes the bound before it issues the `Install`
-  (`InstallBoundOf`, `orchestration/Budget.h`): the finest level and the
+  (`InstallBoundsOf`, `orchestration/Budget.h`): the finest level and the
   headroom. The install executor prices the levels after it has the plan and
   before it sizes the stacks (`RenderBuildAt`, `planners/InstallProgram.h`).
   The level reaches only `SizesFor`, so one plan prices every level
@@ -3074,7 +3073,7 @@ cancel by the user instead of the load.
   sees the first. The next memory sample replaces the planned bytes with the
   engine's measured holding (`BudgetSample::heldBytes`, `PlannedTargets`),
   which counts an actor only after its first render.
-- The player gets no headroom (`InstallBoundOf`), so it takes its level
+- The player gets no headroom (`InstallBoundsOf`), so it takes its level
   without the budget and adds no bytes. A first install without a screen
   fraction, or with `ScreenResolution=false` (`TickSettings::sizeByScreen`),
   gets no bound. It takes full without the budget and adds no bytes.
@@ -3119,7 +3118,7 @@ cancel by the user instead of the load.
   From the tick that the actor is in view, the estimate counts all its held
   targets again.
 - **Response 2: one NPC steps down one level.** The candidate is the NPC
-  whose level is finest against its `WantedLevel` (`LevelGap`). An NPC out of
+  whose level is finest against its `LevelFor` (`LevelGap`). An NPC out of
   view wants eighth, so it comes first. An unmeasured NPC counts as at its
   wanted level. The most bytes freed breaks a tie.
 - The player is never a candidate. Only an actor in `Shown` is a candidate
@@ -3160,7 +3159,7 @@ cancel by the user instead of the load.
   N units are off: <actor> (<name>) is evicted, frees ~M MiB`, and the
   trace event `budget_radius` with `change` `shrink`, `radius`, `actor` and
   `freed_bytes`. The bytes are the actor's planned bytes at its level
-  (`BudgetActor::plannedBytes`). The candidate must be evictable: it is not
+  (`BudgetCosts::planned`). The candidate must be evictable: it is not
   in `Queued` or `Running` (`MayEvict`, `BudgetActor::resizing`).
 - **Growth.** Each memory sample under pressure restarts the radius's dwell
   (`BudgetRadius::sinceMs`). Without pressure, the radius tries to grow by
@@ -3185,12 +3184,12 @@ cancel by the user instead of the load.
   distances. A negative distance returns at every radius and is never in the
   ring.
 - An evicted NPC has no render. The core therefore records its **return
-  bytes** in `ActorRecord::returnBytes` when it stops tracking a render
+  bytes** in `TrackedActor::returnBytes` when it stops tracking a render
   (`DropRender`, `orchestration/Sync.cpp`): in the tick it issues `Retire`,
   or when a `Retired` result arrives.
 - The return bytes are the bytes with intermediates at the render's target
   level (`ReturnBytesOf`). A return installs no finer than that level
-  (`ActorRecord::reinstallLevel`, read by `InstallBoundOf`) and holds its
+  (`TrackedActor::reinstallLevel`, read by `InstallBoundsOf`) and holds its
   intermediates, so `RenderBuildAt` charges at most these bytes. When the
   render has no cost at its target level, the return bytes are its planned
   bytes (`PlannedBytesOf`). Zero bytes record nothing, so an actor without a
@@ -3467,7 +3466,7 @@ It decides each tick from the `World` and the `TickFacts` and returns the next
 once per tick. "The engine runs the core" below says how.
 `docs/components/orchestration.md` maps the directory.
 
-- An `ActorRecord` without `render` is an actor with nothing installed. A
+- An `TrackedActor` without `render` is an actor with nothing installed. A
   `render` in `Empty` is an actor whose install built no render, or
   whose plan job failed. The two differ for the budget radius: only the first
   counts as evicted.
@@ -3506,7 +3505,7 @@ once per tick. "The engine runs the core" below says how.
   in the `BudgetActor` list only after its first rendered frame
   (`InstalledRender::renderedFrame`). The engine's `PlannedTargets` uses the
   same rule. `HeadroomOf`'s replaced holding uses it too, so the core's
-  `PlannedBytesOf(ActorRecord)` is the replaced holding of a reinstall.
+  `PlannedBytesOf(TrackedActor)` is the replaced holding of a reinstall.
 - A release or a step down does not lower `BudgetState::planned` in the tick
   that issues it. The next memory sample replaces the estimate.
 - The step-down and shrink log lines name the actor by `Sighting::name`, or
@@ -3540,10 +3539,10 @@ once per tick. "The engine runs the core" below says how.
 - A step-up is admitted and charged before `WantLevel`, and only when the
   phase does not refuse the level as failed. A refused level therefore
   charges nothing. A blocked step-up is recorded and traced only in `Shown`,
-  because only `Shown` has `stepUpBlockedFrom`. Outside `Shown` it is silent.
+  because only `Shown` has `waitingForRoomFrom`. Outside `Shown` it is silent.
 - `resolution_level` traces the parsed `Sighting::screenFraction`. It reads
   1.0 when `ScreenResolution` is off.
-- `InstallBoundOf` (`Budget.h`) is the one install bound for `Install` and
+- `InstallBoundsOf` (`Budget.h`) is the one install bound for `Install` and
   `BuildAwaitedRender`: the render's target level, else the reinstall level,
   else the wanted level, with `HeadroomOf(budget, replaced)`. The player gets
   no headroom. With `TickSettings::sizeByScreen` off, a non-player without a
@@ -3616,7 +3615,7 @@ once per tick. "The engine runs the core" below says how.
 - Each issued install is charged the full `kInstallBudgetUs`, because the core
   cannot measure install time, so at most one install starts per tick.
 - `Observe` asks for a fresh observation: on the pending-model timer
-  (`kPendingRecheckMs`), on the recheck timer (`kRecheckMs`, `RecheckOf`, a
+  (`kLoadingCheckMs`), on the recheck timer (`kSlowCheckMs`, `ModelLoadOf`, a
   range change through `InRange`), for each claimed actor, and for the next
   waiting install.
 - The sync log names an actor by `Sighting::name`, or by its form id in hex
@@ -3625,7 +3624,7 @@ once per tick. "The engine runs the core" below says how.
 ### Boundary facts (`planners/ViewFacts.*`, `planners/TickClock.h`)
 
 - `InViewOf` and `ScreenFractionOf` turn the engine's readings into
-  `Sighting::inView` and `Sighting::screenFraction`. `Manager::SightingOf`
+  `Sighting::shown` and `Sighting::screenFraction`. `Manager::SightingOf`
   (`engine/ManagerFacts.cpp`) gathers the readings. The engine reads the
   camera only for a non-player with `CullOutOfView` on (`CameraViewOf`), so
   the `kCull` timer and `actors_in_view` count only those reads. An unread
@@ -3710,7 +3709,7 @@ once per tick. "The engine runs the core" below says how.
   `resource_disagreements`: the count of both since the game started.
 - The heartbeat is due once a second. The next tick drains the metrics,
   samples video memory and gives the sample to the core as
-  `TickFacts::memory`, so the core runs the budget in that tick. `OnFrame`
+  `TickFacts::budgetSample`, so the core runs the budget in that tick. `OnFrame`
   emits the heartbeat after its frame timer ends. A regression window edge
   emits a heartbeat at once and gives its sample to the next tick.
 - `estimated_bytes` is the core's estimate (`PlannedBytesOf(World)`).
@@ -4125,7 +4124,7 @@ is not yet verified in game which level each row gets; the report's
 *screen resolution* table gives the counts. The run file's
 `screenResolution` replaces the setting until the run ends. The gather reads
 it into `TickSettings::sizeByScreen` and into `ScreenFractionOf`, so both
-level decisions (`InstallBoundOf` and the screen level step) see it.
+level decisions (`InstallBoundsOf` and the screen level step) see it.
 `--screen-resolution on` and `off` runs of one case therefore give the A/B
 comparison.
 

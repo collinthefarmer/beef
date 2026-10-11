@@ -30,9 +30,9 @@ inline constexpr std::uint64_t kFullBytes = 64 * kMebibyte;
       a_level, std::move(a_intermediates), {}, std::nullopt, std::nullopt};
 }
 
-[[nodiscard]] inline ActorRecord RecordOf(InstalledRender a_render,
-                                          Sighting a_sight = {}) {
-  ActorRecord record;
+[[nodiscard]] inline TrackedActor TrackedOf(InstalledRender a_render,
+                                            Sighting a_sight = {}) {
+  TrackedActor record;
   record.sight = a_sight;
   record.render = std::move(a_render);
   return record;

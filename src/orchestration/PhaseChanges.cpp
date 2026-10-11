@@ -64,7 +64,7 @@ std::optional<Resize> Retargeted(const Resize &a_resize, Level a_level) {
 Resize Seen(Resize a_resize, const SeenThisTick &a_seen) {
   a_resize.failed = StillFailed(a_resize.failed, a_seen.wanted);
   a_resize.holding =
-      a_seen.inView ? IntermediateHolding::kHeld : a_resize.holding;
+      a_seen.shown ? IntermediateHolding::kHeld : a_resize.holding;
   return a_resize;
 }
 
@@ -131,7 +131,7 @@ PhaseChange SeeShown(ActorId a_actor, Shown a_shown,
   a_shown.failed = StillFailed(a_shown.failed, a_seen.wanted);
   a_shown.smallOnScreen =
       a_shown.smallOnScreen.Update(a_seen.small, a_seen.now);
-  if (a_seen.inView) {
+  if (a_seen.shown) {
     a_shown.intermediates = Held{};
     return {a_shown, {}};
   }
@@ -206,12 +206,12 @@ PhaseChange OnEvent(ActorId a_actor, RenderPhase a_phase,
 }
 
 PhaseChange PlanBuilt(ActorId a_actor, RenderPhase a_phase, PlanJobId a_job,
-                      InstallBound a_bound) {
+                      InstallBounds a_bounds) {
   if (AwaitedJob(a_phase) != a_job) {
     return Unchanged(a_phase);
   }
 
-  return {a_phase, {BuildAwaitedRender{a_actor, a_bound}}};
+  return {a_phase, {BuildAwaitedRender{a_actor, a_bounds}}};
 }
 
 PhaseChange FailPlan(ActorId a_actor, RenderPhase a_phase,

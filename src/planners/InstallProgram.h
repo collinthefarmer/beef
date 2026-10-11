@@ -196,7 +196,7 @@ UnpublishedSlotsOf(std::span<const GeometryBinding> a_geometries);
 LevelCostsOf(const RenderPlan &a_plan, const PlanSizes &a_full);
 [[nodiscard]] std::expected<RenderBuild, std::string>
 RenderBuildAt(const RenderPlan &a_plan, const PlanSizes &a_full,
-              const InstallBound &a_bound);
+              const InstallBounds &a_bounds);
 [[nodiscard]] Attachments
 AttachmentsOf(const RenderPlan &a_plan, const RenderBuildRequest &a_request,
               std::span<const GeometryBinding> a_bound,

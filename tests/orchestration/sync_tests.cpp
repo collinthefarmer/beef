@@ -54,8 +54,8 @@ StaleActor StaleWith(ActorId a_actor, Actors::ActorPlan a_plan,
   return {a_actor, LoadedFacts(a_actor, a_distance), {std::move(a_plan), {}}};
 }
 
-Sighting Seen(bool a_inView = true, std::optional<float> a_fraction = 1.0f) {
-  return {ActorRole::kOther, true, a_inView, a_fraction, std::nullopt};
+Sighting Seen(bool a_shown = true, std::optional<float> a_fraction = 1.0f) {
+  return {ActorRole::kOther, true, a_shown, a_fraction, std::nullopt};
 }
 
 Actors::ActorState InstalledState(const Actors::ActorPlan &a_plan) {
@@ -99,6 +99,16 @@ template <class T> const T *FirstOf(const std::vector<Command> &a_commands) {
 }
 
 template <class T>
+const T *FirstFor(const std::vector<Command> &a_commands, ActorId a_actor) {
+  for (const Command &command : a_commands) {
+    if (const T *found = Get<T>(command); found && found->actor == a_actor) {
+      return found;
+    }
+  }
+  return nullptr;
+}
+
+template <class T>
 std::optional<std::size_t> IndexOf(const std::vector<Command> &a_commands) {
   for (std::size_t i = 0; i < a_commands.size(); ++i) {
     if (Is<T>(a_commands[i])) {
@@ -118,7 +128,7 @@ bool Observes(const std::vector<Command> &a_commands, ActorId a_actor) {
   return false;
 }
 
-World WorldWith(ActorId a_actor, ActorRecord a_record) {
+World WorldWith(ActorId a_actor, TrackedActor a_record) {
   World world;
   world.actors.emplace(a_actor, std::move(a_record));
   return world;
@@ -137,13 +147,13 @@ void AnInstalledRenderChargesTheBudget() {
 }
 
 void ARetiredRenderLeavesItsLevelAndReturnBytes() {
-  ActorRecord record;
+  TrackedActor record;
   record.render = ShownRender(ResolutionLevel::kHalf);
   TickFacts facts = FactsAt(kNow);
   facts.results.push_back(Retired{kActor});
   const TickOutput out =
       RecordSyncResults(WorldWith(kActor, std::move(record)), facts);
-  const ActorRecord &after = out.world.actors.at(kActor);
+  const TrackedActor &after = out.world.actors.at(kActor);
   Check(!after.render, "a retired actor has no render");
   Check(after.reinstallLevel == ResolutionLevel::kHalf,
         "a retired actor keeps its target level for the reinstall");
@@ -152,21 +162,21 @@ void ARetiredRenderLeavesItsLevelAndReturnBytes() {
 }
 
 void ARetireWithoutARenderKeepsTheOldLevel() {
-  ActorRecord record;
+  TrackedActor record;
   record.reinstallLevel = ResolutionLevel::kQuarter;
   record.returnBytes = 77;
   TickFacts facts = FactsAt(kNow);
   facts.results.push_back(Retired{kActor});
   const TickOutput out =
       RecordSyncResults(WorldWith(kActor, std::move(record)), facts);
-  const ActorRecord &after = out.world.actors.at(kActor);
+  const TrackedActor &after = out.world.actors.at(kActor);
   Check(after.reinstallLevel == ResolutionLevel::kQuarter &&
             after.returnBytes == std::uint64_t{77},
         "a retire of an actor without a render changes nothing");
 }
 
 void AFailedInstallIsForgotten() {
-  ActorRecord record;
+  TrackedActor record;
   record.syncState = InstalledState(CircuitPlan());
   World world = WorldWith(kActor, std::move(record));
   world.waitingInstalls.push_back({.actor = FormOf(kActor)});
@@ -184,7 +194,7 @@ void AFailedInstallIsForgotten() {
 }
 
 void AClaimIsRecordedAndObserved() {
-  ActorRecord record;
+  TrackedActor record;
   record.syncState = InstalledState(CircuitPlan());
   const Actors::Claim claim{Geo(0x1, "Body"), Actors::ModelToken{1}};
   TickFacts facts = FactsAt(kNow);
@@ -224,7 +234,7 @@ void ANewActorInstalls() {
 }
 
 void AChangedActorReinstallsAfterARetire() {
-  ActorRecord record;
+  TrackedActor record;
   record.syncState = InstalledState(CircuitPlan());
   record.render = ShownRender(ResolutionLevel::kHalf);
   World world = WorldWith(kActor, std::move(record));
@@ -243,25 +253,26 @@ void AChangedActorReinstallsAfterARetire() {
         "a replacing install is a reinstall");
   Check(command && command->replacedBytes == 100,
         "the replaced bytes are the render's held bytes");
-  Check(command && command->bound.finest == ResolutionLevel::kHalf &&
-            command->bound.headroom == std::uint64_t{500},
+  Check(command && command->bounds.finestLevel == ResolutionLevel::kHalf &&
+            command->bounds.headroom == std::uint64_t{500},
         "the reinstall keeps the render's level with the headroom");
   Equal(out.world.budget.planned, std::uint64_t{500},
         "the reinstall releases the replaced bytes");
 }
 
-void AnInstallWaitsWhenTheFrameIsSpent() {
-  ActorRecord record;
+void AReinstallWaitsBehindAnotherInstall() {
+  TrackedActor record;
   record.syncState = InstalledState(CircuitPlan());
   World world = WorldWith(kActor, std::move(record));
   TickFacts facts = FactsAt(kNow);
-  facts.frameSyncs = {kInstallBudgetUs, 1};
+  facts.stale.push_back(StaleWith(kOther, CircuitPlan()));
   facts.stale.push_back(StaleWith(kActor, FrostPlan()));
+  facts.sightings[kOther] = Seen();
   facts.sightings[kActor] = Seen();
   const TickOutput out = RunSync(std::move(world), facts);
-  Equal(CountOf<Install>(out.commands), std::size_t{0},
-        "a spent frame starts no install");
-  const KeepModels *keep = FirstOf<KeepModels>(out.commands);
+  Equal(CountOf<Install>(out.commands), std::size_t{1},
+        "the tick starts only the first install");
+  const KeepModels *keep = FirstFor<KeepModels>(out.commands, kActor);
   Check(keep && keep->plan == CircuitPlan(),
         "a deferred install keeps the installed models");
   Check(out.world.waitingInstalls.size() == 1 &&
@@ -270,9 +281,8 @@ void AnInstallWaitsWhenTheFrameIsSpent() {
         "a deferred install waits");
   Check(out.world.actors.at(kActor).syncState == InstalledState(CircuitPlan()),
         "a deferred install leaves the sync state");
-  Check(out.world.syncLog.empty(), "a deferred install is not logged");
-  Check(out.trace.size() == 1 &&
-            out.trace.front().event == Trace::Event::kQueue,
+  Check(std::ranges::count(out.trace, Trace::Event::kQueue,
+                           &TraceRecord::event) == 1,
         "a deferred install is traced");
 }
 
@@ -311,7 +321,7 @@ void AWaitingInstallGoesFirst() {
 }
 
 void AnUnchangedActorSettles() {
-  ActorRecord record;
+  TrackedActor record;
   record.syncState = InstalledState(CircuitPlan());
   TickFacts facts = FactsAt(kNow);
   facts.stale.push_back(StaleWith(kActor, CircuitPlan()));
@@ -328,7 +338,7 @@ void AnUnchangedActorSettles() {
 }
 
 void AnActorWaitingForAModelKeepsItsEquip() {
-  ActorRecord record;
+  TrackedActor record;
   record.syncState = InstalledState(CircuitPlan());
   StaleActor stale = StaleWith(kActor, CircuitPlan());
   Actors::PieceFacts pending;
@@ -347,7 +357,7 @@ void AnActorWaitingForAModelKeepsItsEquip() {
 }
 
 void AnUnloadedStaleActorIsForgotten() {
-  ActorRecord record;
+  TrackedActor record;
   record.syncState = InstalledState(CircuitPlan());
   StaleActor stale = StaleWith(kActor, {});
   stale.facts.loaded = false;
@@ -367,7 +377,7 @@ void AnUnloadedStaleActorIsForgotten() {
 }
 
 void AnActorWithout3DIsForgotten() {
-  ActorRecord record;
+  TrackedActor record;
   record.syncState = InstalledState(CircuitPlan());
   record.render = ShownRender(ResolutionLevel::kFull);
   World world = WorldWith(kActor, std::move(record));
@@ -382,7 +392,7 @@ void AnActorWithout3DIsForgotten() {
 }
 
 void AForgetRequestForgetsLikeAnUnload() {
-  ActorRecord record;
+  TrackedActor record;
   record.syncState = InstalledState(CircuitPlan());
   record.render = ShownRender(ResolutionLevel::kFull);
   World world = WorldWith(kActor, record);
@@ -406,7 +416,7 @@ void AForgetRequestForgetsLikeAnUnload() {
 }
 
 void AForgetRequestWithoutARecordDoesNothing() {
-  ActorRecord record;
+  TrackedActor record;
   record.syncState = InstalledState(CircuitPlan());
   const World world = WorldWith(kActor, std::move(record));
   TickFacts plain = FactsAt(kNow);
@@ -424,7 +434,7 @@ void AForgetRequestWithoutARecordDoesNothing() {
 }
 
 void AnActorOutOfRangeIsEvicted() {
-  ActorRecord record;
+  TrackedActor record;
   record.syncState = InstalledState(CircuitPlan());
   record.render = ShownRender(ResolutionLevel::kFull);
   World world = WorldWith(kActor, std::move(record));
@@ -448,16 +458,16 @@ void AnActorOutOfRangeIsEvicted() {
 }
 
 void AWaitingModelIsRecheckedSoon() {
-  ActorRecord record;
+  TrackedActor record;
   Actors::ActorState state = InstalledState(CircuitPlan());
   state.pending.push_back({Piece(0x2), PlannerMs(kNow) - 10});
   record.syncState = state;
   World world = WorldWith(kActor, std::move(record));
-  world.timers = {kNow - Actors::kPendingRecheckMs, kNow};
+  world.timers = {kNow - Actors::kLoadingCheckMs, kNow};
   const TickOutput due = RunSync(world, FactsAt(kNow));
   Check(Observes(due.commands, kActor),
         "an actor waiting for a model is observed after the short delay");
-  Equal(due.world.timers.lastWaitingCheck, kNow, "the short timer restarts");
+  Equal(due.world.timers.lastLoadingCheck, kNow, "the short timer restarts");
   world.timers = {kNow - 1, kNow};
   const TickOutput early = RunSync(world, FactsAt(kNow));
   Check(!Observes(early.commands, kActor),
@@ -465,10 +475,10 @@ void AWaitingModelIsRecheckedSoon() {
 }
 
 void ARangeChangeIsRechecked() {
-  ActorRecord record;
+  TrackedActor record;
   record.syncState = InstalledState(CircuitPlan());
   World world = WorldWith(kActor, std::move(record));
-  world.timers = {kNow, kNow - Actors::kRecheckMs};
+  world.timers = {kNow, kNow - Actors::kSlowCheckMs};
   TickFacts facts = FactsAt(kNow);
   facts.settings.evictDistance = 1000.0f;
   facts.sightings[kActor] =
@@ -476,7 +486,7 @@ void ARangeChangeIsRechecked() {
   const TickOutput out = RunSync(world, facts);
   Check(Observes(out.commands, kActor),
         "an installed actor beyond the evict distance is observed");
-  Equal(out.world.timers.lastRecheck, kNow, "the long timer restarts");
+  Equal(out.world.timers.lastSlowCheck, kNow, "the long timer restarts");
   facts.sightings[kActor].distance = 10.0f;
   const TickOutput near = RunSync(world, facts);
   Check(!Observes(near.commands, kActor),
@@ -498,45 +508,45 @@ void TheNextWaitingInstallIsObserved() {
   Check(Observes(out.commands, kOther) && !Observes(out.commands, kActor),
         "the in-view waiting actor is observed first");
   Check(out.world.waitingInstalls.size() == 2 &&
-            out.world.waitingInstalls.back().inView,
+            out.world.waitingInstalls.back().shown,
         "the waiting installs take this tick's sightings");
 }
 
 void ThePlayerInstallsWithoutHeadroom() {
-  ActorRecord record;
+  TrackedActor record;
   BudgetState budget;
   budget.allowance = 1000;
   const Sighting player{ActorRole::kPlayer, true, true, 0.01f, std::nullopt};
-  const InstallBound bound =
-      InstallBoundOf(record, player, budget, 0, TickSettings{});
-  Check(bound.finest == ResolutionLevel::kFull && !bound.headroom,
+  const InstallBounds bounds =
+      InstallBoundsOf(record, player, budget, 0, TickSettings{});
+  Check(bounds.finestLevel == ResolutionLevel::kFull && !bounds.headroom,
         "the player installs at full resolution without a headroom");
 }
 
 void ANewActorInstallsAtItsWantedLevel() {
-  const ActorRecord record;
+  const TrackedActor record;
   BudgetState budget;
   budget.allowance = 1000;
   budget.planned = 200;
-  const InstallBound away =
-      InstallBoundOf(record, Seen(false), budget, 0, TickSettings{});
-  Check(away.finest == ResolutionLevel::kEighth &&
+  const InstallBounds away =
+      InstallBoundsOf(record, Seen(false), budget, 0, TickSettings{});
+  Check(away.finestLevel == ResolutionLevel::kEighth &&
             away.headroom == std::uint64_t{800},
         "an actor out of view installs at the coarsest level");
-  const InstallBound unmeasured = InstallBoundOf(
+  const InstallBounds unmeasured = InstallBoundsOf(
       record, Seen(true, std::nullopt), budget, 0, TickSettings{});
-  Check(unmeasured == InstallBound{},
+  Check(unmeasured == InstallBounds{},
         "an unmeasured actor installs without a bound");
-  ActorRecord evicted;
+  TrackedActor evicted;
   evicted.reinstallLevel = ResolutionLevel::kQuarter;
-  const InstallBound back =
-      InstallBoundOf(evicted, Seen(), budget, 0, TickSettings{});
-  Check(back.finest == ResolutionLevel::kQuarter,
+  const InstallBounds back =
+      InstallBoundsOf(evicted, Seen(), budget, 0, TickSettings{});
+  Check(back.finestLevel == ResolutionLevel::kQuarter,
         "a returning actor installs at its earlier level");
 }
 
 void ReturnBytesFollowTheTarget() {
-  ActorRecord record;
+  TrackedActor record;
   record.render = ShownRender(ResolutionLevel::kFull);
   Check(ReturnBytesOf(record) == std::uint64_t{400},
         "a live actor returns at its level's full cost");
@@ -544,21 +554,21 @@ void ReturnBytesFollowTheTarget() {
       Queued{Resize{Level::kFull, Level::kHalf, IntermediateHolding::kHeld}};
   Check(ReturnBytesOf(record) == std::uint64_t{100},
         "a resizing actor returns at its target level's full cost");
-  Check(!ReturnBytesOf(ActorRecord{}),
+  Check(!ReturnBytesOf(TrackedActor{}),
         "an actor without a render returns none");
 }
 
 void ScreenSizingOffKeepsTheOldBound() {
-  const ActorRecord record;
+  const TrackedActor record;
   BudgetState budget;
   budget.allowance = 1000;
   TickSettings off;
   off.sizeByScreen = false;
-  Check(InstallBoundOf(record, Seen(false), budget, 0, off) == InstallBound{},
+  Check(InstallBoundsOf(record, Seen(false), budget, 0, off) == InstallBounds{},
         "with screen sizing off a new actor installs without a bound");
-  ActorRecord returning;
+  TrackedActor returning;
   returning.reinstallLevel = ResolutionLevel::kHalf;
-  Check(InstallBoundOf(returning, Seen(false), budget, 0, off).finest ==
+  Check(InstallBoundsOf(returning, Seen(false), budget, 0, off).finestLevel ==
             ResolutionLevel::kHalf,
         "a returning actor keeps its earlier level with screen sizing off");
 }
@@ -572,7 +582,7 @@ int main() {
   AClaimIsRecordedAndObserved();
   ANewActorInstalls();
   AChangedActorReinstallsAfterARetire();
-  AnInstallWaitsWhenTheFrameIsSpent();
+  AReinstallWaitsBehindAnotherInstall();
   OneInstallStartsPerTick();
   AWaitingInstallGoesFirst();
   AnUnchangedActorSettles();

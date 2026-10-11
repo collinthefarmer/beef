@@ -70,17 +70,17 @@ Sighting Player() {
   return {ActorRole::kPlayer, true, true, 0.6f, std::nullopt};
 }
 
-ActorRecord Rendered(RenderPhase a_phase, Sighting a_sight,
-                     LevelCosts a_costs = Costs()) {
-  ActorRecord record;
+TrackedActor Rendered(RenderPhase a_phase, Sighting a_sight,
+                      LevelCosts a_costs = Costs()) {
+  TrackedActor record;
   record.sight = a_sight;
   record.render = InstalledRender{std::move(a_phase), a_costs, 1};
   return record;
 }
 
-ActorRecord Evicted(float a_distance,
-                    std::optional<std::uint64_t> a_returnBytes) {
-  ActorRecord record;
+TrackedActor Evicted(float a_distance,
+                     std::optional<std::uint64_t> a_returnBytes) {
+  TrackedActor record;
   record.sight = OutOfView(a_distance);
   record.syncState = Actors::ActorState{
       Actors::ActorPlan{{Actors::PlannedInstance{}}, {}, {}}, {}, {}, {}};
@@ -96,7 +96,7 @@ TickFacts FactsWithCap(std::uint64_t a_cap, Millis a_now = 1000,
                        float a_evictDistance = 0.0f) {
   TickFacts facts;
   facts.now = a_now;
-  facts.memory = SampleWithCap(a_cap);
+  facts.budgetSample = SampleWithCap(a_cap);
   facts.settings.evictDistance = a_evictDistance;
   return facts;
 }
@@ -178,7 +178,7 @@ void EstimateCountsEachRenderAtItsLevelAndHolding() {
         "a queued resize adds nothing yet");
   Check(PlannedBytesOf(Rendered(Planning{}, InView(0.6f))) == 0,
         "an awaited plan holds nothing");
-  ActorRecord unrendered = Rendered(ShownAt(kFull), InView(0.6f));
+  TrackedActor unrendered = Rendered(ShownAt(kFull), InView(0.6f));
   unrendered.render->renderedFrame.reset();
   Check(PlannedBytesOf(unrendered) == 0,
         "a render not yet drawn counts nothing, as the old estimate did");
@@ -194,11 +194,11 @@ void TheMeasuredHeldBytesSetThePlannedBytes() {
   world.actors[kFirst] = Rendered(ShownAt(kFull), InView(0.6f));
   world.actors[kSecond] = Rendered(ShownAt(kFull), InView(0.6f));
   TickFacts facts = FactsWithCap(MiB(4000));
-  facts.memory->heldBytes = MiB(500);
+  facts.budgetSample->heldBytes = MiB(500);
   Check(RunBudget(world, facts).world.budget.planned == MiB(500),
         "the engine's held bytes, a shared target counted once, set the "
         "planned bytes");
-  facts.memory->heldBytes.reset();
+  facts.budgetSample->heldBytes.reset();
   Check(RunBudget(world, facts).world.budget.planned == MiB(800),
         "without held bytes the planned bytes are the sum of the records");
 }
@@ -208,7 +208,7 @@ void NoSampleRunsNothing() {
   world.actors[kFirst] = Rendered(ShownAt(kFull), OutOfView());
   world.radius = BudgetRadius{1000.0f, 0, false};
   TickFacts facts = FactsWithCap(MiB(100), 60000);
-  facts.memory.reset();
+  facts.budgetSample.reset();
   const TickOutput output = RunBudget(world, facts);
   Check(output.commands.empty() && output.trace.empty() &&
             output.logs.empty() && output.world.budget == BudgetState{} &&
@@ -228,7 +228,7 @@ void PressureStartsAndEndsWithItsRecords() {
   Check(IsOver(started.world.budget.pressure),
         "planned bytes over the allowance start pressure");
   Check(HasLog(started, LogLevel::kInfo,
-               PressureStartLine(*over.memory, expected)),
+               PressureStartLine(*over.budgetSample, expected)),
         "the pressure start writes its info line");
   const std::vector<TraceRecord> start = ActionsOf(started, "budget_pressure");
   Check(start.size() == 1 &&
@@ -333,7 +333,7 @@ void NoStepDownToAFailedLevel() {
       Rendered(ShownAt(kFull, Held{}, FailedLevel{kHalf, kFull}), InView(0.6f));
   const std::optional<BudgetActor> actor =
       BudgetActorOf(kFirst, world.actors[kFirst]);
-  Check(actor && !actor->stepDown,
+  Check(actor && !actor->costs.stepDown,
         "the budget offers no step down to the failed level");
   const TickOutput output = RunBudget(world, FactsWithCap(MiB(300)));
   const RenderPhase *phase = PhaseOf(output.world, kFirst);
@@ -346,31 +346,32 @@ void BudgetActorFollowsThePhase() {
   const std::optional<BudgetActor> held =
       BudgetActorOf(kFirst, Rendered(ShownAt(kFull), OutOfView(700.0f)));
   Check(held && held->actor == FormOf(kFirst) && held->level == kFull &&
-            held->releasable == MiB(100) && held->plannedBytes == MiB(400) &&
-            held->stepDown == StepDownOption{kHalf, MiB(200)} &&
+            held->costs.releasable == MiB(100) &&
+            held->costs.planned == MiB(400) &&
+            held->costs.stepDown == StepDownOption{kHalf, MiB(200)} &&
             !held->resizing && held->distance == 700.0f,
         "a live held actor offers its release and its step down");
-  Check(held && held->surplusBytes == MiB(350),
+  Check(held && held->costs.surplus == MiB(350),
         "an actor out of view has a surplus down to eighth");
   const std::optional<BudgetActor> released =
       BudgetActorOf(kFirst, Rendered(ShownAt(kFull, Freed{}), OutOfView()));
-  Check(released && released->releasable == 0 &&
-            released->plannedBytes == MiB(300),
+  Check(released && released->costs.releasable == 0 &&
+            released->costs.planned == MiB(300),
         "a released actor has nothing more to release");
   const std::optional<BudgetActor> resizing =
       BudgetActorOf(kFirst, Rendered(RunningResize(kFull, kHalf), OutOfView()));
-  Check(resizing && resizing->resizing && resizing->releasable == 0 &&
-            !resizing->stepDown && resizing->level == kFull,
+  Check(resizing && resizing->resizing && resizing->costs.releasable == 0 &&
+            !resizing->costs.stepDown && resizing->level == kFull,
         "a resizing actor may not be evicted, released or stepped down");
   const std::optional<BudgetActor> drawing = BudgetActorOf(
       kFirst,
       Rendered(Drawing{kHalf, UnpublishedDraw{3, 1, 1, 1}, std::nullopt},
                OutOfView()));
-  Check(drawing && !drawing->resizing && drawing->releasable == 0 &&
-            !drawing->stepDown && drawing->level == kHalf,
+  Check(drawing && !drawing->resizing && drawing->costs.releasable == 0 &&
+            !drawing->costs.stepDown && drawing->level == kHalf,
         "a first-drawing actor may be evicted but not released or stepped "
         "down");
-  ActorRecord unrendered = Rendered(ShownAt(kFull), InView(0.6f));
+  TrackedActor unrendered = Rendered(ShownAt(kFull), InView(0.6f));
   unrendered.render->renderedFrame.reset();
   Check(!BudgetActorOf(kFirst, unrendered),
         "an actor not yet drawn takes no budget decision");

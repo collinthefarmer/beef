@@ -105,7 +105,7 @@ struct RegressionWearer {
 
 struct WearerFacts {
   bool live = false;
-  bool inView = true;
+  bool shown = true;
   bool awaitingView = false;
   std::vector<RE::FormID> liveItems;
   std::uint64_t renderedAttempt = 0;
@@ -265,7 +265,7 @@ private:
                    const TickContext &a_context);
   [[nodiscard]] Orchestration::RenderEvent
   BuildAwaitedRender(RE::FormID a_actorID, LiveActor &a_state,
-                     const InstallBound &a_bound, const Settings &a_settings);
+                     const InstallBounds &a_bounds, const Settings &a_settings);
   [[nodiscard]] std::size_t RetireActorResources(RE::FormID a_actorID);
   void ForgetActorResources(RE::FormID a_actorID);
   struct CatalogMatches {
@@ -308,7 +308,7 @@ private:
               RE::FormID a_enchantment, const Settings &a_settings);
   [[nodiscard]] PlacedRender PlaceInstances(LiveActor &a_state,
                                             RE::FormID a_actorID,
-                                            const InstallBound &a_bound,
+                                            const InstallBounds &a_bounds,
                                             std::uint64_t a_replaced,
                                             const Settings &a_settings);
   [[nodiscard]] std::vector<Orchestration::PlanJobDone> DrainPlanJobs();

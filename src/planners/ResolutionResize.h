@@ -19,7 +19,7 @@ struct ResizeProgress {
 enum class ResizeDraw { kOutOfView, kDrawing, kDrawn };
 
 struct ResizeDrawState {
-  bool inView = true;
+  bool shown = true;
   std::size_t drawn = 0;
   std::size_t stacks = 0;
 };
@@ -27,7 +27,7 @@ struct ResizeDrawState {
 struct ResizeCandidate {
   std::uint32_t actor = 0;
   bool pending = false;
-  bool inView = true;
+  bool shown = true;
   std::optional<float> screenFraction;
 };
 

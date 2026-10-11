@@ -88,7 +88,7 @@ void TheRadiusShrinksAndGrows() {
   const std::vector<Issued<Retire>> retired = IssuedFor<Retire>(sim, kFar);
   Check(retired.size() == 1 && shrunkAt && retired.front().tick > *shrunkAt,
         "the evicted actor is observed and retired");
-  const ActorRecord *far = RecordIn(sim.world, kFar);
+  const TrackedActor *far = RecordIn(sim.world, kFar);
   Check(far && !far->render,
         "the evicted actor keeps its record and no render");
   const RenderPhase *near = PhaseNow(sim, kNear);
@@ -121,7 +121,7 @@ void AReinstallDuringAResize() {
   Check(sim.violations.empty(), Report(sim));
   const RenderPhase *phase = PhaseNow(sim, kActor);
   Check(phase && Is<Running>(*phase), "the actor is resizing when it changes");
-  const ActorRecord *before = RecordIn(sim.world, kActor);
+  const TrackedActor *before = RecordIn(sim.world, kActor);
   const std::uint64_t replaced = before ? PlannedBytesOf(*before) : 0;
   const std::uint64_t plannedBefore = sim.world.budget.planned;
 
@@ -178,7 +178,7 @@ void AnActorUnloadsDuringAResize() {
   actor.sightings.push_back({20, Unloaded(300.0f)});
   script.actors[kActor] = actor;
   World world;
-  world.actors[kActor] = RenderedRecord(ShownAt(kHalf), InView(0.6f, 300.0f));
+  world.actors[kActor] = RenderedActor(ShownAt(kHalf), InView(0.6f, 300.0f));
   Simulation sim =
       Ran(Started(std::move(script), WithEstimate(std::move(world))), 19);
   const RenderPhase *phase = PhaseNow(sim, kActor);

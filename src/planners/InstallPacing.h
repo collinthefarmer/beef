@@ -17,7 +17,7 @@ inline constexpr std::uint32_t kInstallWaitLimitMS = 1000;
 struct WaitingInstall {
   std::uint32_t actor = 0;
   ActorRole role = ActorRole::kOther;
-  bool inView = false;
+  bool shown = false;
   std::optional<float> screenFraction;
   std::uint32_t sinceMS = 0;
 };

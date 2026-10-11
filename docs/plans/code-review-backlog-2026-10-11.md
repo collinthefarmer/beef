@@ -1,4 +1,4 @@
-Status: active (2026-10-11) on branch `pure-tick`. The findings of the user's code walk of the plugin (chapter 1, startup to one tick; chapter 2, the tick core through `RunSync`), collected for review in bulk. Nothing here is started unless marked; items that need the user's decision say so. Done during the walk and not listed: the budget and sync restructure (c7d4d4c), the render-phase state machine (5b1042c), the trace cleanup (e30c67b), `FindResize` (020c6f7).
+Status: active (2026-10-11) on branch `pure-tick`. The findings of the user's code walk of the plugin (chapter 1, startup to one tick; chapter 2, the tick core through `RunSync`), collected for review in bulk. Nothing here is started unless marked; items that need the user's decision say so. Done and not listed: the budget and sync restructure (c7d4d4c), the render-phase state machine (5b1042c), the trace cleanup (e30c67b), `FindResize` (020c6f7), and the 2026-10-11 batch (the rename table, `ActorVisibility` and the nested `BudgetActor`, the traced `ApplyPhaseChange` in `Output.h`, `TickFacts` without `frameSyncs`, the install-order test, `Budget.cpp` in call-flow order).
 
 # Code review backlog
 
@@ -10,32 +10,20 @@ The user reads the code in an nvim pane that the `walk` skill drives. Each findi
 
 | Item | Question | Recommendation |
 |---|---|---|
-| Install bounds | `InstallBoundOf` returns the default bounds (full level, **no headroom**) for an NPC with no known level when `ScreenResolution` is off or the actor is not measured. Those installs ignore the render target budget, also under pressure. | Full level within the headroom: `{kFull, HeadroomOf(...)}`. |
+| Install bounds | `InstallBoundsOf` returns the default bounds (full level, **no headroom**) for an NPC with no known level when `ScreenResolution` is off or the actor is not measured. Those installs ignore the render target budget, also under pressure. | Full level within the headroom: `{kFull, HeadroomOf(...)}`. |
 | Application ledger | `docs/plans/application-ledger-2026-10-10.md`, Q1: accept the behaviour changes a to e? | Yes. |
 | Staged tick output | Build the tick output in stages, or move it between stages as distinct types. The user is not convinced by the typed-changes design (each step returns a change record that one `Applied` function writes). | Discuss before a plan is drafted. |
 
 ## Next: the core files
 
-1. **Renames that waited for the phase merge.** Planner type `BlockedStepUp` becomes `WaitingStepUp`. Phase field `stepUpBlockedFrom` becomes `waitingForRoomFrom` (`planners/RenderBudget`, tests).
-2. **One pass over `orchestration/Budget.cpp`, then `Sync.cpp` and `Lifecycle.cpp`:**
-   - `BudgetActor` holds nested records: `visibility` (an `ActorVisibility`), `distance`, `level`, `resizing`, `costs` (`BudgetCosts` moves to `planners/RenderBudget.h`).
-   - `ActorSight` becomes `ActorVisibility`. One `VisibilityOf` replaces `ActorSightOf` (Lifecycle) and `SightOf` (Budget). `WantedLevel(sight)` becomes `LevelFor(visibility)`: it can return a finer, the same or a coarser level, so it is not a step-up level.
-   - `StepDownForBudget`, `ReportRadiusGrowth` (a `Match` with one reporter per growth result), `ShrinkBudgetRadius` and `MakeRoomForWaitingStepUp` split into guard, apply and report.
-   - One `Report…` function and one record per reported event write the log line and the trace together. This is pass 2 of the trace cleanup.
-   - Every `.cpp` in call-flow order: a public function, then its helpers beneath it in the order it calls them. The anonymous namespace opens with forward declarations of the helpers.
-3. **Trace every phase change.** Phase changes that the budget makes (a step-down through `WantLevel`, a release through `ReleaseForBudget`) go through `ApplyPhaseChange` in `Budget.cpp`, which does not emit `actor_phase` or `actor_phase_ignored`. The lifecycle's `Apply` does. One `ApplyPhaseChange(output, actor, render, change, event)` in `orchestration/Output.h` would trace both. Trace counts in tests can change.
-4. **`TickFacts`.** `frameSyncs` looks vestigial: since R4 the engine always passes `FrameSyncs{}`. Confirm and remove it. Group the fields by meaning: time and settings, observations, last tick's results, requests.
-5. **The waiting-install queue ordering.** `InstallOrder` and `NextInstall` depend on `Precedes` being a strict weak ordering. Add a test that pins this.
+1. **Call-flow order in `Sync.cpp` and `Lifecycle.cpp`.** Each public function first, its helpers beneath it in the order it calls them, and the anonymous namespace opening with forward declarations of the helpers. `Budget.cpp` has this order.
+2. **One `Report…` function per reported event in `Sync.cpp` and `Lifecycle.cpp`.** Each writes the log line and the trace together, as the budget's reporters do. This is pass 2 of the trace cleanup.
+3. **Guard, apply and report in `Sync.cpp` and `Lifecycle.cpp`.** Split the functions that check, change the world and report in one body, as `StepDownForBudget` does.
 
-## Renames (`tools/rename.py`)
+## Names still open
 
-| Today | Proposed | Note |
-|---|---|---|
-| `Sighting::inView` | `shown` | A draw policy: the frustum test, forced true for the player, with culling off and for the studio-inspected actor. Every consumer reads it that way. Drop the redundant player check in `Refreshed` (`Sync.cpp`). |
-| `ActorRecord` | `TrackedActor` | 19 files. Matches the lookup `TrackedActor(world, id)`. |
-| `TickFacts::memory` | `budgetSample` | Its type is `BudgetSample`. "budget" alone is `World::budget`. |
-| `InstallBound`, `InstallBoundOf`, `bound` | `InstallBounds` {`finestLevel`, `headroom`}, `InstallBoundsOf`, `bounds` | The user's choice: it holds two bounds. |
-| `Actors::Recheck` {`kNone`, `kWaiting`, `kStuck`} | `ModelLoad` {`kNone`, `kLoading`, `kLate`} | The engine reads it too. A late model is still retried every second, so "stuck" overstates. Rename `Timers::lastWaitingCheck` and `lastRecheck` to match `DueChecks::loadingModels` and `slowChecks`. |
+- `ResizeDraw::kOutOfView` and the `outOfViewReleaseDelay` setting still say "out of view" for "not shown".
+- The test helpers `InView` and `OutOfView` build a `Sighting`; `Shown` and `Hidden` would match the field.
 
 ## Cleanups
 

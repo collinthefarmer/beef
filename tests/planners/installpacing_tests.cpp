@@ -2,6 +2,7 @@
 #include "planners/InstallPacing.h"
 #include "test_support.h"
 
+#include <algorithm>
 #include <optional>
 #include <vector>
 
@@ -11,9 +12,9 @@ using test::Check;
 namespace {
 constexpr std::uint32_t kNow = 50000;
 
-WaitingInstall Other(std::uint32_t a_actor, bool a_inView, float a_fraction,
+WaitingInstall Other(std::uint32_t a_actor, bool a_shown, float a_fraction,
                      std::uint32_t a_waited) {
-  return {a_actor, ActorRole::kOther, a_inView, a_fraction, kNow - a_waited};
+  return {a_actor, ActorRole::kOther, a_shown, a_fraction, kNow - a_waited};
 }
 
 void BudgetAdmitsAtLeastOneInstall() {
@@ -62,6 +63,28 @@ void InstallOrderSortsTheWholeQueue() {
   Check(InstallOrder({}, kNow).empty(), "an empty queue has no order");
 }
 
+void EveryArrivalOrderGivesOneInstallOrder() {
+  std::vector<WaitingInstall> waiting{
+      Other(1, false, 0.0f, 900),
+      {2, ActorRole::kPlayer, false, 0.0f, kNow - 5},
+      Other(3, true, 0.7f, 10),
+      Other(4, true, 0.5f, 500),
+      Other(5, false, 0.0f, kInstallWaitLimitMS + 1)};
+  std::ranges::sort(waiting, {}, &WaitingInstall::actor);
+  const std::vector<std::uint32_t> expected{5, 2, 3, 4, 1};
+  bool same = true;
+  bool firstAgrees = true;
+  do {
+    const std::vector<std::uint32_t> order = InstallOrder(waiting, kNow);
+    same = same && order == expected;
+    const std::optional<std::size_t> next = NextInstall(waiting, {}, kNow);
+    firstAgrees = firstAgrees && next && waiting[*next].actor == order.front();
+  } while (
+      std::ranges::next_permutation(waiting, {}, &WaitingInstall::actor).found);
+  Check(same, "every arrival order of the queue sorts the same way");
+  Check(firstAgrees, "the next install is the first of the install order");
+}
+
 void OldEntriesAreNotStarved() {
   const std::vector<WaitingInstall> waiting{
       {1, ActorRole::kPlayer, true, 1.0f, kNow - 5},
@@ -101,6 +124,7 @@ void EntriesKeepTheirFirstDeferral() {
 
 int main() {
   InstallOrderSortsTheWholeQueue();
+  EveryArrivalOrderGivesOneInstallOrder();
   BudgetAdmitsAtLeastOneInstall();
   OrderPutsThePlayerFirst();
   OrderPrefersLargerOnScreen();

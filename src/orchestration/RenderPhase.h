@@ -55,7 +55,7 @@ struct Shown {
   Level level = Level::kFull;
   Intermediates intermediates;
   Hold smallOnScreen;
-  std::optional<Level> stepUpBlockedFrom;
+  std::optional<Level> waitingForRoomFrom;
   std::optional<FailedLevel> failed;
 
   [[nodiscard]] bool operator==(const Shown &) const = default;

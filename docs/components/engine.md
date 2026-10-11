@@ -126,7 +126,7 @@ gives each placed **output** a `RenderOutput`. A stack that the plan does not
 lower fails its output with the problem `stack was not lowered`. A plan
 failure fails every requested output (`FailedOutputs`). `LiveActor::fullSizes`
 keeps the full-resolution sizes of the stacks. `RenderBuildAt` chooses the
-level from the plan's level costs and the command's `InstallBound`.
+level from the plan's level costs and the command's `InstallBounds`.
 `PlanLightsOf` gives each instance's light problem and the lights to place,
 and `PlaceLights` places them. `UnpublishedSlotsOf` lists the slots of the
 first draw, and `Installed::total` is their count. `KeepRender` stores the
@@ -192,7 +192,7 @@ acts. `Manager::SampleBudget` (`ManagerHeartbeat.cpp`) reads the DXGI local
 segment through `VideoMemoryProbe` (`render/VideoMemory.h`), the setting
 `RenderTargetBudgetMiB`, the measured target bytes and the planned holding of
 the rendered actors (`PlannedTargets`). `RunTick` takes the sample when the
-heartbeat is due and gives it to the core as `TickFacts::memory`. The
+heartbeat is due and gives it to the core as `TickFacts::budgetSample`. The
 `ReleaseIntermediates` executor releases an actor's intermediate targets
 except the mesh bakes. A budget step down and a radius change reach the
 engine as `StartResize` and `Observe` commands. When the DXGI reading is

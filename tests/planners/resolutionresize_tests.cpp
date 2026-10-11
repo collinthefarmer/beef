@@ -12,14 +12,14 @@ const ResizeProgress kBegan{ResolutionLevel::kQuarter, ResolutionLevel::kHalf,
                             100};
 
 void DrawCountsEveryStack() {
-  Check(DrawOf({.inView = true, .drawn = 3, .stacks = 3}) == ResizeDraw::kDrawn,
+  Check(DrawOf({.shown = true, .drawn = 3, .stacks = 3}) == ResizeDraw::kDrawn,
         "every stack drawn once is drawn");
-  Check(DrawOf({.inView = true, .drawn = 2, .stacks = 3}) ==
+  Check(DrawOf({.shown = true, .drawn = 2, .stacks = 3}) ==
             ResizeDraw::kDrawing,
         "a stack not yet drawn keeps the resize drawing");
-  Check(DrawOf({.inView = true, .drawn = 0, .stacks = 0}) == ResizeDraw::kDrawn,
+  Check(DrawOf({.shown = true, .drawn = 0, .stacks = 0}) == ResizeDraw::kDrawn,
         "an instance with no stacks is drawn at once");
-  Check(DrawOf({.inView = false, .drawn = 0, .stacks = 3}) ==
+  Check(DrawOf({.shown = false, .drawn = 0, .stacks = 3}) ==
             ResizeDraw::kOutOfView,
         "an actor out of view is not waiting for a draw");
 }

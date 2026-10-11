@@ -257,14 +257,14 @@ void FirstPersonPiecesDoNotHoldBack() {
 void RecheckFollowsTheWait() {
   const std::optional<ActorState> waiting = ActorState{
       CircuitPlan(), CircuitPlan(), {PendingModel{Piece(0x2), 0}}, {}};
-  test::Check(RecheckOf(waiting, kModelWaitMs) == Recheck::kWaiting,
+  test::Check(ModelLoadOf(waiting, kModelWaitMs) == ModelLoad::kLoading,
               "a pending model is rechecked soon until just after its wait");
-  test::Check(RecheckOf(waiting, kModelWaitMs + kPendingRecheckMs) ==
-                  Recheck::kStuck,
+  test::Check(ModelLoadOf(waiting, kModelWaitMs + kLoadingCheckMs) ==
+                  ModelLoad::kLate,
               "a model that never attaches is rechecked slowly");
-  test::Check(RecheckOf(InstalledState(CircuitPlan()), 0) == Recheck::kNone,
+  test::Check(ModelLoadOf(InstalledState(CircuitPlan()), 0) == ModelLoad::kNone,
               "an actor with nothing pending is not rechecked");
-  test::Check(RecheckOf(kNoRecord, 0) == Recheck::kNone,
+  test::Check(ModelLoadOf(kNoRecord, 0) == ModelLoad::kNone,
               "an actor without a record is not rechecked");
 }
 

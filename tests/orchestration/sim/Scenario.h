@@ -51,17 +51,17 @@ struct WatchedRun {
   return actor;
 }
 
-[[nodiscard]] inline ActorRecord RenderedRecord(RenderPhase a_phase,
+[[nodiscard]] inline TrackedActor RenderedActor(RenderPhase a_phase,
                                                 Sighting a_sight) {
-  ActorRecord record = RecordOf(RenderIn(std::move(a_phase)), a_sight);
+  TrackedActor record = TrackedOf(RenderIn(std::move(a_phase)), a_sight);
   if (record.render) {
     record.render->renderedFrame = 0;
   }
   return record;
 }
 
-[[nodiscard]] inline const ActorRecord *RecordIn(const World &a_world,
-                                                 ActorId a_actor) {
+[[nodiscard]] inline const TrackedActor *RecordIn(const World &a_world,
+                                                  ActorId a_actor) {
   const auto found = a_world.actors.find(a_actor);
   return found == a_world.actors.end() ? nullptr : &found->second;
 }

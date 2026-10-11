@@ -10,10 +10,10 @@
 
 namespace BetterEnchantmentEffects::Actors {
 inline constexpr std::uint32_t kModelWaitMs = 1000;
-inline constexpr std::uint32_t kPendingRecheckMs = 100;
-inline constexpr std::uint32_t kRecheckMs = 1000;
+inline constexpr std::uint32_t kLoadingCheckMs = 100;
+inline constexpr std::uint32_t kSlowCheckMs = 1000;
 
-enum class Recheck { kNone, kWaiting, kStuck };
+enum class ModelLoad { kNone, kLoading, kLate };
 
 enum class Reinstall : std::uint8_t { kIfChanged, kAlways };
 
@@ -31,8 +31,8 @@ struct AdvanceRequest {
                            float a_evictDistance);
 [[nodiscard]] bool
 AnythingInstalled(const std::optional<ActorState> &a_state) noexcept;
-[[nodiscard]] Recheck RecheckOf(const std::optional<ActorState> &a_state,
-                                std::uint32_t a_nowMs);
+[[nodiscard]] ModelLoad ModelLoadOf(const std::optional<ActorState> &a_state,
+                                    std::uint32_t a_nowMs);
 [[nodiscard]] std::vector<Claim> LiveClaims(std::span<const Claim> a_claims,
                                             const ActorFacts &a_facts);
 [[nodiscard]] ActorState WithClaim(ActorState a_state, Claim a_claim);

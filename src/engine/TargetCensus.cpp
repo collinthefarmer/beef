@@ -86,7 +86,7 @@ HolderSet SlotTargetsOf(const LiveActor &a_state) {
 
 bool InViewNow(const Orchestration::World &a_world, RE::FormID a_actor) {
   const auto found = a_world.actors.find(Orchestration::ActorOf(a_actor));
-  return found != a_world.actors.end() && found->second.sight.inView;
+  return found != a_world.actors.end() && found->second.sight.shown;
 }
 
 std::string

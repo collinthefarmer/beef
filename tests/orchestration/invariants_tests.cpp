@@ -18,7 +18,7 @@ constexpr Millis kNow = 10000;
 World WorldOf(std::vector<std::pair<ActorId, RenderPhase>> a_phases) {
   World world;
   for (auto &[id, phase] : a_phases) {
-    world.actors[id] = RecordOf(RenderIn(std::move(phase)));
+    world.actors[id] = TrackedOf(RenderIn(std::move(phase)));
   }
   return WithEstimate(std::move(world));
 }

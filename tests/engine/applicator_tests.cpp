@@ -70,7 +70,7 @@ struct Flow {
 
   Flow() { service.Resume(); }
 
-  std::optional<ApplicationRecord> ActorRecord(std::uint32_t a_actor) const {
+  std::optional<ApplicationRecord> TrackedActor(std::uint32_t a_actor) const {
     for (const ApplicationRecord &record : service.Snapshot()) {
       if (record.token.actorID == a_actor) {
         return record;
@@ -107,14 +107,14 @@ void OrdinaryRefreshAndFirstRender() {
             !flow.calls.front().tokens.empty(),
         "an event refresh with no recipe request enters the adapter with "
         "tracked tokens");
-  const auto prepared = flow.ActorRecord(42);
+  const auto prepared = flow.TrackedActor(42);
   Check(prepared && prepared->phase == ApplicationPhase::kPrepared &&
             prepared->token.actorID == 42,
         "ordinary refresh publishes its actor preparation result");
   if (!flow.calls.empty()) {
     flow.Render(flow.calls.front());
   }
-  const auto rendered = flow.ActorRecord(42);
+  const auto rendered = flow.TrackedActor(42);
   Check(rendered && rendered->phase == ApplicationPhase::kRendered,
         "ordinary first render acknowledges the same lifecycle application");
 }
@@ -136,7 +136,7 @@ void EquipFinalize() {
   if (!flow.calls.empty()) {
     flow.Render(flow.calls.front());
   }
-  const auto record = flow.ActorRecord(17);
+  const auto record = flow.TrackedActor(17);
   Check(record && record->phase == ApplicationPhase::kRendered,
         "equip first-render outcome is visible in application records");
 }
@@ -149,25 +149,25 @@ void CoalescedRerunAndStaleActorResult() {
   Check(flow.scheduler.tasks.size() == 1,
         "ordinary refresh bursts coalesce inside the applicator");
   flow.scheduler.RunOne();
-  const auto first = flow.ActorRecord(7);
+  const auto first = flow.TrackedActor(7);
   Check(first && flow.calls.size() == 1 && flow.scheduler.tasks.size() == 1,
         "coalesced refresh performs once and schedules a tracked follow-up");
   flow.scheduler.RunOne();
-  const auto second = flow.ActorRecord(7);
+  const auto second = flow.TrackedActor(7);
   Check(first && second && second->token.revision > first->token.revision &&
             flow.calls.size() == 2 && !flow.calls.back().tokens.empty(),
         "each actual coalesced rerun receives a fresh actor revision");
   if (first) {
     flow.service.Report(first->token, 7, ApplicationPhase::kRendered);
   }
-  const auto afterStale = flow.ActorRecord(7);
+  const auto afterStale = flow.TrackedActor(7);
   Check(second && afterStale && afterStale->token == second->token &&
             afterStale->phase == ApplicationPhase::kPrepared,
         "the first refresh cannot acknowledge the newer actor revision");
   if (!flow.calls.empty()) {
     flow.Render(flow.calls.back());
   }
-  const auto complete = flow.ActorRecord(7);
+  const auto complete = flow.TrackedActor(7);
   Check(complete && complete->phase == ApplicationPhase::kRendered &&
             flow.scheduler.tasks.empty(),
         "the final coalesced application completes without an endless rerun");
@@ -178,10 +178,10 @@ void IndependentActorsAndRecipeOverlap() {
   flow.service.MarkStale(11);
   flow.service.MarkStale(22);
   flow.scheduler.Drain();
-  const auto actor22 = flow.ActorRecord(22);
+  const auto actor22 = flow.TrackedActor(22);
   flow.service.MarkStale(11);
   flow.scheduler.Drain();
-  const auto preserved = flow.ActorRecord(22);
+  const auto preserved = flow.TrackedActor(22);
   Check(actor22 && preserved && actor22->token == preserved->token &&
             preserved->phase == ApplicationPhase::kPrepared,
         "refreshing one actor preserves another actor's pending record");
@@ -211,7 +211,7 @@ void IndependentActorsAndRecipeOverlap() {
   flow.scheduler.Drain();
   flow.Render(previous);
   const auto afterStaleRecipe = flow.RecipeRecord("paint");
-  const auto afterStaleActor = flow.ActorRecord(11);
+  const auto afterStaleActor = flow.TrackedActor(11);
   Check(afterStaleRecipe && afterStaleActor &&
             afterStaleRecipe->phase == ApplicationPhase::kPrepared &&
             afterStaleActor->phase == ApplicationPhase::kPrepared,
@@ -221,13 +221,13 @@ void IndependentActorsAndRecipeOverlap() {
     flow.Render(flow.calls.back());
   }
   const auto renderedRecipe = flow.RecipeRecord("paint");
-  const auto renderedActor = flow.ActorRecord(11);
+  const auto renderedActor = flow.TrackedActor(11);
   Check(renderedRecipe && renderedActor &&
             renderedRecipe->phase == ApplicationPhase::kRendered &&
             renderedActor->phase == ApplicationPhase::kRendered,
         "one authoritative render completes both scoped and lifecycle "
         "application records");
-  const auto stillPreserved = flow.ActorRecord(22);
+  const auto stillPreserved = flow.TrackedActor(22);
   Check(actor22 && stillPreserved && stillPreserved->token == actor22->token &&
             stillPreserved->phase == ApplicationPhase::kPrepared,
         "recipe refreshes on actor 11 cannot cancel unrelated actor 22");
@@ -237,12 +237,12 @@ void LoadCancellationAndLoadedSync() {
   Flow flow;
   flow.service.MarkStale(31);
   flow.scheduler.Drain();
-  const auto old = flow.ActorRecord(31);
+  const auto old = flow.TrackedActor(31);
   flow.service.MarkStale(32);
   flow.service.Equip(33, 0);
   flow.service.BeginLoad();
   Check(flow.service.Loading(), "the applicator owns the paused load state");
-  const auto cancelled = flow.ActorRecord(31);
+  const auto cancelled = flow.TrackedActor(31);
   Check(cancelled && cancelled->phase == ApplicationPhase::kCancelled,
         "load cancels a lifecycle application waiting for first render");
   Check(!flow.service.MarkStale(34), "refreshes cannot run during a load");
@@ -257,7 +257,7 @@ void LoadCancellationAndLoadedSync() {
   if (old) {
     flow.service.Report(old->token, 31, ApplicationPhase::kRendered);
   }
-  const auto current = flow.ActorRecord(31);
+  const auto current = flow.TrackedActor(31);
   Check(
       old && current && current->token.revision > old->token.revision &&
           current->phase == ApplicationPhase::kPrepared,
@@ -265,7 +265,7 @@ void LoadCancellationAndLoadedSync() {
   if (!flow.calls.empty()) {
     flow.Render(flow.calls.back());
   }
-  const auto complete = flow.ActorRecord(31);
+  const auto complete = flow.TrackedActor(31);
   Check(complete && complete->phase == ApplicationPhase::kRendered,
         "the loaded actor reaches rendered through the same service route");
 }
@@ -275,7 +275,7 @@ void RejectedInternalScheduling() {
   equip.service.Equip(51, 0);
   equip.scheduler.accept = false;
   equip.service.FinalizeDue(100);
-  const auto failedEquip = equip.ActorRecord(51);
+  const auto failedEquip = equip.TrackedActor(51);
   Check(failedEquip && failedEquip->phase == ApplicationPhase::kFailed &&
             equip.calls.empty() && equip.scheduler.tasks.empty(),
         "equip finalization scheduling rejection is tracked without an adapter "
@@ -290,14 +290,14 @@ void RejectedInternalScheduling() {
         "the first coalesced refresh applies before internal rerun scheduling "
         "fails");
   rerun.service.FinalizeDue(0);
-  const auto failedRerun = rerun.ActorRecord(61);
+  const auto failedRerun = rerun.TrackedActor(61);
   Check(failedRerun && failedRerun->phase == ApplicationPhase::kFailed &&
             !failedRerun->problem.empty(),
         "rejected coalesced rerun becomes a visible application failure");
   if (!rerun.calls.empty()) {
     rerun.Render(rerun.calls.front());
   }
-  const auto stillFailed = rerun.ActorRecord(61);
+  const auto stillFailed = rerun.TrackedActor(61);
   Check(stillFailed && stillFailed->phase == ApplicationPhase::kFailed,
         "the earlier refresh cannot hide an internal rerun scheduling failure");
 
@@ -308,7 +308,7 @@ void RejectedInternalScheduling() {
   load.service.Resume();
   load.service.FinalizeDue(0);
   Check(
-      !load.ActorRecord(71),
+      !load.TrackedActor(71),
       "load discards an unprocessed scheduling rejection from the old session");
 }
 
@@ -321,7 +321,7 @@ void RetirementBeforeRender() {
   const Applied retired = flow.calls.front();
   const auto held = flow.service.Snapshot();
   flow.service.Retire(42, retired.tokens);
-  const auto actor = flow.ActorRecord(42);
+  const auto actor = flow.TrackedActor(42);
   Check(actor && actor->phase == ApplicationPhase::kUnmatched &&
             actor->problem ==
                 "the actor was retired before rendering completed" &&
@@ -329,11 +329,11 @@ void RetirementBeforeRender() {
         "eviction after preparation terminates the actor and recipe render "
         "waits");
   Check(!flow.service.PendingFor(43).empty() &&
-            flow.ActorRecord(43)->phase == ApplicationPhase::kPrepared,
+            flow.TrackedActor(43)->phase == ApplicationPhase::kPrepared,
         "retiring one wearer preserves another wearer's pending application");
   flow.Render(retired);
   flow.service.Retire(42, retired.tokens);
-  Check(flow.ActorRecord(42)->phase == ApplicationPhase::kUnmatched,
+  Check(flow.TrackedActor(42)->phase == ApplicationPhase::kUnmatched,
         "late render and duplicate retirement cannot revive a retired attempt");
   flow.Render(flow.calls.back());
   Check(flow.RecipeRecord("saved")->phase == ApplicationPhase::kUnmatched &&
@@ -348,10 +348,10 @@ void RetirementBeforeRender() {
   flow.service.MarkStale(42);
   flow.scheduler.Drain();
   flow.service.Retire(42, retired.tokens);
-  Check(flow.ActorRecord(42)->phase == ApplicationPhase::kPrepared,
+  Check(flow.TrackedActor(42)->phase == ApplicationPhase::kPrepared,
         "returning from eviction creates an attempt immune to old retirement");
   flow.Render(flow.calls.back());
-  Check(flow.ActorRecord(42)->phase == ApplicationPhase::kRendered,
+  Check(flow.TrackedActor(42)->phase == ApplicationPhase::kRendered,
         "an actor returning from eviction can render successfully");
 }
 
@@ -411,7 +411,7 @@ void SchedulingFailureAndRetry() {
   Check(!flow.service.MarkStale(90),
         "rejected scheduler submission is returned to its caller");
   flow.service.FinalizeDue(0);
-  const auto failed = flow.ActorRecord(90);
+  const auto failed = flow.TrackedActor(90);
   Check(failed && failed->phase == ApplicationPhase::kFailed &&
             !failed->problem.empty(),
         "rejected ordinary refresh produces a visible tracked failure");
@@ -419,7 +419,7 @@ void SchedulingFailureAndRetry() {
   Check(flow.service.MarkStale(90),
         "failed scheduling leaves the actor retryable");
   flow.scheduler.Drain();
-  const auto retry = flow.ActorRecord(90);
+  const auto retry = flow.TrackedActor(90);
   Check(failed && retry && retry->token.revision > failed->token.revision &&
             retry->phase == ApplicationPhase::kPrepared &&
             flow.calls.size() == 1,
@@ -427,7 +427,7 @@ void SchedulingFailureAndRetry() {
   if (!flow.calls.empty()) {
     flow.Render(flow.calls.back());
   }
-  const auto rendered = flow.ActorRecord(90);
+  const auto rendered = flow.TrackedActor(90);
   Check(rendered && rendered->phase == ApplicationPhase::kRendered,
         "an ordinary refresh recovers from rejected scheduling");
 }

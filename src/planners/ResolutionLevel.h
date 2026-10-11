@@ -46,9 +46,9 @@ template <class T> struct PerLevel {
 inline constexpr float kStepDownBand = 0.8f;
 inline constexpr std::uint32_t kStepDownHoldMS = 2000;
 
-struct ActorSight {
+struct ActorVisibility {
   std::optional<float> screenFraction;
-  bool inView = true;
+  bool shown = true;
   ActorRole role = ActorRole::kOther;
 };
 
@@ -70,11 +70,11 @@ using LevelStep = std::variant<KeepLevel, StepUpTo, StepDownTo>;
 
 [[nodiscard]] ResolutionLevel IdealLevel(float a_screenFraction) noexcept;
 [[nodiscard]] std::optional<ResolutionLevel>
-WantedLevel(const ActorSight &a_sight) noexcept;
+LevelFor(const ActorVisibility &a_visibility) noexcept;
 [[nodiscard]] bool SmallFor(std::optional<float> a_screenFraction,
                             ResolutionLevel a_current) noexcept;
 [[nodiscard]] LevelStep LevelStepOf(ResolutionLevel a_current,
-                                    const ActorSight &a_sight,
+                                    const ActorVisibility &a_visibility,
                                     bool a_stepDownDue) noexcept;
 [[nodiscard]] bool LargerOnScreen(std::optional<float> a_left,
                                   std::optional<float> a_right) noexcept;

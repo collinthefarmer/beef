@@ -113,16 +113,16 @@ bool AnythingInstalled(const std::optional<ActorState> &a_state) noexcept {
   return a_state && !(a_state->installed == ActorPlan{});
 }
 
-Recheck RecheckOf(const std::optional<ActorState> &a_state,
-                  std::uint32_t a_nowMs) {
+ModelLoad ModelLoadOf(const std::optional<ActorState> &a_state,
+                      std::uint32_t a_nowMs) {
   if (!a_state || a_state->pending.empty()) {
-    return Recheck::kNone;
+    return ModelLoad::kNone;
   }
   const bool waiting =
       std::ranges::any_of(a_state->pending, [&](const PendingModel &a_model) {
-        return a_nowMs - a_model.sinceMs < kModelWaitMs + kPendingRecheckMs;
+        return a_nowMs - a_model.sinceMs < kModelWaitMs + kLoadingCheckMs;
       });
-  return waiting ? Recheck::kWaiting : Recheck::kStuck;
+  return waiting ? ModelLoad::kLoading : ModelLoad::kLate;
 }
 
 std::vector<Claim> LiveClaims(std::span<const Claim> a_claims,

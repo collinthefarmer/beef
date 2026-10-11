@@ -17,17 +17,13 @@ std::uint64_t Less(std::uint64_t a_lhs, std::uint64_t a_rhs) noexcept {
 }
 
 namespace {
-ActorSight SightOf(const BudgetActor &a_actor) noexcept {
-  return {a_actor.screenFraction, a_actor.inView, a_actor.role};
-}
-
 int SurplusLevels(const BudgetActor &a_actor) noexcept {
   return LevelGap(a_actor.level,
-                  WantedLevel(SightOf(a_actor)).value_or(a_actor.level));
+                  LevelFor(a_actor.visibility).value_or(a_actor.level));
 }
 
 std::uint64_t FreedBy(const BudgetActor &a_actor) noexcept {
-  return a_actor.stepDown ? a_actor.stepDown->freed : 0;
+  return a_actor.costs.stepDown ? a_actor.costs.stepDown->freed : 0;
 }
 
 bool BetterStepDown(const BudgetActor &a_candidate,
@@ -41,8 +37,8 @@ bool BetterStepDown(const BudgetActor &a_candidate,
 }
 
 bool CanStepDown(const BudgetActor &a_actor) noexcept {
-  return a_actor.role != ActorRole::kPlayer && !a_actor.resizing &&
-         a_actor.stepDown.has_value();
+  return a_actor.visibility.role != ActorRole::kPlayer && !a_actor.resizing &&
+         a_actor.costs.stepDown.has_value();
 }
 
 std::optional<std::size_t>
@@ -58,19 +54,19 @@ StepDownCandidate(std::span<const BudgetActor> a_actors) noexcept {
 }
 
 bool SmallerThanRequester(const BudgetActor &a_candidate,
-                          const ActorSight &a_requester) noexcept {
-  if (!a_candidate.inView) {
+                          const ActorVisibility &a_requester) noexcept {
+  if (!a_candidate.visibility.shown) {
     return true;
   }
-  if (!a_candidate.screenFraction || !a_requester.screenFraction) {
+  if (!a_candidate.visibility.screenFraction || !a_requester.screenFraction) {
     return false;
   }
-  return *a_candidate.screenFraction <
+  return *a_candidate.visibility.screenFraction <
          kStepDownBand * *a_requester.screenFraction;
 }
 
 bool MayPreempt(const BudgetActor &a_candidate,
-                const ActorSight &a_requester) noexcept {
+                const ActorVisibility &a_requester) noexcept {
   return CanStepDown(a_candidate) && SurplusLevels(a_candidate) > 0 &&
          SmallerThanRequester(a_candidate, a_requester);
 }
@@ -78,13 +74,13 @@ bool MayPreempt(const BudgetActor &a_candidate,
 std::vector<std::size_t> ReleaseOrder(std::span<const BudgetActor> a_actors) {
   std::vector<std::size_t> order;
   for (std::size_t i = 0; i < a_actors.size(); ++i) {
-    if (!a_actors[i].inView && !a_actors[i].resizing &&
-        a_actors[i].releasable > 0) {
+    if (!a_actors[i].visibility.shown && !a_actors[i].resizing &&
+        a_actors[i].costs.releasable > 0) {
       order.push_back(i);
     }
   }
   std::ranges::stable_sort(order, [&](std::size_t a_lhs, std::size_t a_rhs) {
-    return a_actors[a_lhs].releasable > a_actors[a_rhs].releasable;
+    return a_actors[a_lhs].costs.releasable > a_actors[a_rhs].costs.releasable;
   });
   return order;
 }
@@ -245,16 +241,16 @@ StepDownOf(ResolutionLevel a_level, const LevelCost &a_current,
 std::optional<std::size_t>
 PreemptionCandidate(const PreemptionRequest &a_request,
                     std::span<const BudgetActor> a_actors) noexcept {
-  if (!a_request.sight.inView || a_request.shortfall == 0) {
+  if (!a_request.visibility.shown || a_request.shortfall == 0) {
     return std::nullopt;
   }
   std::optional<std::size_t> chosen;
   std::uint64_t surplus = 0;
   for (std::size_t i = 0; i < a_actors.size(); ++i) {
-    if (!MayPreempt(a_actors[i], a_request.sight)) {
+    if (!MayPreempt(a_actors[i], a_request.visibility)) {
       continue;
     }
-    surplus = Sum(surplus, a_actors[i].surplusBytes);
+    surplus = Sum(surplus, a_actors[i].costs.surplus);
     if (!chosen || BetterStepDown(a_actors[i], a_actors[*chosen])) {
       chosen = i;
     }
@@ -275,8 +271,8 @@ BudgetResponse RespondToPressure(std::uint64_t a_planned, std::uint64_t a_goal,
       break;
     }
     const BudgetActor &actor = a_actors[index];
-    response.release.push_back({actor.actor, actor.releasable});
-    remaining = Less(remaining, actor.releasable);
+    response.release.push_back({actor.actor, actor.costs.releasable});
+    remaining = Less(remaining, actor.costs.releasable);
   }
   if (remaining < a_goal) {
     return response;
@@ -287,7 +283,7 @@ BudgetResponse RespondToPressure(std::uint64_t a_planned, std::uint64_t a_goal,
   }
   if (const std::optional<std::size_t> chosen = StepDownCandidate(a_actors)) {
     const BudgetActor &actor = a_actors[*chosen];
-    response.next = StepDown{actor.actor, *actor.stepDown};
+    response.next = StepDown{actor.actor, *actor.costs.stepDown};
     return response;
   }
   response.next = Exhausted{};

@@ -27,7 +27,7 @@ constexpr ResolutionLevel kQuarter = ResolutionLevel::kQuarter;
 
 World WorldIn(RenderPhase a_phase) {
   World world;
-  world.actors[kActor] = RecordOf(RenderIn(std::move(a_phase)));
+  world.actors[kActor] = TrackedOf(RenderIn(std::move(a_phase)));
   return world;
 }
 
@@ -62,7 +62,7 @@ void NoRenderMeansNoEntry() {
   Check(!Agrees(World{}, StoreOf(RenderAt(kFull))),
         "an entry for an actor without a record disagrees");
   World recordOnly;
-  recordOnly.actors[kActor] = ActorRecord{};
+  recordOnly.actors[kActor] = TrackedActor{};
   Check(Agrees(recordOnly, Store{}),
         "a record without a render and no entry agree");
   Check(!Agrees(recordOnly, StoreOf(HeldResources{})),
@@ -173,7 +173,7 @@ void DisagreementsNameTheActor() {
 void TheSettledWorldRecordsResultsButNotJobs() {
   constexpr ActorId kWaiting{0x20};
   World world = WorldIn(ShownAt(kFull));
-  world.actors[kWaiting] = RecordOf(RenderIn(Planning{PlanJobId{9}}));
+  world.actors[kWaiting] = TrackedOf(RenderIn(Planning{PlanJobId{9}}));
   TickFacts facts;
   facts.now = 1000;
   facts.frame = 10;
@@ -183,7 +183,7 @@ void TheSettledWorldRecordsResultsButNotJobs() {
   facts.results.push_back(Retired{kActor});
   facts.jobs.push_back(PlanJobBuilt{PlanJobId{9}});
   const World settled = SettledWorld(world, facts);
-  const ActorRecord *retired = RecordIn(settled, kActor);
+  const TrackedActor *retired = RecordIn(settled, kActor);
   Check(retired && !retired->render, "a retire result erases the render");
   const RenderPhase *waiting = PhaseIn(settled, kWaiting);
   Check(waiting && Is<Planning>(*waiting),
@@ -239,12 +239,12 @@ void ACrowdArrivingAgreesEveryTick() {
   Script script;
   script.memory = MemoryScript{30, std::uint64_t{8} << 30};
   for (std::uint32_t k = 0; k < 12; ++k) {
-    const bool inView = k % 3 != 2;
-    const Sighting sight = inView ? InView(0.06f + 0.05f * k, 300.0f)
-                                  : OutOfView(400.0f + 10.0f * k);
+    const bool shown = k % 3 != 2;
+    const Sighting sight = shown ? InView(0.06f + 0.05f * k, 300.0f)
+                                 : OutOfView(400.0f + 10.0f * k);
     ActorScript member =
         Arriving(sight, 1, PlanNamed("crowd" + std::to_string(k), 0x800 + k));
-    if (!inView) {
+    if (!shown) {
       member.sightings.push_back({150, InView(0.1f, 400.0f)});
     }
     if (k % 4 == 1) {
@@ -265,7 +265,7 @@ void AnActorLeavingTheViewDuringAResizeAgreesEveryTick() {
   actor.sightings.push_back({12, OutOfView(300.0f)});
   script.actors[kLeaving] = actor;
   World world;
-  world.actors[kLeaving] = RenderedRecord(ShownAt(kHalf), InView(0.6f, 300.0f));
+  world.actors[kLeaving] = RenderedActor(ShownAt(kHalf), InView(0.6f, 300.0f));
   Agreed(RanAgreeing(Started(std::move(script), WithEstimate(std::move(world))),
                      200),
          "an actor leaving the view during a resize");
@@ -281,7 +281,7 @@ void PressureDuringFirstDrawsAgreesEveryTick() {
     const Sighting sight = k < 2 ? OutOfView(200.0f + 100.0f * k)
                                  : InView(0.6f, 200.0f + 100.0f * k);
     script.actors[ActorOf(400 + k)] = ScriptedActor(sight);
-    world.actors[ActorOf(400 + k)] = RenderedRecord(ShownAt(kFull), sight);
+    world.actors[ActorOf(400 + k)] = RenderedActor(ShownAt(kFull), sight);
   }
   for (std::uint32_t k = 0; k < 6; ++k) {
     ActorScript arrival =
@@ -329,7 +329,7 @@ void ASwapMismatchAgreesEveryTick() {
   script.actors[kMismatched] = actor;
   World world;
   world.actors[kMismatched] =
-      RenderedRecord(ShownAt(kHalf), InView(0.6f, 300.0f));
+      RenderedActor(ShownAt(kHalf), InView(0.6f, 300.0f));
   const AgreementRun run = RanAgreeing(
       Started(std::move(script), WithEstimate(std::move(world))), 200);
   Agreed(run, "a swap mismatch");
@@ -346,7 +346,7 @@ void AResizeStartingPartlyDrawnAgreesEveryTick() {
   actor.stacksDrawnAtStart = 5;
   script.actors[kCovered] = actor;
   World world;
-  world.actors[kCovered] = RenderedRecord(ShownAt(kHalf), InView(0.6f, 300.0f));
+  world.actors[kCovered] = RenderedActor(ShownAt(kHalf), InView(0.6f, 300.0f));
   const AgreementRun run = RanAgreeing(
       Started(std::move(script), WithEstimate(std::move(world))), 200);
   Agreed(run, "a resize starting partly drawn");

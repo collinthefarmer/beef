@@ -3,7 +3,7 @@
 
 namespace BetterEnchantmentEffects {
 ResizeDraw DrawOf(const ResizeDrawState &a_state) noexcept {
-  if (!a_state.inView) {
+  if (!a_state.shown) {
     return ResizeDraw::kOutOfView;
   }
   return a_state.drawn >= a_state.stacks ? ResizeDraw::kDrawn
@@ -22,8 +22,8 @@ bool SwapDue(const ResizeProgress &a_progress, ResizeDraw a_draw,
 namespace {
 bool ResizesBefore(const ResizeCandidate &a_left,
                    const ResizeCandidate &a_right) noexcept {
-  if (a_left.inView != a_right.inView) {
-    return a_left.inView;
+  if (a_left.shown != a_right.shown) {
+    return a_left.shown;
   }
   return LargerOnScreen(a_left.screenFraction, a_right.screenFraction);
 }

@@ -26,7 +26,7 @@ const StepRow &RowNamed(std::string_view a_name) {
 World Settled() {
   World world;
   world.actors[kActor] =
-      RecordOf(RenderIn(ShownAt(kFull)), InView(0.5f, 100.0f));
+      TrackedOf(RenderIn(ShownAt(kFull)), InView(0.5f, 100.0f));
   return WithEstimate(std::move(world));
 }
 
@@ -98,7 +98,7 @@ void WritesOutsideTheRowFire() {
               Rule::kStepWroteOutsideRow),
         "the sync results step writing level costs fires");
   World inserted = before;
-  inserted.actors[kNewcomer] = ActorRecord{};
+  inserted.actors[kNewcomer] = TrackedActor{};
   Check(Fired(CheckedStep("RunBudget", before, inserted, {}),
               Rule::kStepWroteOutsideRow),
         "the budget step adding an actor fires");
@@ -114,7 +114,7 @@ void WritesOutsideTheRowFire() {
               Rule::kStepWroteOutsideRow),
         "the lifecycle step writing the radius fires");
   World timers = before;
-  timers.timers.lastRecheck = 5;
+  timers.timers.lastSlowCheck = 5;
   Check(Fired(CheckedStep("RunBudget", before, timers, {}),
               Rule::kStepWroteOutsideRow),
         "the budget step writing the timers fires");
@@ -138,7 +138,7 @@ void APhaseChangeIsAlwaysAllowed() {
 
 void StubStepsKeepTheirRows() {
   World world = Settled();
-  world.actors[kNewcomer] = ActorRecord{};
+  world.actors[kNewcomer] = TrackedActor{};
   TickFacts facts;
   facts.sightings[kActor] = InView(0.5f, 100.0f);
   facts.sightings[kNewcomer] = OutOfView(300.0f);

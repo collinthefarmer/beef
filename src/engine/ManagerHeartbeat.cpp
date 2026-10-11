@@ -64,14 +64,14 @@ void EmitStepKinds(const Metrics::StepKindCounts &a_counts) {
   }
 }
 
-const Orchestration::ActorRecord *RecordOf(const Orchestration::World &a_world,
-                                           RE::FormID a_actor) {
+const Orchestration::TrackedActor *RecordOf(const Orchestration::World &a_world,
+                                            RE::FormID a_actor) {
   const auto found = a_world.actors.find(Orchestration::ActorOf(a_actor));
   return found == a_world.actors.end() ? nullptr : &found->second;
 }
 
 bool Rendered(const Orchestration::World &a_world, RE::FormID a_actor) {
-  const Orchestration::ActorRecord *record = RecordOf(a_world, a_actor);
+  const Orchestration::TrackedActor *record = RecordOf(a_world, a_actor);
   return record && record->render && record->render->renderedFrame;
 }
 
@@ -97,7 +97,7 @@ PlannedTargets(const std::unordered_map<RE::FormID, LiveActor> &a_live,
 ScreenSpread ScreenSpreadOf(const Orchestration::World &a_world) {
   std::vector<float> fractions;
   for (const auto &[actor, record] : a_world.actors) {
-    if (record.render && record.render->renderedFrame && record.sight.inView &&
+    if (record.render && record.render->renderedFrame && record.sight.shown &&
         record.sight.screenFraction) {
       fractions.push_back(*record.sight.screenFraction);
     }
@@ -124,7 +124,7 @@ ActorTargets TargetsOfActor(RE::FormID a_actor, const LiveActor &a_state,
   }
   const RE::NiPointer<RE::Actor> actor = a_state.actor.get();
   const char *name = actor ? actor->GetName() : nullptr;
-  const Orchestration::ActorRecord *record = RecordOf(a_world, a_actor);
+  const Orchestration::TrackedActor *record = RecordOf(a_world, a_actor);
   return {a_actor, name ? std::string{name} : std::string{},
           record ? record->sight.screenFraction : std::nullopt,
           RecipeIdsOf(a_state), std::move(held)};

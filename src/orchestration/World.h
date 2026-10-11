@@ -40,12 +40,17 @@ using FormIds = std::vector<std::uint32_t>;
 struct Sighting {
   ActorRole role = ActorRole::kOther;
   bool loaded3D = false;
-  bool inView = false;
+  bool shown = false;
   std::optional<float> screenFraction;
   std::optional<float> distance;
   std::string name;
   [[nodiscard]] bool operator==(const Sighting &) const = default;
 };
+
+[[nodiscard]] constexpr ActorVisibility
+VisibilityOf(const Sighting &a_sight) noexcept {
+  return {a_sight.screenFraction, a_sight.shown, a_sight.role};
+}
 
 struct InstalledRender {
   RenderPhase phase;
@@ -53,7 +58,7 @@ struct InstalledRender {
   std::optional<std::uint64_t> renderedFrame;
 };
 
-struct ActorRecord {
+struct TrackedActor {
   Sighting sight;
   SyncState syncState;
   std::optional<ResolutionLevel> reinstallLevel;
@@ -62,13 +67,13 @@ struct ActorRecord {
 };
 
 struct Timers {
-  Millis lastWaitingCheck = 0;
-  Millis lastRecheck = 0;
+  Millis lastLoadingCheck = 0;
+  Millis lastSlowCheck = 0;
   [[nodiscard]] bool operator==(const Timers &) const = default;
 };
 
 struct World {
-  std::map<ActorId, ActorRecord> actors;
+  std::map<ActorId, TrackedActor> actors;
   BudgetState budget;
   std::optional<BudgetRadius> radius;
   std::vector<WaitingInstall> waitingInstalls;
@@ -76,13 +81,13 @@ struct World {
   Timers timers;
 };
 
-[[nodiscard]] inline ActorRecord *TrackedActor(World &a_world,
-                                               ActorId a_actor) noexcept {
+[[nodiscard]] inline TrackedActor *FindActor(World &a_world,
+                                             ActorId a_actor) noexcept {
   return Lookup(a_world.actors, a_actor);
 }
 
-[[nodiscard]] inline const ActorRecord *TrackedActor(const World &a_world,
-                                                     ActorId a_actor) noexcept {
+[[nodiscard]] inline const TrackedActor *FindActor(const World &a_world,
+                                                   ActorId a_actor) noexcept {
   return Lookup(a_world.actors, a_actor);
 }
 }

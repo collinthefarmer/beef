@@ -342,7 +342,7 @@ void LevelRequestsKeepOrAbandonWork() {
   RenderPhase small = ShownHeld();
   if (Shown *shown = Get<Shown>(small)) {
     shown->smallOnScreen = Hold{}.Update(true, 100);
-    shown->stepUpBlockedFrom = kHalf;
+    shown->waitingForRoomFrom = kHalf;
   }
   Check(WantLevel(kActor, small, kFull).phase == small,
         "asking for the current level keeps the live state");
@@ -422,7 +422,7 @@ void HoldsRestartAndReset() {
 void ShownStateResetsWithANewShown() {
   RenderPhase phase = ShownHeld();
   if (Shown *shown = Get<Shown>(phase)) {
-    shown->stepUpBlockedFrom = kFull;
+    shown->waitingForRoomFrom = kFull;
     shown->smallOnScreen = Hold{}.Update(true, 100);
   }
   const PhaseChange queued = WantLevel(kActor, std::move(phase), kHalf);
@@ -431,7 +431,7 @@ void ShownStateResetsWithANewShown() {
   const PhaseChange swapped =
       OnEvent(kActor, running.phase, ResizeSwapped{}, {61, kHalf});
   const Shown *shown = Get<Shown>(swapped.phase);
-  Check(shown && !shown->stepUpBlockedFrom && !shown->smallOnScreen.since,
+  Check(shown && !shown->waitingForRoomFrom && !shown->smallOnScreen.since,
         "the step-down hold and the blocked step-up reset in a new live");
 }
 
@@ -461,8 +461,9 @@ void PlanFailuresMatchTheAwaitedJob() {
       FirstCommandIs<BuildAwaitedRender>(built)
           ? Get<BuildAwaitedRender>(built.commands.front())
           : nullptr;
-  Check(built.phase == PlanningPhase() && build && build->bound.finest == kHalf,
-        "a built plan job asks for the awaited render with its bound");
+  Check(built.phase == PlanningPhase() && build &&
+            build->bounds.finestLevel == kHalf,
+        "a built plan job asks for the awaited render with its bounds");
   Check(Commands(PlanBuilt(kActor, PlanningPhase(), kOtherJob, {}), 0) &&
             Commands(PlanBuilt(kActor, ShownHeld(), kJob, {}), 0),
         "only the awaited job builds the render");

@@ -65,10 +65,10 @@ struct LevelCost {
 
 using LevelBytes = PerLevel<std::optional<std::uint64_t>>;
 
-struct InstallBound {
-  ResolutionLevel finest = ResolutionLevel::kFull;
+struct InstallBounds {
+  ResolutionLevel finestLevel = ResolutionLevel::kFull;
   std::optional<std::uint64_t> headroom;
-  [[nodiscard]] bool operator==(const InstallBound &) const = default;
+  [[nodiscard]] bool operator==(const InstallBounds &) const = default;
 };
 
 enum class IntermediateHolding : std::uint8_t { kHeld, kReleased };
@@ -79,22 +79,24 @@ struct StepDownOption {
   [[nodiscard]] bool operator==(const StepDownOption &) const = default;
 };
 
-struct BudgetActor {
-  std::uint32_t actor = 0;
-  ActorRole role = ActorRole::kOther;
-  bool inView = true;
-  bool resizing = false;
-  ResolutionLevel level = ResolutionLevel::kFull;
-  std::optional<float> screenFraction;
+struct BudgetCosts {
   std::uint64_t releasable = 0;
   std::optional<StepDownOption> stepDown;
-  std::uint64_t plannedBytes = 0;
+  std::uint64_t planned = 0;
+  std::uint64_t surplus = 0;
+};
+
+struct BudgetActor {
+  std::uint32_t actor = 0;
+  ActorVisibility visibility;
   std::optional<float> distance;
-  std::uint64_t surplusBytes = 0;
+  ResolutionLevel level = ResolutionLevel::kFull;
+  bool resizing = false;
+  BudgetCosts costs;
 };
 
 struct PreemptionRequest {
-  ActorSight sight;
+  ActorVisibility visibility;
   std::uint64_t shortfall = 0;
 };
 

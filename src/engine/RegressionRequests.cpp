@@ -224,8 +224,8 @@ Manager::RegressionActors(std::span<const RegressionWearer> a_wearers) const {
     facts[i].live = found != live_.end();
     const auto record =
         world_.actors.find(Orchestration::ActorOf(a_wearers[i].actor));
-    facts[i].inView = !facts[i].live || (record != world_.actors.end() &&
-                                         record->second.sight.inView);
+    facts[i].shown = !facts[i].live || (record != world_.actors.end() &&
+                                        record->second.sight.shown);
     if (facts[i].live) {
       for (const LivePiece &piece : found->second.pieces) {
         if (!std::ranges::contains(facts[i].liveItems, piece.armor)) {
