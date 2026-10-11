@@ -1,6 +1,8 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #include "studio/Gesture.h"
 
+#include "Core.h"
+
 #include <algorithm>
 #include <cstdint>
 #include <format>
@@ -11,8 +13,8 @@ namespace BetterEnchantmentEffects::Studio {
 namespace {
 [[nodiscard]] std::optional<std::string> EditTarget(const RecipeEdit &a_edit) {
   const std::size_t kind = a_edit.index();
-  return std::visit(
-      [kind]<class T>(const T &a_value) -> std::optional<std::string> {
+  return Match(
+      a_edit, [kind]<class T>(const T &a_value) -> std::optional<std::string> {
         if constexpr (std::is_same_v<T, SetLayerOpacity>) {
           return std::format("{}:{}:{}", kind, a_value.output, a_value.layer);
         } else if constexpr (std::is_same_v<T, SetScalar> ||
@@ -37,8 +39,7 @@ namespace {
           return std::to_string(kind);
         }
         return std::nullopt;
-      },
-      a_edit);
+      });
 }
 }
 

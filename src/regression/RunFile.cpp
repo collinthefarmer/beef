@@ -205,50 +205,49 @@ std::string StartLineJson(const StartLine &a_start) {
 }
 
 std::string ResultLineJson(const ResultLine &a_line) {
-  json line = std::visit(Overloaded{
-                             [](const StepResult &a_step) {
-                               json step = json::object();
-                               step["kind"] = "step";
-                               step["case"] = std::string{a_step.caseName};
-                               step["step"] = a_step.step;
-                               step["action"] = std::string{a_step.action};
-                               step["outcome"] = OutcomeJson(a_step.outcome);
-                               step["frames"] = a_step.frames;
-                               step["reason"] = a_step.reason;
-                               return step;
-                             },
-                             [](const CaseResult &a_case) {
-                               json result = json::object();
-                               result["kind"] = "case";
-                               result["case"] = std::string{a_case.caseName};
-                               result["outcome"] = OutcomeJson(a_case.outcome);
-                               return result;
-                             },
-                             [](const WindowBegins &a_window) {
-                               json edge = json::object();
-                               edge["kind"] = "window";
-                               edge["case"] = std::string{a_window.caseName};
-                               edge["window"] = a_window.window;
-                               edge["edge"] = "begin";
-                               return edge;
-                             },
-                             [](const WindowEnds &a_window) {
-                               json edge = json::object();
-                               edge["kind"] = "window";
-                               edge["case"] = std::string{a_window.caseName};
-                               edge["window"] = a_window.window;
-                               edge["edge"] = "end";
-                               return edge;
-                             },
-                             [](const RunEnd &a_end) {
-                               json end = json::object();
-                               end["kind"] = "end";
-                               end["outcome"] = OutcomeJson(a_end.outcome);
-                               end["reason"] = a_end.reason;
-                               return end;
-                             },
-                         },
-                         a_line);
+  json line = Match(
+      a_line,
+      [](const StepResult &a_step) {
+        json step = json::object();
+        step["kind"] = "step";
+        step["case"] = std::string{a_step.caseName};
+        step["step"] = a_step.step;
+        step["action"] = std::string{a_step.action};
+        step["outcome"] = OutcomeJson(a_step.outcome);
+        step["frames"] = a_step.frames;
+        step["reason"] = a_step.reason;
+        return step;
+      },
+      [](const CaseResult &a_case) {
+        json result = json::object();
+        result["kind"] = "case";
+        result["case"] = std::string{a_case.caseName};
+        result["outcome"] = OutcomeJson(a_case.outcome);
+        return result;
+      },
+      [](const WindowBegins &a_window) {
+        json edge = json::object();
+        edge["kind"] = "window";
+        edge["case"] = std::string{a_window.caseName};
+        edge["window"] = a_window.window;
+        edge["edge"] = "begin";
+        return edge;
+      },
+      [](const WindowEnds &a_window) {
+        json edge = json::object();
+        edge["kind"] = "window";
+        edge["case"] = std::string{a_window.caseName};
+        edge["window"] = a_window.window;
+        edge["edge"] = "end";
+        return edge;
+      },
+      [](const RunEnd &a_end) {
+        json end = json::object();
+        end["kind"] = "end";
+        end["outcome"] = OutcomeJson(a_end.outcome);
+        end["reason"] = a_end.reason;
+        return end;
+      });
   return line.dump(-1, ' ', false, json::error_handler_t::replace);
 }
 }

@@ -262,22 +262,20 @@ StepMove CheckOutcome(Outcome a_outcome) {
 }
 
 StepMove CheckRequest(const StepContext &a_context) {
-  return std::visit(
-      Overloaded{
-          [&](const NoRequest &) {
-            return Block("the plugin refused the request");
-          },
-          [&](const RequestPending &) {
-            if (a_context.frames >= kRenderDeadlineFrames) {
-              return Fail(std::format("no result within {} frames",
-                                      kRenderDeadlineFrames),
-                          AbortRequest{});
-            }
-            return Wait();
-          },
-          [&](Outcome a_outcome) { return CheckOutcome(a_outcome); },
+  return Match(
+      a_context.seen.request,
+      [&](const NoRequest &) {
+        return Block("the plugin refused the request");
       },
-      a_context.seen.request);
+      [&](const RequestPending &) {
+        if (a_context.frames >= kRenderDeadlineFrames) {
+          return Fail(
+              std::format("no result within {} frames", kRenderDeadlineFrames),
+              AbortRequest{});
+        }
+        return Wait();
+      },
+      [&](Outcome a_outcome) { return CheckOutcome(a_outcome); });
 }
 
 StepMove Start(const Apply &a_apply, const StepContext &) {
@@ -472,13 +470,10 @@ StepMove Check(const ExpectFirstPersonEffect &, const StepContext &a_context) {
 }
 
 std::string RequestName(const RequestState &a_request) {
-  return std::visit(
-      Overloaded{
-          [](const NoRequest &) { return std::string{"none"}; },
-          [](const RequestPending &) { return std::string{"pending"}; },
-          [](Outcome a_outcome) { return std::string{OutcomeName(a_outcome)}; },
-      },
-      a_request);
+  return Match(
+      a_request, [](const NoRequest &) { return std::string{"none"}; },
+      [](const RequestPending &) { return std::string{"pending"}; },
+      [](Outcome a_outcome) { return std::string{OutcomeName(a_outcome)}; });
 }
 
 bool Idle(const Activity &a_activity) {
@@ -885,13 +880,13 @@ StepMove Check(const AwaitIdle &, const StepContext &a_context) {
 }
 
 StepMove StartStep(const Step &a_step, const StepContext &a_context) {
-  return std::visit(
-      [&](const auto &a_kind) { return Start(a_kind, a_context); }, a_step);
+  return Match(a_step,
+               [&](const auto &a_kind) { return Start(a_kind, a_context); });
 }
 
 StepMove CheckStep(const Step &a_step, const StepContext &a_context) {
-  return std::visit(
-      [&](const auto &a_kind) { return Check(a_kind, a_context); }, a_step);
+  return Match(a_step,
+               [&](const auto &a_kind) { return Check(a_kind, a_context); });
 }
 
 std::array<bool, kRoleCount> RolesAffected(const Step &a_step) {
@@ -902,57 +897,54 @@ std::array<bool, kRoleCount> RolesAffected(const Step &a_step) {
   };
   constexpr std::array<bool, kRoleCount> kNone{};
   constexpr std::array<bool, kRoleCount> kAll{true, true, true};
-  return std::visit(
-      Overloaded{
-          [&](const WaitFrames &) { return kNone; },
-          [&](const AwaitRendered &) { return kNone; },
-          [&](const AwaitRetired &) { return kNone; },
-          [&](const AwaitBaseline &) { return kNone; },
-          [&](const ExpectEffect &) { return kNone; },
-          [&](const AwaitLiveItems &) { return kNone; },
-          [&](const HoldUntouched &) { return kNone; },
-          [&](const Solo &) { return kAll; },
-          [&](const RestoreSolo &) { return kAll; },
-          [&](const ShowRecipes &) { return kAll; },
-          [&](const ShowAllRecipes &) { return kAll; },
-          [&](const LeaveStart &) { return kAll; },
-          [&](const ReturnToStart &) { return kAll; },
-          [&](const SetCamera &) { return only(Role::kPlayer); },
-          [&](const HoldCamera &) { return kNone; },
-          [&](const AllowIdleCamera &) { return kNone; },
-          [&](const HoldIdleCamera &) { return kNone; },
-          [&](const AwaitIdleOrbit &) { return kNone; },
-          [&](const ExpectFirstPersonEffect &) { return kNone; },
-          [&](const LoadDuring &) { return kAll; },
-          [&](const ExpectAborted &) { return kNone; },
-          [&](const ExpectCancelled &) { return kNone; },
-          [&](const ExpectSettled &) { return kNone; },
-          [&](const DeleteScratch &) { return kAll; },
-          [&](const DuplicateToScratch &) { return kAll; },
-          [&](const SetScratchOpacity &) { return kAll; },
-          [&](const SaveScratch &) { return kAll; },
-          [&](const ExpectScratch &) { return kNone; },
-          [&](const SpawnCrowd &) { return kNone; },
-          [&](const AwaitCrowdRendered &) { return kNone; },
-          [&](const TurnAround &) { return kNone; },
-          [&](const AwaitCrowdOutOfView &) { return kNone; },
-          [&](const AwaitCrowdSkipped &) { return kNone; },
-          [&](const StartCrowdFight &) { return kNone; },
-          [&](const AwaitCrowdFighting &) { return kNone; },
-          [&](const AwaitCrowdHurt &) { return kNone; },
-          [&](const UnequipCrowd &) { return kNone; },
-          [&](const EquipCrowd &) { return kNone; },
-          [&](const AwaitCrowdBare &) { return kNone; },
-          [&](const DespawnCrowd &) { return kNone; },
-          [&](const HoldWindow &) { return kNone; },
-          [&](const BeginSession &) { return only(Role::kPlayer); },
-          [&](const AwaitSessionActive &) { return kNone; },
-          [&](const BeginWindow &) { return kNone; },
-          [&](const EndWindow &) { return kNone; },
-          [&](const AwaitIdle &) { return kNone; },
-          [&](const auto &a_targeted) { return only(a_targeted.role); },
-      },
-      a_step);
+  return Match(
+      a_step, [&](const WaitFrames &) { return kNone; },
+      [&](const AwaitRendered &) { return kNone; },
+      [&](const AwaitRetired &) { return kNone; },
+      [&](const AwaitBaseline &) { return kNone; },
+      [&](const ExpectEffect &) { return kNone; },
+      [&](const AwaitLiveItems &) { return kNone; },
+      [&](const HoldUntouched &) { return kNone; },
+      [&](const Solo &) { return kAll; },
+      [&](const RestoreSolo &) { return kAll; },
+      [&](const ShowRecipes &) { return kAll; },
+      [&](const ShowAllRecipes &) { return kAll; },
+      [&](const LeaveStart &) { return kAll; },
+      [&](const ReturnToStart &) { return kAll; },
+      [&](const SetCamera &) { return only(Role::kPlayer); },
+      [&](const HoldCamera &) { return kNone; },
+      [&](const AllowIdleCamera &) { return kNone; },
+      [&](const HoldIdleCamera &) { return kNone; },
+      [&](const AwaitIdleOrbit &) { return kNone; },
+      [&](const ExpectFirstPersonEffect &) { return kNone; },
+      [&](const LoadDuring &) { return kAll; },
+      [&](const ExpectAborted &) { return kNone; },
+      [&](const ExpectCancelled &) { return kNone; },
+      [&](const ExpectSettled &) { return kNone; },
+      [&](const DeleteScratch &) { return kAll; },
+      [&](const DuplicateToScratch &) { return kAll; },
+      [&](const SetScratchOpacity &) { return kAll; },
+      [&](const SaveScratch &) { return kAll; },
+      [&](const ExpectScratch &) { return kNone; },
+      [&](const SpawnCrowd &) { return kNone; },
+      [&](const AwaitCrowdRendered &) { return kNone; },
+      [&](const TurnAround &) { return kNone; },
+      [&](const AwaitCrowdOutOfView &) { return kNone; },
+      [&](const AwaitCrowdSkipped &) { return kNone; },
+      [&](const StartCrowdFight &) { return kNone; },
+      [&](const AwaitCrowdFighting &) { return kNone; },
+      [&](const AwaitCrowdHurt &) { return kNone; },
+      [&](const UnequipCrowd &) { return kNone; },
+      [&](const EquipCrowd &) { return kNone; },
+      [&](const AwaitCrowdBare &) { return kNone; },
+      [&](const DespawnCrowd &) { return kNone; },
+      [&](const HoldWindow &) { return kNone; },
+      [&](const BeginSession &) { return only(Role::kPlayer); },
+      [&](const AwaitSessionActive &) { return kNone; },
+      [&](const BeginWindow &) { return kNone; },
+      [&](const EndWindow &) { return kNone; },
+      [&](const AwaitIdle &) { return kNone; },
+      [&](const auto &a_targeted) { return only(a_targeted.role); });
 }
 
 std::uint32_t

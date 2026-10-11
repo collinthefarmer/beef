@@ -91,15 +91,25 @@ std::optional<RenderValueType> ExternalInputType(const ExternalInput &operation,
                                                  const GraphValueType &type) {
   if (const auto *numeric = Get<ValueType>(type))
     return RenderValueType{*numeric};
-  if (Is<GeometryInput>(operation.source))
-    return RenderValueType{RenderResourceType::kMesh};
-  if (Is<MaterialInput>(operation.source))
-    return RenderValueType{RenderResourceType::kMaterial};
-  if (Is<TextureInput>(operation.source))
-    return RenderValueType{RenderResourceType::kTexture};
-  if (Is<RootTransformInput>(operation.source))
-    return RenderValueType{RenderResourceType::kTransform};
-  return std::nullopt;
+  using Resource = std::optional<RenderResourceType>;
+  const Resource resource = Match(
+      operation.source,
+      [](const GeometryInput &) -> Resource {
+        return RenderResourceType::kMesh;
+      },
+      [](const MaterialInput &) -> Resource {
+        return RenderResourceType::kMaterial;
+      },
+      [](const TextureInput &) -> Resource {
+        return RenderResourceType::kTexture;
+      },
+      [](const RootTransformInput &) -> Resource {
+        return RenderResourceType::kTransform;
+      },
+      [](const auto &) -> Resource { return std::nullopt; });
+  if (!resource)
+    return std::nullopt;
+  return RenderValueType{*resource};
 }
 struct IdentitySite {
   const RecipeGraph *graph = nullptr;

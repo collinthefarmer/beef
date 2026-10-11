@@ -133,46 +133,42 @@ std::optional<float> ParseFloat(std::string_view a_value) {
 
 void Assign(Settings &a_settings, const SettingDesc &a_desc,
             std::string_view a_value) {
-  std::visit(
-      [&](auto a_member) {
-        using T = std::remove_cvref_t<decltype(a_settings.*a_member)>;
-        if constexpr (std::is_same_v<T, bool>) {
-          if (const auto b = ParseBool(a_value)) {
-            a_settings.*a_member = *b;
-          }
-        } else if constexpr (std::is_same_v<T, float>) {
-          if (const auto f = ParseFloat(a_value)) {
-            a_settings.*a_member = std::clamp(*f, a_desc.min, a_desc.max);
-          }
-        } else if constexpr (std::is_same_v<T, TextureScale>) {
-          if (const auto scale = TextureScaleFromString(a_value)) {
-            a_settings.*a_member = *scale;
-          }
-        } else {
-          if (const auto f = ParseFloat(a_value)) {
-            a_settings.*a_member = static_cast<std::uint32_t>(
-                std::clamp(*f, a_desc.min, a_desc.max));
-          }
-        }
-      },
-      a_desc.member);
+  Match(a_desc.member, [&](auto a_member) {
+    using T = std::remove_cvref_t<decltype(a_settings.*a_member)>;
+    if constexpr (std::is_same_v<T, bool>) {
+      if (const auto b = ParseBool(a_value)) {
+        a_settings.*a_member = *b;
+      }
+    } else if constexpr (std::is_same_v<T, float>) {
+      if (const auto f = ParseFloat(a_value)) {
+        a_settings.*a_member = std::clamp(*f, a_desc.min, a_desc.max);
+      }
+    } else if constexpr (std::is_same_v<T, TextureScale>) {
+      if (const auto scale = TextureScaleFromString(a_value)) {
+        a_settings.*a_member = *scale;
+      }
+    } else {
+      if (const auto f = ParseFloat(a_value)) {
+        a_settings.*a_member =
+            static_cast<std::uint32_t>(std::clamp(*f, a_desc.min, a_desc.max));
+      }
+    }
+  });
 }
 
 std::string Format(const Settings &a_settings, const SettingDesc &a_desc) {
-  return std::visit(
-      [&](auto a_member) -> std::string {
-        using T = std::remove_cvref_t<decltype(a_settings.*a_member)>;
-        if constexpr (std::is_same_v<T, bool>) {
-          return a_settings.*a_member ? "true" : "false";
-        } else if constexpr (std::is_same_v<T, float>) {
-          return std::format("{:.4g}", a_settings.*a_member);
-        } else if constexpr (std::is_same_v<T, TextureScale>) {
-          return std::string{TextureScaleName(a_settings.*a_member)};
-        } else {
-          return std::to_string(a_settings.*a_member);
-        }
-      },
-      a_desc.member);
+  return Match(a_desc.member, [&](auto a_member) -> std::string {
+    using T = std::remove_cvref_t<decltype(a_settings.*a_member)>;
+    if constexpr (std::is_same_v<T, bool>) {
+      return a_settings.*a_member ? "true" : "false";
+    } else if constexpr (std::is_same_v<T, float>) {
+      return std::format("{:.4g}", a_settings.*a_member);
+    } else if constexpr (std::is_same_v<T, TextureScale>) {
+      return std::string{TextureScaleName(a_settings.*a_member)};
+    } else {
+      return std::to_string(a_settings.*a_member);
+    }
+  });
 }
 }
 

@@ -56,17 +56,16 @@ bool SameTextureContent(const TextureView &a, const TextureView &b) {
          SameTexture(a.texture, b.texture);
 }
 bool SameRenderValue(const RenderValue &a, const RenderValue &b) {
-  if (a.index() != b.index())
-    return false;
-  if (const auto *value = Get<Value>(a))
-    return *value == *Get<Value>(b);
-  if (const auto *view = Get<TextureView>(a))
-    return SameTextureContent(*view, *Get<TextureView>(b));
-  if (const auto *filter = Get<LayerFilter>(a))
-    return *filter == *Get<LayerFilter>(b);
-  if (const auto *stack = Get<StackResult>(a))
-    return !stack->texture && !Get<StackResult>(b)->texture;
-  return false;
+  return Match(
+      a, b, [](const Value &l, const Value &r) { return l == r; },
+      [](const TextureView &l, const TextureView &r) {
+        return SameTextureContent(l, r);
+      },
+      [](const LayerFilter &l, const LayerFilter &r) { return l == r; },
+      [](const StackResult &l, const StackResult &r) {
+        return !l.texture && !r.texture;
+      },
+      [](const auto &, const auto &) { return false; });
 }
 
 bool SameImport(const Value &a, const Value &b) { return a == b; }

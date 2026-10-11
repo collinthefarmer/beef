@@ -234,6 +234,6 @@ std::string WindowName(std::string_view a_window, std::uint32_t a_cycle) {
 }
 
 std::string StepLabel(const Step &a_step) {
-  return std::visit([](const auto &a_kind) { return Label(a_kind); }, a_step);
+  return Match(a_step, [](const auto &a_kind) { return Label(a_kind); });
 }
 }

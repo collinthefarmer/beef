@@ -31,281 +31,105 @@ struct ScreenStep {
   bool up = false;
 };
 
-std::string FractionText(std::optional<float> a_fraction) {
-  return a_fraction ? std::format("{:.3f}", *a_fraction)
-                    : std::string{"unmeasured"};
-}
-
-bool RenderLoaded(const TrackedActor &a_record) noexcept {
-  return a_record.render.has_value() && a_record.sight.loaded3D;
-}
-
-PerLevel<std::optional<LevelCost>> CostsOf(const RenderEvent &a_event) {
-  const Installed *installed = Get<Installed>(a_event);
-  return installed ? installed->levelCosts
-                   : PerLevel<std::optional<LevelCost>>{};
-}
-
-void RecordSightings(World &a_world,
-                     const std::map<ActorId, Sighting> &a_sightings) {
-  for (const auto &[actor, sighting] : a_sightings) {
-    if (const auto found = a_world.actors.find(actor);
-        found != a_world.actors.end()) {
-      found->second.sight = sighting;
-    }
-  }
-}
-
-void CreateRender(TickOutput &a_out, const ActorEvent &a_event,
-                  std::uint64_t a_frame) {
-  const std::string_view event = EventName(a_event.event);
-  std::optional<PhaseChange> created =
-      PhaseFor(a_event.actor, a_event.event, a_frame);
-  if (!created) {
-    TraceIgnored(a_out, a_event.actor, kNoPhase, event);
-    return;
-  }
-  TrackedActor &record = a_out.world.actors[a_event.actor];
-  record.render =
-      InstalledRender{created->phase, CostsOf(a_event.event), std::nullopt};
-  TracePhase(a_out, a_event.actor, kNoPhase, PhaseName(record.render->phase),
-             event);
-  Append(a_out.commands, std::move(created->commands));
-}
-
-void RecordEvent(TickOutput &a_out, const ActorEvent &a_event,
-                 std::uint64_t a_frame) {
-  const auto found = a_out.world.actors.find(a_event.actor);
-  if (found == a_out.world.actors.end() || !found->second.render) {
-    CreateRender(a_out, a_event, a_frame);
-    return;
-  }
-  InstalledRender &render = *found->second.render;
-  const EventContext context{a_frame,
-                             LevelFor(VisibilityOf(found->second.sight))};
-  PhaseChange change =
-      OnEvent(a_event.actor, render.phase, a_event.event, context);
-  if (!change.ignored) {
-    if (const Installed *installed = Get<Installed>(a_event.event)) {
-      render.levelCosts = installed->levelCosts;
-    }
-  }
-  ApplyPhaseChange(a_out, a_event.actor, render, std::move(change),
-                   EventName(a_event.event));
-}
-
-PlanJobId JobOf(const PlanJobDone &a_done) noexcept {
-  return Match(
-      a_done, [](const PlanJobBuilt &a_built) { return a_built.job; },
-      [](const PlanJobFailed &a_failed) { return a_failed.job; });
-}
-
-void RecordJob(TickOutput &a_out, const PlanJobDone &a_done,
-               const TickSettings &a_settings) {
-  const PlanJobId job = JobOf(a_done);
-  for (auto &[actor, record] : a_out.world.actors) {
-    if (!record.render || AwaitedJob(record.render->phase) != job) {
-      continue;
-    }
-    InstalledRender &render = *record.render;
-    if (const PlanJobFailed *failed = Get<PlanJobFailed>(a_done)) {
-      ApplyPhaseChange(a_out, actor, render,
-                       FailPlan(actor, render.phase, *failed), "plan_failed");
-      continue;
-    }
-    ApplyPhaseChange(
-        a_out, actor, render,
-        PlanBuilt(actor, render.phase, job,
-                  InstallBoundsOf(record, record.sight, a_out.world.budget, 0,
-                                  a_settings)),
-        "plan_built");
-  }
-}
-
-void RecordRenderedFrames(World &a_world, std::uint64_t a_frame) {
-  for (auto &[actor, record] : a_world.actors) {
-    if (RenderLoaded(record) && record.sight.shown) {
-      record.render->renderedFrame = a_frame;
-    }
-  }
-}
-
-std::uint64_t ReleasableBytes(const InstalledRender &a_render) noexcept {
-  const std::optional<ResolutionLevel> level = AppliedLevel(a_render.phase);
-  if (!level) {
-    return 0;
-  }
-  const std::optional<LevelCost> &cost = a_render.levelCosts.At(*level);
-  return cost ? IntermediateBytes(*cost) : 0;
-}
-
-void See(TickOutput &a_out, ActorId a_actor, TrackedActor &a_record,
-         const TickFacts &a_facts) {
-  InstalledRender &render = *a_record.render;
-  const ActorVisibility visibility = VisibilityOf(a_record.sight);
-  const std::optional<ResolutionLevel> target = TargetLevel(render.phase);
-  const SeenThisTick seen{visibility.shown,
-                          target &&
-                              SmallFor(visibility.screenFraction, *target),
-                          LevelFor(visibility),
-                          a_facts.now,
-                          a_facts.settings.outOfViewReleaseDelayMs,
-                          ReleasableBytes(render)};
-  ApplyPhaseChange(a_out, a_actor, render,
-                   SeeActor(a_actor, render.phase, seen), "seen");
-}
-
-std::optional<ScreenStep> ScreenStepOf(const InstalledRender &a_render,
-                                       const ActorVisibility &a_visibility,
-                                       const TickFacts &a_facts) noexcept {
-  const std::optional<ResolutionLevel> current = TargetLevel(a_render.phase);
-  if (!current) {
-    return std::nullopt;
-  }
-  const LevelStep step =
-      LevelStepOf(*current, a_visibility,
-                  ScreenStepDownDue(a_render.phase, a_facts.now,
-                                    a_facts.settings.screenStepDownHoldMs));
-  if (const StepUpTo *up = Get<StepUpTo>(step)) {
-    return ScreenStep{*current, up->level, true};
-  }
-  if (const StepDownTo *down = Get<StepDownTo>(step)) {
-    return ScreenStep{*current, down->level, false};
-  }
-  return std::nullopt;
-}
-
-void BlockStepUp(TickOutput &a_out, ActorId a_actor, InstalledRender &a_render,
-                 const ScreenStep &a_step, Admission a_admission,
-                 std::uint64_t a_added) {
-  Shown *shown = Get<Shown>(a_render.phase);
-  if (!shown || shown->waitingForRoomFrom == a_step.from) {
-    return;
-  }
-  shown->waitingForRoomFrom = a_step.from;
-  const BudgetState &budget = a_out.world.budget;
-  AddTrace(a_out,
-           {{"action", "resolution_blocked"},
-            {"actor", ActorText(a_actor)},
-            {"from", std::string{LevelName(a_step.from)}},
-            {"to", std::string{LevelName(a_step.to)}},
-            {"reason", std::string{AdmissionName(a_admission)}},
-            {"added_bytes", std::to_string(a_added)},
-            {"planned_bytes", std::to_string(budget.planned)},
-            {"allowance_bytes", std::to_string(budget.allowance.value_or(0))}});
-}
-
-bool AdmitStepUp(TickOutput &a_out, ActorId a_actor, InstalledRender &a_render,
-                 const ScreenStep &a_step) {
-  const std::optional<LevelCost> &cost = a_render.levelCosts.At(a_step.to);
-  const std::uint64_t added = cost ? cost->withIntermediates : 0;
-  const Admission admission = AdmitGrowth(a_out.world.budget, added);
-  if (admission != Admission::kAdmitted) {
-    BlockStepUp(a_out, a_actor, a_render, a_step, admission, added);
-    return false;
-  }
-  a_out.world.budget = Charged(a_out.world.budget, added);
-  return true;
-}
-
-void StepLevel(TickOutput &a_out, ActorId a_actor, TrackedActor &a_record,
-               const TickFacts &a_facts) {
-  InstalledRender &render = *a_record.render;
-  const ActorVisibility visibility = VisibilityOf(a_record.sight);
-  const std::optional<ScreenStep> step =
-      ScreenStepOf(render, visibility, a_facts);
-  if (!step || FailedLevelOf(render.phase) == step->to) {
-    return;
-  }
-  if (step->up && visibility.role != ActorRole::kPlayer &&
-      !AdmitStepUp(a_out, a_actor, render, *step)) {
-    return;
-  }
-  AddTrace(a_out,
-           {{"action", "resolution_level"},
-            {"actor", ActorText(a_actor)},
-            {"from", std::string{LevelName(step->from)}},
-            {"to", std::string{LevelName(step->to)}},
-            {"reason", "screen"},
-            {"screen_fraction", FractionText(visibility.screenFraction)}});
-  ApplyPhaseChange(a_out, a_actor, render,
-                   WantLevel(a_actor, render.phase, step->to), "level_wanted");
-}
-
 struct ScheduledResizes {
-  std::set<ActorId> swapping;
-  std::optional<ActorId> starting;
+  ActorSet swapping;
+  MaybeActor starting;
 
   [[nodiscard]] bool Includes(ActorId a_actor) const {
     return swapping.contains(a_actor) || starting == a_actor;
   }
 };
 
-ScheduledResizes ScheduleResizes(TickOutput &a_out, std::uint64_t a_frame) {
-  ScheduledResizes scheduled;
-  std::set<ActorId> &swapping = scheduled.swapping;
-  std::size_t running = 0;
-  std::vector<ResizeCandidate> candidates;
-  for (const auto &[actor, record] : a_out.world.actors) {
-    if (!record.render) {
-      continue;
-    }
-    const RenderPhase &phase = record.render->phase;
-    const std::optional<ResizeProgress> progress = ResizeProgressOf(phase);
-    const UnpublishedDraw *draw = UnpublishedDrawOf(phase);
-    if (progress && draw && record.sight.loaded3D &&
-        SwapDue(*progress,
-                DrawOf({record.sight.shown, draw->drawn, draw->total}),
-                a_frame)) {
-      Issue(a_out, SwapResize{actor});
-      swapping.insert(actor);
-    } else if (progress) {
-      ++running;
-    }
-    if (record.sight.loaded3D && Is<Queued>(phase)) {
-      candidates.push_back({FormOf(actor), true, record.sight.shown,
-                            record.sight.screenFraction});
-    }
-  }
-  const std::optional<std::uint32_t> next = NextResize(candidates, running);
-  if (!next) {
-    return scheduled;
-  }
-  const auto found = a_out.world.actors.find(ActorOf(*next));
-  if (found == a_out.world.actors.end() || !found->second.render) {
-    return scheduled;
-  }
-  if (const std::optional<ResolutionLevel> to =
-          TargetLevel(found->second.render->phase)) {
-    Issue(a_out, StartResize{found->first, *to});
-    scheduled.starting = found->first;
-  }
-  return scheduled;
+bool RenderLoaded(const TrackedActor &a_record) noexcept {
+  return a_record.render.has_value() && a_record.sight.loaded3D;
 }
 
+void RecordSightings(World &a_world,
+                     const std::map<ActorId, Sighting> &a_sightings);
+std::vector<ActorEvent>
+SelectCurrentEvents(const std::vector<CommandResult> &a_results);
+void RecordEvent(TickOutput &a_out, const ActorEvent &a_event,
+                 std::uint64_t a_frame);
+void CreateRender(TickOutput &a_out, const ActorEvent &a_event,
+                  std::uint64_t a_frame);
+PerLevel<std::optional<LevelCost>> CostsOf(const RenderEvent &a_event);
+void KeepInstalledCosts(InstalledRender &a_render, const PhaseChange &a_change,
+                        const RenderEvent &a_event);
+void RecordJob(TickOutput &a_out, const PlanJobDone &a_done,
+               const TickSettings &a_settings);
+PlanJobId JobOf(const PlanJobDone &a_done) noexcept;
+bool AwaitsJob(const TrackedActor &a_record, PlanJobId a_job) noexcept;
+void ApplyJob(TickOutput &a_out, ActorId a_actor, TrackedActor &a_record,
+              const PlanJobDone &a_done, const TickSettings &a_settings);
+void RecordRenderedFrames(World &a_world, std::uint64_t a_frame);
+ScheduledResizes ScheduleResizes(TickOutput &a_out, std::uint64_t a_frame);
+bool SwapDueFor(const TrackedActor &a_record, std::uint64_t a_frame);
+ActorSet SwapsDue(const World &a_world, std::uint64_t a_frame);
+std::size_t RunningResizes(const World &a_world, const ActorSet &a_swapping);
+std::optional<ResizeCandidate> ResizeCandidateOf(ActorId a_actor,
+                                                 const TrackedActor &a_record);
+MaybeActor StartNextResize(TickOutput &a_out, std::size_t a_running);
+void SeeActors(TickOutput &a_out, const ScheduledResizes &a_scheduled,
+               const TickFacts &a_facts);
+void See(TickOutput &a_out, ActorId a_actor, TrackedActor &a_record,
+         const TickFacts &a_facts);
+std::uint64_t ReleasableBytes(const InstalledRender &a_render) noexcept;
+void StepLevel(TickOutput &a_out, ActorId a_actor, TrackedActor &a_record,
+               const TickFacts &a_facts);
+std::optional<ScreenStep> ScreenStepOf(const InstalledRender &a_render,
+                                       const ActorVisibility &a_visibility,
+                                       const TickFacts &a_facts) noexcept;
+bool AdmitStepUp(TickOutput &a_out, ActorId a_actor, InstalledRender &a_render,
+                 const ScreenStep &a_step);
+void BlockStepUp(TickOutput &a_out, ActorId a_actor, InstalledRender &a_render,
+                 const ScreenStep &a_step, Admission a_admission,
+                 std::uint64_t a_added);
+void ReportStepUpBlocked(TickOutput &a_out, ActorId a_actor,
+                         const ScreenStep &a_step, Admission a_admission,
+                         std::uint64_t a_added);
+void ReportLevelStep(TickOutput &a_out, ActorId a_actor,
+                     const ScreenStep &a_step,
+                     const ActorVisibility &a_visibility);
+std::string FractionText(std::optional<float> a_fraction);
+void FinishFirstDraws(TickOutput &a_out, std::uint64_t a_frame);
 void FinishFirstDraw(TickOutput &a_out, ActorId a_actor,
-                     InstalledRender &a_render, std::uint64_t a_frame) {
-  const Drawing *drawing = Get<Drawing>(a_render.phase);
-  if (!drawing) {
-    return;
+                     InstalledRender &a_render, std::uint64_t a_frame);
+void ReportFirstDraw(TickOutput &a_out, ActorId a_actor,
+                     const UnpublishedDraw &a_draw, FirstDrawEnd a_end,
+                     std::uint64_t a_frame);
+void IssueTickActors(TickOutput &a_out, const TickSettings &a_settings);
+std::optional<DrawUnpublished> UnpublishedDraws(const World &a_world,
+                                                const ActorSet &a_swapping,
+                                                const TickSettings &a_settings);
+std::optional<UnpublishedDrawCandidate>
+UnpublishedCandidateOf(ActorId a_actor, const TrackedActor &a_record,
+                       const ActorSet &a_swapping);
+}
+
+TickOutput RecordRenderResults(World a_world, const TickFacts &a_facts) {
+  TickOutput out{std::move(a_world), {}, {}, {}};
+  RecordSightings(out.world, a_facts.sightings);
+
+  for (const ActorEvent &event : SelectCurrentEvents(a_facts.results)) {
+    RecordEvent(out, event, a_facts.frame);
   }
-  const UnpublishedDraw &draw = drawing->draw;
-  const FirstDrawProgress progress{draw.drawTicks, draw.total, draw.drawn};
-  const std::optional<FirstDrawEnd> end = FirstDrawDone(progress);
-  if (!end) {
-    return;
+
+  for (const PlanJobDone &done : a_facts.jobs) {
+    RecordJob(out, done, a_facts.settings);
   }
-  AddTrace(
-      a_out,
-      {{"action", "first_draw"},
-       {"actor", ActorText(a_actor)},
-       {"end", std::string{FirstDrawEndName(*end)}},
-       {"frames", std::to_string(a_frame - std::min(a_frame, draw.beganFrame))},
-       {"draw_ticks", std::to_string(progress.drawTicks)},
-       {"stacks", std::to_string(progress.stacks)},
-       {"drawn", std::to_string(progress.drawn)}});
-  ApplyPhaseChange(a_out, a_actor, a_render, EndFirstDraw(a_render.phase),
-                   "first_draw_ended");
+
+  RecordRenderedFrames(out.world, a_facts.frame);
+  return out;
+}
+
+namespace {
+void RecordSightings(World &a_world,
+                     const std::map<ActorId, Sighting> &a_sightings) {
+  for (const auto &[actor, sighting] : a_sightings) {
+    if (TrackedActor *record = FindActor(a_world, actor)) {
+      record->sight = sighting;
+    }
+  }
 }
 
 std::vector<ActorEvent>
@@ -327,27 +151,412 @@ SelectCurrentEvents(const std::vector<CommandResult> &a_results) {
   return current;
 }
 
-std::optional<DrawUnpublished>
-UnpublishedDraws(const World &a_world, const std::set<ActorId> &a_swapping,
-                 const TickSettings &a_settings) {
-  std::vector<UnpublishedDrawCandidate> candidates;
-  for (const auto &[actor, record] : a_world.actors) {
-    if (RenderLoaded(record) && record.sight.shown &&
-        UnpublishedDrawOf(record.render->phase) &&
-        !a_swapping.contains(actor)) {
-      candidates.push_back(
-          {FormOf(actor), record.sight.role, record.sight.screenFraction});
+void RecordEvent(TickOutput &a_out, const ActorEvent &a_event,
+                 std::uint64_t a_frame) {
+  TrackedActor *record = FindActor(a_out.world, a_event.actor);
+  if (!record || !record->render) {
+    CreateRender(a_out, a_event, a_frame);
+    return;
+  }
+
+  InstalledRender &render = *record->render;
+  const EventContext context{a_frame, LevelFor(VisibilityOf(record->sight))};
+  PhaseChange change =
+      OnEvent(a_event.actor, render.phase, a_event.event, context);
+
+  KeepInstalledCosts(render, change, a_event.event);
+  ApplyPhaseChange(a_out, a_event.actor, render, std::move(change),
+                   EventName(a_event.event));
+}
+
+void CreateRender(TickOutput &a_out, const ActorEvent &a_event,
+                  std::uint64_t a_frame) {
+  const std::string_view event = EventName(a_event.event);
+  std::optional<PhaseChange> created =
+      PhaseFor(a_event.actor, a_event.event, a_frame);
+  if (!created) {
+    TraceIgnored(a_out, a_event.actor, kNoPhase, event);
+    return;
+  }
+
+  TrackedActor &record = a_out.world.actors[a_event.actor];
+  record.render =
+      InstalledRender{created->phase, CostsOf(a_event.event), std::nullopt};
+
+  TracePhase(a_out, a_event.actor, kNoPhase, PhaseName(record.render->phase),
+             event);
+  Append(a_out.commands, std::move(created->commands));
+}
+
+PerLevel<std::optional<LevelCost>> CostsOf(const RenderEvent &a_event) {
+  const Installed *installed = Get<Installed>(a_event);
+  return installed ? installed->levelCosts
+                   : PerLevel<std::optional<LevelCost>>{};
+}
+
+void KeepInstalledCosts(InstalledRender &a_render, const PhaseChange &a_change,
+                        const RenderEvent &a_event) {
+  const Installed *installed = Get<Installed>(a_event);
+  if (a_change.ignored || !installed) {
+    return;
+  }
+  a_render.levelCosts = installed->levelCosts;
+}
+
+void RecordJob(TickOutput &a_out, const PlanJobDone &a_done,
+               const TickSettings &a_settings) {
+  const PlanJobId job = JobOf(a_done);
+  for (auto &[actor, record] : a_out.world.actors) {
+    if (AwaitsJob(record, job)) {
+      ApplyJob(a_out, actor, record, a_done, a_settings);
     }
   }
+}
+
+PlanJobId JobOf(const PlanJobDone &a_done) noexcept {
+  return Match(
+      a_done, [](const PlanJobBuilt &a_built) { return a_built.job; },
+      [](const PlanJobFailed &a_failed) { return a_failed.job; });
+}
+
+bool AwaitsJob(const TrackedActor &a_record, PlanJobId a_job) noexcept {
+  return a_record.render && AwaitedJob(a_record.render->phase) == a_job;
+}
+
+void ApplyJob(TickOutput &a_out, ActorId a_actor, TrackedActor &a_record,
+              const PlanJobDone &a_done, const TickSettings &a_settings) {
+  InstalledRender &render = *a_record.render;
+  if (const PlanJobFailed *failed = Get<PlanJobFailed>(a_done)) {
+    ApplyPhaseChange(a_out, a_actor, render,
+                     FailPlan(a_actor, render.phase, *failed), "plan_failed");
+    return;
+  }
+
+  const InstallBounds bounds = InstallBoundsOf(
+      a_record, a_record.sight, a_out.world.budget, 0, a_settings);
+  ApplyPhaseChange(a_out, a_actor, render,
+                   PlanBuilt(a_actor, render.phase, JobOf(a_done), bounds),
+                   "plan_built");
+}
+
+void RecordRenderedFrames(World &a_world, std::uint64_t a_frame) {
+  for (auto &[actor, record] : a_world.actors) {
+    if (RenderLoaded(record) && record.sight.shown) {
+      record.render->renderedFrame = a_frame;
+    }
+  }
+}
+}
+
+TickOutput RunLifecycle(World a_world, const TickFacts &a_facts) {
+  TickOutput out{std::move(a_world), {}, {}, {}};
+  const ScheduledResizes scheduled = ScheduleResizes(out, a_facts.frame);
+
+  SeeActors(out, scheduled, a_facts);
+  FinishFirstDraws(out, a_facts.frame);
+  IssueTickActors(out, a_facts.settings);
+
+  if (std::optional<DrawUnpublished> draw =
+          UnpublishedDraws(out.world, scheduled.swapping, a_facts.settings)) {
+    Issue(out, std::move(*draw));
+  }
+  return out;
+}
+
+namespace {
+ScheduledResizes ScheduleResizes(TickOutput &a_out, std::uint64_t a_frame) {
+  const ActorSet swapping = SwapsDue(a_out.world, a_frame);
+  for (const ActorId actor : swapping) {
+    Issue(a_out, SwapResize{actor});
+  }
+
+  const MaybeActor starting =
+      StartNextResize(a_out, RunningResizes(a_out.world, swapping));
+  return {swapping, starting};
+}
+
+bool SwapDueFor(const TrackedActor &a_record, std::uint64_t a_frame) {
+  if (!a_record.render || !a_record.sight.loaded3D) {
+    return false;
+  }
+  const RenderPhase &phase = a_record.render->phase;
+  const std::optional<ResizeProgress> progress = ResizeProgressOf(phase);
+  const UnpublishedDraw *draw = UnpublishedDrawOf(phase);
+  if (!progress || !draw) {
+    return false;
+  }
+  const ResizeDraw seen =
+      DrawOf({a_record.sight.shown, draw->drawn, draw->total});
+  return SwapDue(*progress, seen, a_frame);
+}
+
+ActorSet SwapsDue(const World &a_world, std::uint64_t a_frame) {
+  ActorSet due;
+  for (const auto &[actor, record] : a_world.actors) {
+    if (SwapDueFor(record, a_frame)) {
+      due.insert(actor);
+    }
+  }
+  return due;
+}
+
+std::size_t RunningResizes(const World &a_world, const ActorSet &a_swapping) {
+  return static_cast<std::size_t>(
+      std::ranges::count_if(a_world.actors, [&](const auto &a_entry) {
+        const auto &[actor, record] = a_entry;
+        return record.render && ResizeProgressOf(record.render->phase) &&
+               !a_swapping.contains(actor);
+      }));
+}
+
+std::optional<ResizeCandidate> ResizeCandidateOf(ActorId a_actor,
+                                                 const TrackedActor &a_record) {
+  if (!a_record.render || !a_record.sight.loaded3D ||
+      !Is<Queued>(a_record.render->phase)) {
+    return std::nullopt;
+  }
+  return ResizeCandidate{.actor = FormOf(a_actor),
+                         .pending = true,
+                         .shown = a_record.sight.shown,
+                         .screenFraction = a_record.sight.screenFraction};
+}
+
+MaybeActor StartNextResize(TickOutput &a_out, std::size_t a_running) {
+  const std::vector<ResizeCandidate> candidates =
+      Choose(a_out.world.actors, [](const auto &a_entry) {
+        return ResizeCandidateOf(a_entry.first, a_entry.second);
+      });
+  const std::optional<std::uint32_t> next = NextResize(candidates, a_running);
+  if (!next) {
+    return std::nullopt;
+  }
+  const ActorId actor = ActorOf(*next);
+  const TrackedActor *record = FindActor(a_out.world, actor);
+  if (!record || !record->render) {
+    return std::nullopt;
+  }
+  const std::optional<ResolutionLevel> to = TargetLevel(record->render->phase);
+  if (!to) {
+    return std::nullopt;
+  }
+  Issue(a_out, StartResize{actor, *to});
+  return actor;
+}
+
+void SeeActors(TickOutput &a_out, const ScheduledResizes &a_scheduled,
+               const TickFacts &a_facts) {
+  for (auto &[actor, record] : a_out.world.actors) {
+    if (!RenderLoaded(record)) {
+      continue;
+    }
+    See(a_out, actor, record, a_facts);
+    if (!a_scheduled.Includes(actor)) {
+      StepLevel(a_out, actor, record, a_facts);
+    }
+  }
+}
+
+void See(TickOutput &a_out, ActorId a_actor, TrackedActor &a_record,
+         const TickFacts &a_facts) {
+  InstalledRender &render = *a_record.render;
+  const ActorVisibility visibility = VisibilityOf(a_record.sight);
+  const std::optional<ResolutionLevel> target = TargetLevel(render.phase);
+  const SeenThisTick seen{
+      .shown = visibility.shown,
+      .small = target && SmallFor(visibility.screenFraction, *target),
+      .wanted = LevelFor(visibility),
+      .now = a_facts.now,
+      .outOfViewReleaseDelay = a_facts.settings.outOfViewReleaseDelayMs,
+      .releasableBytes = ReleasableBytes(render)};
+  ApplyPhaseChange(a_out, a_actor, render,
+                   SeeActor(a_actor, render.phase, seen), "seen");
+}
+
+std::uint64_t ReleasableBytes(const InstalledRender &a_render) noexcept {
+  const std::optional<ResolutionLevel> level = AppliedLevel(a_render.phase);
+  if (!level) {
+    return 0;
+  }
+  const std::optional<LevelCost> &cost = a_render.levelCosts.At(*level);
+  return cost ? IntermediateBytes(*cost) : 0;
+}
+
+void StepLevel(TickOutput &a_out, ActorId a_actor, TrackedActor &a_record,
+               const TickFacts &a_facts) {
+  InstalledRender &render = *a_record.render;
+  const ActorVisibility visibility = VisibilityOf(a_record.sight);
+  const std::optional<ScreenStep> step =
+      ScreenStepOf(render, visibility, a_facts);
+  if (!step || FailedLevelOf(render.phase) == step->to) {
+    return;
+  }
+  const bool needsRoom = step->up && visibility.role != ActorRole::kPlayer;
+  if (needsRoom && !AdmitStepUp(a_out, a_actor, render, *step)) {
+    return;
+  }
+
+  ReportLevelStep(a_out, a_actor, *step, visibility);
+  ApplyPhaseChange(a_out, a_actor, render,
+                   WantLevel(a_actor, render.phase, step->to), "level_wanted");
+}
+
+std::optional<ScreenStep> ScreenStepOf(const InstalledRender &a_render,
+                                       const ActorVisibility &a_visibility,
+                                       const TickFacts &a_facts) noexcept {
+  const std::optional<ResolutionLevel> current = TargetLevel(a_render.phase);
+  if (!current) {
+    return std::nullopt;
+  }
+  const bool stepDownDue = ScreenStepDownDue(
+      a_render.phase, a_facts.now, a_facts.settings.screenStepDownHoldMs);
+  return Match(
+      LevelStepOf(*current, a_visibility, stepDownDue),
+      [](const KeepLevel &) -> std::optional<ScreenStep> {
+        return std::nullopt;
+      },
+      [&](const StepUpTo &a_up) -> std::optional<ScreenStep> {
+        return ScreenStep{*current, a_up.level, true};
+      },
+      [&](const StepDownTo &a_down) -> std::optional<ScreenStep> {
+        return ScreenStep{*current, a_down.level, false};
+      });
+}
+
+bool AdmitStepUp(TickOutput &a_out, ActorId a_actor, InstalledRender &a_render,
+                 const ScreenStep &a_step) {
+  const std::optional<LevelCost> &cost = a_render.levelCosts.At(a_step.to);
+  const std::uint64_t added = cost ? cost->withIntermediates : 0;
+  const Admission admission = AdmitGrowth(a_out.world.budget, added);
+  if (admission != Admission::kAdmitted) {
+    BlockStepUp(a_out, a_actor, a_render, a_step, admission, added);
+    return false;
+  }
+  ApplyBudget(a_out, Charged(a_out.world.budget, added));
+  return true;
+}
+
+void BlockStepUp(TickOutput &a_out, ActorId a_actor, InstalledRender &a_render,
+                 const ScreenStep &a_step, Admission a_admission,
+                 std::uint64_t a_added) {
+  Shown *shown = Get<Shown>(a_render.phase);
+  if (!shown || shown->waitingForRoomFrom == a_step.from) {
+    return;
+  }
+
+  shown->waitingForRoomFrom = a_step.from;
+
+  ReportStepUpBlocked(a_out, a_actor, a_step, a_admission, a_added);
+}
+
+void ReportStepUpBlocked(TickOutput &a_out, ActorId a_actor,
+                         const ScreenStep &a_step, Admission a_admission,
+                         std::uint64_t a_added) {
+  const BudgetState &budget = a_out.world.budget;
+  AddTrace(a_out,
+           {{"action", "resolution_blocked"},
+            {"actor", ActorText(a_actor)},
+            {"from", std::string{LevelName(a_step.from)}},
+            {"to", std::string{LevelName(a_step.to)}},
+            {"reason", std::string{AdmissionName(a_admission)}},
+            {"added_bytes", std::to_string(a_added)},
+            {"planned_bytes", std::to_string(budget.planned)},
+            {"allowance_bytes", std::to_string(budget.allowance.value_or(0))}});
+}
+
+void ReportLevelStep(TickOutput &a_out, ActorId a_actor,
+                     const ScreenStep &a_step,
+                     const ActorVisibility &a_visibility) {
+  AddTrace(a_out,
+           {{"action", "resolution_level"},
+            {"actor", ActorText(a_actor)},
+            {"from", std::string{LevelName(a_step.from)}},
+            {"to", std::string{LevelName(a_step.to)}},
+            {"reason", "screen"},
+            {"screen_fraction", FractionText(a_visibility.screenFraction)}});
+}
+
+std::string FractionText(std::optional<float> a_fraction) {
+  return a_fraction ? std::format("{:.3f}", *a_fraction)
+                    : std::string{"unmeasured"};
+}
+
+void FinishFirstDraws(TickOutput &a_out, std::uint64_t a_frame) {
+  for (auto &[actor, record] : a_out.world.actors) {
+    if (RenderLoaded(record)) {
+      FinishFirstDraw(a_out, actor, *record.render, a_frame);
+    }
+  }
+}
+
+void FinishFirstDraw(TickOutput &a_out, ActorId a_actor,
+                     InstalledRender &a_render, std::uint64_t a_frame) {
+  const Drawing *drawing = Get<Drawing>(a_render.phase);
+  if (!drawing) {
+    return;
+  }
+  const UnpublishedDraw &draw = drawing->draw;
+  const std::optional<FirstDrawEnd> end =
+      FirstDrawDone({draw.drawTicks, draw.total, draw.drawn});
+  if (!end) {
+    return;
+  }
+
+  ReportFirstDraw(a_out, a_actor, draw, *end, a_frame);
+  ApplyPhaseChange(a_out, a_actor, a_render, EndFirstDraw(a_render.phase),
+                   "first_draw_ended");
+}
+
+void ReportFirstDraw(TickOutput &a_out, ActorId a_actor,
+                     const UnpublishedDraw &a_draw, FirstDrawEnd a_end,
+                     std::uint64_t a_frame) {
+  const std::uint64_t frames = a_frame - std::min(a_frame, a_draw.beganFrame);
+  AddTrace(a_out, {{"action", "first_draw"},
+                   {"actor", ActorText(a_actor)},
+                   {"end", std::string{FirstDrawEndName(a_end)}},
+                   {"frames", std::to_string(frames)},
+                   {"draw_ticks", std::to_string(a_draw.drawTicks)},
+                   {"stacks", std::to_string(a_draw.total)},
+                   {"drawn", std::to_string(a_draw.drawn)}});
+}
+
+void IssueTickActors(TickOutput &a_out, const TickSettings &a_settings) {
+  for (const auto &[actor, record] : a_out.world.actors) {
+    if (RenderLoaded(record)) {
+      Issue(a_out, TickActorFor(actor, record.render->phase, record.sight,
+                                a_settings));
+    }
+  }
+}
+
+std::optional<DrawUnpublished>
+UnpublishedDraws(const World &a_world, const ActorSet &a_swapping,
+                 const TickSettings &a_settings) {
+  const std::vector<UnpublishedDrawCandidate> candidates =
+      Choose(a_world.actors, [&](const auto &a_entry) {
+        return UnpublishedCandidateOf(a_entry.first, a_entry.second,
+                                      a_swapping);
+      });
   if (candidates.empty()) {
     return std::nullopt;
   }
-  DrawUnpublished draw{
-      {}, std::uint64_t{a_settings.unpublishedDrawBudgetMs} * kMicrosPerMilli};
-  for (const std::uint32_t actor : UnpublishedDrawOrder(candidates)) {
-    draw.order.push_back(ActorOf(actor));
+  return DrawUnpublished{
+      .order = Map(UnpublishedDrawOrder(candidates), ActorOf),
+      .budgetUs =
+          std::uint64_t{a_settings.unpublishedDrawBudgetMs} * kMicrosPerMilli};
+}
+
+std::optional<UnpublishedDrawCandidate>
+UnpublishedCandidateOf(ActorId a_actor, const TrackedActor &a_record,
+                       const ActorSet &a_swapping) {
+  if (!RenderLoaded(a_record) || !a_record.sight.shown ||
+      !UnpublishedDrawOf(a_record.render->phase) ||
+      a_swapping.contains(a_actor)) {
+    return std::nullopt;
   }
-  return draw;
+  return UnpublishedDrawCandidate{.actor = FormOf(a_actor),
+                                  .role = a_record.sight.role,
+                                  .screenFraction =
+                                      a_record.sight.screenFraction};
 }
 }
 
@@ -356,9 +565,12 @@ TickActor TickActorFor(ActorId a_actor, const RenderPhase &a_phase,
                        const TickSettings &a_settings) noexcept {
   const bool firstDrawing = Is<Drawing>(a_phase);
   const bool unpublished = firstDrawing || Is<Planning>(a_phase);
-  return {a_actor,      a_sight.shown,
-          unpublished,  !a_settings.publishEffects || unpublished,
-          firstDrawing, !unpublished || !a_sight.shown};
+  return {.actor = a_actor,
+          .drawStacks = a_sight.shown,
+          .concealSlots = unpublished,
+          .hideShells = !a_settings.publishEffects || unpublished,
+          .hideLights = firstDrawing,
+          .finishApplications = !unpublished || !a_sight.shown};
 }
 
 std::string_view EventName(const RenderEvent &a_event) noexcept {
@@ -380,50 +592,5 @@ std::string_view EventName(const RenderEvent &a_event) noexcept {
       [](const ResizeNotSwapped &) {
         return std::string_view{"resize_not_swapped"};
       });
-}
-
-TickOutput RecordRenderResults(World a_world, const TickFacts &a_facts) {
-  TickOutput out{std::move(a_world), {}, {}, {}};
-  RecordSightings(out.world, a_facts.sightings);
-
-  for (const ActorEvent &event : SelectCurrentEvents(a_facts.results)) {
-    RecordEvent(out, event, a_facts.frame);
-  }
-
-  for (const PlanJobDone &done : a_facts.jobs) {
-    RecordJob(out, done, a_facts.settings);
-  }
-
-  RecordRenderedFrames(out.world, a_facts.frame);
-  return out;
-}
-
-TickOutput RunLifecycle(World a_world, const TickFacts &a_facts) {
-  TickOutput out{std::move(a_world), {}, {}, {}};
-  const ScheduledResizes scheduled = ScheduleResizes(out, a_facts.frame);
-  for (auto &[actor, record] : out.world.actors) {
-    if (RenderLoaded(record)) {
-      See(out, actor, record, a_facts);
-      if (!scheduled.Includes(actor)) {
-        StepLevel(out, actor, record, a_facts);
-      }
-    }
-  }
-  for (auto &[actor, record] : out.world.actors) {
-    if (RenderLoaded(record)) {
-      FinishFirstDraw(out, actor, *record.render, a_facts.frame);
-    }
-  }
-  for (const auto &[actor, record] : out.world.actors) {
-    if (RenderLoaded(record)) {
-      Issue(out, TickActorFor(actor, record.render->phase, record.sight,
-                              a_facts.settings));
-    }
-  }
-  if (std::optional<DrawUnpublished> draw =
-          UnpublishedDraws(out.world, scheduled.swapping, a_facts.settings)) {
-    Issue(out, std::move(*draw));
-  }
-  return out;
 }
 }

@@ -1092,7 +1092,7 @@ Regression::Observation Observe(const RunWorld &a_world) {
 }
 
 void Execute(const Regression::Command &a_command, RunWorld &a_world) {
-  std::visit([&](const auto &a_kind) { Perform(a_kind, a_world); }, a_command);
+  Match(a_command, [&](const auto &a_kind) { Perform(a_kind, a_world); });
 }
 
 void HoldCameraStill(RunWorld &a_world) {

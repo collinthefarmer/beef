@@ -98,41 +98,39 @@ void TraceCrowdChange(const Regression::CrowdFacts &a_before,
 }
 
 void TraceLine(const Regression::ResultLine &a_line) {
-  std::visit(
-      Overloaded{
-          [](const Regression::StepResult &a_step) {
-            Trace::EmitSafely(Trace::Event::kOperation,
-                              {{"action", "regression.step"},
-                               {"case", std::string{a_step.caseName}},
-                               {"step", std::to_string(a_step.step)},
-                               {"operation", std::string{a_step.action}},
-                               {"result", std::string{Regression::OutcomeName(
-                                              a_step.outcome)}}});
-          },
-          [](const Regression::CaseResult &a_case) {
-            Trace::EmitSafely(Trace::Event::kOperation,
-                              {{"action", "regression.case"},
-                               {"case", std::string{a_case.caseName}},
-                               {"result", std::string{Regression::OutcomeName(
-                                              a_case.outcome)}}});
-          },
-          [](const Regression::WindowBegins &a_window) {
-            Trace::EmitSafely(Trace::Event::kOperation,
-                              {{"action", "regression.window"},
-                               {"case", std::string{a_window.caseName}},
-                               {"window", a_window.window},
-                               {"edge", "begin"}});
-          },
-          [](const Regression::WindowEnds &a_window) {
-            Trace::EmitSafely(Trace::Event::kOperation,
-                              {{"action", "regression.window"},
-                               {"case", std::string{a_window.caseName}},
-                               {"window", a_window.window},
-                               {"edge", "end"}});
-          },
-          [](const Regression::RunEnd &) {},
+  Match(
+      a_line,
+      [](const Regression::StepResult &a_step) {
+        Trace::EmitSafely(
+            Trace::Event::kOperation,
+            {{"action", "regression.step"},
+             {"case", std::string{a_step.caseName}},
+             {"step", std::to_string(a_step.step)},
+             {"operation", std::string{a_step.action}},
+             {"result", std::string{Regression::OutcomeName(a_step.outcome)}}});
       },
-      a_line);
+      [](const Regression::CaseResult &a_case) {
+        Trace::EmitSafely(
+            Trace::Event::kOperation,
+            {{"action", "regression.case"},
+             {"case", std::string{a_case.caseName}},
+             {"result", std::string{Regression::OutcomeName(a_case.outcome)}}});
+      },
+      [](const Regression::WindowBegins &a_window) {
+        Trace::EmitSafely(Trace::Event::kOperation,
+                          {{"action", "regression.window"},
+                           {"case", std::string{a_window.caseName}},
+                           {"window", a_window.window},
+                           {"edge", "begin"}});
+      },
+      [](const Regression::WindowEnds &a_window) {
+        Trace::EmitSafely(Trace::Event::kOperation,
+                          {{"action", "regression.window"},
+                           {"case", std::string{a_window.caseName}},
+                           {"window", a_window.window},
+                           {"edge", "end"}});
+      },
+      [](const Regression::RunEnd &) {});
 }
 
 void Record(const ActiveRun &a_run, const Regression::ResultLine &a_line) {

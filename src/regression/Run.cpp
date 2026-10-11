@@ -83,31 +83,29 @@ std::optional<std::string> WindowClosedBy(const Step &a_step) {
 }
 
 RunChanges AfterCommand(RunChanges a_changes, const Command &a_command) {
-  std::visit(Overloaded{
-                 [&](const SpawnActor &a_c) {
-                   a_changes.spawned[IndexOf(a_c.role)] = true;
-                 },
-                 [&](const DespawnActor &a_c) {
-                   a_changes.spawned[IndexOf(a_c.role)] = false;
-                   a_changes.added[IndexOf(a_c.role)] = {};
-                 },
-                 [&](const AddAndEquip &a_c) {
-                   a_changes.added[IndexOf(a_c.role)][IndexOf(a_c.item)] = true;
-                 },
-                 [&](const RemoveArmor &a_c) {
-                   a_changes.added[IndexOf(a_c.role)][IndexOf(a_c.item)] =
-                       false;
-                 },
-                 [&](const TravelFromStart &) { a_changes.away = true; },
-                 [&](const TravelToStart &) { a_changes.away = false; },
-                 [&](const SpawnCrowdActors &a_c) {
-                   a_changes.crowd = a_c.count;
-                   a_changes.crowdBody = a_c.body;
-                 },
-                 [&](const DespawnCrowdActors &) { a_changes.crowd = 0; },
-                 [](const auto &) {},
-             },
-             a_command);
+  Match(
+      a_command,
+      [&](const SpawnActor &a_c) {
+        a_changes.spawned[IndexOf(a_c.role)] = true;
+      },
+      [&](const DespawnActor &a_c) {
+        a_changes.spawned[IndexOf(a_c.role)] = false;
+        a_changes.added[IndexOf(a_c.role)] = {};
+      },
+      [&](const AddAndEquip &a_c) {
+        a_changes.added[IndexOf(a_c.role)][IndexOf(a_c.item)] = true;
+      },
+      [&](const RemoveArmor &a_c) {
+        a_changes.added[IndexOf(a_c.role)][IndexOf(a_c.item)] = false;
+      },
+      [&](const TravelFromStart &) { a_changes.away = true; },
+      [&](const TravelToStart &) { a_changes.away = false; },
+      [&](const SpawnCrowdActors &a_c) {
+        a_changes.crowd = a_c.count;
+        a_changes.crowdBody = a_c.body;
+      },
+      [&](const DespawnCrowdActors &) { a_changes.crowd = 0; },
+      [](const auto &) {});
   return a_changes;
 }
 
