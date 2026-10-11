@@ -22,7 +22,7 @@ The user reads the code in an nvim pane that the `walk` skill drives. Each findi
 
 ## Cleanups
 
-- **One `Core.h` batch.** A `MaxBy` for the best-element loops in `recipe/Resolve.cpp` and `planners/RecipeTextureCache.h`, and an `IsAny<Ts...>(variant)` for the `Is<A>(v) || Is<B>(v) || …` chains in `TraitsOf` (`recipe/RecipeGraphLowering.cpp`). An edit to `Core.h` rebuilds most of the tree, so these go in together.
+- **`IsAny<Ts...>(variant)` with the next `Core.h` change.** It would replace the `Is<A>(v) || Is<B>(v) || …` chains in `TraitsOf` (`recipe/RecipeGraphLowering.cpp`). An edit to `Core.h` rebuilds most of the tree, so it waits for another reason to touch the file. `MaxBy` is dropped: the loop in `recipe/Resolve.cpp` returns early on a keyword miss, and the loop in `planners/RecipeTextureCache.h` filters first, so neither is a plain best-element fold.
 
 ## Large plans, on hold
 
