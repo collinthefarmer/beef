@@ -45,14 +45,18 @@ EngineActorOf(const InstalledRender &a_render) {
             a_drawing.level, IntermediateHolding::kHeld, costs,
             UnpublishedWork{a_drawing.draw.total, a_drawing.draw.drawn}};
       },
-      [&](const Resizing &a_resizing) {
-        actor.render = EngineRender{a_resizing.from, a_resizing.holding, costs,
-                                    std::nullopt};
-        if (const Running *running = Get<Running>(a_resizing.stage)) {
-          actor.resize =
-              EngineResize{a_resizing.to, UnpublishedWork{running->draw.total,
-                                                          running->draw.drawn}};
-        }
+      [&](const Queued &a_queued) {
+        const Resize &resize = a_queued.resize;
+        actor.render =
+            EngineRender{resize.from, resize.holding, costs, std::nullopt};
+      },
+      [&](const Running &a_running) {
+        const Resize &resize = a_running.resize;
+        const UnpublishedDraw &draw = a_running.draw;
+        actor.render =
+            EngineRender{resize.from, resize.holding, costs, std::nullopt};
+        actor.resize =
+            EngineResize{resize.to, UnpublishedWork{draw.total, draw.drawn}};
       });
   return actor;
 }

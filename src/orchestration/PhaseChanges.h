@@ -18,13 +18,13 @@ struct PhaseChange {
 
 struct EventContext {
   std::uint64_t frame = 0;
-  std::optional<ResolutionLevel> wanted;
+  std::optional<Level> wanted;
 };
 
 struct SeenThisTick {
   bool inView = false;
   bool small = false;
-  std::optional<ResolutionLevel> wanted;
+  std::optional<Level> wanted;
   Millis now = 0;
   Millis outOfViewReleaseDelay = 0;
   std::uint64_t releasableBytes = 0;
@@ -40,7 +40,7 @@ PhaseFor(ActorId a_actor, const RenderEvent &a_event, std::uint64_t a_frame);
 [[nodiscard]] PhaseChange FailPlan(ActorId a_actor, RenderPhase a_phase,
                                    const PlanJobFailed &a_failed);
 [[nodiscard]] PhaseChange WantLevel(ActorId a_actor, RenderPhase a_phase,
-                                    ResolutionLevel a_level);
+                                    Level a_level);
 [[nodiscard]] PhaseChange ReleaseForBudget(ActorId a_actor, RenderPhase a_phase,
                                            std::uint64_t a_bytes);
 [[nodiscard]] PhaseChange SeeActor(ActorId a_actor, RenderPhase a_phase,

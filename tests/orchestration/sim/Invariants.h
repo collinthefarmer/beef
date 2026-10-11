@@ -119,16 +119,6 @@ CommandActor(const Command &a_command) {
   return &found->second.render->phase;
 }
 
-[[nodiscard]] inline bool IsRunning(const RenderPhase &a_phase) {
-  const Resizing *resizing = Get<Resizing>(a_phase);
-  return resizing && Is<Running>(resizing->stage);
-}
-
-[[nodiscard]] inline bool IsQueued(const RenderPhase &a_phase) {
-  const Resizing *resizing = Get<Resizing>(a_phase);
-  return resizing && Is<Queued>(resizing->stage);
-}
-
 template <class T>
 [[nodiscard]] bool HasCommandFor(const std::vector<Command> &a_commands,
                                  ActorId a_actor) {
@@ -154,7 +144,8 @@ template <class T>
   const std::optional<LevelCost> &cost = a_render.levelCosts.At(*applied);
   std::uint64_t bytes =
       cost ? PlannedBytes(*cost, HoldingOf(a_render.phase)) : 0;
-  if (IsRunning(a_render.phase) || (a_starting && IsQueued(a_render.phase))) {
+  if (Is<Running>(a_render.phase) ||
+      (a_starting && Is<Queued>(a_render.phase))) {
     const std::optional<ResolutionLevel> target = TargetLevel(a_render.phase);
     const std::optional<LevelCost> &full =
         target ? a_render.levelCosts.At(*target) : cost;
@@ -182,10 +173,11 @@ EstimateOf(const World &a_world, const std::vector<Command> &a_commands) {
 }
 
 [[nodiscard]] inline bool ReleasedFromShown(const RenderPhase &a_phase) {
-  const Resizing *resizing = Get<Resizing>(a_phase);
-  if (resizing) {
-    return IsQueued(a_phase) &&
-           resizing->holding == IntermediateHolding::kReleased;
+  if (const Queued *queued = Get<Queued>(a_phase)) {
+    return queued->resize.holding == IntermediateHolding::kReleased;
+  }
+  if (Is<Running>(a_phase)) {
+    return false;
   }
   const Shown *shown = Get<Shown>(a_phase);
   return shown && Is<Freed>(shown->intermediates);
@@ -247,19 +239,18 @@ struct Checker {
           }
         },
         [&](const StartResize &a_start) {
-          const Resizing *resizing = after ? Get<Resizing>(*after) : nullptr;
-          if (!resizing || !Is<Queued>(resizing->stage) ||
-              resizing->to != a_start.to) {
+          const Queued *queued = after ? Get<Queued>(*after) : nullptr;
+          if (!queued || queued->resize.to != a_start.to) {
             disagree("resize started outside a queued resize to its level");
           }
         },
         [&](const SwapResize &) {
-          if (!after || !IsRunning(*after)) {
+          if (!after || !Is<Running>(*after)) {
             disagree("swap outside a running resize");
           }
         },
         [&](const AbandonResize &) {
-          if (after && IsRunning(*after)) {
+          if (after && Is<Running>(*after)) {
             disagree("abandoned resize still running");
           }
         },
@@ -331,19 +322,19 @@ struct Checker {
         continue;
       }
       const RenderPhase &phase = record.render->phase;
-      if (const Resizing *resizing = Get<Resizing>(phase)) {
-        if (resizing->from == resizing->to) {
+      if (const Resize *resize = ResizeIn(phase)) {
+        if (resize->from == resize->to) {
           Flag(Rule::kResizeToSameLevel, id, "resizing from a level to itself");
         }
-        if (resizing->failed && resizing->failed->level == resizing->to) {
+        if (resize->failed && resize->failed->level == resize->to) {
           Flag(Rule::kFailedLevelAskedAgain, id,
                "resizing to a level that failed and is still refused");
         }
       }
-      const bool starting = IsQueued(phase) && HasCommandFor<StartResize>(
-                                                   view.output.commands, id);
+      const bool starting = Is<Queued>(phase) && HasCommandFor<StartResize>(
+                                                     view.output.commands, id);
       const bool swapping = HasCommandFor<SwapResize>(view.output.commands, id);
-      inFlight += (IsRunning(phase) && !swapping) || starting ? 1 : 0;
+      inFlight += (Is<Running>(phase) && !swapping) || starting ? 1 : 0;
     }
     if (inFlight > 1) {
       Flag(Rule::kTwoResizesInFlight, std::nullopt,

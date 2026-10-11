@@ -42,14 +42,13 @@ std::vector<Violation> Checked(const World &a_world,
 
 Shown HeldSince(Millis a_since) { return ShownAt(kFull, Held{Hold{a_since}}); }
 
-Resizing RunningResize(ResolutionLevel a_from, ResolutionLevel a_to) {
-  return Resizing{a_from, a_to, IntermediateHolding::kHeld,
-                  Running{UnpublishedDraw{4, 0, 1, 0}}, std::nullopt};
+Running RunningResize(Level a_from, Level a_to) {
+  return Running{Resize{a_from, a_to, IntermediateHolding::kHeld},
+                 UnpublishedDraw{4, 0, 1, 0}};
 }
 
-Resizing QueuedResize(ResolutionLevel a_from, ResolutionLevel a_to) {
-  return Resizing{a_from, a_to, IntermediateHolding::kHeld, Queued{},
-                  std::nullopt};
+Queued QueuedResize(Level a_from, Level a_to) {
+  return Queued{Resize{a_from, a_to, IntermediateHolding::kHeld}};
 }
 
 void ASettledWorldPasses() {
@@ -74,9 +73,8 @@ void ReleaseOutsideShown() {
   Check(!Fired(Checked(held, FactsAt(kNow), released, {release}),
                Rule::kReleaseOutsideShown),
         "a release that leaves the actor live and released passes");
-  const World steppedDown =
-      WorldOf({{kActor, Resizing{kFull, kHalf, IntermediateHolding::kReleased,
-                                 Queued{}, std::nullopt}}});
+  const World steppedDown = WorldOf(
+      {{kActor, Queued{Resize{kFull, kHalf, IntermediateHolding::kReleased}}}});
   Check(!Fired(Checked(held, FactsAt(kNow), steppedDown, {release}),
                Rule::kReleaseOutsideShown),
         "a budget release followed by a step-down in the same tick passes");
@@ -214,16 +212,16 @@ void EstimateMatchesTheEngineWhenSettled() {
 }
 
 void FailedLevelNotAskedAgain() {
-  Resizing refused = QueuedResize(kFull, kHalf);
-  refused.failed = FailedLevel{kHalf, kHalf};
+  Queued refused = QueuedResize(kFull, kHalf);
+  refused.resize.failed = FailedLevel{kHalf, kHalf};
   const World world = WorldOf({{kActor, refused}});
   Check(Fired(Checked(world, {}), Rule::kFailedLevelAskedAgain),
         "a resize to a refused level fires");
   Check(Fired(Checked(world, {StartResize{kActor, kHalf}}),
               Rule::kFailedLevelAskedAgain),
         "a start to a refused level fires");
-  Resizing other = QueuedResize(kFull, ResolutionLevel::kQuarter);
-  other.failed = FailedLevel{kHalf, kHalf};
+  Queued other = QueuedResize(kFull, ResolutionLevel::kQuarter);
+  other.resize.failed = FailedLevel{kHalf, kHalf};
   Check(!Fired(Checked(WorldOf({{kActor, other}}), {}),
                Rule::kFailedLevelAskedAgain),
         "a resize to another level keeps the refusal and passes");

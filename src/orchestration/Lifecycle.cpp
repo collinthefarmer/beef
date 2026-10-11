@@ -301,8 +301,7 @@ ScheduledResizes ScheduleResizes(TickOutput &a_out, std::uint64_t a_frame) {
     } else if (progress) {
       ++running;
     }
-    const Resizing *resizing = Get<Resizing>(phase);
-    if (record.sight.loaded3D && resizing && Is<Queued>(resizing->stage)) {
+    if (record.sight.loaded3D && Is<Queued>(phase)) {
       candidates.push_back({FormOf(actor), true, record.sight.inView,
                             record.sight.screenFraction});
     }

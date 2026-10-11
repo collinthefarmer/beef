@@ -56,15 +56,13 @@ RenderPhase DrawingAt(std::size_t a_total, std::size_t a_drawn,
                  std::nullopt};
 }
 
-RenderPhase QueuedResize(ResolutionLevel a_from, ResolutionLevel a_to) {
-  return Resizing{a_from, a_to, IntermediateHolding::kHeld, Queued{},
-                  std::nullopt};
+RenderPhase QueuedResize(Level a_from, Level a_to) {
+  return Queued{Resize{a_from, a_to, IntermediateHolding::kHeld}};
 }
 
 RenderPhase RunningAt(std::size_t a_total, std::size_t a_drawn) {
-  return Resizing{kQuarter, kHalf, IntermediateHolding::kHeld,
-                  Running{UnpublishedDraw{a_total, a_drawn, kFrame, 1}},
-                  std::nullopt};
+  return Running{Resize{kQuarter, kHalf, IntermediateHolding::kHeld},
+                 UnpublishedDraw{a_total, a_drawn, kFrame, 1}};
 }
 
 ActorRecord Record(RenderPhase a_phase, Sighting a_sight) {
@@ -500,8 +498,8 @@ void AFirstDrawWithANewLevelQueuesAResize() {
   Drawing drawing{kHalf, UnpublishedDraw{2, 2, 400, 1}, kFull};
   const TickOutput out =
       Lifecycle(WorldOf({{kActor, Record(drawing, InView(0.6f))}}));
-  const Resizing *resizing = Get<Resizing>(*PhaseOf(out, kActor));
-  Check(resizing && resizing->from == kHalf && resizing->to == kFull &&
+  const Queued *queued = Get<Queued>(*PhaseOf(out, kActor));
+  Check(queued && queued->resize.from == kHalf && queued->resize.to == kFull &&
             CommandsOf<StartResize>(out).empty(),
         "a level wanted during the first draw queues a resize that starts "
         "next tick");

@@ -49,14 +49,13 @@ RenderPhase BlockedAt(ResolutionLevel a_level) {
   return Shown{a_level, Held{}, {}, a_level, std::nullopt};
 }
 
-RenderPhase RunningResize(ResolutionLevel a_from, ResolutionLevel a_to) {
-  return Resizing{a_from, a_to, IntermediateHolding::kHeld,
-                  Running{UnpublishedDraw{2, 0, 10, 0}}, std::nullopt};
+RenderPhase RunningResize(Level a_from, Level a_to) {
+  return Running{Resize{a_from, a_to, IntermediateHolding::kHeld},
+                 UnpublishedDraw{2, 0, 10, 0}};
 }
 
-RenderPhase QueuedResize(ResolutionLevel a_from, ResolutionLevel a_to) {
-  return Resizing{a_from, a_to, IntermediateHolding::kHeld, Queued{},
-                  std::nullopt};
+RenderPhase QueuedResize(Level a_from, Level a_to) {
+  return Queued{Resize{a_from, a_to, IntermediateHolding::kHeld}};
 }
 
 Sighting InView(float a_fraction, std::optional<float> a_distance = 500.0f) {
@@ -297,9 +296,8 @@ void StepsDownOneActorUnderPressure() {
   world.actors[kFirst] = Rendered(ShownAt(kFull), InView(0.6f));
   const TickOutput output = RunBudget(world, FactsWithCap(MiB(300)));
   const RenderPhase *phase = PhaseOf(output.world, kFirst);
-  const Resizing *resizing = phase ? Get<Resizing>(*phase) : nullptr;
-  Check(resizing && resizing->from == kFull && resizing->to == kHalf &&
-            Is<Queued>(resizing->stage),
+  const Queued *queued = phase ? Get<Queued>(*phase) : nullptr;
+  Check(queued && queued->resize.from == kFull && queued->resize.to == kHalf,
         "a step down queues a resize one level coarser");
   Check(CommandsOf<ReleaseIntermediates>(output).empty(),
         "an actor in view releases nothing");
@@ -503,8 +501,8 @@ void PreemptsForABlockedStepUp() {
   Check(!IsOver(output.world.budget.pressure),
         "preemption runs without pressure");
   const RenderPhase *victim = PhaseOf(output.world, kSecond);
-  const Resizing *resizing = victim ? Get<Resizing>(*victim) : nullptr;
-  Check(resizing && resizing->to == kHalf,
+  const Resize *resize = victim ? ResizeIn(*victim) : nullptr;
+  Check(resize && resize->to == kHalf,
         "the actor with a surplus steps down for the requester");
   const std::vector<TraceRecord> steps = ActionsOf(output, "budget_step_down");
   Check(steps.size() == 1 && FieldOf(steps.front(), "reason") == "preempted" &&

@@ -120,7 +120,7 @@ void AReinstallDuringAResize() {
   Simulation sim = Ran(Started(std::move(script)), 59);
   Check(sim.violations.empty(), Report(sim));
   const RenderPhase *phase = PhaseNow(sim, kActor);
-  Check(phase && IsRunning(*phase), "the actor is resizing when it changes");
+  Check(phase && Is<Running>(*phase), "the actor is resizing when it changes");
   const ActorRecord *before = RecordIn(sim.world, kActor);
   const std::uint64_t replaced = before ? PlannedBytesOf(*before) : 0;
   const std::uint64_t plannedBefore = sim.world.budget.planned;
@@ -182,7 +182,7 @@ void AnActorUnloadsDuringAResize() {
   Simulation sim =
       Ran(Started(std::move(script), WithEstimate(std::move(world))), 19);
   const RenderPhase *phase = PhaseNow(sim, kActor);
-  Check(phase && IsRunning(*phase), "the actor is resizing when it unloads");
+  Check(phase && Is<Running>(*phase), "the actor is resizing when it unloads");
   sim = Ran(std::move(sim), 200);
   Check(sim.violations.empty(), Report(sim));
   const std::vector<Issued<Forget>> forgets = IssuedFor<Forget>(sim, kActor);

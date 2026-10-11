@@ -49,14 +49,8 @@ Drawing DrawingAt(ResolutionLevel a_level, std::size_t a_total,
   return drawing;
 }
 
-Resizing ResizingFrom(ResolutionLevel a_from, ResolutionLevel a_to,
-                      std::variant<Queued, Running> a_stage) {
-  Resizing resizing;
-  resizing.from = a_from;
-  resizing.to = a_to;
-  resizing.holding = IntermediateHolding::kHeld;
-  resizing.stage = a_stage;
-  return resizing;
+Resize ResizeFrom(Level a_from, Level a_to) {
+  return Resize{a_from, a_to, IntermediateHolding::kHeld};
 }
 
 bool Agrees(const World &a_world, const Store &a_store) {
@@ -141,7 +135,7 @@ void ShownHoldsItsLevelAndHolding() {
 }
 
 void AQueuedResizeHoldsNoResize() {
-  const World world = WorldIn(ResizingFrom(kHalf, kFull, Queued{}));
+  const World world = WorldIn(Queued{ResizeFrom(kHalf, kFull)});
   Check(Agrees(world, StoreOf(RenderAt(kHalf))),
         "a queued resize holds the render it resizes");
   HeldResources started = RenderAt(kHalf);
@@ -155,7 +149,7 @@ void AQueuedResizeHoldsNoResize() {
 
 void ARunningResizeHoldsItsDraw() {
   const World world =
-      WorldIn(ResizingFrom(kHalf, kFull, Running{UnpublishedDraw{4, 1, 0, 0}}));
+      WorldIn(Running{ResizeFrom(kHalf, kFull), UnpublishedDraw{4, 1, 0, 0}});
   HeldResources held = RenderAt(kHalf);
   held.resize = HeldResize{kFull, {4, 1}};
   Check(Agrees(world, StoreOf(held)), "a running resize agrees");

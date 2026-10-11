@@ -541,8 +541,7 @@ void ReturnBytesFollowTheTarget() {
   Check(ReturnBytesOf(record) == std::uint64_t{400},
         "a live actor returns at its level's full cost");
   record.render->phase =
-      Resizing{ResolutionLevel::kFull, ResolutionLevel::kHalf,
-               IntermediateHolding::kHeld, Queued{}, std::nullopt};
+      Queued{Resize{Level::kFull, Level::kHalf, IntermediateHolding::kHeld}};
   Check(ReturnBytesOf(record) == std::uint64_t{100},
         "a resizing actor returns at its target level's full cost");
   Check(!ReturnBytesOf(ActorRecord{}),

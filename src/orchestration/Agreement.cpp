@@ -140,16 +140,20 @@ Findings FindingsFor(const RenderPhase &a_phase, const HeldResources &a_held) {
         NoResize(findings, a_held);
         NoAwaited(findings, a_held);
       },
-      [&](const Resizing &a_resizing) {
-        RenderAt(findings, a_held, a_resizing.from, a_resizing.holding);
+      [&](const Queued &a_queued) {
+        const Resize &resize = a_queued.resize;
+        RenderAt(findings, a_held, resize.from, resize.holding);
         NoFirstDraw(findings, a_held);
+        NoResize(findings, a_held);
         NoAwaited(findings, a_held);
-        if (const Running *running = Get<Running>(a_resizing.stage)) {
-          ResizeOf(findings, a_held,
-                   HeldResize{a_resizing.to, CountOf(running->draw)});
-        } else {
-          NoResize(findings, a_held);
-        }
+      },
+      [&](const Running &a_running) {
+        const Resize &resize = a_running.resize;
+        RenderAt(findings, a_held, resize.from, resize.holding);
+        NoFirstDraw(findings, a_held);
+        ResizeOf(findings, a_held,
+                 HeldResize{resize.to, CountOf(a_running.draw)});
+        NoAwaited(findings, a_held);
       });
   return findings;
 }

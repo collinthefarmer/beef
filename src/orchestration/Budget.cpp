@@ -400,7 +400,7 @@ BudgetActors BudgetActorsOf(const World &a_world) {
   BudgetActors now;
   for (const auto &[id, record] : a_world.actors) {
     now.resizeBusy =
-        now.resizeBusy || (record.render && Is<Resizing>(record.render->phase));
+        now.resizeBusy || (record.render && ResizeIn(record.render->phase));
     if (const std::optional<BudgetActor> actor = BudgetActorOf(id, record)) {
       now.actors.push_back(*actor);
     }
