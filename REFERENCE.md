@@ -1631,7 +1631,7 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
   is `PlanJobBuilt`, so its awaiter rebuilds and asks again (decision Q3 of
   `docs/plans/pure-tick-r4-2026-10-10.md`). A failed job is `PlanJobFailed`
   with the worker's problem or the lowering's problem.
-- The core accepts a result only for an actor in `AwaitingPlan` with that job
+- The core accepts a result only for an actor in `Planning` with that job
   (`AwaitedJob`, `RecordRenderResults`). A reinstall gives the actor a new
   phase, and a retire erases its render, so neither can accept an older
   job's plan. The agreement check compares the phase's job with
@@ -1644,7 +1644,7 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
   stale job therefore makes its actors ask again and never leaves them
   waiting.
 - A failed job gives `FailAwaitedRender`, and the phase becomes
-  `WithoutRender`. The executor records the problem on every stack output
+  `Empty`. The executor records the problem on every stack output
   (`FailedOutputs`), as a synchronous failure does.
 - The book entry of an open job holds the graphs its key names. The cache
   entry takes them when the plan is stored, so no graph address in a stored
@@ -1658,11 +1658,11 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
   slot writes back its original texture with the feature off
   (`SlotWriter::WriteTexture`), so a material keeps the vanilla look.
 - A shell would still be posed with its recipe opacity. `TickActorFor`
-  therefore sets `concealSlots` and `hideShells` in `AwaitingPlan`, as in
-  `FirstDrawing`.
+  therefore sets `concealSlots` and `hideShells` in `Planning`, as in
+  `Drawing`.
 - `ObserveApplication` reports the outputs as waiting (`prepared`), not as
   failed.
-- `AwaitingPlan` has no target level (`TargetLevel`), so the screen level
+- `Planning` has no target level (`TargetLevel`), so the screen level
   step skips the actor. It has no instance to resize.
 - `VerifyRenderPlanCache`, a run file's `verifyRenderPlans`, a disabled plan
   cache and an uncacheable key keep the synchronous build (`PlanRouteOf`).
@@ -1671,14 +1671,14 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
 - The first draw advances only while the actor is in view, because the core
   puts only actors in view in the `DrawUnpublished` order.
 - An actor out of view reports its applications during a first draw.
-  `TickActorFor` sets `finishApplications` in `AwaitingPlan` and
-  `FirstDrawing` only out of view. `FinishApplications` then reports a
+  `TickActorFor` sets `finishApplications` in `Planning` and
+  `Drawing` only out of view. `FinishApplications` then reports a
   prepared application as `kOutOfView`. From 7h (2026-10-08) until
   2026-10-09 the report waited for the first draw. An actor installed out of
   view then stayed `prepared` until it came into view, and every crowd soak
   and `cull` timed out with 3 of 12 actors neither rendered nor waiting.
 - A plan that arrives starts a first draw as an install does (`KeepRender`,
-  then `Installed` creates `FirstDrawing`). The attach itself is a plan cache
+  then `Installed` creates `Drawing`). The attach itself is a plan cache
   hit of about 0.5 ms, so install pacing does not count it.
 
 ### Install pacing and the first draw (`planners/InstallPacing.h`, `planners/DrawPacing.h`, `orchestration/Sync.cpp`, `orchestration/Lifecycle.cpp`, `engine/ManagerTick.cpp`, `engine/ActorResize.*`)
@@ -1740,13 +1740,13 @@ them:
   `EmitCoreRecords` counts each `sync_deferred` record (`CountSyncDeferral`).
 
 **First draw (7h).** A render is drawn before it is shown. The core holds the
-draw's progress in the phase `FirstDrawing`; the engine holds the slot list.
+draw's progress in the phase `Drawing`; the engine holds the slot list.
 
 - Every render that an install or an awaited plan builds starts a **first
   draw**. The engine lists every slot of every stack plan
   (`UnpublishedSlotsOf`) in `LiveActor::firstDraw` (`StartFirstDraw`,
   `HiddenSlot`). The `Installed` result carries the count as `total`, and the
-  core creates `FirstDrawing` with an `UnpublishedDraw`.
+  core creates `Drawing` with an `UnpublishedDraw`.
 - During the first draw, `TickActorFor` sets `concealSlots`, `hideShells` and
   `hideLights`. `RenderGeometry` writes the slots as hidden, so the material
   keeps the vanilla look. The shells and lights are hidden.
@@ -1785,17 +1785,17 @@ draw's progress in the phase `FirstDrawing`; the engine holds the slot list.
   when the actor comes into view.
 - The end writes the trace event `first_draw`: the actor, the end (`drawn` or
   `tick_limit`), the frames since the draw began, the drawing ticks, the slot
-  count and the drawn count. `EndFirstDraw` gives `Live` at the draw's level,
-  or `Resizing` when a level was wanted during the draw
-  (`FirstDrawing::next`).
+  count and the drawn count. `EndFirstDraw` gives `Shown` at the draw's level,
+  or `Queued` when a level was wanted during the draw
+  (`Drawing::next`).
 - The **publish** happens in the same tick. The `TickActor` after the end has
   no `concealSlots`, so its executor writes the stacks and drops
   `LiveActor::firstDraw`.
 - A reinstall during the first draw retires the render and installs a new
   one, which starts its own first draw. A retire drops it.
 - A resize does not start during a first draw. A level wanted by the screen
-  waits in `FirstDrawing::next`. The budget does not step the actor down,
-  because `MayStepDown` holds only in `Live`.
+  waits in `Drawing::next`. The budget does not step the actor down,
+  because `MayStepDown` holds only in `Shown`.
 - The instance is attached to the geometries during the first draw. The
   engine's `InstancesOf` and `PlannedTargets` count its targets once the
   actor is in view.
@@ -2790,11 +2790,11 @@ cancel by the user instead of the load.
   `kStepDownHoldMS`, `SmallFor`). The cutoffs are 0.4 for full, 0.2 for half
   and 0.1 for quarter. The step-down rule reads the fraction in and out of
   view, so a camera turn does not start the hold.
-- `Live::smallOnScreen` (a `Hold`) keeps the start of the hold. `SeeActor`
+- `Shown::smallOnScreen` (a `Hold`) keeps the start of the hold. `SeeActor`
   updates it each tick, and a fraction above the cutoff clears it. A level
-  change clears it, because the next `Live` starts with a new hold.
+  change clears it, because the next `Shown` starts with a new hold.
   `ScreenStepDownDue` reads it with `TickSettings::screenStepDownHoldMs`
-  (`kStepDownHoldMS`). Only `Live` has the hold.
+  (`kStepDownHoldMS`). Only `Shown` has the hold.
 - The cutoffs are 0.8 of the step-up thresholds, so an NPC near a threshold
   does not change level back and forth. The 2 s hold is continuous: a
   fraction that rises above the cutoff starts the hold again.
@@ -2823,7 +2823,7 @@ cancel by the user instead of the load.
   and it restarted the effect.
 - A level step writes the trace event `resolution_level` with the levels,
   the parsed fraction and `reason: screen`. `WantLevel` then changes the
-  phase from `Live` to `Resizing` with `ResizeQueued`. The target level
+  phase from `Shown` to `Queued`. The target level
   (`TargetLevel`, the resize's `to`) changes at once, so a reinstall during
   the resize builds at the new level.
 - One resize runs at a time across all actors (`kResizesInFlight`), because
@@ -2885,7 +2885,7 @@ cancel by the user instead of the load.
   or removes the `LiveActor`, so it drops a queued or running resize.
 - A claim during a resize changes the actor's stack outputs. The swap then
   fails (`the stacks changed while the resize drew`) and reports
-  `ResizeNotSwapped`. The core returns the actor to `Live` at its old level,
+  `ResizeNotSwapped`. The core returns the actor to `Shown` at its old level,
   records the failed level and abandons the resize (`AbandonResize`).
 - The sync log has no `resized` kind. The trace event `resolution_swap` gives
   the actor, the old and new levels (`from`, `level`), the stack and drawn
@@ -2902,8 +2902,8 @@ cancel by the user instead of the load.
   the level the core decided, after the budget. A retire keeps it as
   `ActorRecord::reinstallLevel` for the next install. The applied level
   (`AppliedLevel`) is the level of the attached instance; the engine holds the
-  same level as `LiveActor::renderLevel`. A render in `WithoutRender` or
-  `AwaitingPlan` has neither.
+  same level as `LiveActor::renderLevel`. A render in `Empty` or
+  `Planning` has neither.
 - The level divides the side after `StackSizeOf`, which raises a
   stack to its slot's base map. A stack draws over the armor's own map and
   replaces it in the material, so a lower level also lowers the armor's own
@@ -2993,14 +2993,14 @@ cancel by the user instead of the load.
   nothing, because the step is checked against the failed level first.
 - A blocked step up writes the trace event `resolution_blocked`, not a log
   line, because it repeats every tick.
-- `Live::stepUpBlockedFrom` keeps the level at which a step up of the actor
+- `Shown::stepUpBlockedFrom` keeps the level at which a step up of the actor
   is blocked. A blocked step up writes `resolution_blocked` only when the
   actor is not yet blocked at its current level. The event gives the first
   wanted level of the episode. A wanted level that changes with the screen
   fraction does not start a new episode.
 - An admitted step up, a step down and a reinstall each end the episode,
-  because each gives a new phase and the next `Live` starts without it.
-  Outside `Live` a blocked step up is silent.
+  because each gives a new phase and the next `Shown` starts without it.
+  Outside `Shown` a blocked step up is silent.
 - **Preemption.** Admission blocks a step up at the allowance, and pressure
   starts only over the allowance. Without preemption a blocked step up waited
   until an eviction or an unload freed bytes. In the session of 2026-10-08
@@ -3030,7 +3030,7 @@ cancel by the user instead of the load.
   admitted. After a requester is admitted, its bytes are in the planned
   figure, so a victim that returns to view is blocked and does not take its
   level back.
-- A preemption starts no step down while any actor is in `Resizing`
+- A preemption starts no step down while any actor is in `Queued` or `Running`
   (`BudgetActors::resizeBusy`). It steps down one NPC per memory sample
   (`StepDownForBudget`, `orchestration/Budget.cpp`). The requester stays
   blocked until the swap frees the bytes and admission passes. The log line
@@ -3082,7 +3082,7 @@ cancel by the user instead of the load.
   `finest_level`. When the bound has a headroom, it also gives
   `replaced_bytes`, `headroom_bytes` and `admitted_bytes`.
 - `kResizesInFlight` stays 1. The budget admits each step-up resize by its
-  bytes and starts no step down while any actor is in `Resizing`
+  bytes and starts no step down while any actor is in `Queued` or `Running`
   (`AwaitResize`).
 - **Response 1: actors out of view release their intermediates.** A release
   frees every texture and bake output of the instance except the stacks and
@@ -3096,12 +3096,12 @@ cancel by the user instead of the load.
 - A release takes a fill plan at a 2048 base from 33.3 to 26.3 MiB
   (`kept on release` in `planners_templatecost`). The released outputs are
   the static outputs that 7b keeps until the instance goes.
-- Without pressure, an actor in `Live` that stays out of view for
+- Without pressure, an actor in `Shown` that stays out of view for
   `TickSettings::outOfViewReleaseDelayMs` (5 s) releases
-  (`IntermediatesHeld::outOfView`, a `Hold`, in `SeeActor`). The core issues
+  (`Held::outOfView`, a `Hold`, in `SeeActor`). The core issues
   `ReleaseIntermediates` with `ReleaseReason::kOutOfView`, and the executor
   traces `hidden_release`. A first draw and a resize never release, because
-  only `Live` holds intermediates that may go (`MayRelease`). The delay keeps
+  only `Shown` holds intermediates that may go (`MayRelease`). The delay keeps
   a camera turn from releasing and restoring.
 - Under pressure, `RespondToPressure` releases the largest holdings first and
   stops when the planned bytes fit. The executor traces `budget_release`.
@@ -3122,7 +3122,7 @@ cancel by the user instead of the load.
   whose level is finest against its `WantedLevel` (`LevelGap`). An NPC out of
   view wants eighth, so it comes first. An unmeasured NPC counts as at its
   wanted level. The most bytes freed breaks a tie.
-- The player is never a candidate. Only an actor in `Live` is a candidate
+- The player is never a candidate. Only an actor in `Shown` is a candidate
   (`MayStepDown`), so an actor with a first draw or a resize is not. A level
   that failed to resize is not offered again (`StepDownFor`).
 - The core prices the current and the coarser level from
@@ -3136,7 +3136,7 @@ cancel by the user instead of the load.
 - An NPC stepped down rises again only through the screen level step and
   admission.
 - **Response 3: the budget radius.** When responses 1 and 2 have nothing
-  left (`Exhausted`) and no actor is in `Resizing`, the budget sets or lowers
+  left (`Exhausted`) and no actor is in `Queued` or `Running`, the budget sets or lowers
   a **budget radius** (`planners/BudgetRadius.h`, `World::radius`). The
   radius is a distance from the player. The effect of an NPC beyond it goes
   through distance eviction. A design review chose the radius over a new
@@ -3161,7 +3161,7 @@ cancel by the user instead of the load.
   trace event `budget_radius` with `change` `shrink`, `radius`, `actor` and
   `freed_bytes`. The bytes are the actor's planned bytes at its level
   (`BudgetActor::plannedBytes`). The candidate must be evictable: it is not
-  in `Resizing` (`MayEvict`, `BudgetActor::resizing`).
+  in `Queued` or `Running` (`MayEvict`, `BudgetActor::resizing`).
 - **Growth.** Each memory sample under pressure restarts the radius's dwell
   (`BudgetRadius::sinceMs`). Without pressure, the radius tries to grow by
   1 / 0.8 once per dwell (`GrowRadius`, `kRadiusDwellMs` 10 s). The 1 / 0.8
@@ -3468,40 +3468,40 @@ once per tick. "The engine runs the core" below says how.
 `docs/components/orchestration.md` maps the directory.
 
 - An `ActorRecord` without `render` is an actor with nothing installed. A
-  `render` in `WithoutRender` is an actor whose install built no render, or
+  `render` in `Empty` is an actor whose install built no render, or
   whose plan job failed. The two differ for the budget radius: only the first
   counts as evicted.
 - A phase is created only by `PhaseFor`, from the first event of an install.
   `OnEvent` accepts a creating event (`PlanAwaited`, `Installed`,
-  `InstalledWithoutRender`) only in `AwaitingPlan`, where it is the rebuild
+  `InstalledWithoutRender`) only in `Planning`, where it is the rebuild
   after a plan job. Anywhere else it is ignored, so a late install result
   cannot replace a running resize and leak its work. An ignored creating
   event is a core bug, not a runtime case: `Installed` only answers `Install`,
   issued after `Retire`, or `BuildAwaitedRender`, issued only from
-  `AwaitingPlan`. The scenario tests assert that it never happens, the
+  `Planning`. The scenario tests assert that it never happens, the
   agreement check finds a render the core does not track, and a regression
   launch fails on an `actor_phase_ignored` record (decision R-7).
-- A swap ends `Live` at the new level with a fresh out-of-view hold, because
+- A swap ends `Shown` at the new level with a fresh out-of-view hold, because
   the new render's draw ran every step. Before stage 3 of the ownership plan
   a swap kept `kReleased`, and the actor was never released again (audit 4b).
-- `Resizing` keeps only the attached render's `IntermediateHolding`, not its
-  hold. A resize that returns to `Live` starts the out-of-view hold again, so
+- `Resize` keeps only the attached render's `IntermediateHolding`, not its
+  hold. A resize that returns to `Shown` starts the out-of-view hold again, so
   a hold from before the resize cannot release the actor at once. An actor in
   view during a resize holds again, because the attached render restores its
   intermediates when it draws.
 - A failed resize (`ResizeNotStarted`, `ResizeNotSwapped`) records
-  `FailedLevel{level, wantedThen}`. `Live` and `Resizing` both carry it, so
+  `FailedLevel{level, wantedThen}`. `Shown` and `Resize` both carry it, so
   a resize to another level, or back to the old one, does not forget it. The level stays refused until the wanted
   level differs from `wantedThen`. Keying on the wanted level at the time, not
   on the failed level, covers a failed budget step-down too: there the failed
   level is coarser than the screen level, and a rule that cleared on any
   difference would let the budget retry every tick.
-- `WantLevel` at the current level returns the phase unchanged. A new `Live`
+- `WantLevel` at the current level returns the phase unchanged. A new `Shown`
   would reset the screen step-down hold and the blocked step-up.
 - `UnpublishedDrawn::drawn` is clamped to the draw's `total`.
-- `MayEvict` holds in every phase except `Resizing`, so the budget radius
-  can evict an actor in its first draw. `MayStepDown` holds only in `Live`.
-  A level wanted during a first draw waits in `FirstDrawing::next`.
+- `MayEvict` holds in every phase except `Queued` and `Running`, so the budget radius
+  can evict an actor in its first draw. `MayStepDown` holds only in `Shown`.
+  A level wanted during a first draw waits in `Drawing::next`.
 - `RunBudget` (`orchestration/Budget.*`) counts an actor in the estimate and
   in the `BudgetActor` list only after its first rendered frame
   (`InstalledRender::renderedFrame`). The engine's `PlannedTargets` uses the
@@ -3539,8 +3539,8 @@ once per tick. "The engine runs the core" below says how.
 - A resize draws from the tick after `ResizeStarted` arrives.
 - A step-up is admitted and charged before `WantLevel`, and only when the
   phase does not refuse the level as failed. A refused level therefore
-  charges nothing. A blocked step-up is recorded and traced only in `Live`,
-  because only `Live` has `stepUpBlockedFrom`. Outside `Live` it is silent.
+  charges nothing. A blocked step-up is recorded and traced only in `Shown`,
+  because only `Shown` has `stepUpBlockedFrom`. Outside `Shown` it is silent.
 - `resolution_level` traces the parsed `Sighting::screenFraction`. It reads
   1.0 when `ScreenResolution` is off.
 - `InstallBoundOf` (`Budget.h`) is the one install bound for `Install` and
@@ -3550,13 +3550,13 @@ once per tick. "The engine runs the core" below says how.
   level gets no bound.
 - `RecordRenderResults` sets `renderedFrame` for every actor with a render in
   view with loaded 3D, because its `TickActor` draws it in the same tick.
-- `TickActor` conceals the slots in `AwaitingPlan` as well as in
-  `FirstDrawing`. `BuildAwaitedRender` comes from `RecordRenderResults`,
+- `TickActor` conceals the slots in `Planning` as well as in
+  `Drawing`. `BuildAwaitedRender` comes from `RecordRenderResults`,
   before the `TickActor` of the same tick, while the phase is still
-  `AwaitingPlan`. The engine builds the render and its first-draw list first.
+  `Planning`. The engine builds the render and its first-draw list first.
   A `TickActor` without `concealSlots` would then publish the render before it
   draws. The agreement check over the R3 scenarios found this.
-- `TickActor` finishes applications in `AwaitingPlan` and `FirstDrawing` only
+- `TickActor` finishes applications in `Planning` and `Drawing` only
   out of view. In view, a render built from the plan in this tick is
   unpublished, and its applications would report a render the player cannot
   see.
@@ -3579,8 +3579,10 @@ once per tick. "The engine runs the core" below says how.
   The heartbeat's `estimated_bytes` is that sum; `planned_bytes` is the
   budget's figure.
 - `actor_phase` carries `from`, `to` and `event`; `actor_phase_ignored`
-  carries `phase` and `event`. A phase created from nothing has the phase
-  name `none`. The event names are the `RenderEvent` names in snake case,
+  carries `phase` and `event`. The phase names are `empty`, `planning`,
+  `drawing`, `shown`, `resize_queued` and `resize_running`; the two resize
+  names keep the `resize_` prefix so a trace line reads without the type
+  names. A phase created from nothing has the phase name `none`. The event names are the `RenderEvent` names in snake case,
   and `plan_built`, `plan_failed`, `seen`, `level_wanted` and
   `first_draw_ended` for the decisions.
 
@@ -3646,12 +3648,12 @@ once per tick. "The engine runs the core" below says how.
   of the last tick has run and its results are recorded, so both sides
   describe the same moment.
 - `SettledWorld` drops `TickFacts::jobs`. A finished plan job moves an
-  `AwaitingPlan` actor only through `BuildAwaitedRender`, which the engine has
+  `Planning` actor only through `BuildAwaitedRender`, which the engine has
   not run yet.
-- An actor in `WithoutRender` may have no store entry, because an install
+- An actor in `Empty` may have no store entry, because an install
   that places no recipe stores nothing. A store entry for an actor without a
   `render` is a resource the core does not track.
-- `FirstDrawing` has no holding to compare: the core does not track the
+- `Drawing` has no holding to compare: the core does not track the
   holding of a render before it is published.
 - `SettledWorld` also drops `ResizeNotSwapped`. The engine keeps a resize that
   did not swap until it runs the `AbandonResize` that the event implies, in

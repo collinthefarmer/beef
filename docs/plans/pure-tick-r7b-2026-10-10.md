@@ -145,7 +145,7 @@ Lines to look for:
 - No `resource_disagreement` and no `actor_phase_ignored`; R-7 fails the launch on either. The agreement check also catches a wrong first-draw count.
 - The install summary `actor … installed: N piece(s), M recipe(s) applied to G geometries (P private material(s), S shared, H shell(s))` matches the baseline per actor, and so do the verbose `apply armor … material=… shell…` lines.
 - `render_plan_job result=submitted`, then `done`, then `attached` with `level`; and `render_plan_cache result=hit` on the awaited rebuild. No second `submitted` for the same actor.
-- `actor_phase` goes `awaiting_plan` to `first_drawing` to `live`; `first_draw end=drawn`.
+- `actor_phase` goes `planning` to `drawing` to `shown`; `first_draw end=drawn`.
 - No new `stack was not lowered` or `light bone … is not on the wearer` warnings. Studio rows still show `replaced by recipe X` and `actor-wide lights replaced by recipe X`.
 - The `actor_install`, `actor_place` and `actor_render` field sets are unchanged.
 - `live_instances` returns to 0 in `target_holders` after cleanup.
