@@ -322,7 +322,7 @@ struct Checker {
         continue;
       }
       const RenderPhase &phase = record.render->phase;
-      if (const Resize *resize = ResizeIn(phase)) {
+      if (const Resize *resize = FindResize(phase)) {
         if (resize->from == resize->to) {
           Flag(Rule::kResizeToSameLevel, id, "resizing from a level to itself");
         }

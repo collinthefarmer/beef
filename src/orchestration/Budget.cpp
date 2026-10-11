@@ -86,7 +86,7 @@ StepDownFor(const InstalledRender &a_render, ResolutionLevel a_level,
 [[nodiscard]] bool AnyResizing(const World &a_world) noexcept {
   return std::ranges::any_of(a_world.actors, [](const auto &a_entry) {
     const ActorRecord &record = a_entry.second;
-    return record.render && ResizeIn(record.render->phase);
+    return record.render && FindResize(record.render->phase);
   });
 }
 
@@ -549,7 +549,7 @@ std::optional<BudgetActor> BudgetActorOf(ActorId a_actor,
   return BudgetActor{.actor = FormOf(a_actor),
                      .role = sight.role,
                      .inView = sight.inView,
-                     .resizing = ResizeIn(render.phase) != nullptr,
+                     .resizing = FindResize(render.phase) != nullptr,
                      .level = *level,
                      .screenFraction = sight.screenFraction,
                      .releasable = costs.releasable,

@@ -102,8 +102,8 @@ using RenderPhase =
 
 static_assert(std::is_trivially_copyable_v<RenderPhase>);
 
-[[nodiscard]] const Resize *ResizeIn(const RenderPhase &a_phase) noexcept;
-[[nodiscard]] Resize *ResizeIn(RenderPhase &a_phase) noexcept;
+[[nodiscard]] const Resize *FindResize(const RenderPhase &a_phase) noexcept;
+[[nodiscard]] Resize *FindResize(RenderPhase &a_phase) noexcept;
 
 [[nodiscard]] std::optional<Level>
 TargetLevel(const RenderPhase &a_phase) noexcept;

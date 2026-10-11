@@ -501,7 +501,7 @@ void PreemptsForABlockedStepUp() {
   Check(!IsOver(output.world.budget.pressure),
         "preemption runs without pressure");
   const RenderPhase *victim = PhaseOf(output.world, kSecond);
-  const Resize *resize = victim ? ResizeIn(*victim) : nullptr;
+  const Resize *resize = victim ? FindResize(*victim) : nullptr;
   Check(resize && resize->to == kHalf,
         "the actor with a surplus steps down for the requester");
   const std::vector<TraceRecord> steps = ActionsOf(output, "budget_step_down");

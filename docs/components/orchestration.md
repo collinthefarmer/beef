@@ -82,7 +82,7 @@ phase variant by hand. `PhaseChanges.h` changes it.
 | `Resize` | A level change: the old and new levels (`from`, `to`), the attached render's `IntermediateHolding` and an optional `FailedLevel`. | `RenderPhase.h` |
 | `Queued`, `Running` | A resize that waits to start, and a resize that draws its `UnpublishedDraw`. Both carry a `Resize`. | `RenderPhase.h` |
 | `RenderPhase` | The variant of the six phases. | `RenderPhase.h` |
-| `Level`, `ResizeIn` | The name of `ResolutionLevel` inside the core, and the `Resize` of a `Queued` or `Running` phase. | `RenderPhase.h` |
+| `Level`, `FindResize` | The name of `ResolutionLevel` inside the core, and the `Resize` of a `Queued` or `Running` phase. | `RenderPhase.h` |
 | `TargetLevel`, `AppliedLevel`, `HoldingOf` | The level the actor is going to, the level its attached render has, and its holding. | `RenderPhase.h` |
 | `MayRelease`, `MayStepDown`, `MayEvict` | The budget's three questions: release holds in `Shown` with held intermediates, a step down only in `Shown`, an eviction in every phase except `Queued` and `Running`. | `RenderPhase.h` |
 | `UnpublishedDrawOf`, `ResizeProgressOf`, `AwaitedJob`, `FailedLevelOf`, `ScreenStepDownDue`, `PhaseName` | The unpublished draw, the running resize's progress, the awaited job, the refused level, whether the screen step-down hold is due, and the trace name of a phase. | `RenderPhase.h` |

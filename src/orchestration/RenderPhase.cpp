@@ -2,7 +2,7 @@
 #include "orchestration/RenderPhase.h"
 
 namespace BetterEnchantmentEffects::Orchestration {
-const Resize *ResizeIn(const RenderPhase &a_phase) noexcept {
+const Resize *FindResize(const RenderPhase &a_phase) noexcept {
   if (const Queued *queued = Get<Queued>(a_phase)) {
     return &queued->resize;
   }
@@ -10,7 +10,7 @@ const Resize *ResizeIn(const RenderPhase &a_phase) noexcept {
   return running ? &running->resize : nullptr;
 }
 
-Resize *ResizeIn(RenderPhase &a_phase) noexcept {
+Resize *FindResize(RenderPhase &a_phase) noexcept {
   if (Queued *queued = Get<Queued>(a_phase)) {
     return &queued->resize;
   }
@@ -27,7 +27,7 @@ IntermediateHolding HoldingOf(const RenderPhase &a_phase) noexcept {
   if (const Shown *shown = Get<Shown>(a_phase)) {
     return HoldingOf(shown->intermediates);
   }
-  const Resize *resize = ResizeIn(a_phase);
+  const Resize *resize = FindResize(a_phase);
   return resize ? resize->holding : IntermediateHolding::kHeld;
 }
 
@@ -67,7 +67,7 @@ bool MayStepDown(const RenderPhase &a_phase) noexcept {
 }
 
 bool MayEvict(const RenderPhase &a_phase) noexcept {
-  return !ResizeIn(a_phase);
+  return !FindResize(a_phase);
 }
 
 const UnpublishedDraw *UnpublishedDrawOf(const RenderPhase &a_phase) noexcept {
@@ -99,7 +99,7 @@ std::optional<Level> FailedLevelOf(const RenderPhase &a_phase) noexcept {
     return shown->failed->level;
   }
 
-  const Resize *resize = ResizeIn(a_phase);
+  const Resize *resize = FindResize(a_phase);
   if (!resize || !resize->failed) {
     return std::nullopt;
   }
