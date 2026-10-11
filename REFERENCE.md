@@ -3043,7 +3043,8 @@ cancel by the user instead of the load.
   causes a reinstall. A spawned NPC equips piece by piece just after it
   appears, so its first reinstalls follow its first install within a second.
 - An NPC out of view at its first install has an ideal level of eighth
-  (`LevelFor`). An unmeasured NPC takes full, as before 7c-3. Before
+  (`LevelFor`). An unmeasured NPC starts from full within the headroom.
+  Before
   7c-3 an NPC behind the camera installed at the level of its distance.
 - The headroom is the allowance less the planned bytes, with the
   **replaced holding** subtracted from the planned bytes first (`HeadroomOf`).
@@ -3074,9 +3075,11 @@ cancel by the user instead of the load.
   engine's measured holding (`BudgetSample::heldBytes`, `PlannedTargets`),
   which counts an actor only after its first render.
 - The player gets no headroom (`InstallBoundsOf`), so it takes its level
-  without the budget and adds no bytes. A first install without a screen
-  fraction, or with `ScreenResolution=false` (`TickSettings::sizeByScreen`),
-  gets no bound. It takes full without the budget and adds no bytes.
+  without the budget and adds no bytes. An NPC whose first install has no
+  screen fraction, or has `ScreenResolution=false`
+  (`TickSettings::sizeByScreen`), starts from full and takes the finest level
+  that fits the headroom (2026-10-11). Before that it got no bound and took
+  full without the budget, also under pressure.
 - The trace event `actor_place` gives the built `level` and the bound
   `finest_level`. When the bound has a headroom, it also gives
   `replaced_bytes`, `headroom_bytes` and `admitted_bytes`.
@@ -3545,8 +3548,8 @@ once per tick. "The engine runs the core" below says how.
 - `InstallBoundsOf` (`Budget.h`) is the one install bound for `Install` and
   `BuildAwaitedRender`: the render's target level, else the reinstall level,
   else the wanted level, with `HeadroomOf(budget, replaced)`. The player gets
-  no headroom. With `TickSettings::sizeByScreen` off, a non-player without a
-  level gets no bound.
+  no headroom. A non-player without a known or wanted level starts from full
+  with the headroom.
 - `RecordRenderResults` sets `renderedFrame` for every actor with a render in
   view with loaded 3D, because its `TickActor` draws it in the same tick.
 - `TickActor` conceals the slots in `Planning` as well as in

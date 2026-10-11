@@ -138,7 +138,7 @@ the helpers that tests and the engine's heartbeat also read.
 | `TickOutput` | The next `World`, the commands, the trace records and the log lines. | `Tick.h` |
 | `RecordSyncResults`, `RecordRenderResults`, `RunBudget`, `RunSync`, `RunLifecycle`, `Tick` | The five steps and their composition. | `Tick.h` |
 | `PlannedBytesOf` | The bytes the budget counts for one rendered actor or for the world: the level cost at the applied level and holding, plus the target level's full cost while a resize runs. | `Budget.h` |
-| `InstallBoundsOf` | The bound of an install: the target level, else the reinstall level, else the wanted level, with `HeadroomOf` the budget. The player gets no headroom. | `Budget.h` |
+| `InstallBoundsOf` | The bound of an install: the target level, else the reinstall level, else the wanted level, else full, with `HeadroomOf` the budget. The player gets no headroom. | `Budget.h` |
 | `BudgetActors`, `BudgetActorOf`, `BudgetActorsOf` | The planners' `BudgetActor` for each rendered actor, and whether any actor resizes. | `Budget.h` |
 | `WaitingStepUp`, `WaitingStepUpsOf` | Each live actor in view with a blocked step up, with its preemption request, largest screen fraction first. | `Budget.h` |
 | `EvictedActorsOf`, `LargestReturnBytes`, `FarthestTrackedDistance` | The evicted actors with their distances and return bytes, the largest return bytes, and the distance of the farthest actor with a state. | `Budget.h` |

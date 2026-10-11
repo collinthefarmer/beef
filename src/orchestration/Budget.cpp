@@ -469,12 +469,9 @@ InstallBounds InstallBoundsOf(const TrackedActor &a_record,
             std::nullopt};
   }
 
-  const std::optional<ResolutionLevel> level =
-      FirstLevel(a_record, a_sight, a_settings);
-  if (!level) {
-    return {};
-  }
-  return {*level, HeadroomOf(a_budget, a_replaced)};
+  return {FirstLevel(a_record, a_sight, a_settings)
+              .value_or(ResolutionLevel::kFull),
+          HeadroomOf(a_budget, a_replaced)};
 }
 
 namespace {

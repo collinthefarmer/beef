@@ -1,4 +1,4 @@
-Status: active (2026-10-11) on branch `pure-tick`. The findings of the user's code walk of the plugin (chapter 1, startup to one tick; chapter 2, the tick core through `RunSync`), collected for review in bulk. Nothing here is started unless marked; items that need the user's decision say so. Done and not listed: the budget and sync restructure (c7d4d4c), the render-phase state machine (5b1042c), the trace cleanup (e30c67b), `FindResize` (020c6f7), and the 2026-10-11 batch (the rename table, `ActorVisibility` and the nested `BudgetActor`, the traced `ApplyPhaseChange` in `Output.h`, `TickFacts` without `frameSyncs`, the install-order test, `Budget.cpp` in call-flow order), and the second batch (`Sync.cpp` and `Lifecycle.cpp` in call-flow order with one reporter per event, every `std::visit` as `Match`, `SameRenderValue` and `ExternalInputType` as `Match`).
+Status: active (2026-10-11) on branch `pure-tick`. The findings of the user's code walk of the plugin (chapter 1, startup to one tick; chapter 2, the tick core through `RunSync`), collected for review in bulk. Nothing here is started unless marked; items that need the user's decision say so. Done and not listed: the budget and sync restructure (c7d4d4c), the render-phase state machine (5b1042c), the trace cleanup (e30c67b), `FindResize` (020c6f7), and the 2026-10-11 batch (the rename table, `ActorVisibility` and the nested `BudgetActor`, the traced `ApplyPhaseChange` in `Output.h`, `TickFacts` without `frameSyncs`, the install-order test, `Budget.cpp` in call-flow order), and the second batch (`Sync.cpp` and `Lifecycle.cpp` in call-flow order with one reporter per event, every `std::visit` as `Match`, `SameRenderValue` and `ExternalInputType` as `Match`), and install bounds with headroom for an NPC with no known level.
 
 # Code review backlog
 
@@ -10,7 +10,6 @@ The user reads the code in an nvim pane that the `walk` skill drives. Each findi
 
 | Item | Question | Recommendation |
 |---|---|---|
-| Install bounds | `InstallBoundsOf` returns the default bounds (full level, **no headroom**) for an NPC with no known level when `ScreenResolution` is off or the actor is not measured. Those installs ignore the render target budget, also under pressure. | Full level within the headroom: `{kFull, HeadroomOf(...)}`. |
 | Application ledger | `docs/plans/application-ledger-2026-10-10.md`, Q1: accept the behaviour changes a to e? | Yes. |
 | Staged tick output | Build the tick output in stages, or move it between stages as distinct types. The user is not convinced by the typed-changes design (each step returns a change record that one `Applied` function writes). | Discuss before a plan is drafted. |
 

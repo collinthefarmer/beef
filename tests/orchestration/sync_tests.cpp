@@ -535,8 +535,8 @@ void ANewActorInstallsAtItsWantedLevel() {
         "an actor out of view installs at the coarsest level");
   const InstallBounds unmeasured = InstallBoundsOf(
       record, Seen(true, std::nullopt), budget, 0, TickSettings{});
-  Check(unmeasured == InstallBounds{},
-        "an unmeasured actor installs without a bound");
+  Check(unmeasured == InstallBounds{ResolutionLevel::kFull, 800},
+        "an unmeasured actor installs at the finest level within the headroom");
   TrackedActor evicted;
   evicted.reinstallLevel = ResolutionLevel::kQuarter;
   const InstallBounds back =
@@ -558,14 +558,16 @@ void ReturnBytesFollowTheTarget() {
         "an actor without a render returns none");
 }
 
-void ScreenSizingOffKeepsTheOldBound() {
+void ScreenSizingOffStartsAtFullWithinTheHeadroom() {
   const TrackedActor record;
   BudgetState budget;
   budget.allowance = 1000;
   TickSettings off;
   off.sizeByScreen = false;
-  Check(InstallBoundsOf(record, Seen(false), budget, 0, off) == InstallBounds{},
-        "with screen sizing off a new actor installs without a bound");
+  Check(InstallBoundsOf(record, Seen(false), budget, 0, off) ==
+            InstallBounds{ResolutionLevel::kFull, 1000},
+        "with screen sizing off a new actor installs at the finest level "
+        "within the headroom");
   TrackedActor returning;
   returning.reinstallLevel = ResolutionLevel::kHalf;
   Check(InstallBoundsOf(returning, Seen(false), budget, 0, off).finestLevel ==
@@ -598,6 +600,6 @@ int main() {
   ThePlayerInstallsWithoutHeadroom();
   ANewActorInstallsAtItsWantedLevel();
   ReturnBytesFollowTheTarget();
-  ScreenSizingOffKeepsTheOldBound();
+  ScreenSizingOffStartsAtFullWithinTheHeadroom();
   return test::Finish("orchestration_sync");
 }
