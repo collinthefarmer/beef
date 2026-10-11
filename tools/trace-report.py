@@ -9,8 +9,7 @@ from typing import Iterator
 
 SEGMENT = re.compile(r'^(.*?)(?:-(\d{1,4}))?\.jsonl$')
 SESSION = re.compile(r'-?\d+')
-TALLIES = (('malformed', 'Malformed/partial lines'), ('skipped', 'Whole-binding restore skips'),
-           ('aliases', 'Acquisitions aliasing a live presenter'),
+TALLIES = (('malformed', 'Malformed/partial lines'), ('aliases', 'Acquisitions aliasing a live presenter'),
            ('mismatches', 'Acquisitions with wrong renderer'),
            ('presenter_rejected', 'Presenter rejections'), ('lease_rejected', 'Texture lease rejections'))
 
@@ -49,8 +48,8 @@ def listing(owners: Counter[str]) -> str:
 
 
 def report(segments: list[Path], slots: int | None) -> None:
-    counts, tally, recycled, heartbeat, peaks, shared, transitions, rendering, latest = (
-        Counter() for _ in range(9))
+    counts, tally, recycled, heartbeat, peaks, transitions, rendering, latest = (
+        Counter() for _ in range(8))
     operations, readbacks, syncs, pages, survivors = {}, defaultdict(lambda: [0, 0, 0]), [], [], []
     gpu_spans, gpu_ticks = defaultdict(lambda: [0, 0, 0]), Counter()
     startup, sessions, live, owners, worst, last_session = {}, set(), {}, {}, (0, 0), None
@@ -62,11 +61,11 @@ def report(segments: list[Path], slots: int | None) -> None:
         kind, action = str(event.get('event', 'unknown')), fields.get('action')
         action = action if isinstance(action, str) else ''
         session = str(event.get('session', 'unknown'))
-        operation = str(event.get('operation', event.get('command', 0)))
+        operation = str(event.get('operation', 0))
         target = str(fields.get('target'))
         if kind == 'rotated':
             tally['rotations'] += 1
-            startup = startup or {k: v for k, v in fields.items() if k in ('build', 'source', 'source_sha256')}
+            startup = startup or {k: v for k, v in fields.items() if k in ('build', 'source')}
         if SESSION.fullmatch(session) and (last_session is None or int(session) > last_session):
             if last_session is not None and owners:
                 survivors.append((last_session, int(session), Counter(owners.values())))
@@ -83,7 +82,6 @@ def report(segments: list[Path], slots: int | None) -> None:
             live.pop(target, None)
             recycled[target] += action == 'recycle'
         elif kind == 'texture':
-            shared[action.removesuffix('_shared')] += action.endswith('_shared')
             tally[action] += action in ('lease_rejected', 'presenter_rejected')
         elif kind == 'metrics' and action == 'sync':
             syncs.append(number(fields, 'us'))
@@ -112,15 +110,14 @@ def report(segments: list[Path], slots: int | None) -> None:
         counts[kind] += 1
         sessions.add(session)
         startup = fields if kind == 'startup' else startup
-        if kind in ('operation', 'command'):
-            operations[operation] = fields.get('reason', 'unknown')
+        if kind == 'operation' and 'reason' in fields:
+            operations[operation] = fields['reason']
         if kind == 'retire' and action == 'begin':
             transitions[operation] += 1
-        tally['skipped'] += kind == 'restore' and fields.get('decision') == 'skip_all'
         if kind == 'page':
             pages.append((event.get('seq'), fields.get('page'), fields.get('selection')))
     print(f"Build: {startup.get('build', 'not recorded')}")
-    print(f"Source: {startup.get('source', startup.get('source_sha256', 'not recorded'))}")
+    print(f"Source: {startup.get('source', 'not recorded')}")
     ordered_sessions = sorted(sessions, key=lambda s: (0, int(s), '') if SESSION.fullmatch(s) else (1, 0, s))
     print(f"Sessions: {', '.join(ordered_sessions)}")
     print(f'Events: {dict(sorted(counts.items()))}')
@@ -161,8 +158,6 @@ def report(segments: list[Path], slots: int | None) -> None:
                   f'max {peak / 1000:.2f} ms')
     for op, (count, total, peak) in sorted(readbacks.items()):
         print(f'  Readback {op}: {count}; mean {total / count / 1000:.1f} ms, max {peak / 1000:.1f} ms')
-    if +shared:
-        print(f'Cross-actor adoptions (a shared target reused, no new one): {listing(+shared)}')
     if survivors or owners:
         print('Live targets by owner (acquired, not yet recycled or destroyed):')
         for before, after, crossing in survivors:

@@ -59,19 +59,17 @@ void SessionQueue::Post(Task a_task) {
   {
     std::scoped_lock lock{state_->lock};
     if (state_->loading) {
-      Trace::EmitSafely(Trace::Event::kQueue,
-                        {{"action", "post_while_loading"}});
       return;
     }
     generation = state_->generation;
   }
+
   const auto trace = Trace::Current();
   Trace::EmitSafely(
       Trace::Event::kQueue,
       {{"action", "post"}, {"queue_generation", std::to_string(generation)}});
-  const bool submitted = state_->submit([weak = std::weak_ptr<State>{state_},
-                                         generation, trace,
-                                         task = std::move(a_task)] {
+  state_->submit([weak = std::weak_ptr<State>{state_}, generation, trace,
+                  task = std::move(a_task)] {
     const Trace::Scope scope{trace};
     const std::shared_ptr<State> state = weak.lock();
     if (!state) {
@@ -80,18 +78,11 @@ void SessionQueue::Post(Task a_task) {
     {
       std::scoped_lock lock{state->lock};
       if (!state->Current(generation)) {
-        Trace::EmitSafely(Trace::Event::kQueue,
-                          {{"action", "stale_post"},
-                           {"queue_generation", std::to_string(generation)}});
         return;
       }
     }
-    Trace::EmitSafely(Trace::Event::kQueue, {{"action", "execute_post"}});
     task();
   });
-  if (!submitted) {
-    Trace::EmitSafely(Trace::Event::kQueue, {{"action", "post_rejected"}});
-  }
 }
 
 bool SessionQueue::MarkStale(std::uint32_t a_actorID) {
@@ -159,7 +150,6 @@ bool SessionQueue::SubmitSync(const std::shared_ptr<State> &a_state,
         {
           std::scoped_lock lock{state->lock};
           if (!state->Current(a_generation)) {
-            TraceSync("stale_sync", a_actorID, a_generation);
             return;
           }
           state->pending.erase(a_actorID);

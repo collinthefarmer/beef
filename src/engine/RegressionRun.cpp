@@ -28,7 +28,6 @@ struct RunningCases {
   Regression::RunState state;
   RunWorld world;
   Regression::CrowdFacts crowd;
-  std::optional<std::uint32_t> cameraState;
 };
 using RunStage = std::variant<AwaitingMainMenu, LoadingSave, RunningCases>;
 
@@ -131,12 +130,7 @@ void TraceLine(const Regression::ResultLine &a_line) {
                                {"window", a_window.window},
                                {"edge", "end"}});
           },
-          [](const Regression::RunEnd &a_end) {
-            Trace::EmitSafely(Trace::Event::kOperation,
-                              {{"action", "regression.end"},
-                               {"result", std::string{Regression::OutcomeName(
-                                              a_end.outcome)}}});
-          },
+          [](const Regression::RunEnd &) {},
       },
       a_line);
 }
@@ -323,14 +317,7 @@ void AdvanceRegressionRun() {
   Regression::Observation seen = Observe(running->world);
   TraceCrowdChange(running->crowd, seen.crowd);
   running->crowd = seen.crowd;
-  const std::optional<std::uint32_t> cameraState = CameraStateID();
-  if (cameraState != running->cameraState) {
-    Trace::EmitSafely(
-        Trace::Event::kOperation,
-        {{"action", "regression.camera"},
-         {"state", cameraState ? std::to_string(*cameraState) : "none"}});
-    running->cameraState = cameraState;
-  }
+
   Regression::Advanced next =
       Regression::Advance(std::move(running->state), seen);
   running->state = std::move(next.state);

@@ -262,8 +262,7 @@ GeneratedPlan Generate(Random &random) {
 struct Totals {
   std::size_t evaluations = 0, revisited = 0, redundant = 0, repeated = 0,
               unrequired = 0, unsound = 0, inexactOutputs = 0,
-              inexactInputs = 0, releases = 0, restores = 0,
-              observedRestores = 0;
+              inexactInputs = 0, releases = 0, restores = 0;
 };
 struct ReleasedOutput {
   Fake value = 0;
@@ -345,9 +344,7 @@ struct Harness {
         -> std::expected<std::vector<RenderValueRef>, std::string> {
       return VisibleOperands(stack, control);
     };
-    const auto actual =
-        execution.Evaluate(output, execute, same, select, {},
-                           [&](RenderStepId) { ++totals.observedRestores; });
+    const auto actual = execution.Evaluate(output, execute, same, select);
     Reference reference{plan, inputs, {}, {}};
     const auto expected = reference.Evaluate(output);
     if (actual.has_value() != expected.has_value() ||
@@ -493,7 +490,6 @@ Totals Run(BaseImport baseImport) {
     sum.inexactInputs += t.inexactInputs;
     sum.releases += t.releases;
     sum.restores += t.restores;
-    sum.observedRestores += t.observedRestores;
   }
   return sum;
 }
@@ -520,8 +516,6 @@ int main() {
               "changed");
   Check(totals.releases > 1000 && totals.restores > 100,
         "the generator releases idle steps and restores them on demand");
-  test::Equal(totals.observedRestores, totals.restores,
-              "the restore observer sees every restore");
   const auto handleOnly = Run(BaseImport::kHandleOnly);
   Check(handleOnly.unsound > 0,
         "the soundness check detects a chained base imported without its "

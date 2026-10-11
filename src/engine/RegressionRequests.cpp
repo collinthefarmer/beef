@@ -38,16 +38,7 @@ void TraceRecipeFingerprints(std::span<const std::string> a_recipes) {
   Trace::EmitSafely(Trace::Event::kOperation, fields);
 }
 
-void Finish(Regression::Outcome a_outcome) {
-  request.state = a_outcome;
-  Trace::EmitSafely(
-      Trace::Event::kOperation,
-      {{"action", "regression.result"},
-       {"request", std::to_string(request.id)},
-       {"actor", std::to_string(request.actor)},
-       {"operation", request.kind == RequestKind::kRetire ? "retire" : "apply"},
-       {"result", std::string{Regression::OutcomeName(a_outcome)}}});
-}
+void Finish(Regression::Outcome a_outcome) { request.state = a_outcome; }
 
 bool InstanceUnderTest(const LiveActor &a_state, std::size_t a_instance) {
   if (recipeUnderTest.empty()) {
