@@ -27,12 +27,14 @@ struct FrameSyncs {
   std::size_t installs = 0;
 };
 
-[[nodiscard]] bool InstallMayStart(FrameSyncs a_frame) noexcept;
+[[nodiscard]] bool CanInstallThisTick(FrameSyncs a_frame) noexcept;
 [[nodiscard]] FrameSyncs Synced(FrameSyncs a_frame, std::uint64_t a_us,
                                 bool a_installed) noexcept;
 [[nodiscard]] std::optional<std::size_t>
 NextInstall(std::span<const WaitingInstall> a_waiting, FrameSyncs a_frame,
             std::uint32_t a_nowMS) noexcept;
+[[nodiscard]] std::vector<std::uint32_t>
+InstallOrder(std::span<const WaitingInstall> a_waiting, std::uint32_t a_nowMS);
 [[nodiscard]] std::vector<WaitingInstall>
 Deferred(std::vector<WaitingInstall> a_waiting, std::uint32_t a_actor,
          std::uint32_t a_nowMS);

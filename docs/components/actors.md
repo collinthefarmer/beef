@@ -177,7 +177,7 @@ RunSync ── SyncStale ── Decide                              orchestratio
   │  KindOf ──▶ the sync log (World::syncLog)               actors/SyncLog.cpp
   ▼
 RunSync, after Decide                                       orchestration/Sync.cpp
-  │  an install that InstallMayStart refuses: KeepModels,
+  │  an install that CanInstallThisTick refuses: KeepModels,
   │    the waiting installs, trace sync_deferred
   │  no state:    Forget
   │  no commands: KeepModels, syncState = state, SettleApplications

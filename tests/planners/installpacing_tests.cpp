@@ -17,12 +17,12 @@ WaitingInstall Other(std::uint32_t a_actor, bool a_inView, float a_fraction,
 }
 
 void BudgetAdmitsAtLeastOneInstall() {
-  Check(InstallMayStart({}), "an empty frame starts an install");
-  Check(InstallMayStart({kInstallBudgetUs * 4, 0}),
+  Check(CanInstallThisTick({}), "an empty frame starts an install");
+  Check(CanInstallThisTick({kInstallBudgetUs * 4, 0}),
         "a frame of retires only still starts its first install");
-  Check(!InstallMayStart({kInstallBudgetUs, 1}),
+  Check(!CanInstallThisTick({kInstallBudgetUs, 1}),
         "a frame that spent the budget starts no second install");
-  Check(InstallMayStart({kInstallBudgetUs - 1, 3}),
+  Check(CanInstallThisTick({kInstallBudgetUs - 1, 3}),
         "a frame inside the budget starts another install");
   const FrameSyncs retired = Synced({}, 20000, false);
   Check(retired.installs == 0 && retired.spentUs == 20000,
@@ -51,6 +51,15 @@ void OrderPrefersLargerOnScreen() {
                                            Other(2, false, 0.0f, 600)};
   Check(NextInstall(hidden, {}, kNow) == std::optional<std::size_t>{1},
         "among actors out of view the oldest installs first");
+}
+
+void InstallOrderSortsTheWholeQueue() {
+  const std::vector<WaitingInstall> waiting{
+      Other(1, false, 0.0f, 900), Other(2, true, 0.2f, 300),
+      Other(3, true, 0.7f, 10), Other(4, true, 0.5f, 500)};
+  Check(InstallOrder(waiting, kNow) == std::vector<std::uint32_t>{3, 4, 2, 1},
+        "the queue sorts in install order, first install first");
+  Check(InstallOrder({}, kNow).empty(), "an empty queue has no order");
 }
 
 void OldEntriesAreNotStarved() {
@@ -91,6 +100,7 @@ void EntriesKeepTheirFirstDeferral() {
 }
 
 int main() {
+  InstallOrderSortsTheWholeQueue();
   BudgetAdmitsAtLeastOneInstall();
   OrderPutsThePlayerFirst();
   OrderPrefersLargerOnScreen();

@@ -1,6 +1,7 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #pragma once
 
+#include "Core.h"
 #include "actors/Actor.h"
 #include "actors/SyncLog.h"
 #include "orchestration/RenderPhase.h"
@@ -15,11 +16,18 @@
 #include <cstdint>
 #include <map>
 #include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
 namespace BetterEnchantmentEffects::Orchestration {
 using ActorId = Actors::ActorId;
+using ActorSet = std::set<ActorId>;
+using ActorList = std::vector<ActorId>;
+using MaybeActor = std::optional<ActorId>;
+using SyncState = std::optional<Actors::ActorState>;
+using MaybeBytes = std::optional<std::uint64_t>;
+using FormIds = std::vector<std::uint32_t>;
 
 [[nodiscard]] constexpr std::uint32_t FormOf(ActorId a_actor) noexcept {
   return static_cast<std::uint32_t>(a_actor);
@@ -47,7 +55,7 @@ struct InstalledRender {
 
 struct ActorRecord {
   Sighting sight;
-  std::optional<Actors::ActorState> syncState;
+  SyncState syncState;
   std::optional<ResolutionLevel> reinstallLevel;
   std::optional<std::uint64_t> returnBytes;
   std::optional<InstalledRender> render;
@@ -67,4 +75,14 @@ struct World {
   std::vector<Actors::SyncRecord> syncLog;
   Timers timers;
 };
+
+[[nodiscard]] inline ActorRecord *TrackedActor(World &a_world,
+                                               ActorId a_actor) noexcept {
+  return Lookup(a_world.actors, a_actor);
+}
+
+[[nodiscard]] inline const ActorRecord *TrackedActor(const World &a_world,
+                                                     ActorId a_actor) noexcept {
+  return Lookup(a_world.actors, a_actor);
+}
 }

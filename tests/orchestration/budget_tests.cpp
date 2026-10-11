@@ -527,6 +527,12 @@ void PreemptsForABlockedStepUp() {
   Check(ActionsOf(RunBudget(busy, FactsWithCap(MiB(700))), "budget_step_down")
             .empty(),
         "no preemption while a resize is queued or running");
+
+  World away = world;
+  away.actors[kFirst].sight = OutOfView();
+  Check(ActionsOf(RunBudget(away, FactsWithCap(MiB(600))), "budget_step_down")
+            .empty(),
+        "an actor waiting for room out of view gets no preemption");
 }
 }
 

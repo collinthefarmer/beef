@@ -136,7 +136,7 @@ the helpers that tests and the engine's heartbeat also read.
 | `PlannedBytesOf` | The bytes the budget counts for one rendered actor or for the world: the level cost at the applied level and holding, plus the target level's full cost while a resize runs. | `Budget.h` |
 | `InstallBoundOf` | The bound of an install: the target level, else the reinstall level, else the wanted level, with `HeadroomOf` the budget. The player gets no headroom. | `Budget.h` |
 | `BudgetActors`, `BudgetActorOf`, `BudgetActorsOf` | The planners' `BudgetActor` for each rendered actor, and whether any actor resizes. | `Budget.h` |
-| `BlockedStepUp`, `BlockedStepUpsOf` | Each live actor in view with a blocked step up, with its preemption request, largest screen fraction first. | `Budget.h` |
+| `BlockedStepUp`, `WaitingStepUpsOf` | Each live actor in view with a blocked step up, with its preemption request, largest screen fraction first. | `Budget.h` |
 | `EvictedActorsOf`, `LargestReturnBytes`, `FarthestTrackedDistance` | The evicted actors with their distances and return bytes, the largest return bytes, and the distance of the farthest actor with a state. | `Budget.h` |
 | `PlannerMs`, `ReturnBytesOf`, `RangeChanged` | The 32-bit planner time, the return bytes of a record, and whether an actor's range differs from what it has installed. | `Sync.h` |
 | `ActorSightOf`, `TickActorFor`, `EventName` | The planners' `ActorSight` of a sighting, the `TickActor` flags of a phase, and the trace name of an event. | `Lifecycle.h` |
@@ -171,7 +171,7 @@ Tick(world, facts)                                         Tick.cpp
   │     each finished job through PlanBuilt or FailPlan; rendered frames
   ├─ 3 RunBudget (only with a memory sample)                Budget.cpp
   │     NextBudget; under pressure RelieveBudget: releases, one
-  │     step down, or ShrinkBudgetRadius; else PreemptForBlockedStepUp;
+  │     step down, or ShrinkBudgetRadius; else MakeRoomForWaitingStepUp;
   │     GrowBudgetRadius
   ├─ 4 RunSync                                              Sync.cpp
   │     forget unloaded, failed and requested actors;

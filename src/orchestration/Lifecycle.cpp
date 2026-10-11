@@ -1,5 +1,6 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #include "orchestration/Lifecycle.h"
+#include "orchestration/Output.h"
 
 #include "orchestration/Budget.h"
 #include "orchestration/PhaseChanges.h"
@@ -60,21 +61,16 @@ TraceRecord IgnoredTrace(ActorId a_actor, std::string_view a_phase,
                   {"event", std::string{a_event}}});
 }
 
-void Append(std::vector<Command> &a_into, std::vector<Command> a_from) {
-  a_into.insert(a_into.end(), std::make_move_iterator(a_from.begin()),
-                std::make_move_iterator(a_from.end()));
-}
-
 void Apply(TickOutput &a_out, ActorId a_actor, InstalledRender &a_render,
            PhaseChange a_change, std::string_view a_event) {
   const std::string_view before = PhaseName(a_render.phase);
   if (a_change.ignored) {
-    a_out.trace.push_back(IgnoredTrace(a_actor, before, a_event));
+    AddTrace(a_out, IgnoredTrace(a_actor, before, a_event));
   }
-  a_render.phase = std::move(a_change.phase);
+  a_render.phase = a_change.phase;
   if (const std::string_view after = PhaseName(a_render.phase);
       after != before) {
-    a_out.trace.push_back(PhaseTrace(a_actor, before, after, a_event));
+    AddTrace(a_out, PhaseTrace(a_actor, before, after, a_event));
   }
   Append(a_out.commands, std::move(a_change.commands));
 }
@@ -105,14 +101,14 @@ void CreateRender(TickOutput &a_out, const ActorEvent &a_event,
   std::optional<PhaseChange> created =
       PhaseFor(a_event.actor, a_event.event, a_frame);
   if (!created) {
-    a_out.trace.push_back(IgnoredTrace(a_event.actor, kNoPhase, event));
+    AddTrace(a_out, IgnoredTrace(a_event.actor, kNoPhase, event));
     return;
   }
   ActorRecord &record = a_out.world.actors[a_event.actor];
-  record.render = InstalledRender{std::move(created->phase),
-                                  CostsOf(a_event.event), std::nullopt};
-  a_out.trace.push_back(PhaseTrace(a_event.actor, kNoPhase,
-                                   PhaseName(record.render->phase), event));
+  record.render =
+      InstalledRender{created->phase, CostsOf(a_event.event), std::nullopt};
+  AddTrace(a_out, PhaseTrace(a_event.actor, kNoPhase,
+                             PhaseName(record.render->phase), event));
   Append(a_out.commands, std::move(created->commands));
 }
 
@@ -224,15 +220,15 @@ void BlockStepUp(TickOutput &a_out, ActorId a_actor, InstalledRender &a_render,
   }
   live->stepUpBlockedFrom = a_step.from;
   const BudgetState &budget = a_out.world.budget;
-  a_out.trace.push_back(Metrics(
-      {{"action", "resolution_blocked"},
-       {"actor", ActorText(a_actor)},
-       {"from", std::string{LevelName(a_step.from)}},
-       {"to", std::string{LevelName(a_step.to)}},
-       {"reason", std::string{AdmissionName(a_admission)}},
-       {"added_bytes", std::to_string(a_added)},
-       {"planned_bytes", std::to_string(budget.planned)},
-       {"allowance_bytes", std::to_string(budget.allowance.value_or(0))}}));
+  AddTrace(a_out, Metrics({{"action", "resolution_blocked"},
+                           {"actor", ActorText(a_actor)},
+                           {"from", std::string{LevelName(a_step.from)}},
+                           {"to", std::string{LevelName(a_step.to)}},
+                           {"reason", std::string{AdmissionName(a_admission)}},
+                           {"added_bytes", std::to_string(a_added)},
+                           {"planned_bytes", std::to_string(budget.planned)},
+                           {"allowance_bytes",
+                            std::to_string(budget.allowance.value_or(0))}}));
 }
 
 bool AdmitStepUp(TickOutput &a_out, ActorId a_actor, InstalledRender &a_render,
@@ -260,13 +256,13 @@ void StepLevel(TickOutput &a_out, ActorId a_actor, ActorRecord &a_record,
       !AdmitStepUp(a_out, a_actor, render, *step)) {
     return;
   }
-  a_out.trace.push_back(
-      Metrics({{"action", "resolution_level"},
-               {"actor", ActorText(a_actor)},
-               {"from", std::string{LevelName(step->from)}},
-               {"to", std::string{LevelName(step->to)}},
-               {"reason", "screen"},
-               {"screen_fraction", FractionText(sight.screenFraction)}}));
+  AddTrace(a_out,
+           Metrics({{"action", "resolution_level"},
+                    {"actor", ActorText(a_actor)},
+                    {"from", std::string{LevelName(step->from)}},
+                    {"to", std::string{LevelName(step->to)}},
+                    {"reason", "screen"},
+                    {"screen_fraction", FractionText(sight.screenFraction)}}));
   Apply(a_out, a_actor, render, WantLevel(a_actor, render.phase, step->to),
         "level_wanted");
 }
@@ -296,7 +292,7 @@ ScheduledResizes ScheduleResizes(TickOutput &a_out, std::uint64_t a_frame) {
         SwapDue(*progress,
                 DrawOf({record.sight.inView, draw->drawn, draw->total}),
                 a_frame)) {
-      a_out.commands.push_back(SwapResize{actor});
+      Issue(a_out, SwapResize{actor});
       swapping.insert(actor);
     } else if (progress) {
       ++running;
@@ -318,7 +314,7 @@ ScheduledResizes ScheduleResizes(TickOutput &a_out, std::uint64_t a_frame) {
   }
   if (const std::optional<ResolutionLevel> to =
           TargetLevel(found->second.render->phase)) {
-    a_out.commands.push_back(StartResize{found->first, *to});
+    Issue(a_out, StartResize{found->first, *to});
     scheduled.starting = found->first;
   }
   return scheduled;
@@ -336,14 +332,16 @@ void FinishFirstDraw(TickOutput &a_out, ActorId a_actor,
   if (!end) {
     return;
   }
-  a_out.trace.push_back(Metrics(
-      {{"action", "first_draw"},
-       {"actor", ActorText(a_actor)},
-       {"end", std::string{FirstDrawEndName(*end)}},
-       {"frames", std::to_string(a_frame - std::min(a_frame, draw.beganFrame))},
-       {"draw_ticks", std::to_string(progress.drawTicks)},
-       {"stacks", std::to_string(progress.stacks)},
-       {"drawn", std::to_string(progress.drawn)}}));
+  AddTrace(
+      a_out,
+      Metrics({{"action", "first_draw"},
+               {"actor", ActorText(a_actor)},
+               {"end", std::string{FirstDrawEndName(*end)}},
+               {"frames",
+                std::to_string(a_frame - std::min(a_frame, draw.beganFrame))},
+               {"draw_ticks", std::to_string(progress.drawTicks)},
+               {"stacks", std::to_string(progress.stacks)},
+               {"drawn", std::to_string(progress.drawn)}}));
   Apply(a_out, a_actor, a_render, EndFirstDraw(a_render.phase),
         "first_draw_ended");
 }
@@ -460,13 +458,13 @@ TickOutput RunLifecycle(World a_world, const TickFacts &a_facts) {
   }
   for (const auto &[actor, record] : out.world.actors) {
     if (RenderLoaded(record)) {
-      out.commands.push_back(TickActorFor(actor, record.render->phase,
-                                          record.sight, a_facts.settings));
+      Issue(out, TickActorFor(actor, record.render->phase, record.sight,
+                              a_facts.settings));
     }
   }
   if (std::optional<DrawUnpublished> draw =
           UnpublishedDraws(out.world, scheduled.swapping, a_facts.settings)) {
-    out.commands.push_back(std::move(*draw));
+    Issue(out, std::move(*draw));
   }
   return out;
 }

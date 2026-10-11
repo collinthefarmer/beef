@@ -1702,7 +1702,7 @@ them:
 - `FrameSyncs` holds the install time spent and the install count.
   `RunSync` starts each tick from `TickFacts::frameSyncs`, which the engine
   always sends empty.
-- `InstallMayStart` lets an install start when no install ran yet or when
+- `CanInstallThisTick` lets an install start when no install ran yet or when
   less than 8 ms (`kInstallBudgetUs`) was spent. The core cannot measure
   install time, so it charges each issued install the full `kInstallBudgetUs`
   (`Synced`). At most one install therefore starts per tick.
@@ -1719,7 +1719,7 @@ them:
   at once.
 - `RunSync` refreshes each waiting entry's role, view and screen fraction
   from the sightings (`RefreshedWaiting`). The player counts as in view.
-- `RunSync` decides the stale actors in this order (`InSyncOrder`): the
+- `RunSync` decides the stale actors in this order (`InstallOrder` and `OrderedBy`): the
   waiting actors first, in `NextInstall` order, then the others.
 - `NextInstall` orders the waiting entries: an entry that waited 1 s or more
   (`kInstallWaitLimitMS`) first, the oldest first; then the player; then
@@ -3006,9 +3006,9 @@ cancel by the user instead of the load.
   until an eviction or an unload freed bytes. In the session of 2026-10-08
   two NPCs stayed blocked for more than 4 minutes while NPCs farther away
   held full.
-- On each memory sample without pressure, `PreemptForBlockedStepUp`
+- On each memory sample without pressure, `MakeRoomForWaitingStepUp`
   (`orchestration/Budget.cpp`) lists the blocked NPCs in view that still
-  want a finer level, largest screen fraction first (`BlockedStepUpsOf`).
+  want a finer level, largest screen fraction first (`WaitingStepUpsOf`).
   For each, it asks `PreemptionCandidate` for one NPC to step down, and it
   acts on the first answer.
 - A candidate holds a level finer than it wants. It is out of view, or its
@@ -3186,7 +3186,7 @@ cancel by the user instead of the load.
   ring.
 - An evicted NPC has no render. The core therefore records its **return
   bytes** in `ActorRecord::returnBytes` when it stops tracking a render
-  (`RetireRender`, `orchestration/Sync.cpp`): in the tick it issues `Retire`,
+  (`DropRender`, `orchestration/Sync.cpp`): in the tick it issues `Retire`,
   or when a `Retired` result arrives.
 - The return bytes are the bytes with intermediates at the render's target
   level (`ReturnBytesOf`). A return installs no finer than that level
@@ -3199,7 +3199,7 @@ cancel by the user instead of the load.
   the radius. It costs the largest return bytes recorded for any actor
   (`LargestReturnBytes`), and at most one unpriced NPC returns per growth
   step (`kUnpricedPerGrowth`). The price can be too low for one NPC. If that
-  NPC starts pressure, the radius evicts it and `RetireRender` records its
+  NPC starts pressure, the radius evicts it and `DropRender` records its
   real bytes, so the same NPC cannot start a second cycle. The limit of one
   keeps the error to one NPC per step.
 - The ring must fit the headroom (`HeadroomOf`) less a margin of half the
@@ -3596,7 +3596,7 @@ once per tick. "The engine runs the core" below says how.
   first, in `NextInstall` precedence, then the rest. Each goes through
   `Actors::Advance` with the effective evict distance (the setting or the
   budget radius) and the actor's requested reinstall mode.
-- An install that `InstallMayStart` refuses is deferred: the old installed
+- An install that `CanInstallThisTick` refuses is deferred: the old installed
   plan's models are kept, the actor joins the waiting installs, and the
   trace records `sync_deferred`. Its state is not recorded, so the next
   observation decides again.

@@ -6,8 +6,10 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <ranges>
+#include <span>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -247,6 +249,95 @@ template <class Range, class Pred>
     -> decltype(&*std::ranges::begin(a_range)) {
   const auto found = std::ranges::find_if(a_range, a_predicate);
   return found == std::ranges::end(a_range) ? nullptr : &*found;
+}
+
+template <class T>
+[[nodiscard]] std::optional<T> Coalesce(std::optional<T> a_first,
+                                        std::optional<T> a_second) {
+  return a_first ? std::move(a_first) : std::move(a_second);
+}
+
+template <class Items, class Order, class Proj>
+[[nodiscard]] auto OrderedBy(const Items &a_items, const Order &a_order,
+                             Proj a_key)
+    -> std::vector<const std::ranges::range_value_t<Items> *> {
+  using Item = std::ranges::range_value_t<Items>;
+  const auto rank = [&](const Item *a_item) {
+    const auto found = std::ranges::find(a_order, std::invoke(a_key, *a_item));
+    return static_cast<std::size_t>(
+        std::ranges::distance(std::ranges::begin(a_order), found));
+  };
+  std::vector<const Item *> ordered;
+  for (const Item &item : a_items) {
+    ordered.push_back(&item);
+  }
+  std::ranges::stable_sort(ordered, {}, rank);
+  return ordered;
+}
+
+template <class Items, class Order, class Proj>
+void OrderedBy(const Items &&, const Order &, Proj) = delete;
+
+template <class Map, class Key>
+[[nodiscard]] auto Lookup(Map &a_map, const Key &a_key)
+    -> decltype(&a_map.find(a_key)->second) {
+  const auto found = a_map.find(a_key);
+  return found == a_map.end() ? nullptr : &found->second;
+}
+
+template <class T> inline constexpr bool IsOptional = false;
+template <class T> inline constexpr bool IsOptional<std::optional<T>> = true;
+
+template <class Range, class Proj>
+[[nodiscard]] auto MaxOf(const Range &a_range, Proj a_projection)
+    -> std::invoke_result_t<Proj &, const std::ranges::range_value_t<Range> &> {
+  using Result =
+      std::invoke_result_t<Proj &, const std::ranges::range_value_t<Range> &>;
+  static_assert(IsOptional<Result>,
+                "MaxOf needs a projection that returns std::optional");
+  Result largest;
+  for (const auto &item : a_range) {
+    Result value = a_projection(item);
+    if (!value || (largest && !(*largest < *value))) {
+      continue;
+    }
+    largest = std::move(value);
+  }
+  return largest;
+}
+
+template <class Range, class Fn>
+[[nodiscard]] auto Map(const Range &a_range, Fn a_function) -> std::vector<
+    std::invoke_result_t<Fn &, const std::ranges::range_value_t<Range> &>> {
+  std::vector<
+      std::invoke_result_t<Fn &, const std::ranges::range_value_t<Range> &>>
+      mapped;
+  if constexpr (std::ranges::sized_range<const Range>) {
+    mapped.reserve(std::ranges::size(a_range));
+  }
+  for (const auto &item : a_range) {
+    mapped.push_back(a_function(item));
+  }
+  return mapped;
+}
+
+template <class Range, class Fn>
+[[nodiscard]] auto Choose(const Range &a_range, Fn a_function)
+    -> std::vector<typename std::invoke_result_t<
+        Fn &, const std::ranges::range_value_t<Range> &>::value_type> {
+  using Result =
+      std::invoke_result_t<Fn &, const std::ranges::range_value_t<Range> &>;
+  static_assert(IsOptional<Result>,
+                "Choose needs a function that returns std::optional");
+  std::vector<typename Result::value_type> kept;
+  for (const auto &item : a_range) {
+    Result value = a_function(item);
+    if (!value) {
+      continue;
+    }
+    kept.push_back(std::move(*value));
+  }
+  return kept;
 }
 
 template <class E> struct Named {

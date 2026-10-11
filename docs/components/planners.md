@@ -549,7 +549,7 @@ PSGeneratedStack, or PSStack until the compile finishes     render/GeneratedShad
 | `OutputState.h`/`.cpp` | Actor planning | `OutputState` and its transitions. |
 | `ViewFacts.h`/`.cpp`, `TickClock.h`, `Hold.h` | Tick boundary | `InViewOf`, `ScreenFractionOf`; `TickClock`, `ClockAfter`; `Hold`. |
 | `TargetHolders.h`/`.cpp` | Render planning | `TargetHolder`, `TallyHolders`, `HolderName`: the holder tallies of the `target_holders` census. |
-| `InstallPacing.h`/`.cpp` | Render planning | The install budget per tick and the order of deferred installs: `InstallMayStart`, `Synced`, `NextInstall`, `Deferred`, `Removed`, `WaitedMS`. |
+| `InstallPacing.h`/`.cpp` | Render planning | The install budget per tick and the order of deferred installs: `CanInstallThisTick`, `Synced`, `NextInstall`, `Deferred`, `Removed`, `WaitedMS`. |
 | `DrawPacing.h`/`.cpp` | Render planning | The unpublished-draw budget per tick, the order of unpublished draws and the end of a first draw: `MayDrawStack`, `Drew`, `UnpublishedDrawOrder`, `FirstDrawDone`. |
 | `TargetCost.h`/`.cpp` | Render planning | `HeldTarget`, `PlanTargets`, `TargetCost`, `KeptWhenReleased`, `TargetBytes`, `HeldSteps`, `TargetsOf`, `CostOf`. |
 | `PlanSizes.h`/`.cpp`, `ResolutionLevel.h`/`.cpp`, `ResolutionResize.h`/`.cpp`, `ActorRole.h` | Render planning | `PlanSizes`, `SizesFor`, `SizeOf`, `SharedKeyOf`; `ResolutionLevel`, `PerLevel`, `IdealLevel`, `WantedLevel`, `LevelStepOf`, `CoarserLevel`, `LevelGap`, `AtLevel`, `LevelName`; `DrawOf`, `SwapDue`, `NextResize`; `ActorRole`. |

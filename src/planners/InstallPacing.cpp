@@ -1,6 +1,8 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #include "planners/InstallPacing.h"
 
+#include "Core.h"
+
 #include <algorithm>
 #include <utility>
 
@@ -39,7 +41,7 @@ bool Precedes(const WaitingInstall &a_left, const WaitingInstall &a_right,
 }
 }
 
-bool InstallMayStart(FrameSyncs a_frame) noexcept {
+bool CanInstallThisTick(FrameSyncs a_frame) noexcept {
   return a_frame.installs == 0 || a_frame.spentUs < kInstallBudgetUs;
 }
 
@@ -55,16 +57,26 @@ FrameSyncs Synced(FrameSyncs a_frame, std::uint64_t a_us,
 std::optional<std::size_t>
 NextInstall(std::span<const WaitingInstall> a_waiting, FrameSyncs a_frame,
             std::uint32_t a_nowMS) noexcept {
-  if (!InstallMayStart(a_frame)) {
+  if (!CanInstallThisTick(a_frame) || a_waiting.empty()) {
     return std::nullopt;
   }
-  std::optional<std::size_t> chosen;
-  for (std::size_t i = 0; i < a_waiting.size(); ++i) {
-    if (!chosen || Precedes(a_waiting[i], a_waiting[*chosen], a_nowMS)) {
-      chosen = i;
-    }
-  }
-  return chosen;
+  const auto first = std::ranges::min_element(
+      a_waiting,
+      [a_nowMS](const WaitingInstall &a_left, const WaitingInstall &a_right) {
+        return Precedes(a_left, a_right, a_nowMS);
+      });
+  return IndexOf(a_waiting, first);
+}
+
+std::vector<std::uint32_t>
+InstallOrder(std::span<const WaitingInstall> a_waiting, std::uint32_t a_nowMS) {
+  std::vector<WaitingInstall> sorted(a_waiting.begin(), a_waiting.end());
+  std::ranges::stable_sort(sorted, [a_nowMS](const WaitingInstall &a_left,
+                                             const WaitingInstall &a_right) {
+    return Precedes(a_left, a_right, a_nowMS);
+  });
+  return Map(sorted,
+             [](const WaitingInstall &a_entry) { return a_entry.actor; });
 }
 
 std::vector<WaitingInstall> Deferred(std::vector<WaitingInstall> a_waiting,

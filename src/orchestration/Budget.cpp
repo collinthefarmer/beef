@@ -1,5 +1,6 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #include "orchestration/Budget.h"
+#include "orchestration/Output.h"
 
 #include "actors/Lifecycle.h"
 #include "orchestration/PhaseChanges.h"
@@ -66,31 +67,50 @@ StepDownFor(const InstalledRender &a_render, ResolutionLevel a_level,
                     HoldingOf(a_render.phase));
 }
 
-[[nodiscard]] std::uint64_t
-SurplusBytesOf(const InstalledRender &a_render,
-               const BudgetActor &a_actor) noexcept {
+[[nodiscard]] std::uint64_t SurplusBytesOf(const InstalledRender &a_render,
+                                           const Sighting &a_sight,
+                                           ResolutionLevel a_level,
+                                           std::uint64_t a_planned) noexcept {
   const std::optional<ResolutionLevel> wanted =
-      WantedLevel({a_actor.screenFraction, a_actor.inView, a_actor.role});
-  if (!wanted || LevelGap(a_actor.level, *wanted) <= 0) {
+      WantedLevel({a_sight.screenFraction, a_sight.inView, a_sight.role});
+  if (!wanted || LevelGap(a_level, *wanted) <= 0) {
     return 0;
   }
   const std::optional<LevelCost> &cost = CostAt(a_render, *wanted);
-  return cost ? Less(a_actor.plannedBytes,
-                     PlannedBytes(*cost, HoldingOf(a_render.phase)))
-              : 0;
+  if (!cost) {
+    return 0;
+  }
+  return Less(a_planned, PlannedBytes(*cost, HoldingOf(a_render.phase)));
 }
 
-template <class T> void Append(std::vector<T> &a_into, std::vector<T> a_from) {
-  a_into.insert(a_into.end(), std::make_move_iterator(a_from.begin()),
-                std::make_move_iterator(a_from.end()));
+[[nodiscard]] bool AnyResizing(const World &a_world) noexcept {
+  return std::ranges::any_of(a_world.actors, [](const auto &a_entry) {
+    const ActorRecord &record = a_entry.second;
+    return record.render && Is<Resizing>(record.render->phase);
+  });
 }
 
-void AddTrace(TickOutput &a_output, std::vector<Trace::Field> a_fields) {
-  a_output.trace.push_back({Trace::Event::kMetrics, std::move(a_fields)});
-}
+struct BudgetCosts {
+  std::uint64_t releasable = 0;
+  std::optional<StepDownOption> stepDown;
+  std::uint64_t planned = 0;
+  std::uint64_t surplus = 0;
+};
 
-void AddLog(TickOutput &a_output, LogLevel a_level, std::string a_text) {
-  a_output.logs.push_back({a_level, std::move(a_text)});
+[[nodiscard]] BudgetCosts BudgetCostsOf(const InstalledRender &a_render,
+                                        const Sighting &a_sight,
+                                        ResolutionLevel a_level) noexcept {
+  const std::optional<LevelCost> &current = CostAt(a_render, a_level);
+  if (!current) {
+    return {};
+  }
+  const std::uint64_t planned =
+      PlannedBytes(*current, HoldingOf(a_render.phase));
+  return {.releasable =
+              MayRelease(a_render.phase) ? IntermediateBytes(*current) : 0,
+          .stepDown = StepDownFor(a_render, a_level, *current),
+          .planned = planned,
+          .surplus = SurplusBytesOf(a_render, a_sight, a_level, planned)};
 }
 
 void RecordPressure(TickOutput &a_output, const BudgetSample &a_sample,
@@ -110,50 +130,76 @@ void RecordPressure(TickOutput &a_output, const BudgetSample &a_sample,
             {"allowance_bytes", std::to_string(now.allowance.value_or(0))}});
 }
 
-void StepDownForBudget(TickOutput &a_output, ActorId a_actor,
-                       const StepDownOption &a_option,
-                       std::optional<ActorId> a_preemptedBy) {
-  const auto found = a_output.world.actors.find(a_actor);
-  if (found == a_output.world.actors.end() || !found->second.render) {
-    return;
-  }
-  InstalledRender &render = *found->second.render;
-  const std::optional<ResolutionLevel> from = AppliedLevel(render.phase);
-  if (!from || !MayStepDown(render.phase)) {
-    return;
-  }
-  PhaseChange change = WantLevel(a_actor, std::move(render.phase), a_option.to);
-  render.phase = std::move(change.phase);
-  Append(a_output.commands, std::move(change.commands));
-  const std::optional<std::uint32_t> preemptedBy =
-      a_preemptedBy ? std::optional<std::uint32_t>{FormOf(*a_preemptedBy)}
-                    : std::nullopt;
-  AddLog(a_output, LogLevel::kInfo,
-         StepDownLine({FormOf(a_actor), found->second.sight.name, *from,
-                       a_option, preemptedBy}));
+void ApplyPhaseChange(TickOutput &a_output, InstalledRender &a_render,
+                      PhaseChange a_change) {
+  a_render.phase = a_change.phase;
+  Append(a_output.commands, std::move(a_change.commands));
+}
+
+std::vector<Trace::Field> StepDownTrace(const StepDownReport &a_report) {
   std::vector<Trace::Field> fields{
       {"action", "budget_step_down"},
-      {"actor", FormText(a_actor)},
-      {"from", std::string{LevelName(*from)}},
-      {"to", std::string{LevelName(a_option.to)}},
-      {"freed_bytes", std::to_string(a_option.freed)},
-      {"reason", a_preemptedBy ? "preempted" : "render target budget"}};
-  if (a_preemptedBy) {
-    fields.push_back({"for_actor", FormText(*a_preemptedBy)});
+      {"actor", FormText(ActorOf(a_report.actor))},
+      {"from", std::string{LevelName(a_report.from)}},
+      {"to", std::string{LevelName(a_report.option.to)}},
+      {"freed_bytes", std::to_string(a_report.option.freed)},
+      {"reason", a_report.preemptedBy ? "preempted" : "render target budget"}};
+  if (!a_report.preemptedBy) {
+    return fields;
   }
-  AddTrace(a_output, std::move(fields));
+  fields.push_back({"for_actor", FormText(ActorOf(*a_report.preemptedBy))});
+  return fields;
+}
+
+void ReportStepDown(TickOutput &a_output, const StepDownReport &a_report) {
+  AddLog(a_output, LogLevel::kInfo, StepDownLine(a_report));
+  AddTrace(a_output, StepDownTrace(a_report));
+}
+
+void StepDownForBudget(TickOutput &a_output, ActorId a_actor,
+                       const StepDownOption &a_option,
+                       MaybeActor a_preemptedFor) {
+  ActorRecord *record = TrackedActor(a_output.world, a_actor);
+  if (!record || !record->render || !MayStepDown(record->render->phase)) {
+    return;
+  }
+  InstalledRender &render = *record->render;
+  const std::optional<ResolutionLevel> from = AppliedLevel(render.phase);
+  if (!from) {
+    return;
+  }
+
+  ApplyPhaseChange(a_output, render,
+                   WantLevel(a_actor, render.phase, a_option.to));
+
+  ReportStepDown(a_output, {.actor = FormOf(a_actor),
+                            .name = record->sight.name,
+                            .from = *from,
+                            .option = a_option,
+                            .preemptedBy = a_preemptedFor.transform(FormOf)});
 }
 
 void ReleaseOne(TickOutput &a_output, const BudgetRelease &a_release) {
-  const auto found = a_output.world.actors.find(ActorOf(a_release.actor));
-  if (found == a_output.world.actors.end() || !found->second.render) {
+  const ActorId actor = ActorOf(a_release.actor);
+  ActorRecord *record = TrackedActor(a_output.world, actor);
+  if (!record || !record->render) {
     return;
   }
-  InstalledRender &render = *found->second.render;
-  PhaseChange change =
-      ReleaseForBudget(found->first, std::move(render.phase), a_release.bytes);
-  render.phase = std::move(change.phase);
-  Append(a_output.commands, std::move(change.commands));
+  InstalledRender &render = *record->render;
+  ApplyPhaseChange(a_output, render,
+                   ReleaseForBudget(actor, render.phase, a_release.bytes));
+}
+
+void ReportRadiusShrink(TickOutput &a_output, const RadiusShrink &a_shrink,
+                        std::string_view a_name) {
+  AddLog(a_output, LogLevel::kInfo,
+         RadiusShrinkLine(a_shrink.radius.distance, a_shrink.actor, a_name,
+                          a_shrink.freed));
+  AddTrace(a_output, {{"action", "budget_radius"},
+                      {"change", "shrink"},
+                      {"radius", RadiusText(a_shrink.radius.distance)},
+                      {"actor", FormText(ActorOf(a_shrink.actor))},
+                      {"freed_bytes", std::to_string(a_shrink.freed)}});
 }
 
 bool ShrinkBudgetRadius(TickOutput &a_output,
@@ -164,36 +210,49 @@ bool ShrinkBudgetRadius(TickOutput &a_output,
   if (!shrink) {
     return false;
   }
+
   const ActorId evicted = ActorOf(shrink->actor);
-  const auto record = a_output.world.actors.find(evicted);
-  const std::string name =
-      record != a_output.world.actors.end() ? record->second.sight.name : "";
-  a_output.world.radius = shrink->radius;
-  a_output.commands.push_back(Observe{evicted});
-  AddLog(a_output, LogLevel::kInfo,
-         RadiusShrinkLine(shrink->radius.distance, shrink->actor, name,
-                          shrink->freed));
-  AddTrace(a_output, {{"action", "budget_radius"},
-                      {"change", "shrink"},
-                      {"radius", RadiusText(shrink->radius.distance)},
-                      {"actor", FormText(evicted)},
-                      {"freed_bytes", std::to_string(shrink->freed)}});
+  ApplyRadius(a_output, shrink->radius);
+  Issue(a_output, Observe{evicted});
+
+  const ActorRecord *record = TrackedActor(a_output.world, evicted);
+  ReportRadiusShrink(a_output, *shrink, record ? record->sight.name : "");
   return true;
 }
 
-std::vector<ActorHolding> HoldingsByActor(const World &a_world) {
-  std::vector<ActorHolding> holdings;
-  for (const auto &[actor, record] : a_world.actors) {
-    if (Rendered(record)) {
-      holdings.push_back({FormOf(actor),
-                          {},
-                          PlannedBytesOf(record),
-                          0,
-                          record.sight.screenFraction,
-                          {}});
-    }
+std::optional<ActorHolding> HoldingOf(ActorId a_actor,
+                                      const ActorRecord &a_record) {
+  if (!Rendered(a_record)) {
+    return std::nullopt;
   }
-  return holdings;
+  return ActorHolding{.actor = FormOf(a_actor),
+                      .name = a_record.sight.name,
+                      .ownBytes = PlannedBytesOf(a_record),
+                      .sharedBytes = 0,
+                      .screenFraction = a_record.sight.screenFraction,
+                      .recipes = {}};
+}
+
+std::vector<ActorHolding> HoldingsByActor(const World &a_world) {
+  return Choose(a_world.actors, [](const auto &a_entry) {
+    return HoldingOf(a_entry.first, a_entry.second);
+  });
+}
+
+void ShrinkRadiusOrWarn(TickOutput &a_output,
+                        std::span<const BudgetActor> a_actors,
+                        const TickFacts &a_facts) {
+  if (ShrinkBudgetRadius(a_output, a_actors, a_facts)) {
+    return;
+  }
+  if (a_output.world.budget.pressure != Pressure::kOver) {
+    return;
+  }
+  ApplyPressure(a_output, Pressure::kOverWarned);
+  AddLog(a_output, LogLevel::kWarning,
+         ExhaustedLine(a_output.world.budget,
+                       LargestHoldings(HoldingsByActor(a_output.world),
+                                       kReportedHoldings)));
 }
 
 void RelieveBudget(TickOutput &a_output, std::uint64_t a_goal,
@@ -201,46 +260,71 @@ void RelieveBudget(TickOutput &a_output, std::uint64_t a_goal,
   const BudgetActors now = BudgetActorsOf(a_output.world);
   const BudgetResponse response = RespondToPressure(
       a_output.world.budget.planned, a_goal, now.actors, now.resizeBusy);
+
   for (const BudgetRelease &release : response.release) {
     ReleaseOne(a_output, release);
   }
-  if (const StepDown *stepDown = Get<StepDown>(response.next)) {
-    StepDownForBudget(a_output, ActorOf(stepDown->actor), stepDown->option,
-                      std::nullopt);
-  }
-  if (Is<Exhausted>(response.next) &&
-      !ShrinkBudgetRadius(a_output, now.actors, a_facts) &&
-      a_output.world.budget.pressure == Pressure::kOver) {
-    a_output.world.budget.pressure = Pressure::kOverWarned;
-    AddLog(a_output, LogLevel::kWarning,
-           ExhaustedLine(a_output.world.budget,
-                         LargestHoldings(HoldingsByActor(a_output.world),
-                                         kReportedHoldings)));
-  }
+
+  Match(
+      response.next, [](const Enough &) {}, [](const AwaitResize &) {},
+      [&](const StepDown &a_step) {
+        StepDownForBudget(a_output, ActorOf(a_step.actor), a_step.option,
+                          std::nullopt);
+      },
+      [&](const Exhausted &) {
+        ShrinkRadiusOrWarn(a_output, now.actors, a_facts);
+      });
 }
 
-void PreemptForBlockedStepUp(TickOutput &a_output) {
-  const std::vector<BlockedStepUp> blocked = BlockedStepUpsOf(a_output.world);
-  if (blocked.empty()) {
+struct Preemption {
+  ActorId victim{};
+  StepDownOption option;
+  ActorId requester{};
+};
+
+const BudgetActor *CandidateFor(const BlockedStepUp &a_waiting,
+                                std::span<const BudgetActor> a_actors) {
+  const std::optional<std::size_t> chosen =
+      PreemptionCandidate(a_waiting.request, a_actors);
+  if (!chosen || *chosen >= a_actors.size()) {
+    return nullptr;
+  }
+  return &a_actors[*chosen];
+}
+
+std::optional<Preemption>
+ChoosePreemption(std::span<const BlockedStepUp> a_waiting,
+                 std::span<const BudgetActor> a_actors) {
+  for (const BlockedStepUp &requester : a_waiting) {
+    const BudgetActor *victim = CandidateFor(requester, a_actors);
+    if (!victim) {
+      continue;
+    }
+    if (!victim->stepDown) {
+      return std::nullopt;
+    }
+    return Preemption{ActorOf(victim->actor), *victim->stepDown,
+                      requester.actor};
+  }
+  return std::nullopt;
+}
+
+void MakeRoomForWaitingStepUp(TickOutput &a_output) {
+  const std::vector<BlockedStepUp> waiting = WaitingStepUpsOf(a_output.world);
+  if (waiting.empty()) {
     return;
   }
   const BudgetActors now = BudgetActorsOf(a_output.world);
   if (now.resizeBusy) {
     return;
   }
-  for (const BlockedStepUp &requester : blocked) {
-    const std::optional<std::size_t> chosen =
-        PreemptionCandidate(requester.request, now.actors);
-    if (!chosen || *chosen >= now.actors.size()) {
-      continue;
-    }
-    const BudgetActor &victim = now.actors[*chosen];
-    if (victim.stepDown) {
-      StepDownForBudget(a_output, ActorOf(victim.actor), *victim.stepDown,
-                        requester.actor);
-    }
+  const std::optional<Preemption> preemption =
+      ChoosePreemption(waiting, now.actors);
+  if (!preemption) {
     return;
   }
+  StepDownForBudget(a_output, preemption->victim, preemption->option,
+                    preemption->requester);
 }
 
 void ReportRadiusGrowth(TickOutput &a_output, const RadiusGrowth &a_growth) {
@@ -296,6 +380,100 @@ RadiusAfter(const RadiusGrowth &a_growth) noexcept {
       });
 }
 
+std::optional<ResolutionLevel>
+KnownLevel(const ActorRecord &a_record) noexcept {
+  const std::optional<ResolutionLevel> heading =
+      a_record.render ? TargetLevel(a_record.render->phase) : std::nullopt;
+  return heading ? heading : a_record.reinstallLevel;
+}
+
+std::optional<ResolutionLevel>
+FirstLevel(const ActorRecord &a_record, const Sighting &a_sight,
+           const TickSettings &a_settings) noexcept {
+  if (const std::optional<ResolutionLevel> known = KnownLevel(a_record)) {
+    return known;
+  }
+  if (!a_settings.sizeByScreen) {
+    return std::nullopt;
+  }
+  return WantedLevel(
+      {a_sight.screenFraction, a_sight.inView, ActorRole::kOther});
+}
+
+const Live *LiveOf(const ActorRecord &a_record) noexcept {
+  return a_record.render ? Get<Live>(a_record.render->phase) : nullptr;
+}
+
+std::optional<ResolutionLevel> SelectStepUpLevel(const ActorRecord &a_record) {
+  const Live *live = LiveOf(a_record);
+  if (!live || !live->stepUpBlockedFrom) {
+    return std::nullopt;
+  }
+  const std::optional<ResolutionLevel> wanted =
+      WantedLevel(SightOf(a_record.sight));
+  if (!wanted || LevelGap(*wanted, live->level) <= 0) {
+    return std::nullopt;
+  }
+  return wanted;
+}
+
+std::uint64_t BytesAtLevel(const InstalledRender &a_render,
+                           ResolutionLevel a_level) noexcept {
+  const std::optional<LevelCost> &cost = CostAt(a_render, a_level);
+  return cost ? cost->withIntermediates : 0;
+}
+
+std::optional<BlockedStepUp> WaitingStepUpOf(ActorId a_actor,
+                                             const ActorRecord &a_record,
+                                             const BudgetState &a_budget) {
+  const std::optional<ResolutionLevel> wanted = SelectStepUpLevel(a_record);
+  if (!wanted || !a_record.render) {
+    return std::nullopt;
+  }
+  const std::uint64_t added = BytesAtLevel(*a_record.render, *wanted);
+  return BlockedStepUp{a_actor,
+                       {SightOf(a_record.sight), ShortfallOf(a_budget, added)}};
+}
+
+bool LargerOnScreenFirst(const BlockedStepUp &a_left,
+                         const BlockedStepUp &a_right) noexcept {
+  return LargerOnScreen(a_left.request.sight.screenFraction,
+                        a_right.request.sight.screenFraction);
+}
+
+bool Evicted(const ActorRecord &a_record) noexcept {
+  const SyncState &state = a_record.syncState;
+  return !a_record.render && state && !(state->plan == Actors::ActorPlan{}) &&
+         !Actors::AnythingInstalled(state);
+}
+
+std::optional<EvictedActor> EvictedActorOf(const ActorRecord &a_record) {
+  if (!Evicted(a_record)) {
+    return std::nullopt;
+  }
+  return EvictedActor{a_record.sight.distance, a_record.returnBytes};
+}
+
+std::optional<float> TrackedDistance(const ActorRecord &a_record) noexcept {
+  const std::optional<float> &distance = a_record.sight.distance;
+  if (!a_record.syncState || !distance || !std::isfinite(*distance)) {
+    return std::nullopt;
+  }
+  return distance;
+}
+
+void RespondToBudget(TickOutput &a_output, const TickFacts &a_facts) {
+  const BudgetState &budget = a_output.world.budget;
+  if (!budget.allowance) {
+    return;
+  }
+  if (!IsOver(budget.pressure)) {
+    MakeRoomForWaitingStepUp(a_output);
+    return;
+  }
+  RelieveBudget(a_output, PressureGoal(*budget.allowance), a_facts);
+}
+
 void GrowBudgetRadius(TickOutput &a_output, const TickFacts &a_facts) {
   const World &world = a_output.world;
   if (!world.radius) {
@@ -309,7 +487,7 @@ void GrowBudgetRadius(TickOutput &a_output, const TickFacts &a_facts) {
   const RadiusGrowth growth =
       GrowRadius({*world.radius, world.budget, PlannerMs(a_facts.now),
                   evictDistance, farthest, evicted, LargestReturnBytes(world)});
-  a_output.world.radius = RadiusAfter(growth);
+  ApplyRadius(a_output, RadiusAfter(growth));
   ReportRadiusGrowth(a_output, growth);
 }
 }
@@ -342,21 +520,13 @@ InstallBound InstallBoundOf(const ActorRecord &a_record,
                             const BudgetState &a_budget,
                             std::uint64_t a_replaced,
                             const TickSettings &a_settings) noexcept {
-  std::optional<ResolutionLevel> level =
-      a_record.render ? TargetLevel(a_record.render->phase) : std::nullopt;
-  if (!level) {
-    level = a_record.reinstallLevel;
-  }
   if (a_sight.role == ActorRole::kPlayer) {
-    return {level.value_or(ResolutionLevel::kFull), std::nullopt};
+    return {KnownLevel(a_record).value_or(ResolutionLevel::kFull),
+            std::nullopt};
   }
-  if (!level && !a_settings.sizeByScreen) {
-    return {};
-  }
-  if (!level) {
-    level = WantedLevel(
-        {a_sight.screenFraction, a_sight.inView, ActorRole::kOther});
-  }
+
+  const std::optional<ResolutionLevel> level =
+      FirstLevel(a_record, a_sight, a_settings);
   if (!level) {
     return {};
   }
@@ -369,103 +539,60 @@ std::optional<BudgetActor> BudgetActorOf(ActorId a_actor,
     return std::nullopt;
   }
   const InstalledRender &render = *a_record.render;
-  const std::optional<ResolutionLevel> applied = AppliedLevel(render.phase);
-  if (!applied) {
+  const std::optional<ResolutionLevel> level = AppliedLevel(render.phase);
+  if (!level) {
     return std::nullopt;
   }
-  BudgetActor actor{FormOf(a_actor),
-                    a_record.sight.role,
-                    a_record.sight.inView,
-                    !MayEvict(render.phase),
-                    *applied,
-                    a_record.sight.screenFraction,
-                    0,
-                    std::nullopt,
-                    0,
-                    a_record.sight.distance};
-  const std::optional<LevelCost> &current = CostAt(render, *applied);
-  if (!current) {
-    return actor;
-  }
-  actor.plannedBytes = PlannedBytes(*current, HoldingOf(render.phase));
-  if (MayRelease(render.phase)) {
-    actor.releasable = IntermediateBytes(*current);
-  }
-  actor.stepDown = StepDownFor(render, *applied, *current);
-  actor.surplusBytes = SurplusBytesOf(render, actor);
-  return actor;
+
+  const Sighting &sight = a_record.sight;
+  const BudgetCosts costs = BudgetCostsOf(render, sight, *level);
+  return BudgetActor{.actor = FormOf(a_actor),
+                     .role = sight.role,
+                     .inView = sight.inView,
+                     .resizing = Is<Resizing>(render.phase),
+                     .level = *level,
+                     .screenFraction = sight.screenFraction,
+                     .releasable = costs.releasable,
+                     .stepDown = costs.stepDown,
+                     .plannedBytes = costs.planned,
+                     .distance = sight.distance,
+                     .surplusBytes = costs.surplus};
 }
 
 BudgetActors BudgetActorsOf(const World &a_world) {
-  BudgetActors now;
-  for (const auto &[id, record] : a_world.actors) {
-    now.resizeBusy =
-        now.resizeBusy || (record.render && Is<Resizing>(record.render->phase));
-    if (const std::optional<BudgetActor> actor = BudgetActorOf(id, record)) {
-      now.actors.push_back(*actor);
-    }
-  }
-  return now;
+  return {.actors = Choose(a_world.actors,
+                           [](const auto &a_entry) {
+                             return BudgetActorOf(a_entry.first,
+                                                  a_entry.second);
+                           }),
+          .resizeBusy = AnyResizing(a_world)};
 }
 
-std::vector<BlockedStepUp> BlockedStepUpsOf(const World &a_world) {
-  std::vector<BlockedStepUp> blocked;
-  for (const auto &[id, record] : a_world.actors) {
-    if (!record.render) {
-      continue;
-    }
-    const Live *live = Get<Live>(record.render->phase);
-    if (!live || !live->stepUpBlockedFrom) {
-      continue;
-    }
-    const ActorSight sight = SightOf(record.sight);
-    const std::optional<ResolutionLevel> wanted = WantedLevel(sight);
-    if (!sight.inView || !wanted || LevelGap(*wanted, live->level) <= 0) {
-      continue;
-    }
-    const std::optional<LevelCost> &cost = CostAt(*record.render, *wanted);
-    const std::uint64_t added = cost ? cost->withIntermediates : 0;
-    blocked.push_back({id, {sight, ShortfallOf(a_world.budget, added)}});
-  }
-  std::ranges::stable_sort(
-      blocked, [](const BlockedStepUp &a_left, const BlockedStepUp &a_right) {
-        return LargerOnScreen(a_left.request.sight.screenFraction,
-                              a_right.request.sight.screenFraction);
+std::vector<BlockedStepUp> WaitingStepUpsOf(const World &a_world) {
+  std::vector<BlockedStepUp> blocked =
+      Choose(a_world.actors, [&](const auto &a_entry) {
+        return WaitingStepUpOf(a_entry.first, a_entry.second, a_world.budget);
       });
+  std::ranges::stable_sort(blocked, LargerOnScreenFirst);
   return blocked;
 }
 
 std::vector<EvictedActor> EvictedActorsOf(const World &a_world) {
-  std::vector<EvictedActor> evicted;
-  for (const auto &[id, record] : a_world.actors) {
-    const std::optional<Actors::ActorState> &state = record.syncState;
-    if (record.render || !state || state->plan == Actors::ActorPlan{} ||
-        Actors::AnythingInstalled(state)) {
-      continue;
-    }
-    evicted.push_back({record.sight.distance, record.returnBytes});
-  }
-  return evicted;
+  return Choose(a_world.actors, [](const auto &a_entry) {
+    return EvictedActorOf(a_entry.second);
+  });
 }
 
 std::uint64_t LargestReturnBytes(const World &a_world) noexcept {
-  std::uint64_t largest = 0;
-  for (const auto &[id, record] : a_world.actors) {
-    largest = std::max(largest, record.returnBytes.value_or(0));
-  }
-  return largest;
+  return MaxOf(a_world.actors,
+               [](const auto &a_entry) { return a_entry.second.returnBytes; })
+      .value_or(0);
 }
 
 std::optional<float> FarthestTrackedDistance(const World &a_world) noexcept {
-  std::optional<float> farthest;
-  for (const auto &[id, record] : a_world.actors) {
-    const std::optional<float> &distance = record.sight.distance;
-    if (record.syncState && distance && std::isfinite(*distance) &&
-        (!farthest || *distance > *farthest)) {
-      farthest = distance;
-    }
-  }
-  return farthest;
+  return MaxOf(a_world.actors, [](const auto &a_entry) {
+    return TrackedDistance(a_entry.second);
+  });
 }
 
 TickOutput RunBudget(World a_world, const TickFacts &a_facts) {
@@ -473,18 +600,15 @@ TickOutput RunBudget(World a_world, const TickFacts &a_facts) {
   if (!a_facts.memory) {
     return output;
   }
+
   const BudgetSample &sample = *a_facts.memory;
   const BudgetState before = output.world.budget;
-  output.world.budget =
-      NextBudget(before, AllowanceOf(sample),
-                 sample.heldBytes.value_or(PlannedBytesOf(output.world)));
+  const std::uint64_t held =
+      sample.heldBytes.value_or(PlannedBytesOf(output.world));
+  ApplyBudget(output, NextBudget(before, AllowanceOf(sample), held));
   RecordPressure(output, sample, before);
-  const BudgetState &budget = output.world.budget;
-  if (IsOver(budget.pressure) && budget.allowance) {
-    RelieveBudget(output, PressureGoal(*budget.allowance), a_facts);
-  } else if (budget.allowance) {
-    PreemptForBlockedStepUp(output);
-  }
+
+  RespondToBudget(output, a_facts);
   GrowBudgetRadius(output, a_facts);
   return output;
 }

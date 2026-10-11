@@ -1,5 +1,6 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #include "orchestration/Tick.h"
+#include "orchestration/Output.h"
 
 #include <array>
 #include <iterator>
@@ -12,10 +13,6 @@ using Step = TickOutput (*)(World, const TickFacts &);
 constexpr std::array<Step, 5> kSteps{RecordSyncResults, RecordRenderResults,
                                      RunBudget, RunSync, RunLifecycle};
 
-template <class T> void Append(std::vector<T> &a_into, std::vector<T> a_from) {
-  a_into.insert(a_into.end(), std::make_move_iterator(a_from.begin()),
-                std::make_move_iterator(a_from.end()));
-}
 }
 
 TickOutput Tick(World a_world, const TickFacts &a_facts) {
