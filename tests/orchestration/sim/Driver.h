@@ -31,29 +31,32 @@ EngineActorOf(const InstalledRender &a_render) {
   EngineActor actor;
   const PerLevel<std::optional<LevelCost>> &costs = a_render.levelCosts;
   Match(
-      a_render.phase,
-      [&](const WithoutRender &) { actor.withoutRender = true; },
-      [&](const Live &a_live) {
-        actor.render = EngineRender{
-            a_live.level, HoldingOf(a_live.intermediates), costs, std::nullopt};
+      a_render.phase, [&](const Empty &) { actor.withoutRender = true; },
+      [&](const Shown &a_shown) {
+        actor.render =
+            EngineRender{a_shown.level, HoldingOf(a_shown.intermediates), costs,
+                         std::nullopt};
       },
-      [&](const AwaitingPlan &a_awaiting) {
-        actor.awaiting = AwaitedPlanJob{a_awaiting.job, false};
+      [&](const Planning &a_planning) {
+        actor.awaiting = AwaitedPlanJob{a_planning.job, false};
       },
-      [&](const FirstDrawing &a_drawing) {
+      [&](const Drawing &a_drawing) {
         actor.render = EngineRender{
             a_drawing.level, IntermediateHolding::kHeld, costs,
             UnpublishedWork{a_drawing.draw.total, a_drawing.draw.drawn}};
       },
-      [&](const Resizing &a_resizing) {
-        actor.render = EngineRender{a_resizing.from, a_resizing.holding, costs,
-                                    std::nullopt};
-        if (const ResizeRunning *running =
-                Get<ResizeRunning>(a_resizing.stage)) {
-          actor.resize =
-              EngineResize{a_resizing.to, UnpublishedWork{running->draw.total,
-                                                          running->draw.drawn}};
-        }
+      [&](const Queued &a_queued) {
+        const Resize &resize = a_queued.resize;
+        actor.render =
+            EngineRender{resize.from, resize.holding, costs, std::nullopt};
+      },
+      [&](const Running &a_running) {
+        const Resize &resize = a_running.resize;
+        const UnpublishedDraw &draw = a_running.draw;
+        actor.render =
+            EngineRender{resize.from, resize.holding, costs, std::nullopt};
+        actor.resize =
+            EngineResize{resize.to, UnpublishedWork{draw.total, draw.drawn}};
       });
   return actor;
 }
@@ -73,8 +76,8 @@ EngineActorOf(const InstalledRender &a_render) {
 [[nodiscard]] inline bool Settled(const World &a_world,
                                   const std::vector<Command> &a_commands) {
   for (const auto &[id, record] : a_world.actors) {
-    if (record.render && !Is<Live>(record.render->phase) &&
-        !Is<WithoutRender>(record.render->phase)) {
+    if (record.render && !Is<Shown>(record.render->phase) &&
+        !Is<Empty>(record.render->phase)) {
       return false;
     }
   }

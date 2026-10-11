@@ -86,7 +86,7 @@ StepDownFor(const InstalledRender &a_render, ResolutionLevel a_level,
 [[nodiscard]] bool AnyResizing(const World &a_world) noexcept {
   return std::ranges::any_of(a_world.actors, [](const auto &a_entry) {
     const ActorRecord &record = a_entry.second;
-    return record.render && Is<Resizing>(record.render->phase);
+    return record.render && ResizeIn(record.render->phase);
   });
 }
 
@@ -400,18 +400,18 @@ FirstLevel(const ActorRecord &a_record, const Sighting &a_sight,
       {a_sight.screenFraction, a_sight.inView, ActorRole::kOther});
 }
 
-const Live *LiveOf(const ActorRecord &a_record) noexcept {
-  return a_record.render ? Get<Live>(a_record.render->phase) : nullptr;
+const Shown *ShownOf(const ActorRecord &a_record) noexcept {
+  return a_record.render ? Get<Shown>(a_record.render->phase) : nullptr;
 }
 
 std::optional<ResolutionLevel> SelectStepUpLevel(const ActorRecord &a_record) {
-  const Live *live = LiveOf(a_record);
-  if (!live || !live->stepUpBlockedFrom) {
+  const Shown *shown = ShownOf(a_record);
+  if (!shown || !shown->stepUpBlockedFrom) {
     return std::nullopt;
   }
   const std::optional<ResolutionLevel> wanted =
       WantedLevel(SightOf(a_record.sight));
-  if (!wanted || LevelGap(*wanted, live->level) <= 0) {
+  if (!wanted || LevelGap(*wanted, shown->level) <= 0) {
     return std::nullopt;
   }
   return wanted;
@@ -549,7 +549,7 @@ std::optional<BudgetActor> BudgetActorOf(ActorId a_actor,
   return BudgetActor{.actor = FormOf(a_actor),
                      .role = sight.role,
                      .inView = sight.inView,
-                     .resizing = Is<Resizing>(render.phase),
+                     .resizing = ResizeIn(render.phase) != nullptr,
                      .level = *level,
                      .screenFraction = sight.screenFraction,
                      .releasable = costs.releasable,

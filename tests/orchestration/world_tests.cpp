@@ -22,7 +22,7 @@ int main() {
   Check(world.actors.empty() && world.waitingInstalls.empty() && !world.radius,
         "a new world tracks no actor");
   const InstalledRender render;
-  Check(Is<WithoutRender>(render.phase) && !render.renderedFrame,
+  Check(Is<Empty>(render.phase) && !render.renderedFrame,
         "a render record made without an event claims no render");
   Check(FormOf(ActorOf(0x14)) == 0x14u,
         "an actor id converts to a form id and back");

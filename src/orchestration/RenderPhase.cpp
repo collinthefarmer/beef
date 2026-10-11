@@ -2,137 +2,125 @@
 #include "orchestration/RenderPhase.h"
 
 namespace BetterEnchantmentEffects::Orchestration {
+const Resize *ResizeIn(const RenderPhase &a_phase) noexcept {
+  if (const Queued *queued = Get<Queued>(a_phase)) {
+    return &queued->resize;
+  }
+  const Running *running = Get<Running>(a_phase);
+  return running ? &running->resize : nullptr;
+}
+
+Resize *ResizeIn(RenderPhase &a_phase) noexcept {
+  if (Queued *queued = Get<Queued>(a_phase)) {
+    return &queued->resize;
+  }
+  Running *running = Get<Running>(a_phase);
+  return running ? &running->resize : nullptr;
+}
+
 IntermediateHolding HoldingOf(const Intermediates &a_intermediates) noexcept {
-  return Is<IntermediatesReleased>(a_intermediates)
-             ? IntermediateHolding::kReleased
-             : IntermediateHolding::kHeld;
+  return Is<Freed>(a_intermediates) ? IntermediateHolding::kReleased
+                                    : IntermediateHolding::kHeld;
 }
 
 IntermediateHolding HoldingOf(const RenderPhase &a_phase) noexcept {
-  if (const Live *live = Get<Live>(a_phase)) {
-    return HoldingOf(live->intermediates);
+  if (const Shown *shown = Get<Shown>(a_phase)) {
+    return HoldingOf(shown->intermediates);
   }
-  if (const Resizing *resizing = Get<Resizing>(a_phase)) {
-    return resizing->holding;
-  }
-  return IntermediateHolding::kHeld;
+  const Resize *resize = ResizeIn(a_phase);
+  return resize ? resize->holding : IntermediateHolding::kHeld;
 }
 
-std::optional<ResolutionLevel>
-TargetLevel(const RenderPhase &a_phase) noexcept {
+std::optional<Level> TargetLevel(const RenderPhase &a_phase) noexcept {
+  using Target = std::optional<Level>;
   return Match(
-      a_phase,
-      [](const Live &a_live) -> std::optional<ResolutionLevel> {
-        return a_live.level;
-      },
-      [](const WithoutRender &) -> std::optional<ResolutionLevel> {
-        return std::nullopt;
-      },
-      [](const AwaitingPlan &) -> std::optional<ResolutionLevel> {
-        return std::nullopt;
-      },
-      [](const FirstDrawing &a_drawing) -> std::optional<ResolutionLevel> {
+      a_phase, [](const Empty &) -> Target { return std::nullopt; },
+      [](const Shown &a_shown) -> Target { return a_shown.level; },
+      [](const Planning &) -> Target { return std::nullopt; },
+      [](const Drawing &a_drawing) -> Target {
         return a_drawing.next.value_or(a_drawing.level);
       },
-      [](const Resizing &a_resizing) -> std::optional<ResolutionLevel> {
-        return a_resizing.to;
-      });
+      [](const Queued &a_queued) -> Target { return a_queued.resize.to; },
+      [](const Running &a_running) -> Target { return a_running.resize.to; });
 }
 
-std::optional<ResolutionLevel>
-AppliedLevel(const RenderPhase &a_phase) noexcept {
+std::optional<Level> AppliedLevel(const RenderPhase &a_phase) noexcept {
+  using Applied = std::optional<Level>;
   return Match(
-      a_phase,
-      [](const Live &a_live) -> std::optional<ResolutionLevel> {
-        return a_live.level;
-      },
-      [](const WithoutRender &) -> std::optional<ResolutionLevel> {
-        return std::nullopt;
-      },
-      [](const AwaitingPlan &) -> std::optional<ResolutionLevel> {
-        return std::nullopt;
-      },
-      [](const FirstDrawing &a_drawing) -> std::optional<ResolutionLevel> {
-        return a_drawing.level;
-      },
-      [](const Resizing &a_resizing) -> std::optional<ResolutionLevel> {
-        return a_resizing.from;
+      a_phase, [](const Empty &) -> Applied { return std::nullopt; },
+      [](const Shown &a_shown) -> Applied { return a_shown.level; },
+      [](const Planning &) -> Applied { return std::nullopt; },
+      [](const Drawing &a_drawing) -> Applied { return a_drawing.level; },
+      [](const Queued &a_queued) -> Applied { return a_queued.resize.from; },
+      [](const Running &a_running) -> Applied {
+        return a_running.resize.from;
       });
 }
 
 bool MayRelease(const RenderPhase &a_phase) noexcept {
-  const Live *live = Get<Live>(a_phase);
-  return live && Is<IntermediatesHeld>(live->intermediates);
+  const Shown *shown = Get<Shown>(a_phase);
+  return shown && Is<Held>(shown->intermediates);
 }
 
 bool MayStepDown(const RenderPhase &a_phase) noexcept {
-  return Is<Live>(a_phase);
+  return Is<Shown>(a_phase);
 }
 
 bool MayEvict(const RenderPhase &a_phase) noexcept {
-  return !Is<Resizing>(a_phase);
+  return !ResizeIn(a_phase);
 }
 
 const UnpublishedDraw *UnpublishedDrawOf(const RenderPhase &a_phase) noexcept {
-  if (const FirstDrawing *drawing = Get<FirstDrawing>(a_phase)) {
+  if (const Drawing *drawing = Get<Drawing>(a_phase)) {
     return &drawing->draw;
   }
-  if (const Resizing *resizing = Get<Resizing>(a_phase)) {
-    if (const ResizeRunning *running = Get<ResizeRunning>(resizing->stage)) {
-      return &running->draw;
-    }
-  }
-  return nullptr;
+  const Running *running = Get<Running>(a_phase);
+  return running ? &running->draw : nullptr;
 }
 
 std::optional<ResizeProgress>
 ResizeProgressOf(const RenderPhase &a_phase) noexcept {
-  const Resizing *resizing = Get<Resizing>(a_phase);
-  if (!resizing) {
-    return std::nullopt;
-  }
-  const ResizeRunning *running = Get<ResizeRunning>(resizing->stage);
+  const Running *running = Get<Running>(a_phase);
   if (!running) {
     return std::nullopt;
   }
-  return ResizeProgress{resizing->from, resizing->to, running->draw.beganFrame};
+
+  const Resize &resize = running->resize;
+  return ResizeProgress{resize.from, resize.to, running->draw.beganFrame};
 }
 
 std::optional<PlanJobId> AwaitedJob(const RenderPhase &a_phase) noexcept {
-  const AwaitingPlan *awaiting = Get<AwaitingPlan>(a_phase);
-  return awaiting ? std::optional<PlanJobId>{awaiting->job} : std::nullopt;
+  const Planning *planning = Get<Planning>(a_phase);
+  return planning ? std::optional<PlanJobId>{planning->job} : std::nullopt;
 }
 
-std::optional<ResolutionLevel>
-FailedLevelOf(const RenderPhase &a_phase) noexcept {
-  const std::optional<FailedLevel> *failed = nullptr;
-  if (const Live *live = Get<Live>(a_phase)) {
-    failed = &live->failed;
-  } else if (const Resizing *resizing = Get<Resizing>(a_phase)) {
-    failed = &resizing->failed;
+std::optional<Level> FailedLevelOf(const RenderPhase &a_phase) noexcept {
+  if (const Shown *shown = Get<Shown>(a_phase); shown && shown->failed) {
+    return shown->failed->level;
   }
-  if (!failed || !*failed) {
+
+  const Resize *resize = ResizeIn(a_phase);
+  if (!resize || !resize->failed) {
     return std::nullopt;
   }
-  return (*failed)->level;
+
+  return resize->failed->level;
 }
 
 bool ScreenStepDownDue(const RenderPhase &a_phase, Millis a_now,
                        Millis a_delay) noexcept {
-  const Live *live = Get<Live>(a_phase);
-  return live && live->smallOnScreen.Due(a_now, a_delay);
+  const Shown *shown = Get<Shown>(a_phase);
+  return shown && shown->smallOnScreen.Due(a_now, a_delay);
 }
 
 std::string_view PhaseName(const RenderPhase &a_phase) noexcept {
+  using Name = std::string_view;
   return Match(
-      a_phase, [](const Live &) { return std::string_view{"live"}; },
-      [](const WithoutRender &) { return std::string_view{"without_render"}; },
-      [](const AwaitingPlan &) { return std::string_view{"awaiting_plan"}; },
-      [](const FirstDrawing &) { return std::string_view{"first_drawing"}; },
-      [](const Resizing &a_resizing) {
-        return Is<ResizeQueued>(a_resizing.stage)
-                   ? std::string_view{"resize_queued"}
-                   : std::string_view{"resize_running"};
-      });
+      a_phase, [](const Empty &) { return Name{"empty"}; },
+      [](const Shown &) { return Name{"shown"}; },
+      [](const Planning &) { return Name{"planning"}; },
+      [](const Drawing &) { return Name{"drawing"}; },
+      [](const Queued &) { return Name{"resize_queued"}; },
+      [](const Running &) { return Name{"resize_running"}; });
 }
 }

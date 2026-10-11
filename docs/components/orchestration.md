@@ -18,9 +18,11 @@ the recheck timers. The engine keeps it in `Manager::world_` and reads it
 only as `const`.
 
 **The render phase.** Each actor with installed effects has one
-`RenderPhase`: `WithoutRender`, `AwaitingPlan`, `FirstDrawing`, `Live` or
-`Resizing`. `PhaseFor` creates a phase from the first event of an install.
-`OnEvent` applies an event that the engine reports. The decision functions
+`RenderPhase`: `Empty`, `Planning`, `Drawing`, `Shown`, `Queued` or
+`Running`. `PhaseFor` creates a phase from the first event of an install.
+`OnEvent` applies an event that the engine reports. It matches the pair of
+phase and event: each legal pair has its own case, and every other pair
+leaves the phase as it was and marks the change `ignored`. The decision functions
 (`PlanBuilt`, `FailPlan`, `WantLevel`, `ReleaseForBudget`, `SeeActor`,
 `EndFirstDraw`) change a phase. Each returns a `PhaseChange`: the next phase
 and the commands that it implies.
@@ -70,17 +72,19 @@ phase variant by hand. `PhaseChanges.h` changes it.
 | Type or function | Description | Declared in |
 |---|---|---|
 | `PlanJobId` | The id of a plan job, as the core sees it. | `RenderPhase.h` |
-| `IntermediatesHeld`, `IntermediatesReleased`, `Intermediates` | Whether a live render holds its intermediate targets. A held render carries the `Hold` of its time out of view (`outOfView`). | `RenderPhase.h` |
+| `Held`, `Freed`, `Intermediates` | Whether a shown render holds its intermediate targets. A held render carries the `Hold` of its time out of view (`outOfView`). | `RenderPhase.h` |
 | `UnpublishedDraw` | A draw before publication: the slot or stack count (`total`), the drawn count, the frame it began and the ticks that drew. | `RenderPhase.h` |
 | `FailedLevel` | A level whose resize did not start or did not swap, and the wanted level at that time (`wantedThen`). | `RenderPhase.h` |
-| `WithoutRender` | An install that built no render, or a plan job that failed. It has no level. | `RenderPhase.h` |
-| `Live` | A published render: its level, its `Intermediates`, the hold of a small screen fraction (`smallOnScreen`), the level of a blocked step up (`stepUpBlockedFrom`) and an optional `FailedLevel`. | `RenderPhase.h` |
-| `AwaitingPlan` | An install that waits for a plan job. | `RenderPhase.h` |
-| `FirstDrawing` | A new render that draws before publication: its level, its `UnpublishedDraw` and a level wanted meanwhile (`next`). | `RenderPhase.h` |
-| `ResizeQueued`, `ResizeRunning`, `Resizing` | A level change: the old and new levels, the attached render's `IntermediateHolding`, the stage (queued, or running with its `UnpublishedDraw`) and an optional `FailedLevel`. | `RenderPhase.h` |
-| `RenderPhase` | The variant of the five phases. | `RenderPhase.h` |
+| `Empty` | An install that built no render, or a plan job that failed. It has no level. | `RenderPhase.h` |
+| `Shown` | A published render: its level, its `Intermediates`, the hold of a small screen fraction (`smallOnScreen`), the level of a blocked step up (`stepUpBlockedFrom`) and an optional `FailedLevel`. | `RenderPhase.h` |
+| `Planning` | An install that waits for a plan job. | `RenderPhase.h` |
+| `Drawing` | A new render that draws before publication: its level, its `UnpublishedDraw` and a level wanted meanwhile (`next`). | `RenderPhase.h` |
+| `Resize` | A level change: the old and new levels (`from`, `to`), the attached render's `IntermediateHolding` and an optional `FailedLevel`. | `RenderPhase.h` |
+| `Queued`, `Running` | A resize that waits to start, and a resize that draws its `UnpublishedDraw`. Both carry a `Resize`. | `RenderPhase.h` |
+| `RenderPhase` | The variant of the six phases. | `RenderPhase.h` |
+| `Level`, `ResizeIn` | The name of `ResolutionLevel` inside the core, and the `Resize` of a `Queued` or `Running` phase. | `RenderPhase.h` |
 | `TargetLevel`, `AppliedLevel`, `HoldingOf` | The level the actor is going to, the level its attached render has, and its holding. | `RenderPhase.h` |
-| `MayRelease`, `MayStepDown`, `MayEvict` | The budget's three questions: release holds in `Live` with held intermediates, a step down only in `Live`, an eviction in every phase except `Resizing`. | `RenderPhase.h` |
+| `MayRelease`, `MayStepDown`, `MayEvict` | The budget's three questions: release holds in `Shown` with held intermediates, a step down only in `Shown`, an eviction in every phase except `Queued` and `Running`. | `RenderPhase.h` |
 | `UnpublishedDrawOf`, `ResizeProgressOf`, `AwaitedJob`, `FailedLevelOf`, `ScreenStepDownDue`, `PhaseName` | The unpublished draw, the running resize's progress, the awaited job, the refused level, whether the screen step-down hold is due, and the trace name of a phase. | `RenderPhase.h` |
 | `PhaseChange` | The next phase, its commands, and `ignored` when the phase cannot take the event. | `PhaseChanges.h` |
 | `EventContext`, `SeenThisTick` | The frame and wanted level that `OnEvent` reads; the sight, small flag, wanted level, time, release delay and releasable bytes that `SeeActor` reads. | `PhaseChanges.h` |

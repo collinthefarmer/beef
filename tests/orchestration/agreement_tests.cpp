@@ -41,22 +41,16 @@ RenderAt(ResolutionLevel a_level,
   return held;
 }
 
-FirstDrawing FirstDrawingAt(ResolutionLevel a_level, std::size_t a_total,
-                            std::size_t a_drawn) {
-  FirstDrawing drawing;
+Drawing DrawingAt(ResolutionLevel a_level, std::size_t a_total,
+                  std::size_t a_drawn) {
+  Drawing drawing;
   drawing.level = a_level;
   drawing.draw = UnpublishedDraw{a_total, a_drawn, 0, 0};
   return drawing;
 }
 
-Resizing ResizingFrom(ResolutionLevel a_from, ResolutionLevel a_to,
-                      std::variant<ResizeQueued, ResizeRunning> a_stage) {
-  Resizing resizing;
-  resizing.from = a_from;
-  resizing.to = a_to;
-  resizing.holding = IntermediateHolding::kHeld;
-  resizing.stage = a_stage;
-  return resizing;
+Resize ResizeFrom(Level a_from, Level a_to) {
+  return Resize{a_from, a_to, IntermediateHolding::kHeld};
 }
 
 bool Agrees(const World &a_world, const Store &a_store) {
@@ -75,8 +69,8 @@ void NoRenderMeansNoEntry() {
         "an entry for a record without a render disagrees");
 }
 
-void WithoutRenderHoldsNothing() {
-  const World world = WorldIn(WithoutRender{});
+void EmptyHoldsNothing() {
+  const World world = WorldIn(Empty{});
   Check(Agrees(world, Store{}), "an actor without a render may have no entry");
   Check(Agrees(world, StoreOf(HeldResources{})),
         "an actor without a render may have an empty entry");
@@ -88,8 +82,8 @@ void WithoutRenderHoldsNothing() {
         "an actor without a render may not await a plan job");
 }
 
-void AwaitingPlanHoldsItsJob() {
-  const World world = WorldIn(AwaitingPlan{PlanJobId{5}});
+void PlanningHoldsItsJob() {
+  const World world = WorldIn(Planning{PlanJobId{5}});
   HeldResources held;
   held.awaited = PlanJobId{5};
   Check(Agrees(world, StoreOf(held)), "the store awaits the same job");
@@ -103,8 +97,8 @@ void AwaitingPlanHoldsItsJob() {
         "an awaiting actor may not hold a render");
 }
 
-void FirstDrawingHoldsItsCount() {
-  const World world = WorldIn(FirstDrawingAt(kHalf, 4, 2));
+void DrawingHoldsItsCount() {
+  const World world = WorldIn(DrawingAt(kHalf, 4, 2));
   HeldResources held = RenderAt(kHalf);
   held.firstDraw = UnpublishedCount{4, 2};
   Check(Agrees(world, StoreOf(held)), "the first draw counts agree");
@@ -124,8 +118,8 @@ void FirstDrawingHoldsItsCount() {
         "a first-drawing actor without a first draw disagrees");
 }
 
-void LiveHoldsItsLevelAndHolding() {
-  const World world = WorldIn(LiveAt(kFull, IntermediatesReleased{}));
+void ShownHoldsItsLevelAndHolding() {
+  const World world = WorldIn(ShownAt(kFull, Freed{}));
   Check(Agrees(world, StoreOf(RenderAt(kFull, IntermediateHolding::kReleased))),
         "a live render at the same level and holding agrees");
   Check(!Agrees(world, StoreOf(RenderAt(kFull))),
@@ -141,7 +135,7 @@ void LiveHoldsItsLevelAndHolding() {
 }
 
 void AQueuedResizeHoldsNoResize() {
-  const World world = WorldIn(ResizingFrom(kHalf, kFull, ResizeQueued{}));
+  const World world = WorldIn(Queued{ResizeFrom(kHalf, kFull)});
   Check(Agrees(world, StoreOf(RenderAt(kHalf))),
         "a queued resize holds the render it resizes");
   HeldResources started = RenderAt(kHalf);
@@ -154,8 +148,8 @@ void AQueuedResizeHoldsNoResize() {
 }
 
 void ARunningResizeHoldsItsDraw() {
-  const World world = WorldIn(
-      ResizingFrom(kHalf, kFull, ResizeRunning{UnpublishedDraw{4, 1, 0, 0}}));
+  const World world =
+      WorldIn(Running{ResizeFrom(kHalf, kFull), UnpublishedDraw{4, 1, 0, 0}});
   HeldResources held = RenderAt(kHalf);
   held.resize = HeldResize{kFull, {4, 1}};
   Check(Agrees(world, StoreOf(held)), "a running resize agrees");
@@ -171,15 +165,15 @@ void ARunningResizeHoldsItsDraw() {
 }
 
 void DisagreementsNameTheActor() {
-  const Found found = Disagreements(WorldIn(LiveAt(kFull)), Store{});
+  const Found found = Disagreements(WorldIn(ShownAt(kFull)), Store{});
   Check(!found.empty() && found.front().actor == kActor,
         "a disagreement names its actor");
 }
 
 void TheSettledWorldRecordsResultsButNotJobs() {
   constexpr ActorId kWaiting{0x20};
-  World world = WorldIn(LiveAt(kFull));
-  world.actors[kWaiting] = RecordOf(RenderIn(AwaitingPlan{PlanJobId{9}}));
+  World world = WorldIn(ShownAt(kFull));
+  world.actors[kWaiting] = RecordOf(RenderIn(Planning{PlanJobId{9}}));
   TickFacts facts;
   facts.now = 1000;
   facts.frame = 10;
@@ -192,7 +186,7 @@ void TheSettledWorldRecordsResultsButNotJobs() {
   const ActorRecord *retired = RecordIn(settled, kActor);
   Check(retired && !retired->render, "a retire result erases the render");
   const RenderPhase *waiting = PhaseIn(settled, kWaiting);
-  Check(waiting && Is<AwaitingPlan>(*waiting),
+  Check(waiting && Is<Planning>(*waiting),
         "a finished job does not move the awaiting actor before it builds");
 }
 
@@ -271,7 +265,7 @@ void AnActorLeavingTheViewDuringAResizeAgreesEveryTick() {
   actor.sightings.push_back({12, OutOfView(300.0f)});
   script.actors[kLeaving] = actor;
   World world;
-  world.actors[kLeaving] = RenderedRecord(LiveAt(kHalf), InView(0.6f, 300.0f));
+  world.actors[kLeaving] = RenderedRecord(ShownAt(kHalf), InView(0.6f, 300.0f));
   Agreed(RanAgreeing(Started(std::move(script), WithEstimate(std::move(world))),
                      200),
          "an actor leaving the view during a resize");
@@ -287,7 +281,7 @@ void PressureDuringFirstDrawsAgreesEveryTick() {
     const Sighting sight = k < 2 ? OutOfView(200.0f + 100.0f * k)
                                  : InView(0.6f, 200.0f + 100.0f * k);
     script.actors[ActorOf(400 + k)] = ScriptedActor(sight);
-    world.actors[ActorOf(400 + k)] = RenderedRecord(LiveAt(kFull), sight);
+    world.actors[ActorOf(400 + k)] = RenderedRecord(ShownAt(kFull), sight);
   }
   for (std::uint32_t k = 0; k < 6; ++k) {
     ActorScript arrival =
@@ -335,7 +329,7 @@ void ASwapMismatchAgreesEveryTick() {
   script.actors[kMismatched] = actor;
   World world;
   world.actors[kMismatched] =
-      RenderedRecord(LiveAt(kHalf), InView(0.6f, 300.0f));
+      RenderedRecord(ShownAt(kHalf), InView(0.6f, 300.0f));
   const AgreementRun run = RanAgreeing(
       Started(std::move(script), WithEstimate(std::move(world))), 200);
   Agreed(run, "a swap mismatch");
@@ -352,7 +346,7 @@ void AResizeStartingPartlyDrawnAgreesEveryTick() {
   actor.stacksDrawnAtStart = 5;
   script.actors[kCovered] = actor;
   World world;
-  world.actors[kCovered] = RenderedRecord(LiveAt(kHalf), InView(0.6f, 300.0f));
+  world.actors[kCovered] = RenderedRecord(ShownAt(kHalf), InView(0.6f, 300.0f));
   const AgreementRun run = RanAgreeing(
       Started(std::move(script), WithEstimate(std::move(world))), 200);
   Agreed(run, "a resize starting partly drawn");
@@ -364,10 +358,10 @@ void AResizeStartingPartlyDrawnAgreesEveryTick() {
 
 int main() {
   NoRenderMeansNoEntry();
-  WithoutRenderHoldsNothing();
-  AwaitingPlanHoldsItsJob();
-  FirstDrawingHoldsItsCount();
-  LiveHoldsItsLevelAndHolding();
+  EmptyHoldsNothing();
+  PlanningHoldsItsJob();
+  DrawingHoldsItsCount();
+  ShownHoldsItsLevelAndHolding();
   AQueuedResizeHoldsNoResize();
   ARunningResizeHoldsItsDraw();
   DisagreementsNameTheActor();

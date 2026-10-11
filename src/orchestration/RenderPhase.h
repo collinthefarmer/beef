@@ -11,87 +11,105 @@
 #include <cstdint>
 #include <optional>
 #include <string_view>
+#include <type_traits>
 #include <variant>
 
 namespace BetterEnchantmentEffects::Orchestration {
+using Level = ResolutionLevel;
+
 enum class PlanJobId : std::uint64_t {};
 
-struct IntermediatesHeld {
+struct Held {
   Hold outOfView;
-  [[nodiscard]] bool operator==(const IntermediatesHeld &) const = default;
+
+  [[nodiscard]] bool operator==(const Held &) const = default;
 };
 
-struct IntermediatesReleased {
-  [[nodiscard]] bool operator==(const IntermediatesReleased &) const = default;
+struct Freed {
+  [[nodiscard]] bool operator==(const Freed &) const = default;
 };
 
-using Intermediates = std::variant<IntermediatesHeld, IntermediatesReleased>;
+using Intermediates = std::variant<Held, Freed>;
 
 struct UnpublishedDraw {
   std::size_t total = 0;
   std::size_t drawn = 0;
   std::uint64_t beganFrame = 0;
   std::uint64_t drawTicks = 0;
+
   [[nodiscard]] bool operator==(const UnpublishedDraw &) const = default;
 };
 
 struct FailedLevel {
-  ResolutionLevel level = ResolutionLevel::kFull;
-  std::optional<ResolutionLevel> wantedThen;
+  Level level = Level::kFull;
+  std::optional<Level> wantedThen;
+
   [[nodiscard]] bool operator==(const FailedLevel &) const = default;
 };
 
-struct WithoutRender {
-  [[nodiscard]] bool operator==(const WithoutRender &) const = default;
+struct Empty {
+  [[nodiscard]] bool operator==(const Empty &) const = default;
 };
 
-struct Live {
-  ResolutionLevel level = ResolutionLevel::kFull;
+struct Shown {
+  Level level = Level::kFull;
   Intermediates intermediates;
   Hold smallOnScreen;
-  std::optional<ResolutionLevel> stepUpBlockedFrom;
+  std::optional<Level> stepUpBlockedFrom;
   std::optional<FailedLevel> failed;
-  [[nodiscard]] bool operator==(const Live &) const = default;
+
+  [[nodiscard]] bool operator==(const Shown &) const = default;
 };
 
-struct AwaitingPlan {
+struct Planning {
   PlanJobId job{};
-  [[nodiscard]] bool operator==(const AwaitingPlan &) const = default;
+
+  [[nodiscard]] bool operator==(const Planning &) const = default;
 };
 
-struct FirstDrawing {
-  ResolutionLevel level = ResolutionLevel::kFull;
+struct Drawing {
+  Level level = Level::kFull;
   UnpublishedDraw draw;
-  std::optional<ResolutionLevel> next;
-  [[nodiscard]] bool operator==(const FirstDrawing &) const = default;
+  std::optional<Level> next;
+
+  [[nodiscard]] bool operator==(const Drawing &) const = default;
 };
 
-struct ResizeQueued {
-  [[nodiscard]] bool operator==(const ResizeQueued &) const = default;
-};
-
-struct ResizeRunning {
-  UnpublishedDraw draw;
-  [[nodiscard]] bool operator==(const ResizeRunning &) const = default;
-};
-
-struct Resizing {
-  ResolutionLevel from = ResolutionLevel::kFull;
-  ResolutionLevel to = ResolutionLevel::kFull;
+struct Resize {
+  Level from = Level::kFull;
+  Level to = Level::kFull;
   IntermediateHolding holding = IntermediateHolding::kHeld;
-  std::variant<ResizeQueued, ResizeRunning> stage;
   std::optional<FailedLevel> failed;
-  [[nodiscard]] bool operator==(const Resizing &) const = default;
+
+  [[nodiscard]] bool operator==(const Resize &) const = default;
+};
+
+struct Queued {
+  Resize resize;
+
+  [[nodiscard]] bool operator==(const Queued &) const = default;
+};
+
+struct Running {
+  Resize resize;
+  UnpublishedDraw draw;
+
+  [[nodiscard]] bool operator==(const Running &) const = default;
 };
 
 using RenderPhase =
-    std::variant<WithoutRender, Live, AwaitingPlan, FirstDrawing, Resizing>;
+    std::variant<Empty, Shown, Planning, Drawing, Queued, Running>;
 
-[[nodiscard]] std::optional<ResolutionLevel>
+static_assert(std::is_trivially_copyable_v<RenderPhase>);
+
+[[nodiscard]] const Resize *ResizeIn(const RenderPhase &a_phase) noexcept;
+[[nodiscard]] Resize *ResizeIn(RenderPhase &a_phase) noexcept;
+
+[[nodiscard]] std::optional<Level>
 TargetLevel(const RenderPhase &a_phase) noexcept;
-[[nodiscard]] std::optional<ResolutionLevel>
+[[nodiscard]] std::optional<Level>
 AppliedLevel(const RenderPhase &a_phase) noexcept;
-[[nodiscard]] std::optional<ResolutionLevel>
+[[nodiscard]] std::optional<Level>
 FailedLevelOf(const RenderPhase &a_phase) noexcept;
 
 [[nodiscard]] IntermediateHolding

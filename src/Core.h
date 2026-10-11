@@ -184,6 +184,31 @@ template <class Variant, class... Fs>
   return VisitFrom<0>(visitor, std::forward<Variant>(a_variant));
 }
 
+template <class T> inline constexpr bool kIsVariant = false;
+
+template <class... Ts>
+inline constexpr bool kIsVariant<std::variant<Ts...>> = true;
+
+template <class Left, class Right, class... Fs>
+  requires kIsVariant<std::remove_cvref_t<Left>> &&
+           kIsVariant<std::remove_cvref_t<Right>>
+[[nodiscard]] decltype(auto) Match(Left &&a_left, Right &&a_right,
+                                   Fs &&...a_cases) {
+  static_assert(kAlternativesNothrowMovable<std::remove_cvref_t<Left>> &&
+                    kAlternativesNothrowMovable<std::remove_cvref_t<Right>>,
+                "Match requires nothrow-move-constructible variant "
+                "alternatives so the variants can never be valueless");
+  Overloaded<std::decay_t<Fs>...> visitor{std::forward<Fs>(a_cases)...};
+  auto withLeft = [&](auto &&a_first) -> decltype(auto) {
+    auto withBoth = [&](auto &&a_second) -> decltype(auto) {
+      return visitor(std::forward<decltype(a_first)>(a_first),
+                     std::forward<decltype(a_second)>(a_second));
+    };
+    return VisitFrom<0>(withBoth, std::forward<Right>(a_right));
+  };
+  return VisitFrom<0>(withLeft, std::forward<Left>(a_left));
+}
+
 template <class T, class Variant>
 [[nodiscard]] const T *Get(const Variant &a_variant) noexcept {
   return std::get_if<T>(&a_variant);

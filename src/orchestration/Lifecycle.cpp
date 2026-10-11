@@ -214,11 +214,11 @@ std::optional<ScreenStep> ScreenStepOf(const InstalledRender &a_render,
 void BlockStepUp(TickOutput &a_out, ActorId a_actor, InstalledRender &a_render,
                  const ScreenStep &a_step, Admission a_admission,
                  std::uint64_t a_added) {
-  Live *live = Get<Live>(a_render.phase);
-  if (!live || live->stepUpBlockedFrom == a_step.from) {
+  Shown *shown = Get<Shown>(a_render.phase);
+  if (!shown || shown->stepUpBlockedFrom == a_step.from) {
     return;
   }
-  live->stepUpBlockedFrom = a_step.from;
+  shown->stepUpBlockedFrom = a_step.from;
   const BudgetState &budget = a_out.world.budget;
   AddTrace(a_out, Metrics({{"action", "resolution_blocked"},
                            {"actor", ActorText(a_actor)},
@@ -297,9 +297,7 @@ ScheduledResizes ScheduleResizes(TickOutput &a_out, std::uint64_t a_frame) {
     } else if (progress) {
       ++running;
     }
-    const Resizing *resizing = Get<Resizing>(phase);
-    if (record.sight.loaded3D && resizing &&
-        Is<ResizeQueued>(resizing->stage)) {
+    if (record.sight.loaded3D && Is<Queued>(phase)) {
       candidates.push_back({FormOf(actor), true, record.sight.inView,
                             record.sight.screenFraction});
     }
@@ -322,7 +320,7 @@ ScheduledResizes ScheduleResizes(TickOutput &a_out, std::uint64_t a_frame) {
 
 void FinishFirstDraw(TickOutput &a_out, ActorId a_actor,
                      InstalledRender &a_render, std::uint64_t a_frame) {
-  const FirstDrawing *drawing = Get<FirstDrawing>(a_render.phase);
+  const Drawing *drawing = Get<Drawing>(a_render.phase);
   if (!drawing) {
     return;
   }
@@ -396,8 +394,8 @@ ActorSight ActorSightOf(const Sighting &a_sight) noexcept {
 TickActor TickActorFor(ActorId a_actor, const RenderPhase &a_phase,
                        const Sighting &a_sight,
                        const TickSettings &a_settings) noexcept {
-  const bool firstDrawing = Is<FirstDrawing>(a_phase);
-  const bool unpublished = firstDrawing || Is<AwaitingPlan>(a_phase);
+  const bool firstDrawing = Is<Drawing>(a_phase);
+  const bool unpublished = firstDrawing || Is<Planning>(a_phase);
   return {a_actor,      a_sight.inView,
           unpublished,  !a_settings.publishEffects || unpublished,
           firstDrawing, !unpublished || !a_sight.inView};
