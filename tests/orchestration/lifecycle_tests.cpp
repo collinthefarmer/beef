@@ -234,7 +234,7 @@ void AFailedResizeRemembersTheWantedLevel() {
             HasField(phases.front(), "from", "resize_queued") &&
             HasField(phases.front(), "to", "shown") &&
             HasField(phases.front(), "event", "resize_not_started"),
-        "the return to live is traced");
+        "the return to shown is traced");
 }
 
 void AnInstallAfterAPlanReplacesTheCosts() {
@@ -409,9 +409,9 @@ void ASmallActorStepsDownAfterTheHold() {
 }
 
 void AFailedLevelIsNotAskedAgain() {
-  Shown live = ShownAt(kHalf);
-  live.failed = FailedLevel{kFull, kFull};
-  World world = WorldOf({{kActor, Tracked(live, InView(0.6f))}});
+  Shown shown = ShownAt(kHalf);
+  shown.failed = FailedLevel{kFull, kFull};
+  World world = WorldOf({{kActor, Tracked(shown, InView(0.6f))}});
   world.budget = BudgetState{5000, 1000, Pressure::kNone};
   const TickOutput out = Lifecycle(std::move(world));
   Check(PhaseNameOf(out, kActor) == "shown" &&
@@ -465,7 +465,7 @@ void AResizeOutOfViewSwapsAtOnce() {
 void ADrawnFirstDrawEnds() {
   const TickOutput out =
       Lifecycle(WorldOf({{kActor, Tracked(DrawingAt(3, 3, 2), InView(0.3f))}}));
-  Check(PhaseNameOf(out, kActor) == "shown", "a drawn first draw goes live");
+  Check(PhaseNameOf(out, kActor) == "shown", "a drawn first draw is shown");
   const std::vector<TraceRecord> ends = TracesOf(out, "first_draw");
   Check(ends.size() == 1 && HasField(ends.front(), "end", "drawn") &&
             HasField(ends.front(), "frames", "100") &&
@@ -479,7 +479,7 @@ void ADrawnFirstDrawEnds() {
         "the phase change is traced");
   const std::optional<TickActor> tick = TickOf(out, kActor);
   Check(tick && !tick->concealSlots && !tick->hideShells && !tick->hideLights,
-        "a live actor renders in the same tick its first draw ends");
+        "a shown actor renders in the same tick its first draw ends");
 }
 
 void AFirstDrawEndsAtTheTickLimit() {
@@ -529,11 +529,12 @@ void TheTickFlagsFollowThePhase() {
         "nothing");
   TickSettings unpublished;
   unpublished.publishEffects = false;
-  const std::optional<TickActor> live = TickOf(
+  const std::optional<TickActor> shown = TickOf(
       Lifecycle(WorldOf({{kActor, Tracked(ShownAt(kHalf), InView(0.3f))}}),
                 kNow, unpublished),
       kActor);
-  Check(live && live->hideShells && !live->concealSlots && !live->hideLights,
+  Check(shown && shown->hideShells && !shown->concealSlots &&
+            !shown->hideLights,
         "unpublished effects hide the shells of every actor");
 }
 
@@ -618,7 +619,7 @@ void ATickCarriesAnInstallToItsFirstTick() {
   facts.results = {ActorEvent{kActor, Installed{kHalf, 0, Costs(), 300}}};
   const TickOutput out = Tick(std::move(world), facts);
   Check(PhaseNameOf(out, kActor) == "shown",
-        "an install with nothing to draw goes live in its first tick");
+        "an install with nothing to draw is shown in its first tick");
   Check(!out.commands.empty() && Is<SetAppliedLevel>(out.commands.front()) &&
             Is<TickActor>(out.commands.back()),
         "the install's level comes first and the actor ticks last");

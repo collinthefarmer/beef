@@ -549,7 +549,7 @@ void ReturnBytesFollowTheTarget() {
   TrackedActor record;
   record.render = ShownRender(ResolutionLevel::kFull);
   Check(ReturnBytesOf(record) == std::uint64_t{400},
-        "a live actor returns at its level's full cost");
+        "a shown actor returns at its level's full cost");
   record.render->phase =
       Queued{Resize{Level::kFull, Level::kHalf, IntermediateHolding::kHeld}};
   Check(ReturnBytesOf(record) == std::uint64_t{100},

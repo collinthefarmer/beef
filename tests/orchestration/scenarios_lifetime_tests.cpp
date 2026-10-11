@@ -92,7 +92,7 @@ void TheRadiusShrinksAndGrows() {
   Check(far && !far->render,
         "the evicted actor keeps its record and no render");
   const RenderPhase *near = PhaseNow(sim, kNear);
-  Check(near && Is<Shown>(*near), "the near actor stays live");
+  Check(near && Is<Shown>(*near), "the near actor stays shown");
   Check(IssuedFor<Retire>(sim, kNear).empty(), "only one actor is evicted");
 
   const std::size_t installsBefore = IssuedFor<Install>(sim, kFar).size();
@@ -104,7 +104,7 @@ void TheRadiusShrinksAndGrows() {
   Check(installs.size() == installsBefore + 1,
         "the evicted actor installs again");
   const RenderPhase *returned = PhaseNow(sim, kFar);
-  Check(returned && Is<Shown>(*returned), "the evicted actor returns live");
+  Check(returned && Is<Shown>(*returned), "the evicted actor returns shown");
 }
 
 void AReinstallDuringAResize() {
@@ -166,7 +166,7 @@ void AReinstallDuringAResize() {
             !engine->second.resize,
         "the old render's resize work does not leak");
   phase = PhaseNow(sim, kActor);
-  Check(phase && Is<Shown>(*phase), "the reinstalled actor ends live");
+  Check(phase && Is<Shown>(*phase), "the reinstalled actor ends shown");
 }
 
 void AnActorUnloadsDuringAResize() {

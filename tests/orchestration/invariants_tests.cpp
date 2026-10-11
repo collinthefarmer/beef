@@ -72,7 +72,7 @@ void ReleaseOutsideShown() {
   const World released = WorldOf({{kActor, ShownAt(kFull, Freed{})}});
   Check(!Fired(Checked(held, FactsAt(kNow), released, {release}),
                Rule::kReleaseOutsideShown),
-        "a release that leaves the actor live and released passes");
+        "a release that leaves the actor shown and released passes");
   const World steppedDown = WorldOf(
       {{kActor, Queued{Resize{kFull, kHalf, IntermediateHolding::kReleased}}}});
   Check(!Fired(Checked(held, FactsAt(kNow), steppedDown, {release}),
@@ -122,12 +122,12 @@ void NoResizeToTheSameLevel() {
 }
 
 void NoIgnoredCreatingEvent() {
-  const World live = WorldOf({{kActor, ShownAt(kFull)}});
+  const World shown = WorldOf({{kActor, ShownAt(kFull)}});
   TickFacts facts = FactsAt(kNow);
   facts.results.push_back(
       ActorEvent{kActor, Installed{kFull, 4, HalvingCosts(kFullBytes), 1}});
-  Check(Fired(Checked(live, facts, live, {}), Rule::kCreatingEventIgnored),
-        "an install result for a live actor fires");
+  Check(Fired(Checked(shown, facts, shown, {}), Rule::kCreatingEventIgnored),
+        "an install result for a shown actor fires");
   const World awaiting = WorldOf({{kActor, Planning{PlanJobId{1}}}});
   const World drawing = WorldOf(
       {{kActor, Drawing{kFull, UnpublishedDraw{4, 0, 1, 0}, std::nullopt}}});
@@ -139,7 +139,7 @@ void NoIgnoredCreatingEvent() {
       "an install result that creates no render fires");
   TickFacts reinstall = facts;
   reinstall.results.insert(reinstall.results.begin(), Retired{kActor});
-  Check(!Fired(Checked(live, reinstall, drawing, {}),
+  Check(!Fired(Checked(shown, reinstall, drawing, {}),
                Rule::kCreatingEventIgnored),
         "an install result after a retire of the same actor passes");
   Check(!Fired(Checked(awaiting, facts, World{}, {Forget{kActor}}),
@@ -148,23 +148,23 @@ void NoIgnoredCreatingEvent() {
 }
 
 void CommandsAgreeWithPhases() {
-  const World live = WorldOf({{kActor, ShownAt(kFull)}});
-  Check(Fired(Checked(live, {SwapResize{kActor}}),
+  const World shown = WorldOf({{kActor, ShownAt(kFull)}});
+  Check(Fired(Checked(shown, {SwapResize{kActor}}),
               Rule::kCommandDisagreesWithPhase),
-        "a swap for a live actor fires");
-  Check(Fired(Checked(live, {StartResize{kActor, kHalf}}),
+        "a swap for a shown actor fires");
+  Check(Fired(Checked(shown, {StartResize{kActor, kHalf}}),
               Rule::kCommandDisagreesWithPhase),
-        "a resize start for a live actor fires");
-  Check(Fired(Checked(live, {SetAppliedLevel{kActor, kHalf}}),
+        "a resize start for a shown actor fires");
+  Check(Fired(Checked(shown, {SetAppliedLevel{kActor, kHalf}}),
               Rule::kCommandDisagreesWithPhase),
         "an applied level the phase does not have fires");
-  Check(Fired(Checked(live, {BuildAwaitedRender{kActor, {}}}),
+  Check(Fired(Checked(shown, {BuildAwaitedRender{kActor, {}}}),
               Rule::kCommandDisagreesWithPhase),
-        "an awaited render built for a live actor fires");
-  Check(Fired(Checked(live, {DrawUnpublished{{kActor}, 4000}}),
+        "an awaited render built for a shown actor fires");
+  Check(Fired(Checked(shown, {DrawUnpublished{{kActor}, 4000}}),
               Rule::kCommandDisagreesWithPhase),
-        "an unpublished draw for a live actor fires");
-  Check(Fired(Checked(live,
+        "an unpublished draw for a shown actor fires");
+  Check(Fired(Checked(shown,
                       {Install{kActor, {}, {}, InstallKind::kInstall, {}, 0}}),
               Rule::kCommandDisagreesWithPhase),
         "a fresh install over a render fires");

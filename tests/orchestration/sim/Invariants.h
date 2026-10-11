@@ -50,7 +50,7 @@ struct EstimateRange {
 [[nodiscard]] inline std::string_view RuleName(Rule a_rule) noexcept {
   switch (a_rule) {
   case Rule::kReleaseOutsideShown:
-    return "release outside live";
+    return "release outside shown";
   case Rule::kOutOfViewReleaseEarly:
     return "out-of-view release before its hold";
   case Rule::kTwoResizesInFlight:
@@ -203,7 +203,7 @@ struct Checker {
     const RenderPhase *after = After(a_command.actor);
     if (!after || !ReleasedFromShown(*after)) {
       Flag(Rule::kReleaseOutsideShown, a_command.actor,
-           "the actor is neither live nor resizing from a released render "
+           "the actor is neither shown nor resizing from a released render "
            "after the tick");
       return;
     }
@@ -216,7 +216,7 @@ struct Checker {
     const Millis delay = view.facts.settings.outOfViewReleaseDelayMs;
     if (!held) {
       Flag(Rule::kOutOfViewReleaseEarly, a_command.actor,
-           "released out of view without a live hold the tick before");
+           "released out of view without a shown hold the tick before");
       return;
     }
     if (delay > 0 && !held->outOfView.Due(view.facts.now, delay)) {

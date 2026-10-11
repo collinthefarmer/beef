@@ -166,10 +166,10 @@ bool FieldsAre(const TraceRecord &a_record,
 
 void EstimateCountsEachRenderAtItsLevelAndHolding() {
   Check(PlannedBytesOf(Rendered(ShownAt(kFull), InView(0.6f))) == MiB(400),
-        "a live held render counts its level with intermediates");
+        "a shown held render counts its level with intermediates");
   Check(PlannedBytesOf(Rendered(ShownAt(kFull, Freed{}), OutOfView())) ==
             MiB(300),
-        "a live released render counts its level without intermediates");
+        "a shown released render counts its level without intermediates");
   Check(PlannedBytesOf(Rendered(RunningResize(kFull, kHalf), InView(0.3f))) ==
             MiB(600),
         "a running resize adds its target level in full");
@@ -350,7 +350,7 @@ void BudgetActorFollowsThePhase() {
             held->costs.planned == MiB(400) &&
             held->costs.stepDown == StepDownOption{kHalf, MiB(200)} &&
             !held->resizing && held->distance == 700.0f,
-        "a live held actor offers its release and its step down");
+        "a shown held actor offers its release and its step down");
   Check(held && held->costs.surplus == MiB(350),
         "an actor out of view has a surplus down to eighth");
   const std::optional<BudgetActor> released =

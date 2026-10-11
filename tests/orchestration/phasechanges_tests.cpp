@@ -202,7 +202,7 @@ void FailedResizesKeepTheAppliedLevel() {
   Check(TargetLevel(failed.phase) == kFull &&
             AppliedLevel(failed.phase) == kFull &&
             FailedLevelOf(failed.phase) == kHalf,
-        "a resize that did not start returns live at its old level");
+        "a resize that did not start returns shown at its old level");
   Check(WantLevel(kActor, failed.phase, kHalf).phase == failed.phase,
         "the failed level is not asked for again while it stays wanted");
   const PhaseChange kept = SeeActor(kActor, failed.phase, InView(1, kHalf));
@@ -236,12 +236,12 @@ void OnlyHeldShownMayRelease() {
             !MayRelease(EmptyPhase()) && !MayRelease(PlanningPhase()) &&
             !MayRelease(DrawingPhase()) && !MayRelease(QueuedPhase()) &&
             !MayRelease(RunningPhase()),
-        "only a live actor that holds its intermediates may release them");
+        "only a shown actor that holds its intermediates may release them");
   Check(MayStepDown(ShownHeld()) && MayStepDown(ShownFreed()) &&
             !MayStepDown(EmptyPhase()) && !MayStepDown(PlanningPhase()) &&
             !MayStepDown(DrawingPhase()) && !MayStepDown(QueuedPhase()) &&
             !MayStepDown(RunningPhase()),
-        "only a live actor may step down for the budget");
+        "only a shown actor may step down for the budget");
   Check(MayEvict(ShownHeld()) && MayEvict(EmptyPhase()) &&
             MayEvict(PlanningPhase()) && MayEvict(DrawingPhase()) &&
             !MayEvict(QueuedPhase()) && !MayEvict(RunningPhase()),
@@ -250,7 +250,7 @@ void OnlyHeldShownMayRelease() {
        {ShownFreed(), EmptyPhase(), PlanningPhase(), DrawingPhase(),
         QueuedPhase(), RunningPhase()}) {
     Check(Commands(ReleaseForBudget(kActor, phase, 64), 0),
-          "a budget release releases only a held live actor");
+          "a budget release releases only a held shown actor");
   }
   const PhaseChange released = ReleaseForBudget(kActor, ShownHeld(), 64);
   const ReleaseIntermediates *command =
@@ -259,7 +259,7 @@ void OnlyHeldShownMayRelease() {
           : nullptr;
   Check(command && command->reason == ReleaseReason::kBudget &&
             command->bytes == 64 && !MayRelease(released.phase),
-        "a budget release of a held live actor releases once");
+        "a budget release of a held shown actor releases once");
   Check(Commands(SeeActor(kActor, DrawingPhase(), OutOfView(100000)), 0),
         "a first-drawing actor out of view releases nothing");
 }
@@ -327,10 +327,10 @@ void FirstDrawQueuesALevel() {
             TargetLevel(ended.phase) == kQuarter,
         "the first draw's end queues the wanted resize");
   Check(PhaseName(EndFirstDraw(DrawingPhase()).phase) == "shown",
-        "a first draw without a wanted level ends live");
+        "a first draw without a wanted level ends shown");
   Check(PhaseName(EndFirstDraw(WantLevel(kActor, DrawingPhase(), kFull).phase)
                       .phase) == "shown",
-        "a first draw that wants its own level ends live");
+        "a first draw that wants its own level ends shown");
   for (const RenderPhase &phase :
        {ShownHeld(), EmptyPhase(), PlanningPhase(), RunningPhase()}) {
     Check(EndFirstDraw(phase).phase == phase,
@@ -345,7 +345,7 @@ void LevelRequestsKeepOrAbandonWork() {
     shown->waitingForRoomFrom = kHalf;
   }
   Check(WantLevel(kActor, small, kFull).phase == small,
-        "asking for the current level keeps the live state");
+        "asking for the current level keeps the shown state");
   const PhaseChange changed = WantLevel(kActor, RunningPhase(), kQuarter);
   Check(PhaseName(changed.phase) == "resize_queued" &&
             TargetLevel(changed.phase) == kQuarter &&
@@ -354,7 +354,7 @@ void LevelRequestsKeepOrAbandonWork() {
   const PhaseChange back = WantLevel(kActor, RunningPhase(), kFull);
   Check(Is<Shown>(back.phase) && AppliedLevel(back.phase) == kFull &&
             FirstCommandIs<AbandonResize>(back),
-        "asking for the old level during a running resize ends live");
+        "asking for the old level during a running resize ends shown");
   Check(Commands(WantLevel(kActor, RunningPhase(), kHalf), 0),
         "asking again for the running resize's level changes nothing");
   Check(Commands(WantLevel(kActor, QueuedPhase(), kQuarter), 0),
@@ -431,8 +431,9 @@ void ShownStateResetsWithANewShown() {
   const PhaseChange swapped =
       OnEvent(kActor, running.phase, ResizeSwapped{}, {61, kHalf});
   const Shown *shown = Get<Shown>(swapped.phase);
-  Check(shown && !shown->waitingForRoomFrom && !shown->smallOnScreen.since,
-        "the step-down hold and the blocked step-up reset in a new live");
+  Check(
+      shown && !shown->waitingForRoomFrom && !shown->smallOnScreen.since,
+      "the step-down hold and the blocked step-up reset in a new shown phase");
 }
 
 void PlanFailuresMatchTheAwaitedJob() {

@@ -23,7 +23,6 @@ The user reads the code in an nvim pane that the `walk` skill drives. Each findi
 ## Cleanups
 
 - **One `Core.h` batch.** A `MaxBy` for the best-element loops in `recipe/Resolve.cpp` and `planners/RecipeTextureCache.h`, and an `IsAny<Ts...>(variant)` for the `Is<A>(v) || Is<B>(v) || …` chains in `TraitsOf` (`recipe/RecipeGraphLowering.cpp`). An edit to `Core.h` rebuilds most of the tree, so these go in together.
-- **Test prose.** Some test messages and local variables still say "live" for the shown phase.
 
 ## Large plans, on hold
 

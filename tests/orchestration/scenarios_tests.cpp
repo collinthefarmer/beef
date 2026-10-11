@@ -87,7 +87,7 @@ void ACrowdArrivesAtOnce() {
     const RenderPhase *phase = PhaseNow(sim, actor);
     allShown = allShown && phase && Is<Shown>(*phase);
   }
-  Check(allShown, "every actor of the crowd ends live");
+  Check(allShown, "every actor of the crowd ends shown");
 
   std::size_t mostPerTick = 0;
   for (const TickRecord &record : sim.history) {
@@ -138,7 +138,8 @@ void AnActorLeavesTheViewDuringAResize() {
 
   const RenderPhase *phase = PhaseNow(sim, kActor);
   const Shown *shown = phase ? Get<Shown>(*phase) : nullptr;
-  Check(shown && shown->level == kFull, "the actor ends live at the new level");
+  Check(shown && shown->level == kFull,
+        "the actor ends shown at the new level");
 
   const std::vector<Reported<ResizeSwapped>> swapped =
       ReportedOf<ResizeSwapped>(sim, kActor);
@@ -276,9 +277,10 @@ void ASwapMismatch() {
   Equal(IssuedFor<AbandonResize>(sim, kActor).size(), std::size_t{1},
         "the mismatched resize is abandoned");
   const RenderPhase *phase = PhaseNow(sim, kActor);
-  Check(phase && Is<Shown>(*phase) && AppliedLevel(*phase) == kHalf &&
-            FailedLevelOf(*phase) == kFull,
-        "the actor is live at its old level with the level recorded as failed");
+  Check(
+      phase && Is<Shown>(*phase) && AppliedLevel(*phase) == kHalf &&
+          FailedLevelOf(*phase) == kFull,
+      "the actor is shown at its old level with the level recorded as failed");
   const auto engine = sim.shell.actors.find(kActor);
   Check(engine != sim.shell.actors.end() && !engine->second.resize &&
             HeldBytes(engine->second) ==

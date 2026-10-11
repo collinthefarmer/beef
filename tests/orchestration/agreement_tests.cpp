@@ -121,17 +121,17 @@ void DrawingHoldsItsCount() {
 void ShownHoldsItsLevelAndHolding() {
   const World world = WorldIn(ShownAt(kFull, Freed{}));
   Check(Agrees(world, StoreOf(RenderAt(kFull, IntermediateHolding::kReleased))),
-        "a live render at the same level and holding agrees");
+        "a shown render at the same level and holding agrees");
   Check(!Agrees(world, StoreOf(RenderAt(kFull))),
-        "a live render that still holds its intermediates disagrees");
+        "a shown render that still holds its intermediates disagrees");
   Check(
       !Agrees(world, StoreOf(RenderAt(kHalf, IntermediateHolding::kReleased))),
-      "a live render at another level disagrees");
+      "a shown render at another level disagrees");
   HeldResources unpublished = RenderAt(kFull, IntermediateHolding::kReleased);
   unpublished.firstDraw = UnpublishedCount{4, 4};
   Check(!Agrees(world, StoreOf(unpublished)),
-        "a live render that keeps its first draw disagrees");
-  Check(!Agrees(world, Store{}), "a live actor without an entry disagrees");
+        "a shown render that keeps its first draw disagrees");
+  Check(!Agrees(world, Store{}), "a shown actor without an entry disagrees");
 }
 
 void AQueuedResizeHoldsNoResize() {
