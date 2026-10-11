@@ -115,27 +115,27 @@ Findings FindingsFor(const RenderPhase &a_phase, const HeldResources &a_held) {
   Findings findings;
   Match(
       a_phase,
-      [&](const WithoutRender &) {
+      [&](const Empty &) {
         NoRender(findings, a_held);
         NoFirstDraw(findings, a_held);
         NoResize(findings, a_held);
         NoAwaited(findings, a_held);
       },
-      [&](const AwaitingPlan &a_awaiting) {
+      [&](const Planning &a_planning) {
         NoRender(findings, a_held);
         NoFirstDraw(findings, a_held);
         NoResize(findings, a_held);
-        AwaitedOf(findings, a_held, a_awaiting.job);
+        AwaitedOf(findings, a_held, a_planning.job);
       },
-      [&](const FirstDrawing &a_drawing) {
+      [&](const Drawing &a_drawing) {
         RenderAt(findings, a_held, a_drawing.level, std::nullopt);
         FirstDrawOf(findings, a_held, CountOf(a_drawing.draw));
         NoResize(findings, a_held);
         NoAwaited(findings, a_held);
       },
-      [&](const Live &a_live) {
-        RenderAt(findings, a_held, a_live.level,
-                 HoldingOf(a_live.intermediates));
+      [&](const Shown &a_shown) {
+        RenderAt(findings, a_held, a_shown.level,
+                 HoldingOf(a_shown.intermediates));
         NoFirstDraw(findings, a_held);
         NoResize(findings, a_held);
         NoAwaited(findings, a_held);
@@ -144,8 +144,7 @@ Findings FindingsFor(const RenderPhase &a_phase, const HeldResources &a_held) {
         RenderAt(findings, a_held, a_resizing.from, a_resizing.holding);
         NoFirstDraw(findings, a_held);
         NoAwaited(findings, a_held);
-        if (const ResizeRunning *running =
-                Get<ResizeRunning>(a_resizing.stage)) {
+        if (const Running *running = Get<Running>(a_resizing.stage)) {
           ResizeOf(findings, a_held,
                    HeldResize{a_resizing.to, CountOf(running->draw)});
         } else {
@@ -191,7 +190,7 @@ Disagreements(const World &a_world,
     }
     const auto found = a_held.find(actor);
     if (found == a_held.end()) {
-      if (!Is<WithoutRender>(record.render->phase)) {
+      if (!Is<Empty>(record.render->phase)) {
         Append(disagreements, actor,
                FindingsFor(record.render->phase, HeldResources{}));
       }

@@ -22,23 +22,23 @@ constexpr ResolutionLevel kHalf = ResolutionLevel::kHalf;
 constexpr ResolutionLevel kQuarter = ResolutionLevel::kQuarter;
 constexpr EventContext kAtFrame30{30, kFull};
 
-Live LiveWith(Intermediates a_intermediates) {
-  return Live{
+Shown ShownWith(Intermediates a_intermediates) {
+  return Shown{
       kFull, std::move(a_intermediates), {}, std::nullopt, std::nullopt};
 }
-RenderPhase LiveHeld() { return LiveWith(IntermediatesHeld{}); }
-RenderPhase LiveReleased() { return LiveWith(IntermediatesReleased{}); }
-RenderPhase Bare() { return WithoutRender{}; }
-RenderPhase Awaiting() { return AwaitingPlan{kJob}; }
-RenderPhase Drawing() {
-  return FirstDrawing{kFull, UnpublishedDraw{3, 0, 1, 0}, std::nullopt};
+RenderPhase ShownHeld() { return ShownWith(Held{}); }
+RenderPhase ShownFreed() { return ShownWith(Freed{}); }
+RenderPhase Bare() { return Empty{}; }
+RenderPhase Awaiting() { return Planning{kJob}; }
+RenderPhase DrawingPhase() {
+  return Drawing{kFull, UnpublishedDraw{3, 0, 1, 0}, std::nullopt};
 }
-RenderPhase Queued() {
-  return Resizing{kFull, kHalf, IntermediateHolding::kHeld, ResizeQueued{}};
+RenderPhase QueuedPhase() {
+  return Resizing{kFull, kHalf, IntermediateHolding::kHeld, Queued{}};
 }
-RenderPhase Running() {
+RenderPhase RunningPhase() {
   return Resizing{kFull, kHalf, IntermediateHolding::kReleased,
-                  ResizeRunning{UnpublishedDraw{2, 0, 10, 0}}};
+                  Running{UnpublishedDraw{2, 0, 10, 0}}};
 }
 
 SeenThisTick OutOfView(Millis a_now) {
@@ -59,13 +59,13 @@ template <class T> bool FirstCommandIs(const PhaseChange &a_change) {
 
 void EveryEventHasItsNextPhase() {
   const std::array<std::pair<std::string_view, std::function<RenderPhase()>>, 7>
-      phases{{{"live held", LiveHeld},
-              {"live released", LiveReleased},
-              {"without render", Bare},
-              {"awaiting", Awaiting},
-              {"drawing", Drawing},
-              {"queued", Queued},
-              {"running", Running}}};
+      phases{{{"shown held", ShownHeld},
+              {"shown freed", ShownFreed},
+              {"empty", Bare},
+              {"planning", Awaiting},
+              {"drawing", DrawingPhase},
+              {"queued", QueuedPhase},
+              {"running", RunningPhase}}};
   const std::array<std::pair<std::string_view, RenderEvent>, 8> events{{
       {"plan awaited", PlanAwaited{kOtherJob}},
       {"installed", Installed{kHalf, 1, {}, 0}},
@@ -77,18 +77,17 @@ void EveryEventHasItsNextPhase() {
       {"resize not swapped", ResizeNotSwapped{}},
   }};
   const std::array<std::array<std::string_view, 8>, 7> names{{
-      {"live", "live", "live", "live", "live", "live", "live", "live"},
-      {"live", "live", "live", "live", "live", "live", "live", "live"},
-      {"without_render", "without_render", "without_render", "without_render",
-       "without_render", "without_render", "without_render", "without_render"},
-      {"awaiting_plan", "first_drawing", "without_render", "awaiting_plan",
-       "awaiting_plan", "awaiting_plan", "awaiting_plan", "awaiting_plan"},
-      {"first_drawing", "first_drawing", "first_drawing", "first_drawing",
-       "first_drawing", "first_drawing", "first_drawing", "first_drawing"},
+      {"shown", "shown", "shown", "shown", "shown", "shown", "shown", "shown"},
+      {"shown", "shown", "shown", "shown", "shown", "shown", "shown", "shown"},
+      {"empty", "empty", "empty", "empty", "empty", "empty", "empty", "empty"},
+      {"planning", "drawing", "empty", "planning", "planning", "planning",
+       "planning", "planning"},
+      {"drawing", "drawing", "drawing", "drawing", "drawing", "drawing",
+       "drawing", "drawing"},
       {"resize_queued", "resize_queued", "resize_queued", "resize_queued",
-       "resize_running", "live", "resize_queued", "resize_queued"},
+       "resize_running", "shown", "resize_queued", "resize_queued"},
       {"resize_running", "resize_running", "resize_running", "resize_running",
-       "resize_running", "resize_running", "live", "live"},
+       "resize_running", "resize_running", "shown", "shown"},
   }};
   const std::array<std::array<bool, 8>, 7> ignored{{
       {true, true, true, true, true, true, true, true},
@@ -144,7 +143,7 @@ void TheFirstEventCreatesThePhase() {
         "an install starts its first draw and sets the applied level");
   const std::optional<PhaseChange> bare =
       PhaseFor(kActor, InstalledWithoutRender{}, 30);
-  Check(bare && Is<WithoutRender>(bare->phase) && Commands(*bare, 0),
+  Check(bare && Is<Empty>(bare->phase) && Commands(*bare, 0),
         "an install without a render creates a phase without one");
   Check(!PhaseFor(kActor, ResizeSwapped{}, 30),
         "only an install or an awaited plan creates a phase");
@@ -152,34 +151,34 @@ void TheFirstEventCreatesThePhase() {
 
 void DrawsCountUnitsAndTicks() {
   PhaseChange step =
-      OnEvent(kActor, Drawing(), UnpublishedDrawn{1, true}, kAtFrame30);
+      OnEvent(kActor, DrawingPhase(), UnpublishedDrawn{1, true}, kAtFrame30);
   step = OnEvent(kActor, std::move(step.phase), UnpublishedDrawn{1, false},
                  kAtFrame30);
   const UnpublishedDraw *draw = UnpublishedDrawOf(step.phase);
   Check(draw && draw->drawn == 1 && draw->drawTicks == 1,
         "a draw records its units and counts only ticks that drew");
   const PhaseChange over =
-      OnEvent(kActor, Drawing(), UnpublishedDrawn{99, true}, kAtFrame30);
+      OnEvent(kActor, DrawingPhase(), UnpublishedDrawn{99, true}, kAtFrame30);
   const UnpublishedDraw *clamped = UnpublishedDrawOf(over.phase);
   Check(clamped && clamped->drawn == 3,
         "a draw never counts more units than it has");
   const PhaseChange started =
-      OnEvent(kActor, Queued(), ResizeStarted{4}, {40, kHalf});
+      OnEvent(kActor, QueuedPhase(), ResizeStarted{4}, {40, kHalf});
   const UnpublishedDraw *resize = UnpublishedDrawOf(started.phase);
   Check(resize && resize->total == 4 && resize->drawn == 0 &&
             resize->beganFrame == 40,
         "a started resize draws its units from the frame it began");
   const PhaseChange covered =
-      OnEvent(kActor, Queued(), ResizeStarted{4, 3}, {40, kHalf});
+      OnEvent(kActor, QueuedPhase(), ResizeStarted{4, 3}, {40, kHalf});
   const UnpublishedDraw *partly = UnpublishedDrawOf(covered.phase);
   Check(partly && partly->drawn == 3,
         "a resize starts with the units the engine had drawn already");
   const PhaseChange overCovered =
-      OnEvent(kActor, Queued(), ResizeStarted{4, 9}, {40, kHalf});
+      OnEvent(kActor, QueuedPhase(), ResizeStarted{4, 9}, {40, kHalf});
   const UnpublishedDraw *clampedStart = UnpublishedDrawOf(overCovered.phase);
   Check(clampedStart && clampedStart->drawn == 4,
         "a resize never starts with more units drawn than it has");
-  for (const RenderPhase &phase : {LiveHeld(), Queued()}) {
+  for (const RenderPhase &phase : {ShownHeld(), QueuedPhase()}) {
     const PhaseChange drawn =
         OnEvent(kActor, phase, UnpublishedDrawn{2, true}, kAtFrame30);
     Check(drawn.ignored && drawn.phase == phase,
@@ -189,7 +188,7 @@ void DrawsCountUnitsAndTicks() {
 
 void FailedResizesKeepTheAppliedLevel() {
   const PhaseChange failed =
-      OnEvent(kActor, Queued(), ResizeNotStarted{"no stack"}, {30, kHalf});
+      OnEvent(kActor, QueuedPhase(), ResizeNotStarted{"no stack"}, {30, kHalf});
   Check(TargetLevel(failed.phase) == kFull &&
             AppliedLevel(failed.phase) == kFull &&
             FailedLevelOf(failed.phase) == kHalf,
@@ -205,8 +204,8 @@ void FailedResizesKeepTheAppliedLevel() {
                 "resize_queued",
         "a change of the wanted level allows the failed level again");
   const PhaseChange swap =
-      OnEvent(kActor, Running(), ResizeNotSwapped{}, {31, kHalf});
-  Check(Is<Live>(swap.phase) && FailedLevelOf(swap.phase) == kHalf &&
+      OnEvent(kActor, RunningPhase(), ResizeNotSwapped{}, {31, kHalf});
+  Check(Is<Shown>(swap.phase) && FailedLevelOf(swap.phase) == kHalf &&
             FirstCommandIs<AbandonResize>(swap),
         "a swap that did not match abandons the resize and records the level");
   Check(WantLevel(kActor, swap.phase, kHalf).phase == swap.phase,
@@ -215,33 +214,35 @@ void FailedResizesKeepTheAppliedLevel() {
 
 void ABudgetFailureIsNotRetriedEveryTick() {
   const PhaseChange failed =
-      OnEvent(kActor, Queued(), ResizeNotStarted{"no stack"}, {30, kFull});
+      OnEvent(kActor, QueuedPhase(), ResizeNotStarted{"no stack"}, {30, kFull});
   const PhaseChange seen = SeeActor(kActor, failed.phase, InView(1, kFull));
   Check(
       FailedLevelOf(seen.phase) == kHalf,
       "a failed budget step-down stays recorded while the screen level holds");
 }
 
-void OnlyHeldLiveMayRelease() {
-  Check(MayRelease(LiveHeld()) && !MayRelease(LiveReleased()) &&
+void OnlyHeldShownMayRelease() {
+  Check(MayRelease(ShownHeld()) && !MayRelease(ShownFreed()) &&
             !MayRelease(Bare()) && !MayRelease(Awaiting()) &&
-            !MayRelease(Drawing()) && !MayRelease(Queued()) &&
-            !MayRelease(Running()),
+            !MayRelease(DrawingPhase()) && !MayRelease(QueuedPhase()) &&
+            !MayRelease(RunningPhase()),
         "only a live actor that holds its intermediates may release them");
-  Check(MayStepDown(LiveHeld()) && MayStepDown(LiveReleased()) &&
+  Check(MayStepDown(ShownHeld()) && MayStepDown(ShownFreed()) &&
             !MayStepDown(Bare()) && !MayStepDown(Awaiting()) &&
-            !MayStepDown(Drawing()) && !MayStepDown(Queued()) &&
-            !MayStepDown(Running()),
+            !MayStepDown(DrawingPhase()) && !MayStepDown(QueuedPhase()) &&
+            !MayStepDown(RunningPhase()),
         "only a live actor may step down for the budget");
-  Check(MayEvict(LiveHeld()) && MayEvict(Bare()) && MayEvict(Awaiting()) &&
-            MayEvict(Drawing()) && !MayEvict(Queued()) && !MayEvict(Running()),
+  Check(MayEvict(ShownHeld()) && MayEvict(Bare()) && MayEvict(Awaiting()) &&
+            MayEvict(DrawingPhase()) && !MayEvict(QueuedPhase()) &&
+            !MayEvict(RunningPhase()),
         "every actor may be evicted except during a resize");
   for (const RenderPhase &phase :
-       {LiveReleased(), Bare(), Awaiting(), Drawing(), Queued(), Running()}) {
+       {ShownFreed(), Bare(), Awaiting(), DrawingPhase(), QueuedPhase(),
+        RunningPhase()}) {
     Check(Commands(ReleaseForBudget(kActor, phase, 64), 0),
           "a budget release releases only a held live actor");
   }
-  const PhaseChange released = ReleaseForBudget(kActor, LiveHeld(), 64);
+  const PhaseChange released = ReleaseForBudget(kActor, ShownHeld(), 64);
   const ReleaseIntermediates *command =
       FirstCommandIs<ReleaseIntermediates>(released)
           ? Get<ReleaseIntermediates>(released.commands.front())
@@ -249,34 +250,35 @@ void OnlyHeldLiveMayRelease() {
   Check(command && command->reason == ReleaseReason::kBudget &&
             command->bytes == 64 && !MayRelease(released.phase),
         "a budget release of a held live actor releases once");
-  Check(Commands(SeeActor(kActor, Drawing(), OutOfView(100000)), 0),
+  Check(Commands(SeeActor(kActor, DrawingPhase(), OutOfView(100000)), 0),
         "a first-drawing actor out of view releases nothing");
 }
 
 void SwapEndsHeldAtTheNewLevel() {
   const PhaseChange swapped =
-      OnEvent(kActor, Running(), ResizeSwapped{}, kAtFrame30);
+      OnEvent(kActor, RunningPhase(), ResizeSwapped{}, kAtFrame30);
   Check(HoldingOf(swapped.phase) == IntermediateHolding::kHeld &&
             AppliedLevel(swapped.phase) == kHalf &&
             FirstCommandIs<SetAppliedLevel>(swapped),
         "a swap from released intermediates ends held at the new level");
-  Check(HoldingOf(Running()) == IntermediateHolding::kReleased,
+  Check(HoldingOf(RunningPhase()) == IntermediateHolding::kReleased,
         "a resize keeps the attached render's holding until the swap");
 }
 
 void AResizeInViewHoldsItsIntermediates() {
-  const PhaseChange seen = SeeActor(kActor, Running(), InView(1, kHalf));
+  const PhaseChange seen = SeeActor(kActor, RunningPhase(), InView(1, kHalf));
   Check(HoldingOf(seen.phase) == IntermediateHolding::kHeld &&
             Commands(seen, 0),
         "an attached render drawn in view during a resize holds again");
-  const PhaseChange hidden = SeeActor(kActor, Running(), OutOfView(100000));
+  const PhaseChange hidden =
+      SeeActor(kActor, RunningPhase(), OutOfView(100000));
   Check(HoldingOf(hidden.phase) == IntermediateHolding::kReleased &&
             Commands(hidden, 0),
         "a resize out of view releases nothing");
 }
 
 void OutOfViewReleaseWaitsForTheHold() {
-  PhaseChange step = SeeActor(kActor, LiveHeld(), OutOfView(1000));
+  PhaseChange step = SeeActor(kActor, ShownHeld(), OutOfView(1000));
   Check(Commands(step, 0), "leaving the view starts the hold");
   step = SeeActor(kActor, std::move(step.phase), OutOfView(5999));
   Check(Commands(step, 0), "nothing is released before the hold ends");
@@ -296,7 +298,7 @@ void OutOfViewReleaseWaitsForTheHold() {
 }
 
 void AFailedResizeStartsAFreshHold() {
-  PhaseChange held = SeeActor(kActor, LiveHeld(), OutOfView(1000));
+  PhaseChange held = SeeActor(kActor, ShownHeld(), OutOfView(1000));
   const PhaseChange queued = WantLevel(kActor, std::move(held.phase), kHalf);
   const PhaseChange failed =
       OnEvent(kActor, queued.phase, ResizeNotStarted{"no stack"}, {30, kHalf});
@@ -306,7 +308,7 @@ void AFailedResizeStartsAFreshHold() {
 }
 
 void FirstDrawQueuesALevel() {
-  const PhaseChange wanted = WantLevel(kActor, Drawing(), kQuarter);
+  const PhaseChange wanted = WantLevel(kActor, DrawingPhase(), kQuarter);
   Check(TargetLevel(wanted.phase) == kQuarter &&
             AppliedLevel(wanted.phase) == kFull,
         "a level wanted during the first draw becomes the target");
@@ -314,47 +316,47 @@ void FirstDrawQueuesALevel() {
   Check(PhaseName(ended.phase) == "resize_queued" &&
             TargetLevel(ended.phase) == kQuarter,
         "the first draw's end queues the wanted resize");
-  Check(PhaseName(EndFirstDraw(Drawing()).phase) == "live",
+  Check(PhaseName(EndFirstDraw(DrawingPhase()).phase) == "shown",
         "a first draw without a wanted level ends live");
-  Check(PhaseName(
-            EndFirstDraw(WantLevel(kActor, Drawing(), kFull).phase).phase) ==
-            "live",
+  Check(PhaseName(EndFirstDraw(WantLevel(kActor, DrawingPhase(), kFull).phase)
+                      .phase) == "shown",
         "a first draw that wants its own level ends live");
-  for (const RenderPhase &phase : {LiveHeld(), Bare(), Awaiting(), Running()}) {
+  for (const RenderPhase &phase :
+       {ShownHeld(), Bare(), Awaiting(), RunningPhase()}) {
     Check(EndFirstDraw(phase).phase == phase,
           "ending a first draw outside one changes nothing");
   }
 }
 
 void LevelRequestsKeepOrAbandonWork() {
-  RenderPhase small = LiveHeld();
-  if (Live *live = Get<Live>(small)) {
-    live->smallOnScreen = Hold{}.Update(true, 100);
-    live->stepUpBlockedFrom = kHalf;
+  RenderPhase small = ShownHeld();
+  if (Shown *shown = Get<Shown>(small)) {
+    shown->smallOnScreen = Hold{}.Update(true, 100);
+    shown->stepUpBlockedFrom = kHalf;
   }
   Check(WantLevel(kActor, small, kFull).phase == small,
         "asking for the current level keeps the live state");
-  const PhaseChange changed = WantLevel(kActor, Running(), kQuarter);
+  const PhaseChange changed = WantLevel(kActor, RunningPhase(), kQuarter);
   Check(PhaseName(changed.phase) == "resize_queued" &&
             TargetLevel(changed.phase) == kQuarter &&
             FirstCommandIs<AbandonResize>(changed),
         "a new level during a running resize abandons its work");
-  const PhaseChange back = WantLevel(kActor, Running(), kFull);
-  Check(Is<Live>(back.phase) && AppliedLevel(back.phase) == kFull &&
+  const PhaseChange back = WantLevel(kActor, RunningPhase(), kFull);
+  Check(Is<Shown>(back.phase) && AppliedLevel(back.phase) == kFull &&
             FirstCommandIs<AbandonResize>(back),
         "asking for the old level during a running resize ends live");
-  Check(Commands(WantLevel(kActor, Running(), kHalf), 0),
+  Check(Commands(WantLevel(kActor, RunningPhase(), kHalf), 0),
         "asking again for the running resize's level changes nothing");
-  Check(Commands(WantLevel(kActor, Queued(), kQuarter), 0),
+  Check(Commands(WantLevel(kActor, QueuedPhase(), kQuarter), 0),
         "a queued resize has no work to abandon");
   Check(WantLevel(kActor, Bare(), kHalf).phase == Bare(),
         "an actor without a render takes no level");
 }
 
 void AFailedLevelSurvivesOtherResizes() {
-  RenderPhase phase = LiveWith(IntermediatesHeld{});
-  if (Live *live = Get<Live>(phase)) {
-    live->failed = FailedLevel{kHalf, kHalf};
+  RenderPhase phase = ShownWith(Held{});
+  if (Shown *shown = Get<Shown>(phase)) {
+    shown->failed = FailedLevel{kHalf, kHalf};
   }
   const PhaseChange quarter = WantLevel(kActor, phase, kQuarter);
   Check(FailedLevelOf(quarter.phase) == kHalf &&
@@ -363,7 +365,7 @@ void AFailedLevelSurvivesOtherResizes() {
                 kQuarter,
         "a queued resize keeps refusing the failed level");
   const PhaseChange back = WantLevel(kActor, quarter.phase, kFull);
-  Check(Is<Live>(back.phase) && FailedLevelOf(back.phase) == kHalf &&
+  Check(Is<Shown>(back.phase) && FailedLevelOf(back.phase) == kHalf &&
             WantLevel(kActor, back.phase, kHalf).phase == back.phase,
         "returning to the old level keeps the failed level");
   const PhaseChange running =
@@ -393,33 +395,33 @@ void AwaitingTakesANewJobAndAnInstall() {
 }
 
 void HoldsRestartAndReset() {
-  PhaseChange step = SeeActor(kActor, LiveHeld(), OutOfView(1000));
+  PhaseChange step = SeeActor(kActor, ShownHeld(), OutOfView(1000));
   step = SeeActor(kActor, std::move(step.phase), InView(4000, kFull));
   step = SeeActor(kActor, std::move(step.phase), OutOfView(6000));
   Check(Commands(step, 0), "coming into view restarts the out-of-view hold");
   step = SeeActor(kActor, std::move(step.phase), OutOfView(11000));
   Check(Commands(step, 1), "the restarted hold releases after its delay");
   PhaseChange small =
-      SeeActor(kActor, LiveHeld(), {true, true, kFull, 1000, 5000, 0});
+      SeeActor(kActor, ShownHeld(), {true, true, kFull, 1000, 5000, 0});
   small = SeeActor(kActor, std::move(small.phase),
                    {true, false, kFull, 2000, 5000, 0});
   Check(!ScreenStepDownDue(small.phase, 9000, 2000),
         "an actor no longer small clears its step-down hold");
 }
 
-void LiveStateResetsWithANewLive() {
-  RenderPhase phase = LiveHeld();
-  if (Live *live = Get<Live>(phase)) {
-    live->stepUpBlockedFrom = kFull;
-    live->smallOnScreen = Hold{}.Update(true, 100);
+void ShownStateResetsWithANewShown() {
+  RenderPhase phase = ShownHeld();
+  if (Shown *shown = Get<Shown>(phase)) {
+    shown->stepUpBlockedFrom = kFull;
+    shown->smallOnScreen = Hold{}.Update(true, 100);
   }
   const PhaseChange queued = WantLevel(kActor, std::move(phase), kHalf);
   const PhaseChange running =
       OnEvent(kActor, queued.phase, ResizeStarted{1}, {60, kHalf});
   const PhaseChange swapped =
       OnEvent(kActor, running.phase, ResizeSwapped{}, {61, kHalf});
-  const Live *live = Get<Live>(swapped.phase);
-  Check(live && !live->stepUpBlockedFrom && !live->smallOnScreen.since,
+  const Shown *shown = Get<Shown>(swapped.phase);
+  Check(shown && !shown->stepUpBlockedFrom && !shown->smallOnScreen.since,
         "the step-down hold and the blocked step-up reset in a new live");
 }
 
@@ -434,10 +436,11 @@ void PlanFailuresMatchTheAwaitedJob() {
       FirstCommandIs<FailAwaitedRender>(failed)
           ? Get<FailAwaitedRender>(failed.commands.front())
           : nullptr;
-  Check(Is<WithoutRender>(failed.phase) && command &&
-            command->problem == "lowering" && !AppliedLevel(failed.phase),
+  Check(Is<Empty>(failed.phase) && command && command->problem == "lowering" &&
+            !AppliedLevel(failed.phase),
         "a failure of the awaited job fails its render and leaves it bare");
-  for (const RenderPhase &phase : {LiveHeld(), Bare(), Drawing(), Running()}) {
+  for (const RenderPhase &phase :
+       {ShownHeld(), Bare(), DrawingPhase(), RunningPhase()}) {
     Check(FailPlan(kActor, phase, PlanJobFailed{kJob, "lowering"}).phase ==
               phase,
           "a plan failure outside awaiting changes nothing");
@@ -450,7 +453,7 @@ void PlanFailuresMatchTheAwaitedJob() {
   Check(built.phase == Awaiting() && build && build->bound.finest == kHalf,
         "a built plan job asks for the awaited render with its bound");
   Check(Commands(PlanBuilt(kActor, Awaiting(), kOtherJob, {}), 0) &&
-            Commands(PlanBuilt(kActor, LiveHeld(), kJob, {}), 0),
+            Commands(PlanBuilt(kActor, ShownHeld(), kJob, {}), 0),
         "only the awaited job builds the render");
 }
 
@@ -460,16 +463,20 @@ void QueriesFollowThePhase() {
   Check(!AppliedLevel(Bare()) &&
             Commands(SeeActor(kActor, Bare(), OutOfView(100000)), 0),
         "an actor without a render has no level and takes no decision");
-  Check(TargetLevel(Running()) == kHalf && AppliedLevel(Running()) == kFull,
+  Check(TargetLevel(RunningPhase()) == kHalf &&
+            AppliedLevel(RunningPhase()) == kFull,
         "a resize targets its new level and applies its old one");
-  const std::optional<ResizeProgress> progress = ResizeProgressOf(Running());
-  Check(!ResizeProgressOf(Queued()) && progress && progress->beganFrame == 10,
+  const std::optional<ResizeProgress> progress =
+      ResizeProgressOf(RunningPhase());
+  Check(!ResizeProgressOf(QueuedPhase()) && progress &&
+            progress->beganFrame == 10,
         "only a running resize has progress");
-  Check(UnpublishedDrawOf(Drawing()) && UnpublishedDrawOf(Running()) &&
-            !UnpublishedDrawOf(Queued()) && !UnpublishedDrawOf(LiveHeld()),
-        "first draws and running resizes have an unpublished draw");
+  Check(
+      UnpublishedDrawOf(DrawingPhase()) && UnpublishedDrawOf(RunningPhase()) &&
+          !UnpublishedDrawOf(QueuedPhase()) && !UnpublishedDrawOf(ShownHeld()),
+      "first draws and running resizes have an unpublished draw");
   const PhaseChange small =
-      SeeActor(kActor, LiveHeld(), {true, true, kFull, 1000, 5000, 0});
+      SeeActor(kActor, ShownHeld(), {true, true, kFull, 1000, 5000, 0});
   Check(!ScreenStepDownDue(small.phase, 2999, 2000) &&
             ScreenStepDownDue(small.phase, 3000, 2000),
         "the screen step-down is due after the hold");
@@ -482,7 +489,7 @@ int main() {
   DrawsCountUnitsAndTicks();
   FailedResizesKeepTheAppliedLevel();
   ABudgetFailureIsNotRetriedEveryTick();
-  OnlyHeldLiveMayRelease();
+  OnlyHeldShownMayRelease();
   SwapEndsHeldAtTheNewLevel();
   AResizeInViewHoldsItsIntermediates();
   OutOfViewReleaseWaitsForTheHold();
@@ -492,7 +499,7 @@ int main() {
   AFailedLevelSurvivesOtherResizes();
   AwaitingTakesANewJobAndAnInstall();
   HoldsRestartAndReset();
-  LiveStateResetsWithANewLive();
+  ShownStateResetsWithANewShown();
   PlanFailuresMatchTheAwaitedJob();
   QueriesFollowThePhase();
   return test::Finish("orchestration_phasechanges");

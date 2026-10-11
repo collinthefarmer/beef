@@ -13,7 +13,7 @@
 
 namespace sim {
 enum class Rule : std::uint8_t {
-  kReleaseOutsideLive,
+  kReleaseOutsideShown,
   kOutOfViewReleaseEarly,
   kTwoResizesInFlight,
   kResizeToSameLevel,
@@ -30,7 +30,7 @@ enum class Rule : std::uint8_t {
 
 struct Violation {
   std::uint64_t tick = 0;
-  Rule rule = Rule::kReleaseOutsideLive;
+  Rule rule = Rule::kReleaseOutsideShown;
   std::optional<ActorId> actor;
   std::string detail;
 };
@@ -49,7 +49,7 @@ struct EstimateRange {
 
 [[nodiscard]] inline std::string_view RuleName(Rule a_rule) noexcept {
   switch (a_rule) {
-  case Rule::kReleaseOutsideLive:
+  case Rule::kReleaseOutsideShown:
     return "release outside live";
   case Rule::kOutOfViewReleaseEarly:
     return "out-of-view release before its hold";
@@ -121,12 +121,12 @@ CommandActor(const Command &a_command) {
 
 [[nodiscard]] inline bool IsRunning(const RenderPhase &a_phase) {
   const Resizing *resizing = Get<Resizing>(a_phase);
-  return resizing && Is<ResizeRunning>(resizing->stage);
+  return resizing && Is<Running>(resizing->stage);
 }
 
 [[nodiscard]] inline bool IsQueued(const RenderPhase &a_phase) {
   const Resizing *resizing = Get<Resizing>(a_phase);
-  return resizing && Is<ResizeQueued>(resizing->stage);
+  return resizing && Is<Queued>(resizing->stage);
 }
 
 template <class T>
@@ -181,14 +181,14 @@ EstimateOf(const World &a_world, const std::vector<Command> &a_commands) {
   return range;
 }
 
-[[nodiscard]] inline bool ReleasedFromLive(const RenderPhase &a_phase) {
+[[nodiscard]] inline bool ReleasedFromShown(const RenderPhase &a_phase) {
   const Resizing *resizing = Get<Resizing>(a_phase);
   if (resizing) {
     return IsQueued(a_phase) &&
            resizing->holding == IntermediateHolding::kReleased;
   }
-  const Live *live = Get<Live>(a_phase);
-  return live && Is<IntermediatesReleased>(live->intermediates);
+  const Shown *shown = Get<Shown>(a_phase);
+  return shown && Is<Freed>(shown->intermediates);
 }
 
 struct Checker {
@@ -209,8 +209,8 @@ struct Checker {
 
   void CheckRelease(const ReleaseIntermediates &a_command) {
     const RenderPhase *after = After(a_command.actor);
-    if (!after || !ReleasedFromLive(*after)) {
-      Flag(Rule::kReleaseOutsideLive, a_command.actor,
+    if (!after || !ReleasedFromShown(*after)) {
+      Flag(Rule::kReleaseOutsideShown, a_command.actor,
            "the actor is neither live nor resizing from a released render "
            "after the tick");
       return;
@@ -219,9 +219,8 @@ struct Checker {
       return;
     }
     const RenderPhase *before = Before(a_command.actor);
-    const Live *wasLive = before ? Get<Live>(*before) : nullptr;
-    const IntermediatesHeld *held =
-        wasLive ? Get<IntermediatesHeld>(wasLive->intermediates) : nullptr;
+    const Shown *wasShown = before ? Get<Shown>(*before) : nullptr;
+    const Held *held = wasShown ? Get<Held>(wasShown->intermediates) : nullptr;
     const Millis delay = view.facts.settings.outOfViewReleaseDelayMs;
     if (!held) {
       Flag(Rule::kOutOfViewReleaseEarly, a_command.actor,
@@ -249,7 +248,7 @@ struct Checker {
         },
         [&](const StartResize &a_start) {
           const Resizing *resizing = after ? Get<Resizing>(*after) : nullptr;
-          if (!resizing || !Is<ResizeQueued>(resizing->stage) ||
+          if (!resizing || !Is<Queued>(resizing->stage) ||
               resizing->to != a_start.to) {
             disagree("resize started outside a queued resize to its level");
           }
@@ -272,12 +271,12 @@ struct Checker {
         },
         [&](const DrawUnpublished &a_draw) { CheckDraw(a_draw); },
         [&](const BuildAwaitedRender &) {
-          if (!after || !Is<AwaitingPlan>(*after)) {
+          if (!after || !Is<Planning>(*after)) {
             disagree("awaited render built outside awaiting plan");
           }
         },
         [&](const FailAwaitedRender &) {
-          if (!after || !Is<WithoutRender>(*after)) {
+          if (!after || !Is<Empty>(*after)) {
             disagree("awaited render failed but the phase has a render");
           }
         },
@@ -378,7 +377,7 @@ struct Checker {
       }
       const RenderPhase *before =
           RetiredThisTick(event->actor) ? nullptr : Before(event->actor);
-      if (before && !Is<AwaitingPlan>(*before)) {
+      if (before && !Is<Planning>(*before)) {
         Flag(Rule::kCreatingEventIgnored, event->actor,
              "creating event for a phase that cannot take it");
       }

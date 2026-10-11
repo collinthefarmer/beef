@@ -40,61 +40,56 @@ std::vector<Violation> Checked(const World &a_world,
   return Checked(a_world, FactsAt(kNow), a_world, std::move(a_commands));
 }
 
-Live HeldSince(Millis a_since) {
-  return LiveAt(kFull, IntermediatesHeld{Hold{a_since}});
-}
+Shown HeldSince(Millis a_since) { return ShownAt(kFull, Held{Hold{a_since}}); }
 
-Resizing Running(ResolutionLevel a_from, ResolutionLevel a_to) {
+Resizing RunningResize(ResolutionLevel a_from, ResolutionLevel a_to) {
   return Resizing{a_from, a_to, IntermediateHolding::kHeld,
-                  ResizeRunning{UnpublishedDraw{4, 0, 1, 0}}, std::nullopt};
+                  Running{UnpublishedDraw{4, 0, 1, 0}}, std::nullopt};
 }
 
-Resizing Queued(ResolutionLevel a_from, ResolutionLevel a_to) {
-  return Resizing{a_from, a_to, IntermediateHolding::kHeld, ResizeQueued{},
+Resizing QueuedResize(ResolutionLevel a_from, ResolutionLevel a_to) {
+  return Resizing{a_from, a_to, IntermediateHolding::kHeld, Queued{},
                   std::nullopt};
 }
 
 void ASettledWorldPasses() {
-  const World world =
-      WorldOf({{kActor, LiveAt(kFull)}, {kOther, Running(kFull, kHalf)}});
+  const World world = WorldOf(
+      {{kActor, ShownAt(kFull)}, {kOther, RunningResize(kFull, kHalf)}});
   const std::vector<Violation> found =
       Checked(world, {TickActor{kActor, true}, SwapResize{kOther},
                       DrawUnpublished{{kOther}, 4000}});
   Check(found.empty(), "a world whose commands fit its phases passes");
 }
 
-void ReleaseOutsideLive() {
-  const World held = WorldOf({{kActor, LiveAt(kFull)}});
+void ReleaseOutsideShown() {
+  const World held = WorldOf({{kActor, ShownAt(kFull)}});
   const ReleaseIntermediates release{kActor, ReleaseReason::kBudget, 1};
-  Check(Fired(Checked(held, {release}), Rule::kReleaseOutsideLive),
+  Check(Fired(Checked(held, {release}), Rule::kReleaseOutsideShown),
         "a release that leaves the actor holding fires");
-  const World drawing =
-      WorldOf({{kActor, FirstDrawing{kFull, UnpublishedDraw{4, 0, 1, 0},
-                                     std::nullopt}}});
-  Check(Fired(Checked(drawing, {release}), Rule::kReleaseOutsideLive),
+  const World drawing = WorldOf(
+      {{kActor, Drawing{kFull, UnpublishedDraw{4, 0, 1, 0}, std::nullopt}}});
+  Check(Fired(Checked(drawing, {release}), Rule::kReleaseOutsideShown),
         "a release of a first-drawing actor fires");
-  const World released =
-      WorldOf({{kActor, LiveAt(kFull, IntermediatesReleased{})}});
+  const World released = WorldOf({{kActor, ShownAt(kFull, Freed{})}});
   Check(!Fired(Checked(held, FactsAt(kNow), released, {release}),
-               Rule::kReleaseOutsideLive),
+               Rule::kReleaseOutsideShown),
         "a release that leaves the actor live and released passes");
   const World steppedDown =
       WorldOf({{kActor, Resizing{kFull, kHalf, IntermediateHolding::kReleased,
-                                 ResizeQueued{}, std::nullopt}}});
+                                 Queued{}, std::nullopt}}});
   Check(!Fired(Checked(held, FactsAt(kNow), steppedDown, {release}),
-               Rule::kReleaseOutsideLive),
+               Rule::kReleaseOutsideShown),
         "a budget release followed by a step-down in the same tick passes");
 }
 
 void OutOfViewReleaseWaitsForItsHold() {
-  const World released =
-      WorldOf({{kActor, LiveAt(kFull, IntermediatesReleased{})}});
+  const World released = WorldOf({{kActor, ShownAt(kFull, Freed{})}});
   const ReleaseIntermediates release{kActor, ReleaseReason::kOutOfView, 1};
   const World early = WorldOf({{kActor, HeldSince(kNow - 100)}});
   Check(Fired(Checked(early, FactsAt(kNow), released, {release}),
               Rule::kOutOfViewReleaseEarly),
         "an out-of-view release before the hold delay fires");
-  const World swapped = WorldOf({{kActor, Running(kHalf, kFull)}});
+  const World swapped = WorldOf({{kActor, RunningResize(kHalf, kFull)}});
   Check(Fired(Checked(swapped, FactsAt(kNow), released, {release}),
               Rule::kOutOfViewReleaseEarly),
         "an out-of-view release in the tick a swap lands fires");
@@ -105,12 +100,12 @@ void OutOfViewReleaseWaitsForItsHold() {
 }
 
 void OneResizeInFlight() {
-  const World two = WorldOf(
-      {{kActor, Running(kFull, kHalf)}, {kOther, Running(kFull, kHalf)}});
+  const World two = WorldOf({{kActor, RunningResize(kFull, kHalf)},
+                             {kOther, RunningResize(kFull, kHalf)}});
   Check(Fired(Checked(two, {}), Rule::kTwoResizesInFlight),
         "two running resizes fire");
-  const World starting = WorldOf(
-      {{kActor, Running(kFull, kHalf)}, {kOther, Queued(kFull, kHalf)}});
+  const World starting = WorldOf({{kActor, RunningResize(kFull, kHalf)},
+                                  {kOther, QueuedResize(kFull, kHalf)}});
   Check(Fired(Checked(starting, {StartResize{kOther, kHalf}}),
               Rule::kTwoResizesInFlight),
         "a resize started beside a running one fires");
@@ -123,22 +118,21 @@ void OneResizeInFlight() {
 }
 
 void NoResizeToTheSameLevel() {
-  const World same = WorldOf({{kActor, Queued(kHalf, kHalf)}});
+  const World same = WorldOf({{kActor, QueuedResize(kHalf, kHalf)}});
   Check(Fired(Checked(same, {}), Rule::kResizeToSameLevel),
         "a resize from a level to itself fires");
 }
 
 void NoIgnoredCreatingEvent() {
-  const World live = WorldOf({{kActor, LiveAt(kFull)}});
+  const World live = WorldOf({{kActor, ShownAt(kFull)}});
   TickFacts facts = FactsAt(kNow);
   facts.results.push_back(
       ActorEvent{kActor, Installed{kFull, 4, HalvingCosts(kFullBytes), 1}});
   Check(Fired(Checked(live, facts, live, {}), Rule::kCreatingEventIgnored),
         "an install result for a live actor fires");
-  const World awaiting = WorldOf({{kActor, AwaitingPlan{PlanJobId{1}}}});
-  const World drawing =
-      WorldOf({{kActor, FirstDrawing{kFull, UnpublishedDraw{4, 0, 1, 0},
-                                     std::nullopt}}});
+  const World awaiting = WorldOf({{kActor, Planning{PlanJobId{1}}}});
+  const World drawing = WorldOf(
+      {{kActor, Drawing{kFull, UnpublishedDraw{4, 0, 1, 0}, std::nullopt}}});
   Check(!Fired(Checked(awaiting, facts, drawing, {}),
                Rule::kCreatingEventIgnored),
         "an install result for an awaiting actor passes");
@@ -156,7 +150,7 @@ void NoIgnoredCreatingEvent() {
 }
 
 void CommandsAgreeWithPhases() {
-  const World live = WorldOf({{kActor, LiveAt(kFull)}});
+  const World live = WorldOf({{kActor, ShownAt(kFull)}});
   Check(Fired(Checked(live, {SwapResize{kActor}}),
               Rule::kCommandDisagreesWithPhase),
         "a swap for a live actor fires");
@@ -179,16 +173,15 @@ void CommandsAgreeWithPhases() {
   Check(Fired(Checked(World{}, {TickActor{kActor}}),
               Rule::kCommandDisagreesWithPhase),
         "a tick of an actor without a render fires");
-  const World running = WorldOf({{kActor, Running(kFull, kHalf)}});
+  const World running = WorldOf({{kActor, RunningResize(kFull, kHalf)}});
   Check(Fired(Checked(running, {AbandonResize{kActor}}),
               Rule::kCommandDisagreesWithPhase),
         "an abandoned resize that still runs fires");
 }
 
 void DrawComesLast() {
-  const World drawing =
-      WorldOf({{kActor, FirstDrawing{kFull, UnpublishedDraw{4, 0, 1, 0},
-                                     std::nullopt}}});
+  const World drawing = WorldOf(
+      {{kActor, Drawing{kFull, UnpublishedDraw{4, 0, 1, 0}, std::nullopt}}});
   Check(Fired(Checked(drawing,
                       {DrawUnpublished{{kActor}, 4000}, TickActor{kActor}}),
               Rule::kDrawUnpublishedNotLast),
@@ -200,7 +193,7 @@ void DrawComesLast() {
 }
 
 void EstimateMatchesTheEngineWhenSettled() {
-  World world = WorldOf({{kActor, LiveAt(kFull)}});
+  World world = WorldOf({{kActor, ShownAt(kFull)}});
   if (world.actors[kActor].render) {
     world.actors[kActor].render->renderedFrame = 1;
   }
@@ -216,12 +209,12 @@ void EstimateMatchesTheEngineWhenSettled() {
   Check(!Settled(world, {Retire{kActor}}) &&
             !SettledEstimateViolation(1, world, {Retire{kActor}}, seeded),
         "a tick that changes resources is not settled");
-  const World running = WorldOf({{kActor, Running(kFull, kHalf)}});
+  const World running = WorldOf({{kActor, RunningResize(kFull, kHalf)}});
   Check(!Settled(running, {}), "a running resize is not settled");
 }
 
 void FailedLevelNotAskedAgain() {
-  Resizing refused = Queued(kFull, kHalf);
+  Resizing refused = QueuedResize(kFull, kHalf);
   refused.failed = FailedLevel{kHalf, kHalf};
   const World world = WorldOf({{kActor, refused}});
   Check(Fired(Checked(world, {}), Rule::kFailedLevelAskedAgain),
@@ -229,7 +222,7 @@ void FailedLevelNotAskedAgain() {
   Check(Fired(Checked(world, {StartResize{kActor, kHalf}}),
               Rule::kFailedLevelAskedAgain),
         "a start to a refused level fires");
-  Resizing other = Queued(kFull, ResolutionLevel::kQuarter);
+  Resizing other = QueuedResize(kFull, ResolutionLevel::kQuarter);
   other.failed = FailedLevel{kHalf, kHalf};
   Check(!Fired(Checked(WorldOf({{kActor, other}}), {}),
                Rule::kFailedLevelAskedAgain),
@@ -245,7 +238,7 @@ void ViolationsDescribeThemselves() {
 
 int main() {
   ASettledWorldPasses();
-  ReleaseOutsideLive();
+  ReleaseOutsideShown();
   OutOfViewReleaseWaitsForItsHold();
   OneResizeInFlight();
   NoResizeToTheSameLevel();

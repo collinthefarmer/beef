@@ -16,16 +16,16 @@
 namespace BetterEnchantmentEffects::Orchestration {
 enum class PlanJobId : std::uint64_t {};
 
-struct IntermediatesHeld {
+struct Held {
   Hold outOfView;
-  [[nodiscard]] bool operator==(const IntermediatesHeld &) const = default;
+  [[nodiscard]] bool operator==(const Held &) const = default;
 };
 
-struct IntermediatesReleased {
-  [[nodiscard]] bool operator==(const IntermediatesReleased &) const = default;
+struct Freed {
+  [[nodiscard]] bool operator==(const Freed &) const = default;
 };
 
-using Intermediates = std::variant<IntermediatesHeld, IntermediatesReleased>;
+using Intermediates = std::variant<Held, Freed>;
 
 struct UnpublishedDraw {
   std::size_t total = 0;
@@ -41,51 +41,50 @@ struct FailedLevel {
   [[nodiscard]] bool operator==(const FailedLevel &) const = default;
 };
 
-struct WithoutRender {
-  [[nodiscard]] bool operator==(const WithoutRender &) const = default;
+struct Empty {
+  [[nodiscard]] bool operator==(const Empty &) const = default;
 };
 
-struct Live {
+struct Shown {
   ResolutionLevel level = ResolutionLevel::kFull;
   Intermediates intermediates;
   Hold smallOnScreen;
   std::optional<ResolutionLevel> stepUpBlockedFrom;
   std::optional<FailedLevel> failed;
-  [[nodiscard]] bool operator==(const Live &) const = default;
+  [[nodiscard]] bool operator==(const Shown &) const = default;
 };
 
-struct AwaitingPlan {
+struct Planning {
   PlanJobId job{};
-  [[nodiscard]] bool operator==(const AwaitingPlan &) const = default;
+  [[nodiscard]] bool operator==(const Planning &) const = default;
 };
 
-struct FirstDrawing {
+struct Drawing {
   ResolutionLevel level = ResolutionLevel::kFull;
   UnpublishedDraw draw;
   std::optional<ResolutionLevel> next;
-  [[nodiscard]] bool operator==(const FirstDrawing &) const = default;
+  [[nodiscard]] bool operator==(const Drawing &) const = default;
 };
 
-struct ResizeQueued {
-  [[nodiscard]] bool operator==(const ResizeQueued &) const = default;
+struct Queued {
+  [[nodiscard]] bool operator==(const Queued &) const = default;
 };
 
-struct ResizeRunning {
+struct Running {
   UnpublishedDraw draw;
-  [[nodiscard]] bool operator==(const ResizeRunning &) const = default;
+  [[nodiscard]] bool operator==(const Running &) const = default;
 };
 
 struct Resizing {
   ResolutionLevel from = ResolutionLevel::kFull;
   ResolutionLevel to = ResolutionLevel::kFull;
   IntermediateHolding holding = IntermediateHolding::kHeld;
-  std::variant<ResizeQueued, ResizeRunning> stage;
+  std::variant<Queued, Running> stage;
   std::optional<FailedLevel> failed;
   [[nodiscard]] bool operator==(const Resizing &) const = default;
 };
 
-using RenderPhase =
-    std::variant<WithoutRender, Live, AwaitingPlan, FirstDrawing, Resizing>;
+using RenderPhase = std::variant<Empty, Shown, Planning, Drawing, Resizing>;
 
 [[nodiscard]] std::optional<ResolutionLevel>
 TargetLevel(const RenderPhase &a_phase) noexcept;

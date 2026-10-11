@@ -17,11 +17,11 @@ class RegressionBudgetTests(unittest.TestCase):
                   {'fields': {'action': 'resource_disagreement', 'actor': '20',
                               'phase': 'live', 'what': 'no render'}},
                   {'fields': {'action': 'actor_phase_ignored', 'actor': '20',
-                              'event': 'installed', 'phase': 'first_drawing'}}]
+                              'event': 'installed', 'phase': 'drawing'}}]
         self.assertEqual(budgets.core_mismatches(events),
                          ['resource_disagreement: actor 20, phase live, what no render',
                           'actor_phase_ignored: actor 20, event installed, '
-                          'phase first_drawing'])
+                          'phase drawing'])
         self.assertEqual(budgets.core_mismatches(events[:1]), [])
 
     def soak_events(self):

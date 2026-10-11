@@ -26,7 +26,7 @@ const StepRow &RowNamed(std::string_view a_name) {
 World Settled() {
   World world;
   world.actors[kActor] =
-      RecordOf(RenderIn(LiveAt(kFull)), InView(0.5f, 100.0f));
+      RecordOf(RenderIn(ShownAt(kFull)), InView(0.5f, 100.0f));
   return WithEstimate(std::move(world));
 }
 
@@ -128,8 +128,7 @@ void WritesOutsideTheRowFire() {
 void APhaseChangeIsAlwaysAllowed() {
   const World before = Settled();
   World released = before;
-  released.actors[kActor].render->phase =
-      LiveAt(kFull, IntermediatesReleased{});
+  released.actors[kActor].render->phase = ShownAt(kFull, Freed{});
   for (const StepRow &row : StepRows()) {
     const TickOutput output{released, {}, {}, {}};
     Check(CheckStepOutput(row, before, output, 1).empty(),
@@ -158,7 +157,7 @@ void TickDifferingFromStepsFires() {
               Rule::kTickDiffersFromSteps),
         "a tick with a command its steps did not issue fires");
   World moved = world;
-  moved.actors[kActor].render->phase = LiveAt(ResolutionLevel::kHalf);
+  moved.actors[kActor].render->phase = ShownAt(ResolutionLevel::kHalf);
   const TickOutput other{moved, {}, {}, {}};
   Check(Fired(CheckTickMatchesSteps(other, steps, 1),
               Rule::kTickDiffersFromSteps),

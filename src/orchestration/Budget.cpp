@@ -414,13 +414,13 @@ std::vector<BlockedStepUp> BlockedStepUpsOf(const World &a_world) {
     if (!record.render) {
       continue;
     }
-    const Live *live = Get<Live>(record.render->phase);
-    if (!live || !live->stepUpBlockedFrom) {
+    const Shown *shown = Get<Shown>(record.render->phase);
+    if (!shown || !shown->stepUpBlockedFrom) {
       continue;
     }
     const ActorSight sight = SightOf(record.sight);
     const std::optional<ResolutionLevel> wanted = WantedLevel(sight);
-    if (!sight.inView || !wanted || LevelGap(*wanted, live->level) <= 0) {
+    if (!sight.inView || !wanted || LevelGap(*wanted, shown->level) <= 0) {
       continue;
     }
     const std::optional<LevelCost> &cost = CostAt(*record.render, *wanted);

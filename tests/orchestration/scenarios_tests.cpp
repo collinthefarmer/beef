@@ -40,7 +40,7 @@ void ASettledCrowdKeepsEveryInvariant() {
         form % 2 == 0 ? InView(0.6f, 200.0f) : OutOfView(1500.0f);
     script.actors[actor] = ScriptedActor(sight);
     world.actors[actor] =
-        RecordOf(RenderIn(LiveAt(ResolutionLevel::kFull)), sight);
+        RecordOf(RenderIn(ShownAt(ResolutionLevel::kFull)), sight);
   }
   const Simulation simulation =
       Ran(Started(std::move(script), WithEstimate(std::move(world))), 300);
@@ -82,12 +82,12 @@ void ACrowdArrivesAtOnce() {
   const Simulation sim = Ran(Started(std::move(script)), 400);
   Check(sim.violations.empty(), Report(sim));
 
-  bool allLive = true;
+  bool allShown = true;
   for (const auto &[actor, member] : crowd) {
     const RenderPhase *phase = PhaseNow(sim, actor);
-    allLive = allLive && phase && Is<Live>(*phase);
+    allShown = allShown && phase && Is<Shown>(*phase);
   }
-  Check(allLive, "every actor of the crowd ends live");
+  Check(allShown, "every actor of the crowd ends live");
 
   std::size_t mostPerTick = 0;
   for (const TickRecord &record : sim.history) {
@@ -120,7 +120,7 @@ void AnActorLeavesTheViewDuringAResize() {
   actor.sightings.push_back({12, OutOfView(300.0f)});
   script.actors[kActor] = actor;
   World world;
-  world.actors[kActor] = RenderedRecord(LiveAt(kHalf), InView(0.6f, 300.0f));
+  world.actors[kActor] = RenderedRecord(ShownAt(kHalf), InView(0.6f, 300.0f));
   world = WithEstimate(std::move(world));
   const Simulation sim = Ran(Started(std::move(script), world), 200);
   Check(sim.violations.empty(), Report(sim));
@@ -137,8 +137,8 @@ void AnActorLeavesTheViewDuringAResize() {
         "the swap does not wait for the draw to finish");
 
   const RenderPhase *phase = PhaseNow(sim, kActor);
-  const Live *live = phase ? Get<Live>(*phase) : nullptr;
-  Check(live && live->level == kFull, "the actor ends live at the new level");
+  const Shown *shown = phase ? Get<Shown>(*phase) : nullptr;
+  Check(shown && shown->level == kFull, "the actor ends live at the new level");
 
   const std::vector<Reported<ResizeSwapped>> swapped =
       ReportedOf<ResizeSwapped>(sim, kActor);
@@ -167,7 +167,7 @@ void PressureDuringABurstOfFirstDraws() {
     const Sighting sight = k < 2 ? OutOfView(200.0f + 100.0f * k)
                                  : InView(0.6f, 200.0f + 100.0f * k);
     script.actors[actor] = ScriptedActor(sight);
-    world.actors[actor] = RenderedRecord(LiveAt(kFull), sight);
+    world.actors[actor] = RenderedRecord(ShownAt(kFull), sight);
   }
   for (std::uint32_t k = 0; k < 6; ++k) {
     const ActorId actor = ActorOf(410 + k);
@@ -192,15 +192,14 @@ void PressureDuringABurstOfFirstDraws() {
     firstRelease = firstRelease.value_or(release.tick);
     firstDrawsSpared =
         firstDrawsSpared &&
-        PhaseBefore(run, release.tick, release.command.actor) == "live";
+        PhaseBefore(run, release.tick, release.command.actor) == "shown";
   }
   const std::vector<Traced> stepDowns = TracedOf(sim, "budget_step_down");
   for (const Traced &stepDown : stepDowns) {
     const ActorId actor = ActorOf(static_cast<std::uint32_t>(
         std::stoul(FieldOf(*stepDown.record, "actor"))));
     firstDrawsSpared =
-        firstDrawsSpared &&
-        PhaseBefore(run, stepDown.tick, actor) != "first_drawing";
+        firstDrawsSpared && PhaseBefore(run, stepDown.tick, actor) != "drawing";
   }
   Check(firstRelease.has_value(), "the pressure releases intermediates");
   Check(!stepDowns.empty(), "the pressure steps actors down");
@@ -223,7 +222,7 @@ Simulation StartedAtHalf(ActorId a_actor, ActorScript a_script) {
   script.actors[a_actor] = std::move(a_script);
   World world;
   world.actors[a_actor] = RenderedRecord(
-      LiveAt(kHalf), script.actors[a_actor].sightings.front().sighting);
+      ShownAt(kHalf), script.actors[a_actor].sightings.front().sighting);
   return Started(std::move(script), WithEstimate(std::move(world)));
 }
 
@@ -252,8 +251,9 @@ void AResizeThatDoesNotStart() {
   Equal(StartsTo(sim, kActor, kFull, 0, 150), std::size_t{1},
         "the failed level is not asked for again while it stays wanted");
   const RenderPhase *phase = PhaseNow(sim, kActor);
-  const Live *live = phase ? Get<Live>(*phase) : nullptr;
-  Check(live && live->level == kHalf, "the actor stays live at its old level");
+  const Shown *shown = phase ? Get<Shown>(*phase) : nullptr;
+  Check(shown && shown->level == kHalf,
+        "the actor stays shown at its old level");
 
   sim.shell.script.actors[kActor].faults.resizeNotStarted.At(kFull) = false;
   sim = Ran(std::move(sim), 160);
@@ -261,8 +261,8 @@ void AResizeThatDoesNotStart() {
   Equal(StartsTo(sim, kActor, kFull, 150, 400), std::size_t{1},
         "the level is retried once the wanted level changed");
   phase = PhaseNow(sim, kActor);
-  live = phase ? Get<Live>(*phase) : nullptr;
-  Check(live && live->level == kFull, "the retried resize lands");
+  shown = phase ? Get<Shown>(*phase) : nullptr;
+  Check(shown && shown->level == kFull, "the retried resize lands");
 }
 
 void ASwapMismatch() {
@@ -276,7 +276,7 @@ void ASwapMismatch() {
   Equal(IssuedFor<AbandonResize>(sim, kActor).size(), std::size_t{1},
         "the mismatched resize is abandoned");
   const RenderPhase *phase = PhaseNow(sim, kActor);
-  Check(phase && Is<Live>(*phase) && AppliedLevel(*phase) == kHalf &&
+  Check(phase && Is<Shown>(*phase) && AppliedLevel(*phase) == kHalf &&
             FailedLevelOf(*phase) == kFull,
         "the actor is live at its old level with the level recorded as failed");
   const auto engine = sim.shell.actors.find(kActor);

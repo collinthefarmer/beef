@@ -66,10 +66,9 @@ LevelCost Cost(std::uint64_t a_held, std::uint64_t a_released) {
   return {a_held, a_released};
 }
 
-InstalledRender LiveRender(ResolutionLevel a_level) {
+InstalledRender ShownRender(ResolutionLevel a_level) {
   InstalledRender render;
-  render.phase =
-      Live{a_level, IntermediatesHeld{}, {}, std::nullopt, std::nullopt};
+  render.phase = Shown{a_level, Held{}, {}, std::nullopt, std::nullopt};
   render.levelCosts.At(ResolutionLevel::kFull) = Cost(400, 300);
   render.levelCosts.At(ResolutionLevel::kHalf) = Cost(100, 80);
   render.renderedFrame = 1;
@@ -139,7 +138,7 @@ void AnInstalledRenderChargesTheBudget() {
 
 void ARetiredRenderLeavesItsLevelAndReturnBytes() {
   ActorRecord record;
-  record.render = LiveRender(ResolutionLevel::kHalf);
+  record.render = ShownRender(ResolutionLevel::kHalf);
   TickFacts facts = FactsAt(kNow);
   facts.results.push_back(Retired{kActor});
   const TickOutput out =
@@ -227,7 +226,7 @@ void ANewActorInstalls() {
 void AChangedActorReinstallsAfterARetire() {
   ActorRecord record;
   record.syncState = InstalledState(CircuitPlan());
-  record.render = LiveRender(ResolutionLevel::kHalf);
+  record.render = ShownRender(ResolutionLevel::kHalf);
   World world = WorldWith(kActor, std::move(record));
   world.budget.allowance = 1000;
   world.budget.planned = 600;
@@ -370,7 +369,7 @@ void AnUnloadedStaleActorIsForgotten() {
 void AnActorWithout3DIsForgotten() {
   ActorRecord record;
   record.syncState = InstalledState(CircuitPlan());
-  record.render = LiveRender(ResolutionLevel::kFull);
+  record.render = ShownRender(ResolutionLevel::kFull);
   World world = WorldWith(kActor, std::move(record));
   world.waitingInstalls.push_back({.actor = FormOf(kActor)});
   TickFacts facts = FactsAt(kNow);
@@ -385,7 +384,7 @@ void AnActorWithout3DIsForgotten() {
 void AForgetRequestForgetsLikeAnUnload() {
   ActorRecord record;
   record.syncState = InstalledState(CircuitPlan());
-  record.render = LiveRender(ResolutionLevel::kFull);
+  record.render = ShownRender(ResolutionLevel::kFull);
   World world = WorldWith(kActor, record);
   world.waitingInstalls.push_back({.actor = FormOf(kActor)});
   TickFacts requested = FactsAt(kNow);
@@ -427,7 +426,7 @@ void AForgetRequestWithoutARecordDoesNothing() {
 void AnActorOutOfRangeIsEvicted() {
   ActorRecord record;
   record.syncState = InstalledState(CircuitPlan());
-  record.render = LiveRender(ResolutionLevel::kFull);
+  record.render = ShownRender(ResolutionLevel::kFull);
   World world = WorldWith(kActor, std::move(record));
   world.radius = BudgetRadius{1000.0f, 0, false};
   TickFacts facts = FactsAt(kNow);
@@ -538,12 +537,12 @@ void ANewActorInstallsAtItsWantedLevel() {
 
 void ReturnBytesFollowTheTarget() {
   ActorRecord record;
-  record.render = LiveRender(ResolutionLevel::kFull);
+  record.render = ShownRender(ResolutionLevel::kFull);
   Check(ReturnBytesOf(record) == std::uint64_t{400},
         "a live actor returns at its level's full cost");
   record.render->phase =
       Resizing{ResolutionLevel::kFull, ResolutionLevel::kHalf,
-               IntermediateHolding::kHeld, ResizeQueued{}, std::nullopt};
+               IntermediateHolding::kHeld, Queued{}, std::nullopt};
   Check(ReturnBytesOf(record) == std::uint64_t{100},
         "a resizing actor returns at its target level's full cost");
   Check(!ReturnBytesOf(ActorRecord{}),

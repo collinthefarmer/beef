@@ -71,7 +71,7 @@ void ReportsViolationsWithTheirTick() {
   script.actors[kActor] = ScriptedActor(InView(0.6f, 200.0f));
   World world;
   world.actors[kActor] =
-      RecordOf(RenderIn(LiveAt(ResolutionLevel::kFull)), InView(0.6f, 200.0f));
+      RecordOf(RenderIn(ShownAt(ResolutionLevel::kFull)), InView(0.6f, 200.0f));
   Simulation started = Started(std::move(script), std::move(world));
   if (EngineActor *engine = &started.shell.actors[kActor]; engine->render) {
     engine->render->levelCosts = HalvingCosts(2 * kFullBytes);

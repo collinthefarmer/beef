@@ -43,7 +43,7 @@ void APlanJobThatFails() {
   const Simulation sim = Ran(Started(std::move(script)), 200);
   Check(sim.violations.empty(), Report(sim));
   const RenderPhase *phase = PhaseNow(sim, kActor);
-  Check(phase && Is<WithoutRender>(*phase), "the actor ends without a render");
+  Check(phase && Is<Empty>(*phase), "the actor ends without a render");
   Equal(IssuedFor<FailAwaitedRender>(sim, kActor).size(), std::size_t{1},
         "the awaited render is failed once");
   Check(IssuedFor<BuildAwaitedRender>(sim, kActor).empty(),
@@ -92,7 +92,7 @@ void TheRadiusShrinksAndGrows() {
   Check(far && !far->render,
         "the evicted actor keeps its record and no render");
   const RenderPhase *near = PhaseNow(sim, kNear);
-  Check(near && Is<Live>(*near), "the near actor stays live");
+  Check(near && Is<Shown>(*near), "the near actor stays live");
   Check(IssuedFor<Retire>(sim, kNear).empty(), "only one actor is evicted");
 
   const std::size_t installsBefore = IssuedFor<Install>(sim, kFar).size();
@@ -104,7 +104,7 @@ void TheRadiusShrinksAndGrows() {
   Check(installs.size() == installsBefore + 1,
         "the evicted actor installs again");
   const RenderPhase *returned = PhaseNow(sim, kFar);
-  Check(returned && Is<Live>(*returned), "the evicted actor returns live");
+  Check(returned && Is<Shown>(*returned), "the evicted actor returns live");
 }
 
 void AReinstallDuringAResize() {
@@ -166,7 +166,7 @@ void AReinstallDuringAResize() {
             !engine->second.resize,
         "the old render's resize work does not leak");
   phase = PhaseNow(sim, kActor);
-  Check(phase && Is<Live>(*phase), "the reinstalled actor ends live");
+  Check(phase && Is<Shown>(*phase), "the reinstalled actor ends live");
 }
 
 void AnActorUnloadsDuringAResize() {
@@ -178,7 +178,7 @@ void AnActorUnloadsDuringAResize() {
   actor.sightings.push_back({20, Unloaded(300.0f)});
   script.actors[kActor] = actor;
   World world;
-  world.actors[kActor] = RenderedRecord(LiveAt(kHalf), InView(0.6f, 300.0f));
+  world.actors[kActor] = RenderedRecord(ShownAt(kHalf), InView(0.6f, 300.0f));
   Simulation sim =
       Ran(Started(std::move(script), WithEstimate(std::move(world))), 19);
   const RenderPhase *phase = PhaseNow(sim, kActor);

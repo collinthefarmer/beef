@@ -39,23 +39,23 @@ LevelCosts Costs(std::uint64_t a_fullHeld = 400,
   return costs;
 }
 
-RenderPhase LiveAt(ResolutionLevel a_level,
-                   Intermediates a_intermediates = IntermediatesHeld{},
-                   std::optional<FailedLevel> a_failed = std::nullopt) {
-  return Live{a_level, std::move(a_intermediates), {}, std::nullopt, a_failed};
+RenderPhase ShownAt(ResolutionLevel a_level,
+                    Intermediates a_intermediates = Held{},
+                    std::optional<FailedLevel> a_failed = std::nullopt) {
+  return Shown{a_level, std::move(a_intermediates), {}, std::nullopt, a_failed};
 }
 
 RenderPhase BlockedAt(ResolutionLevel a_level) {
-  return Live{a_level, IntermediatesHeld{}, {}, a_level, std::nullopt};
+  return Shown{a_level, Held{}, {}, a_level, std::nullopt};
 }
 
 RenderPhase RunningResize(ResolutionLevel a_from, ResolutionLevel a_to) {
   return Resizing{a_from, a_to, IntermediateHolding::kHeld,
-                  ResizeRunning{UnpublishedDraw{2, 0, 10, 0}}, std::nullopt};
+                  Running{UnpublishedDraw{2, 0, 10, 0}}, std::nullopt};
 }
 
 RenderPhase QueuedResize(ResolutionLevel a_from, ResolutionLevel a_to) {
-  return Resizing{a_from, a_to, IntermediateHolding::kHeld, ResizeQueued{},
+  return Resizing{a_from, a_to, IntermediateHolding::kHeld, Queued{},
                   std::nullopt};
 }
 
@@ -166,10 +166,10 @@ bool FieldsAre(const TraceRecord &a_record,
 }
 
 void EstimateCountsEachRenderAtItsLevelAndHolding() {
-  Check(PlannedBytesOf(Rendered(LiveAt(kFull), InView(0.6f))) == MiB(400),
+  Check(PlannedBytesOf(Rendered(ShownAt(kFull), InView(0.6f))) == MiB(400),
         "a live held render counts its level with intermediates");
-  Check(PlannedBytesOf(Rendered(LiveAt(kFull, IntermediatesReleased{}),
-                                OutOfView())) == MiB(300),
+  Check(PlannedBytesOf(Rendered(ShownAt(kFull, Freed{}), OutOfView())) ==
+            MiB(300),
         "a live released render counts its level without intermediates");
   Check(PlannedBytesOf(Rendered(RunningResize(kFull, kHalf), InView(0.3f))) ==
             MiB(600),
@@ -177,23 +177,23 @@ void EstimateCountsEachRenderAtItsLevelAndHolding() {
   Check(PlannedBytesOf(Rendered(QueuedResize(kFull, kHalf), InView(0.3f))) ==
             MiB(400),
         "a queued resize adds nothing yet");
-  Check(PlannedBytesOf(Rendered(AwaitingPlan{}, InView(0.6f))) == 0,
+  Check(PlannedBytesOf(Rendered(Planning{}, InView(0.6f))) == 0,
         "an awaited plan holds nothing");
-  ActorRecord unrendered = Rendered(LiveAt(kFull), InView(0.6f));
+  ActorRecord unrendered = Rendered(ShownAt(kFull), InView(0.6f));
   unrendered.render->renderedFrame.reset();
   Check(PlannedBytesOf(unrendered) == 0,
         "a render not yet drawn counts nothing, as the old estimate did");
   World world;
-  world.actors[kFirst] = Rendered(LiveAt(kFull), InView(0.6f));
-  world.actors[kSecond] = Rendered(LiveAt(kHalf), InView(0.3f));
+  world.actors[kFirst] = Rendered(ShownAt(kFull), InView(0.6f));
+  world.actors[kSecond] = Rendered(ShownAt(kHalf), InView(0.3f));
   world.actors[kThird] = Evicted(900.0f, MiB(10));
   Check(PlannedBytesOf(world) == MiB(600), "the world sums its records");
 }
 
 void TheMeasuredHeldBytesSetThePlannedBytes() {
   World world;
-  world.actors[kFirst] = Rendered(LiveAt(kFull), InView(0.6f));
-  world.actors[kSecond] = Rendered(LiveAt(kFull), InView(0.6f));
+  world.actors[kFirst] = Rendered(ShownAt(kFull), InView(0.6f));
+  world.actors[kSecond] = Rendered(ShownAt(kFull), InView(0.6f));
   TickFacts facts = FactsWithCap(MiB(4000));
   facts.memory->heldBytes = MiB(500);
   Check(RunBudget(world, facts).world.budget.planned == MiB(500),
@@ -206,7 +206,7 @@ void TheMeasuredHeldBytesSetThePlannedBytes() {
 
 void NoSampleRunsNothing() {
   World world;
-  world.actors[kFirst] = Rendered(LiveAt(kFull), OutOfView());
+  world.actors[kFirst] = Rendered(ShownAt(kFull), OutOfView());
   world.radius = BudgetRadius{1000.0f, 0, false};
   TickFacts facts = FactsWithCap(MiB(100), 60000);
   facts.memory.reset();
@@ -219,7 +219,7 @@ void NoSampleRunsNothing() {
 
 void PressureStartsAndEndsWithItsRecords() {
   World world;
-  world.actors[kFirst] = Rendered(LiveAt(kFull), InView(0.6f));
+  world.actors[kFirst] = Rendered(ShownAt(kFull), InView(0.6f));
   const TickFacts over = FactsWithCap(MiB(350));
   const TickOutput started = RunBudget(world, over);
   const BudgetState expected{MiB(350), MiB(400), Pressure::kOver};
@@ -246,7 +246,7 @@ void PressureStartsAndEndsWithItsRecords() {
         "pressure that stays writes no second record");
 
   World relieved = started.world;
-  relieved.actors[kFirst] = Rendered(LiveAt(kHalf), InView(0.6f));
+  relieved.actors[kFirst] = Rendered(ShownAt(kHalf), InView(0.6f));
   const TickOutput ended = RunBudget(relieved, FactsWithCap(MiB(1000)));
   Check(!IsOver(ended.world.budget.pressure),
         "planned bytes under the goal end pressure");
@@ -259,8 +259,9 @@ void PressureStartsAndEndsWithItsRecords() {
 
 void ReleasesLargestOutOfViewFirstUntilEnough() {
   World world;
-  world.actors[kFirst] = Rendered(LiveAt(kFull), OutOfView(), Costs(400, 300));
-  world.actors[kSecond] = Rendered(LiveAt(kFull), OutOfView(), Costs(600, 300));
+  world.actors[kFirst] = Rendered(ShownAt(kFull), OutOfView(), Costs(400, 300));
+  world.actors[kSecond] =
+      Rendered(ShownAt(kFull), OutOfView(), Costs(600, 300));
   const TickOutput output = RunBudget(world, FactsWithCap(MiB(900)));
   const std::vector<ReleaseIntermediates> releases =
       CommandsOf<ReleaseIntermediates>(output);
@@ -280,9 +281,10 @@ void ReleasesLargestOutOfViewFirstUntilEnough() {
         "the engine, not the core, traces a release with its steps");
 
   World enough;
-  enough.actors[kFirst] = Rendered(LiveAt(kFull), OutOfView(), Costs(400, 300));
+  enough.actors[kFirst] =
+      Rendered(ShownAt(kFull), OutOfView(), Costs(400, 300));
   enough.actors[kSecond] =
-      Rendered(LiveAt(kFull), OutOfView(), Costs(600, 100));
+      Rendered(ShownAt(kFull), OutOfView(), Costs(600, 100));
   const std::vector<ReleaseIntermediates> one =
       CommandsOf<ReleaseIntermediates>(
           RunBudget(enough, FactsWithCap(MiB(900))));
@@ -292,12 +294,12 @@ void ReleasesLargestOutOfViewFirstUntilEnough() {
 
 void StepsDownOneActorUnderPressure() {
   World world;
-  world.actors[kFirst] = Rendered(LiveAt(kFull), InView(0.6f));
+  world.actors[kFirst] = Rendered(ShownAt(kFull), InView(0.6f));
   const TickOutput output = RunBudget(world, FactsWithCap(MiB(300)));
   const RenderPhase *phase = PhaseOf(output.world, kFirst);
   const Resizing *resizing = phase ? Get<Resizing>(*phase) : nullptr;
   Check(resizing && resizing->from == kFull && resizing->to == kHalf &&
-            Is<ResizeQueued>(resizing->stage),
+            Is<Queued>(resizing->stage),
         "a step down queues a resize one level coarser");
   Check(CommandsOf<ReleaseIntermediates>(output).empty(),
         "an actor in view releases nothing");
@@ -322,7 +324,7 @@ void StepsDownOneActorUnderPressure() {
   busy.actors[kSecond] = Rendered(QueuedResize(kHalf, kEighth), InView(0.6f));
   const TickOutput waited = RunBudget(busy, FactsWithCap(MiB(300)));
   const RenderPhase *untouched = PhaseOf(waited.world, kFirst);
-  Check(untouched && Is<Live>(*untouched) &&
+  Check(untouched && Is<Shown>(*untouched) &&
             ActionsOf(waited, "budget_step_down").empty(),
         "no step down starts while a resize is queued or running");
 }
@@ -330,22 +332,21 @@ void StepsDownOneActorUnderPressure() {
 void NoStepDownToAFailedLevel() {
   World world;
   world.actors[kFirst] =
-      Rendered(LiveAt(kFull, IntermediatesHeld{}, FailedLevel{kHalf, kFull}),
-               InView(0.6f));
+      Rendered(ShownAt(kFull, Held{}, FailedLevel{kHalf, kFull}), InView(0.6f));
   const std::optional<BudgetActor> actor =
       BudgetActorOf(kFirst, world.actors[kFirst]);
   Check(actor && !actor->stepDown,
         "the budget offers no step down to the failed level");
   const TickOutput output = RunBudget(world, FactsWithCap(MiB(300)));
   const RenderPhase *phase = PhaseOf(output.world, kFirst);
-  Check(phase && Is<Live>(*phase) &&
+  Check(phase && Is<Shown>(*phase) &&
             ActionsOf(output, "budget_step_down").empty(),
         "an actor whose next level failed keeps its level");
 }
 
 void BudgetActorFollowsThePhase() {
   const std::optional<BudgetActor> held =
-      BudgetActorOf(kFirst, Rendered(LiveAt(kFull), OutOfView(700.0f)));
+      BudgetActorOf(kFirst, Rendered(ShownAt(kFull), OutOfView(700.0f)));
   Check(held && held->actor == FormOf(kFirst) && held->level == kFull &&
             held->releasable == MiB(100) && held->plannedBytes == MiB(400) &&
             held->stepDown == StepDownOption{kHalf, MiB(200)} &&
@@ -353,8 +354,8 @@ void BudgetActorFollowsThePhase() {
         "a live held actor offers its release and its step down");
   Check(held && held->surplusBytes == MiB(350),
         "an actor out of view has a surplus down to eighth");
-  const std::optional<BudgetActor> released = BudgetActorOf(
-      kFirst, Rendered(LiveAt(kFull, IntermediatesReleased{}), OutOfView()));
+  const std::optional<BudgetActor> released =
+      BudgetActorOf(kFirst, Rendered(ShownAt(kFull, Freed{}), OutOfView()));
   Check(released && released->releasable == 0 &&
             released->plannedBytes == MiB(300),
         "a released actor has nothing more to release");
@@ -365,17 +366,17 @@ void BudgetActorFollowsThePhase() {
         "a resizing actor may not be evicted, released or stepped down");
   const std::optional<BudgetActor> drawing = BudgetActorOf(
       kFirst,
-      Rendered(FirstDrawing{kHalf, UnpublishedDraw{3, 1, 1, 1}, std::nullopt},
+      Rendered(Drawing{kHalf, UnpublishedDraw{3, 1, 1, 1}, std::nullopt},
                OutOfView()));
   Check(drawing && !drawing->resizing && drawing->releasable == 0 &&
             !drawing->stepDown && drawing->level == kHalf,
         "a first-drawing actor may be evicted but not released or stepped "
         "down");
-  ActorRecord unrendered = Rendered(LiveAt(kFull), InView(0.6f));
+  ActorRecord unrendered = Rendered(ShownAt(kFull), InView(0.6f));
   unrendered.render->renderedFrame.reset();
   Check(!BudgetActorOf(kFirst, unrendered),
         "an actor not yet drawn takes no budget decision");
-  Check(!BudgetActorOf(kFirst, Rendered(WithoutRender{}, InView(0.6f))),
+  Check(!BudgetActorOf(kFirst, Rendered(Empty{}, InView(0.6f))),
         "an install without a render takes no budget decision");
 }
 
@@ -384,7 +385,7 @@ void EvictedActorsHaveAPlanAndNothingInstalled() {
   world.actors[kFirst] = Evicted(900.0f, MiB(10));
   world.actors[kSecond] = Evicted(1500.0f, std::nullopt);
   world.actors[kSecond].render = InstalledRender{};
-  world.actors[kThird] = Rendered(LiveAt(kFull), InView(0.6f, 5000.0f));
+  world.actors[kThird] = Rendered(ShownAt(kFull), InView(0.6f, 5000.0f));
   const std::vector<EvictedActor> evicted = EvictedActorsOf(world);
   Check(evicted.size() == 1 && evicted.front().distance == 900.0f &&
             evicted.front().returnBytes == MiB(10),
@@ -397,8 +398,8 @@ void EvictedActorsHaveAPlanAndNothingInstalled() {
 
 void ExhaustedShrinksTheRadius() {
   World world;
-  world.actors[kFirst] = Rendered(LiveAt(kEighth), InView(0.6f, 1000.0f));
-  world.actors[kSecond] = Rendered(LiveAt(kEighth), InView(0.6f, 400.0f));
+  world.actors[kFirst] = Rendered(ShownAt(kEighth), InView(0.6f, 1000.0f));
+  world.actors[kSecond] = Rendered(ShownAt(kEighth), InView(0.6f, 400.0f));
   const TickOutput output = RunBudget(world, FactsWithCap(MiB(60), 5000));
   Check(output.world.radius && output.world.radius->distance == 990.0f &&
             output.world.radius->sinceMs == 5000,
@@ -424,7 +425,7 @@ void ExhaustedShrinksTheRadius() {
 
 void ExhaustedWithoutCandidateWarnsOnce() {
   World world;
-  world.actors[kFirst] = Rendered(LiveAt(kFull), Player());
+  world.actors[kFirst] = Rendered(ShownAt(kFull), Player());
   const TickOutput first = RunBudget(world, FactsWithCap(MiB(300)));
   Check(first.world.budget.pressure == Pressure::kOverWarned,
         "nothing left to do marks the episode warned");
@@ -497,7 +498,7 @@ void GrowsTheRadiusWithoutPressure() {
 void PreemptsForABlockedStepUp() {
   World world;
   world.actors[kFirst] = Rendered(BlockedAt(kEighth), InView(0.6f));
-  world.actors[kSecond] = Rendered(LiveAt(kFull), OutOfView());
+  world.actors[kSecond] = Rendered(ShownAt(kFull), OutOfView());
   const TickOutput output = RunBudget(world, FactsWithCap(MiB(600)));
   Check(!IsOver(output.world.budget.pressure),
         "preemption runs without pressure");

@@ -24,10 +24,9 @@ inline constexpr std::uint64_t kFullBytes = 64 * kMebibyte;
   return InstalledRender{std::move(a_phase), std::move(a_costs), std::nullopt};
 }
 
-[[nodiscard]] inline Live
-LiveAt(ResolutionLevel a_level,
-       Intermediates a_intermediates = IntermediatesHeld{}) {
-  return Live{
+[[nodiscard]] inline Shown ShownAt(ResolutionLevel a_level,
+                                   Intermediates a_intermediates = Held{}) {
+  return Shown{
       a_level, std::move(a_intermediates), {}, std::nullopt, std::nullopt};
 }
 
