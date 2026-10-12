@@ -382,7 +382,12 @@ json LayerToJson(const Layer &a_layer) {
   json o = json::object();
   Writer w{o};
   Match(
-      a_layer.source, [&](const Ref &ref) { w.WriteRef("source", ref); },
+      a_layer.source,
+      [&](const Ref &ref) {
+        if (!ref.name.empty()) {
+          w.WriteRef("source", ref);
+        }
+      },
       [&](const Vec3 &c) { w.Set("source", PointToJson(c)); });
   if (a_layer.curve)
     w.Set("curve", CurveRefToJson(*a_layer.curve));

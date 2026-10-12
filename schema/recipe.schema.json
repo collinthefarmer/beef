@@ -206,9 +206,9 @@
     },
 
     "layer": {
-      "type": "object", "additionalProperties": false, "required": ["source", "opacity"],
+      "type": "object", "additionalProperties": false, "required": ["opacity"],
       "properties": {
-        "source": { "oneOf": [ { "$ref": "#/$defs/ref" }, { "$ref": "#/$defs/numbers3" } ], "description": "@source, @mask, or a constant colour." },
+        "source": { "oneOf": [ { "$ref": "#/$defs/ref" }, { "$ref": "#/$defs/numbers3" } ], "description": "@source, @mask, or a constant colour. Absent: the layer has no source yet and draws nothing." },
         "curve": { "$ref": "#/$defs/curveRef" },
         "blend": { "enum": ["replace", "multiply", "add", "subtract", "screen", "reorient"], "default": "replace", "description": "reorient is normal-map reorientation, allowed only on a normal stack." },
         "opacity": { "$ref": "#/$defs/param" },

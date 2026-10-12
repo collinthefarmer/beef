@@ -135,7 +135,7 @@ ReferenceEntries(const std::string &a_current,
 SignalCombo(const Studio::FormField &a_field) {
   const std::string preview = a_field.text.starts_with('@')
                                   ? a_field.text
-                                  : std::string{"choose a signal"};
+                                  : std::string{"Choose a signal"};
   NextItemWidth(Studio::Width::Fill());
   if (!ImGui::BeginCombo("##combo", preview.c_str())) {
     return std::nullopt;
@@ -743,7 +743,10 @@ std::optional<std::string> ValueWidget(const char *a_key,
   const bool takesSignal = style.takesSignal && (!a_field.names.empty() ||
                                                  !a_field.creators.empty());
   const Studio::FieldKey key = KeyOf(a_key);
-  bool &comboMode = ComboModeFor(state, key, a_field.text.starts_with('@'));
+  const bool unsetSource =
+      a_field.kind == Studio::FieldKind::kLayerSource && a_field.text.empty();
+  bool &comboMode =
+      ComboModeFor(state, key, unsetSource || a_field.text.starts_with('@'));
   ImGui::PushID(NonNull(a_key));
   DrawValueBadge(style, takesSignal, comboMode, key);
   ImGui::SameLine(0.0f, 0.0f);

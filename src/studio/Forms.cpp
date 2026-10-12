@@ -353,12 +353,15 @@ struct ParamFieldSpec {
   };
 }
 
+inline constexpr std::string_view kFiresOnWords[]{"event", "plugin", "signal"};
+static_assert(std::size(kFiresOnWords) == std::size(kTriggerOriginWords));
+
 [[nodiscard]] FieldBinding BindTriggerOrigin(std::string a_signal,
                                              SignalKind a_record) {
   return [signal = std::move(a_signal), record = std::move(a_record)](
              const std::string &a_text) -> std::optional<RecipeEdit> {
-    for (std::size_t i = 0; i < std::size(kTriggerOriginWords); ++i) {
-      if (kTriggerOriginWords[i] != a_text) {
+    for (std::size_t i = 0; i < std::size(kFiresOnWords); ++i) {
+      if (kFiresOnWords[i] != a_text) {
         continue;
       }
       SignalKind kind = record;
@@ -1020,7 +1023,7 @@ void TriggerOriginFields(std::vector<FormField> &a_form,
       },
       [&](const WhenOrigin &a_when) {
         a_form.push_back(ReferenceField(
-            {.name = "when",
+            {.name = "signal",
              .text = RefText(a_when.when),
              .names = a_ctx.all,
              .allowEmpty = false,
@@ -1039,13 +1042,11 @@ void TriggerOriginFields(std::vector<FormField> &a_form,
 void TriggerFields(std::vector<FormField> &a_form, const SignalContext &a_ctx,
                    const TriggerSignal &a_trigger) {
   const std::size_t origin = a_trigger.origin.index();
-  a_form.push_back(
-      ChoiceField("origin",
-                  std::string{origin < std::size(kTriggerOriginWords)
-                                  ? kTriggerOriginWords[origin]
-                                  : "?"},
-                  WordsOf(kTriggerOriginWords),
-                  BindTriggerOrigin(a_ctx.name, a_ctx.record)));
+  a_form.push_back(ChoiceField(
+      "fires on",
+      std::string{origin < std::size(kFiresOnWords) ? kFiresOnWords[origin]
+                                                    : "?"},
+      WordsOf(kFiresOnWords), BindTriggerOrigin(a_ctx.name, a_ctx.record)));
   TriggerOriginFields(a_form, a_ctx, a_trigger);
   a_form.push_back(ParamField(
       {.name = "lifetime",
@@ -1425,6 +1426,13 @@ void RippleFields(std::vector<FormField> &a_form, const SourceContext &a_ctx,
   a_form.push_back(ChoiceField(
       "shape", source.shape, WordsOf(kRippleShapes),
       BindSourceMember(name, record, &RippleSource::shape, ParseRippleShape)));
+  a_form.push_back(ParamField(
+      {.name = "direction",
+       .kind = FieldKind::kVector,
+       .text = source.direction,
+       .names = a_ctx.names.color,
+       .bind = BindSourceMember(name, record, &RippleSource::direction,
+                                ParseVec3Param)}));
 }
 
 void ClustersFields(std::vector<FormField> &a_form, const SourceContext &a_ctx,

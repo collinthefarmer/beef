@@ -67,6 +67,7 @@ DistanceRowOf(const DistanceSource &a_distance) {
   ripple.width = ParamText(a_ripple.width);
   ripple.decay = ParamText(a_ripple.decay);
   ripple.shape = std::string{RippleShapeName(a_ripple.shape)};
+  ripple.direction = Vec3ParamText(a_ripple.direction);
   return ripple;
 }
 
@@ -195,13 +196,15 @@ RippleKindOf(const RippleSourceRow &a_row) {
   const auto width = ParseParam(a_row.width);
   const auto decay = ParseParam(a_row.decay);
   const auto shape = ParseRippleShape(a_row.shape);
-  if (!speed || !width || !decay || !shape) {
+  const auto direction = ParseVec3Param(a_row.direction);
+  if (!speed || !width || !decay || !shape || !direction) {
     return std::nullopt;
   }
   ripple.speed = *speed;
   ripple.width = *width;
   ripple.decay = *decay;
   ripple.shape = *shape;
+  ripple.direction = *direction;
   return SourceKind{ripple};
 }
 

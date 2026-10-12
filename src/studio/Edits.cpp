@@ -1615,7 +1615,7 @@ ReferenceCounts CountReferences(const Recipe &a_recipe) {
 
 Layer DefaultLayer() {
   Layer layer;
-  layer.source = Vec3{1.0f, 1.0f, 1.0f};
+  layer.source = Ref{};
   layer.blend = Blend::kReplace;
   layer.opacity = 1.0f;
   return layer;

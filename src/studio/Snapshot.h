@@ -156,6 +156,7 @@ struct RippleSourceRow {
   std::string width;
   std::string decay;
   std::string shape;
+  std::string direction;
 };
 
 struct MaterialClustersSourceRow {

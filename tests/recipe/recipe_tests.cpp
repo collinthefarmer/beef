@@ -1,5 +1,6 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #include "recipe/Recipe.h"
+#include "recipe/RecipeGraph.h"
 #include "recipe/Words.h"
 #include "test_support.h"
 
@@ -526,6 +527,37 @@ int main() {
           signal ? Get<ActorStateSignal>(signal->kind) : nullptr;
       Check(read && read->kind == state.value,
             std::format("actorState {} parses to its kind", state.name));
+    }
+  }
+
+  {
+    const LoadResult unset = ParseRecipe(
+        R"({"format":1,"keys":["default"],"outputs":[{"target":"material",)"
+        R"("slot":"emissive","strength":1,"stack":[{"opacity":1}]}]})",
+        "unset");
+    Check(unset.recipe.has_value() && !unset.HasErrors(),
+          "a layer without a source loads without an error");
+    const auto *surface =
+        unset.recipe && !unset.recipe->outputs.empty()
+            ? std::get_if<SurfaceOutput>(&unset.recipe->outputs.front())
+            : nullptr;
+    Check(surface && surface->stack.size() == 1 &&
+              IsUnset(surface->stack.front().source),
+          "a layer without a source is unset");
+    Check(std::ranges::any_of(
+              unset.diagnostics,
+              [](const Diagnostic &a_diagnostic) {
+                return a_diagnostic.severity == Severity::kWarning &&
+                       a_diagnostic.message.contains("no source yet");
+              }),
+          "an unset layer source is a warning");
+    Check(unset.recipe &&
+              !SerializeRecipe(*unset.recipe).contains("\"source\""),
+          "an unset layer writes no source");
+    if (unset.recipe) {
+      const RecipeGraph graph = RecipeGraph::Compile(*unset.recipe);
+      Check(graph.Diagnostics().empty(),
+            "an unset layer lowers without a diagnostic");
     }
   }
 

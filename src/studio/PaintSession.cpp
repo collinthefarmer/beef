@@ -158,6 +158,7 @@ PreparePaintUpdate(const Recipe *a_paint, const PaintUpdateRequest &a_request) {
 namespace {
 Layer ScratchLayer() {
   Layer layer = DefaultLayer();
+  layer.source = Vec3{1.0f, 1.0f, 1.0f};
   layer.mask = Ref{std::string{kScratchMask}};
   return layer;
 }

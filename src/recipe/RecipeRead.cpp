@@ -789,7 +789,7 @@ std::optional<Layer> LayerFrom(const json &a_j, const Reporter &a_ctx) {
       a_ctx.Error("'source' is \"@name\" or [r, g, b]");
     }
   } else {
-    a_ctx.Error("'source' is required");
+    l.source = Ref{};
   }
   l.curve = CurveRefFrom(r);
   if (auto b = r.Enum("blend", kBlends))

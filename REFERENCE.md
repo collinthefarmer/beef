@@ -2474,6 +2474,19 @@ them outside as separate passes.
   emissive and normal are rgb, glint has no texture, the diffuse's alpha is
   a shell's visibility, and the feature maps pack a colour with a weight.
 
+- A layer may leave out `source` (2026-10-12). It is then **unset**: an empty
+  `Ref` (`IsUnset`), written without a `source` key and read back the same.
+  Validation warns ("the layer has no source yet; it draws nothing") instead of
+  failing, because an error holds back the whole recipe while one new layer
+  waits for its source. The lowering (`BindLayer`) binds an unset layer to a
+  black constant at opacity 0, which every blend passes through unchanged; it
+  keeps the layer in place because the render plan reads layers by index.
+  A new layer in the studio starts unset (`DefaultLayer`); the paint scratch
+  layer sets white itself.
+- A ripple's `direction` is a studio field (`RippleFields`) and part of the
+  source row, so a studio edit to a ripple keeps it; before 2026-10-12 the row
+  had no direction and every studio edit of a ripple reset it to zero.
+
 ## Menu mechanics (`menu/MenuWidgets.cpp`, `studio/Intent.h`, `studio/MenuState.h`)
 
 - `menu/MenuWidgets.cpp` is the menu's sole direct render dependency: no other

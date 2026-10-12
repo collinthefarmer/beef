@@ -623,6 +623,11 @@ struct RecipeGraphLowering {
   void BindLayer(std::size_t output, std::size_t layer,
                  const Layer &definition) {
     const std::string location = LayerWhere(output, layer);
+    if (IsUnset(definition.source)) {
+      BindOutput(location + " source", Constant(Vec3{0.0f, 0.0f, 0.0f}));
+      BindOutput(location + " opacity", Constant(0.0f));
+      return;
+    }
     OutputRef source = Match(
         definition.source, [&](const Ref &ref) { return Reference(ref); },
         [&](const Vec3 &value) { return Constant(value); });

@@ -364,7 +364,9 @@ std::vector<Diagnostic> CheckLayer(const RowTypes &a_rows, const Layer &a_layer,
                                    Slot a_slot, std::string_view a_where) {
   std::vector<Diagnostic> out = LayerDiagnostics(a_rows, a_layer, a_where);
   const Reporter report{out, a_where};
-  if (const auto *ref = Get<Ref>(a_layer.source)) {
+  if (IsUnset(a_layer.source)) {
+    report.Warn("the layer has no source yet; it draws nothing");
+  } else if (const auto *ref = Get<Ref>(a_layer.source)) {
     if (!a_rows.recipe.FindSource(ref->name) &&
         !a_rows.recipe.FindMask(ref->name)) {
       report.Error(std::format("'source' names unknown source or mask '@{}'",

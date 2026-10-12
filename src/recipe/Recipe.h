@@ -649,6 +649,11 @@ struct ChannelSet {
 
 using LayerSource = std::variant<Ref, Vec3>;
 
+[[nodiscard]] inline bool IsUnset(const LayerSource &a_source) noexcept {
+  const Ref *ref = std::get_if<Ref>(&a_source);
+  return ref && ref->name.empty();
+}
+
 [[nodiscard]] std::string_view BlendName(Blend a_blend) noexcept;
 [[nodiscard]] std::optional<Blend> ParseBlend(std::string_view a_name) noexcept;
 struct BlendSpec {

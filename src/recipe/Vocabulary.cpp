@@ -454,7 +454,10 @@ std::uint32_t BlendShaderMode(Blend a_blend) noexcept {
 
 std::string LayerSourceText(const LayerSource &a_source) {
   return Match(
-      a_source, [](const Ref &r) { return "@" + r.name; },
+      a_source,
+      [](const Ref &r) {
+        return r.name.empty() ? std::string{} : "@" + r.name;
+      },
       [](const Vec3 &v) {
         return NumberText(v.x) + ", " + NumberText(v.y) + ", " +
                NumberText(v.z);

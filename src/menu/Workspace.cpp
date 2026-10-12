@@ -165,7 +165,9 @@ void DrawOutputLayerRow(const Frame &a_frame, const Studio::OutputRow &a_output,
   Badge(layer.source.starts_with('@') ? Studio::FieldKind::kReference
                                       : Studio::FieldKind::kColor);
   ImGui::SameLine();
-  const std::string label = std::format("{}: {}", a_layer + 1, layer.source);
+  const std::string label =
+      std::format("{}: {}", a_layer + 1,
+                  layer.source.empty() ? "Choose a signal" : layer.source);
   PickSubject(label.c_str(), Studio::LayerSubject{a_output.index, a_layer},
               a_frame);
   ImGui::PopID();
