@@ -601,7 +601,8 @@ void DrawRecipeNavigator(const Frame &a_frame) {
 }
 
 void DrawResourceNavigator(const Frame &a_frame) {
-  static_cast<void>(Rule(Studio::RuleSpec{.text = "Resources"}));
+  static_cast<void>(
+      Rule(Studio::RuleSpec{.text = "Resources", .leadingSpace = false}));
   const float find = ImGui::GetFrameHeightWithSpacing();
   DrawResourceTabs(a_frame, LiveText("resource-search"), find);
   static_cast<void>(LiveTextField("resource-search", "Find resources",

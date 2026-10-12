@@ -335,7 +335,8 @@ void DrawFooter(const Frame &a_frame) {
   const Studio::View &view = ViewOf(a_frame);
   DrawInspectorNav(a_frame);
   static_cast<void>(Rule(
-      Studio::RuleSpec{.text = "Session"}, ButtonWidth("Return to live"),
+      Studio::RuleSpec{.text = "Session", .leadingSpace = false},
+      ButtonWidth("Return to live"),
       [&]() {
         Disabled(Studio::MaskTaskActive(*a_frame.state), [&] {
           if (ImGui::Button("Return to live")) {
