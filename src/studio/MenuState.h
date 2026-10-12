@@ -2,6 +2,7 @@
 #pragma once
 
 #include "Core.h"
+#include "studio/ClusterReadout.h"
 #include "studio/EditResult.h"
 #include "studio/History.h"
 #include "studio/Intent.h"
@@ -99,6 +100,7 @@ struct MenuState {
   Mode modeDrawn = Mode::kCompose;
   FiringDraft firing;
   History<MaskStack> maskHistory;
+  ClusterMemo clusterMemo;
 };
 
 [[nodiscard]] inline MenuState &State() {

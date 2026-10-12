@@ -11,6 +11,7 @@
 #include "recipe/Expression.h"
 #include "recipe/Recipe.h"
 #include "recipe/Words.h"
+#include "studio/ClusterReadout.h"
 #include "studio/Edits.h"
 #include "studio/FieldCheck.h"
 #include "studio/Forms.h"
@@ -672,6 +673,12 @@ void DrawMaskTask(const Frame &a_frame) {
 }
 
 namespace {
+void DrawClusterReadout(const Studio::ClusterTerm &a_term,
+                        const Studio::GeometryRow &a_geometry,
+                        Studio::ClusterMemo &a_memo);
+void DrawClusterRow(const MaterialCluster &a_cluster, bool a_picked,
+                    Table &a_table);
+
 std::optional<Frame> PaintPreviewFrame(const Frame &a_frame,
                                        Studio::Names &a_names) {
   Studio::MenuState &state = *a_frame.state;
@@ -766,5 +773,69 @@ void DrawTermTuningPane(const Frame &a_frame) {
     DrawTermParameter(index, field, *preview, table);
   }
   table.End();
+  if (const auto *cluster = Get<Studio::ClusterTerm>(term.kind)) {
+    DrawClusterReadout(*cluster, *preview->geometry, state.clusterMemo);
+  }
+}
+
+namespace {
+void DrawClusterReadout(const Studio::ClusterTerm &a_term,
+                        const Studio::GeometryRow &a_geometry,
+                        Studio::ClusterMemo &a_memo) {
+  const MaterialAnalysis *analysis =
+      Studio::ClustersOf(a_memo, a_geometry.materialSample, a_term.settings);
+  if (!analysis) {
+    Dim("The material of this geometry has not been sampled.");
+    return;
+  }
+  Dim(std::format("{} clusters on {}", analysis->clusters.size(),
+                  a_geometry.name));
+  auto table = Table::Begin("cluster-readout",
+                            {{"id", Studio::Width::Fit("00")},
+                             {"colour", Studio::Width::Fit("0000")},
+                             {"looks", Studio::Width::Fill()},
+                             {"rough", Studio::Width::Fit("0.00")},
+                             {"metal", Studio::Width::Fit("0.00")},
+                             {"occl", Studio::Width::Fit("0.00")},
+                             {"refl", Studio::Width::Fit("0.00")},
+                             {"cover", Studio::Width::Fit("100%")}},
+                            Studio::kColumnsTable);
+  if (!table.Open()) {
+    return;
+  }
+  for (const MaterialCluster *cluster : Studio::LargestFirst(*analysis)) {
+    DrawClusterRow(*cluster, cluster->id == a_term.id, table);
+  }
+  table.End();
+}
+
+void DrawClusterRow(const MaterialCluster &a_cluster, bool a_picked,
+                    Table &a_table) {
+  const MaterialTexel &centre = a_cluster.centroid;
+  ImGui::PushID(a_cluster.id);
+  a_table.Cell();
+  const std::string id = std::to_string(a_cluster.id);
+  if (a_picked) {
+    Ok(id);
+  } else {
+    ImGui::TextUnformatted(id.c_str());
+  }
+  a_table.Cell();
+  ImGui::ColorButton(
+      "##centre",
+      ImVec4{centre.diffuse.x, centre.diffuse.y, centre.diffuse.z, 1.0f}, 0,
+      ImVec2{16.0f, 16.0f});
+  a_table.Cell();
+  ImGui::TextUnformatted(a_cluster.description.c_str());
+  for (const float channel : {centre.roughness, centre.metallic,
+                              centre.occlusion, centre.reflectance}) {
+    a_table.Cell();
+    ImGui::TextUnformatted(std::format("{:.2f}", channel).c_str());
+  }
+  a_table.Cell();
+  ImGui::TextUnformatted(
+      std::format("{:.0f}%", a_cluster.share * 100.0f).c_str());
+  ImGui::PopID();
+}
 }
 }

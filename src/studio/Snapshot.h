@@ -112,6 +112,7 @@ struct GeometryRow {
   std::vector<BoneCoverage> bones;
   std::vector<MeshIsland> islands;
   std::vector<MaterialCluster> clusters;
+  std::shared_ptr<const MaterialSample> materialSample;
   std::string shell;
   std::vector<SlotRow> materialSlots;
   std::vector<SlotRow> shellSlots;
