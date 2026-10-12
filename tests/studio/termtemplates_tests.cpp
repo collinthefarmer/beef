@@ -163,6 +163,12 @@ int main() {
                                 return offer.group == OfferGroup::kMaterials;
                               }) == 1,
         "identical material terms are offered once across geometries");
+  const auto roughnessOffer = [](const TermOffer &offer) {
+    return offer.group == OfferGroup::kChannels && offer.name == "roughness";
+  };
+  Check(std::ranges::count_if(combined, roughnessOffer) == 1 &&
+            std::ranges::find_if(combined, roughnessOffer)->geometry.empty(),
+        "a channel threshold is offered once and belongs to no geometry");
   repeated.geometries.back().clusters.front().description = "rough cloth";
   const auto varied = OffersOfRecipe(presets, repeated, "");
   const auto materialOffer =

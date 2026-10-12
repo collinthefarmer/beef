@@ -70,7 +70,7 @@ inline constexpr OfferGroupSpec kOfferGroups[]{
     {OfferGroup::kMaterials, "materials", "material", true},
     {OfferGroup::kBones, "bones", "bone", true},
     {OfferGroup::kPartitions, "partitions", "partition", true},
-    {OfferGroup::kChannels, "channels", "channel", true},
+    {OfferGroup::kChannels, "channels", "channel", false},
     {OfferGroup::kPresets, "presets", "preset", false},
     {OfferGroup::kMasks, "masks", "mask", false},
     {OfferGroup::kSources, "sources", "source", false},
