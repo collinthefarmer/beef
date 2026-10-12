@@ -90,6 +90,14 @@ void RecipeCombo(const Studio::PieceRow &a_piece,
                       Studio::kLayerTable);
 }
 
+[[nodiscard]] std::optional<std::string>
+TermFieldInput(const Studio::FormField &a_field, const Frame &a_frame) {
+  if (a_field.catalog && IsCatalogField(a_field, a_frame)) {
+    return CatalogInput(a_field, a_frame);
+  }
+  return FieldInput(a_field, a_frame.scale, *a_frame.names);
+}
+
 void CommitTermField(std::size_t a_index, const Studio::TermField &a_field,
                      const std::string &a_text, const Frame &a_frame) {
   const std::optional<Studio::TermKind> changed =
@@ -129,8 +137,7 @@ void DrawTermSettings(std::size_t a_index, const Studio::Term &a_term,
     ImGui::AlignTextToFramePadding();
     ImGui::TextUnformatted(setting.field.name.c_str());
     table.Cell();
-    if (const auto text =
-            FieldInput(setting.field, a_frame.scale, *a_frame.names)) {
+    if (const auto text = TermFieldInput(setting.field, a_frame)) {
       CommitTermField(a_index, setting, *text, a_frame);
     }
     ImGui::PopID();
@@ -729,8 +736,7 @@ void DrawTermParameter(std::size_t a_index, const Studio::TermField &a_field,
                          : ParamText(Param{a_value});
                  CommitTermField(a_index, a_field, text, a_preview);
                }});
-  } else if (const auto text =
-                 FieldInput(a_field.field, a_preview.scale, *a_preview.names)) {
+  } else if (const auto text = TermFieldInput(a_field.field, a_preview)) {
     CommitTermField(a_index, a_field, *text, a_preview);
   }
   ImGui::PopID();

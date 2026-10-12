@@ -16,11 +16,14 @@ enum class GameObjectKind {
   kMagicEffect,
   kArmor,
   kLight,
+  kNode,
+  kTexture,
 };
-inline constexpr std::size_t kGameObjectKindCount = 8;
+inline constexpr std::size_t kGameObjectKindCount = 10;
 
 [[nodiscard]] std::string_view
 GameObjectKindName(GameObjectKind a_kind) noexcept;
+[[nodiscard]] bool IsViewedActorKind(GameObjectKind a_kind) noexcept;
 
 inline constexpr std::string_view kHitReceivedEvent{"hit.received"};
 inline constexpr std::string_view kHitDealtEvent{"hit.dealt"};
@@ -43,4 +46,6 @@ struct GameObjectCatalog {
                                     std::string_view a_filter) noexcept;
 [[nodiscard]] std::string
 CandidateLabel(const GameObjectCandidate &a_candidate);
+[[nodiscard]] std::string
+QualifiedLabel(const GameObjectCandidate &a_candidate);
 }

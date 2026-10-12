@@ -9,6 +9,7 @@
 #include "recipe/Expression.h"
 #include "recipe/Recipe.h"
 #include "recipe/Words.h"
+#include "studio/ActorCatalogs.h"
 #include "studio/Edits.h"
 #include "studio/FieldCheck.h"
 #include "studio/GameObjects.h"
@@ -103,6 +104,17 @@ void PostSelector(const Frame &a_frame, std::size_t a_output, bool a_light,
   return std::nullopt;
 }
 
+[[nodiscard]] std::optional<std::string>
+ClauseValueInput(const SelectorClauseRow &a_clause, const Frame &a_frame) {
+  const FormField field = SelectorClauseField(
+      a_clause, a_frame.recipe != nullptr ? GeometryNamesOf(*a_frame.recipe)
+                                          : std::vector<std::string>{});
+  if (IsCatalogField(field, a_frame)) {
+    return CatalogInput(field, a_frame);
+  }
+  return TextField("value", a_clause.value, {Width::Fill(), a_frame.scale});
+}
+
 struct SelectorTarget {
   const Selector &selector;
   std::size_t output;
@@ -127,8 +139,7 @@ void DrawSelectorClauses(const SelectorView &a_view,
                      SelectorWithKind(a_target.selector, i, *kind));
       }
       table.Cell();
-      if (const auto text = TextField("value", clause.value,
-                                      {Width::Fill(), a_frame.scale})) {
+      if (const auto text = ClauseValueInput(clause, a_frame)) {
         PostSelector(a_frame, a_target.output, a_target.light,
                      SelectorWithOperand(a_target.selector, i, *text));
       }
@@ -294,49 +305,75 @@ std::optional<std::string> TextInput(const FormField &a_field, float a_scale,
   return TextField("value", a_field.text, {Width::Fill(), a_scale}, check);
 }
 
-void DrawCatalogList(const FormField &a_field, const Frame &a_frame,
-                     std::string_view a_filter) {
+[[nodiscard]] const Studio::GameObjectCatalog *
+CatalogOf(const FormField &a_field, const Frame &a_frame) {
+  if (!a_field.catalog || a_frame.snapshot == nullptr) {
+    return nullptr;
+  }
+  const std::size_t index = IndexOf(*a_field.catalog);
+  return index < a_frame.snapshot->catalogs.size()
+             ? a_frame.snapshot->catalogs[index].get()
+             : nullptr;
+}
+
+[[nodiscard]] std::optional<std::string>
+DrawCatalogList(const FormField &a_field, const Frame &a_frame,
+                std::string_view a_filter) {
+  std::optional<std::string> picked;
   for (const std::string &name : a_field.names) {
     if (Studio::NameMatches(name, a_filter) &&
         ImGui::Selectable(name.c_str(), name == a_field.text)) {
-      CommitField(a_field, name, a_frame);
-      ImGui::CloseCurrentPopup();
+      picked = Studio::PickedText(a_field, name);
     }
   }
-  const auto &catalog = a_frame.snapshot->catalogs[IndexOf(*a_field.catalog)];
+  const Studio::GameObjectCatalog *catalog = CatalogOf(a_field, a_frame);
   int id = 0;
   std::size_t shown = 0;
-  if (const Studio::GameObjectCandidate *picked =
+  if (const Studio::GameObjectCandidate *candidate =
           DrawCandidateRows({.filter = a_filter,
-                             .catalog = catalog.get(),
-                             .current = a_field.text},
+                             .catalog = catalog,
+                             .current = a_field.text,
+                             .qualifiers = true},
                             id, shown)) {
-    CommitField(a_field, picked->value, a_frame);
-    ImGui::CloseCurrentPopup();
+    picked = Studio::PickedText(a_field, candidate->value);
   }
   if (catalog && catalog->candidates.empty() && !catalog->sourceNote.empty()) {
     Dim(catalog->sourceNote);
   }
+  if (picked) {
+    ImGui::CloseCurrentPopup();
+  }
+  return picked;
+}
+
+[[nodiscard]] bool IsKnownCatalogName(const FormField &a_field,
+                                      const Frame &a_frame,
+                                      std::string_view a_name) {
+  if (std::ranges::contains(a_field.names, a_name)) {
+    return true;
+  }
+  const Studio::GameObjectCatalog *catalog = CatalogOf(a_field, a_frame);
+  return catalog && std::ranges::any_of(
+                        catalog->candidates,
+                        [&](const Studio::GameObjectCandidate &a_candidate) {
+                          return a_candidate.value == a_name;
+                        });
 }
 
 [[nodiscard]] bool KnownCatalogValue(const FormField &a_field,
                                      const Frame &a_frame) {
-  if (std::ranges::contains(a_field.names, a_field.text)) {
-    return true;
+  if (a_field.catalogPick == Studio::CatalogPick::kReplace) {
+    return IsKnownCatalogName(a_field, a_frame, a_field.text);
   }
-  if (!a_field.catalog || a_frame.snapshot == nullptr) {
-    return false;
-  }
-  const auto &catalog = a_frame.snapshot->catalogs[IndexOf(*a_field.catalog)];
-  return catalog && std::ranges::any_of(
-                        catalog->candidates,
-                        [&](const Studio::GameObjectCandidate &a_candidate) {
-                          return a_candidate.value == a_field.text;
-                        });
+  return std::ranges::all_of(
+      Studio::SplitNames(a_field.text), [&](const std::string &a_name) {
+        return IsKnownCatalogName(a_field, a_frame, a_name);
+      });
 }
 
-void DrawCatalogField(const FormField &a_field, const Frame &a_frame,
-                      const Studio::Width &a_width) {
+std::optional<std::string> CatalogInput(const FormField &a_field,
+                                        const Frame &a_frame,
+                                        const Studio::Width &a_width) {
   const FieldScope fieldScope(a_field.name);
   auto &state = Studio::State();
   const Studio::FieldKey key = Studio::HashFieldKey(state.fieldScope, "value");
@@ -361,35 +398,39 @@ void DrawCatalogField(const FormField &a_field, const Frame &a_frame,
     return diagnostic ? std::optional<std::string>{ProblemText(diagnostic)}
                       : std::nullopt;
   };
-  if (mode->second) {
-    NextItemWidth(a_width, a_frame.scale);
-    const char *preview =
-        a_field.text.empty() ? "(choose)" : a_field.text.c_str();
-    if (ImGui::BeginCombo("##catalog", preview)) {
-      const std::string filter{LiveTextField(
-          "filter", "search", Studio::Width::Px(240.0f), a_frame.scale)};
-      if (ImGui::BeginChild(
-              "list",
-              ImGui::ImVec2{260.0f * a_frame.scale, 240.0f * a_frame.scale}, 0,
-              0)) {
-        DrawCatalogList(a_field, a_frame, filter);
-      }
-      ImGui::EndChild();
-      ImGui::EndCombo();
-    }
-  } else {
-    if (const auto text =
-            TextField("value", a_field.text, {a_width, a_frame.scale}, check)) {
-      CommitField(a_field, *text, a_frame);
-    }
+  if (!mode->second) {
+    return TextField("value", a_field.text, {a_width, a_frame.scale}, check);
   }
+  NextItemWidth(a_width, a_frame.scale);
+  const char *preview =
+      a_field.text.empty() ? "(choose)" : a_field.text.c_str();
+  if (!ImGui::BeginCombo("##catalog", preview)) {
+    return std::nullopt;
+  }
+  std::optional<std::string> picked;
+  const std::string filter{LiveTextField(
+      "filter", "search", Studio::Width::Px(240.0f), a_frame.scale)};
+  if (ImGui::BeginChild(
+          "list", ImGui::ImVec2{260.0f * a_frame.scale, 240.0f * a_frame.scale},
+          0, 0)) {
+    picked = DrawCatalogList(a_field, a_frame, filter);
+  }
+  ImGui::EndChild();
+  ImGui::EndCombo();
+  return picked;
+}
+
+bool IsCatalogField(const FormField &a_field, const Frame &a_frame) {
+  return (a_field.catalog || !a_field.names.empty()) &&
+         a_frame.snapshot != nullptr && a_frame.names != nullptr;
 }
 
 void DrawFieldInput(const FormField &a_field, const Frame &a_frame,
                     const Studio::Width &a_width = Studio::Width::Fill()) {
-  if (a_field.catalog && a_frame.snapshot != nullptr &&
-      a_frame.names != nullptr) {
-    DrawCatalogField(a_field, a_frame, a_width);
+  if (a_field.catalog && IsCatalogField(a_field, a_frame)) {
+    if (const auto text = CatalogInput(a_field, a_frame, a_width)) {
+      CommitField(a_field, *text, a_frame);
+    }
     return;
   }
   if (FieldHasExpressionShelf(a_field)) {

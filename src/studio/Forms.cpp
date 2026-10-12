@@ -989,13 +989,15 @@ std::optional<TriggerAnchor> AnchorNodeFromText(const std::string &a_text) {
 void EventFilterFields(std::vector<FormField> &a_form,
                        const SignalContext &a_ctx,
                        const EventFilter &a_filter) {
-  a_form.push_back(
+  FormField node =
       TextEntryField({.name = "filter node",
                       .kind = FieldKind::kText,
                       .text = a_filter.node,
                       .bind = BindEventFilter(a_ctx.name, a_ctx.record,
                                               &EventFilter::node, AlwaysString),
-                      .allowEmpty = true}));
+                      .allowEmpty = true});
+  node.catalog = GameObjectKind::kNode;
+  a_form.push_back(std::move(node));
   a_form.push_back(
       TextEntryField({.name = "filter arg",
                       .kind = FieldKind::kText,
@@ -1099,14 +1101,16 @@ void TriggerFields(std::vector<FormField> &a_form, const SignalContext &a_ctx,
                   {kAnchorWords.begin(), kAnchorWords.end()},
                   BindSignalMember(a_ctx.name, a_ctx.record,
                                    &TriggerSignal::anchor, AnchorFromWord)));
-  if (const auto *node = Get<NodeAnchor>(a_trigger.anchor)) {
-    a_form.push_back(TextEntryField(
+  if (const auto *anchor = Get<NodeAnchor>(a_trigger.anchor)) {
+    FormField node = TextEntryField(
         {.name = "anchorNode",
          .kind = FieldKind::kText,
-         .text = node->node,
+         .text = anchor->node,
          .bind = BindSignalMember(a_ctx.name, a_ctx.record,
                                   &TriggerSignal::anchor, AnchorNodeFromText),
-         .allowEmpty = true}));
+         .allowEmpty = true});
+    node.catalog = GameObjectKind::kNode;
+    a_form.push_back(std::move(node));
   }
 }
 
@@ -1362,12 +1366,14 @@ void ImageFields(std::vector<FormField> &a_form, const SourceContext &a_ctx,
 FormField ImageTextureField(const SourceContext &a_ctx,
                             const ImageSourceRow &a_source) {
   if (a_source.effectShader.empty()) {
-    return TextEntryField(
+    FormField path = TextEntryField(
         {.name = "path",
          .kind = FieldKind::kText,
          .text = a_source.path,
          .bind = BindSourceMember(a_ctx.name, a_ctx.record,
                                   &ImageSource::texture, ImageFileOf)});
+    path.catalog = GameObjectKind::kTexture;
+    return path;
   }
   return ChoiceField(
       "effectShader", a_source.effectShader, WordsOf(kEffectShaderTextures),
@@ -1395,10 +1401,13 @@ void BakeFields(std::vector<FormField> &a_form, const SourceContext &a_ctx,
                                  BipedSlotNames(),
                                  BindBakePartition(name, record)));
   } else if (a_source.bake == "boneWeight") {
-    a_form.push_back(TextEntryField({.name = "bones",
-                                     .kind = FieldKind::kText,
-                                     .text = a_source.bones,
-                                     .bind = BindBakeBones(name, record)}));
+    FormField bones = TextEntryField({.name = "bones",
+                                      .kind = FieldKind::kText,
+                                      .text = a_source.bones,
+                                      .bind = BindBakeBones(name, record)});
+    bones.catalog = GameObjectKind::kNode;
+    bones.catalogPick = CatalogPick::kAppend;
+    a_form.push_back(std::move(bones));
   }
 }
 
@@ -1605,6 +1614,25 @@ OutputHeader OutputHeaderForm(std::size_t a_output, bool a_replace,
   return header;
 }
 
+FormField SelectorClauseField(const SelectorClauseRow &a_clause,
+                              std::vector<std::string> a_geometries) {
+  FormField field{
+      .name = "value", .kind = FieldKind::kText, .text = a_clause.value};
+  if (a_clause.kind == SelectorKind::kGeometry) {
+    field.names = std::move(a_geometries);
+  } else if (a_clause.kind == SelectorKind::kTexture) {
+    field.catalog = GameObjectKind::kTexture;
+  }
+  return field;
+}
+
+std::string PickedText(const FormField &a_field, std::string_view a_picked) {
+  if (a_field.catalogPick == CatalogPick::kAppend) {
+    return AppendName(a_field.text, a_picked);
+  }
+  return std::string{a_picked};
+}
+
 namespace {
 void LightColorFields(std::vector<FormField> &a_form, const LightRow &a_light,
                       const SignalNames &a_names) {
@@ -1679,10 +1707,13 @@ void LightShapeFields(std::vector<FormField> &a_form, const LightRow &a_light) {
     minShare.units = "fraction";
     a_form.push_back(std::move(minShare));
   } else {
-    a_form.push_back(TextEntryField({.name = "names",
-                                     .kind = FieldKind::kText,
-                                     .text = a_light.bonesNames,
-                                     .bind = BindLightNames(output)}));
+    FormField names = TextEntryField({.name = "names",
+                                      .kind = FieldKind::kText,
+                                      .text = a_light.bonesNames,
+                                      .bind = BindLightNames(output)});
+    names.catalog = GameObjectKind::kNode;
+    names.catalogPick = CatalogPick::kAppend;
+    a_form.push_back(std::move(names));
   }
 }
 }

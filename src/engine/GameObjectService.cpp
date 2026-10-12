@@ -154,7 +154,7 @@ void RebuildGameObjectCatalogs() {
 
 std::shared_ptr<const GameObjectCatalog>
 GameObjectCatalogOf(GameObjectKind a_kind) {
-  if (a_kind == GameObjectKind::kAnimEvent) {
+  if (Studio::IsViewedActorKind(a_kind)) {
     return EmptyCatalog(a_kind);
   }
   std::scoped_lock lock{g_mutex};
@@ -191,6 +191,58 @@ AnimEventCatalogOf(RE::FormID a_actor) {
   g_animDirty.erase(a_actor);
   cached = std::move(catalog);
   return cached;
+}
+
+namespace {
+constexpr std::size_t kMaxNodeDepth = 64;
+constexpr std::size_t kMaxNodes = 4096;
+
+struct PendingNode {
+  RE::NiAVObject *object = nullptr;
+  std::size_t depth = 0;
+};
+
+void NoteNodeName(std::vector<std::string> &a_names, const RE::NiNode &a_node) {
+  const char *name = a_node.name.c_str();
+  if (name && *name) {
+    a_names.emplace_back(name);
+  }
+}
+
+void QueueChildren(std::vector<PendingNode> &a_pending, RE::NiNode &a_node,
+                   std::size_t a_depth) {
+  if (a_depth >= kMaxNodeDepth) {
+    return;
+  }
+  for (const RE::NiPointer<RE::NiAVObject> &child : a_node.GetChildren()) {
+    if (child && a_pending.size() < kMaxNodes) {
+      a_pending.push_back({child.get(), a_depth + 1});
+    }
+  }
+}
+}
+
+std::vector<std::string> NodeNamesOf(RE::FormID a_actor) {
+  std::vector<std::string> names;
+  RE::Actor *actor = RE::TESForm::LookupByID<RE::Actor>(a_actor);
+  RE::NiAVObject *root = actor ? actor->Get3D(false) : nullptr;
+  if (!root) {
+    return names;
+  }
+  std::vector<PendingNode> pending{{root, 0}};
+  std::size_t visited = 0;
+  while (!pending.empty() && visited < kMaxNodes) {
+    const PendingNode next = pending.back();
+    pending.pop_back();
+    ++visited;
+    RE::NiNode *node = next.object ? next.object->AsNode() : nullptr;
+    if (!node) {
+      continue;
+    }
+    NoteNodeName(names, *node);
+    QueueChildren(pending, *node, next.depth);
+  }
+  return names;
 }
 
 void NoteAnimEvent(RE::FormID a_actor, std::string_view a_tag) {

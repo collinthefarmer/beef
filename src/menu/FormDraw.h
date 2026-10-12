@@ -26,6 +26,11 @@ FieldInput(const Studio::FormField &a_field, float a_scale,
            const Studio::Width &a_width = Studio::Width::Fill());
 void PostField(const Studio::FormField &a_field, const std::string &a_text,
                const Frame &a_frame);
+[[nodiscard]] bool IsCatalogField(const Studio::FormField &a_field,
+                                  const Frame &a_frame);
+[[nodiscard]] std::optional<std::string>
+CatalogInput(const Studio::FormField &a_field, const Frame &a_frame,
+             const Studio::Width &a_width = Studio::Width::Fill());
 void DrawRowField(const char *a_key, const Studio::FormField &a_field,
                   const Frame &a_frame);
 

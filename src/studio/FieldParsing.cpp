@@ -1,6 +1,7 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #include "studio/FieldParsing.h"
 
+#include <algorithm>
 #include <charconv>
 
 namespace BetterEnchantmentEffects::Studio {
@@ -74,6 +75,25 @@ FiveNumbers(std::string_view a_text) {
     at = comma + 1;
   }
   return names;
+}
+
+std::string JoinNames(const std::vector<std::string> &a_names) {
+  std::string text;
+  for (const std::string &name : a_names) {
+    text += (text.empty() ? "" : ", ") + name;
+  }
+  return text;
+}
+
+std::string AppendName(std::string_view a_list, std::string_view a_name) {
+  std::vector<std::string> names = SplitNames(a_list);
+  const std::vector<std::string> added = SplitNames(a_name);
+  for (const std::string &name : added) {
+    if (!std::ranges::contains(names, name)) {
+      names.push_back(name);
+    }
+  }
+  return JoinNames(names);
 }
 
 std::optional<Vec3> LiteralColor(std::string_view a_text) {

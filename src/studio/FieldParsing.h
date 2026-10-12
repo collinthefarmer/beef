@@ -18,6 +18,9 @@ namespace BetterEnchantmentEffects::Studio {
 [[nodiscard]] std::optional<std::array<float, 5>>
 FiveNumbers(std::string_view a_text);
 [[nodiscard]] std::vector<std::string> SplitNames(std::string_view a_text);
+[[nodiscard]] std::string JoinNames(const std::vector<std::string> &a_names);
+[[nodiscard]] std::string AppendName(std::string_view a_list,
+                                     std::string_view a_name);
 [[nodiscard]] std::optional<Vec3> LiteralColor(std::string_view a_text);
 [[nodiscard]] std::string LiteralColorText(const Vec3 &a_color);
 }

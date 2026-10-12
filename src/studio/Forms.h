@@ -230,6 +230,11 @@ using FieldBinding =
 using FieldCreator = std::function<std::optional<Created>(const std::string &,
                                                           const RecipeRow &)>;
 
+enum class CatalogPick {
+  kReplace,
+  kAppend,
+};
+
 struct FormField {
   std::string name;
   FieldKind kind = FieldKind::kScalar;
@@ -249,7 +254,11 @@ struct FormField {
   std::optional<ChannelSet> channelMask{};
   std::optional<GameObjectKind> catalog{};
   std::optional<std::uint64_t> expectedRevision = std::nullopt;
+  CatalogPick catalogPick = CatalogPick::kReplace;
 };
+
+[[nodiscard]] std::string PickedText(const FormField &a_field,
+                                     std::string_view a_picked);
 
 [[nodiscard]] FormField CurveTextField(const std::string &a_curve,
                                        const std::string &a_text);
@@ -275,6 +284,9 @@ struct OutputHeader {
 [[nodiscard]] OutputHeader OutputHeaderForm(std::size_t a_output,
                                             bool a_replace,
                                             const Selector &a_selector);
+[[nodiscard]] FormField
+SelectorClauseField(const SelectorClauseRow &a_clause,
+                    std::vector<std::string> a_geometries);
 
 [[nodiscard]] std::vector<FormField> LightForm(const LightRow &a_light,
                                                const SignalNames &a_names);

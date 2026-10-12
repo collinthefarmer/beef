@@ -549,13 +549,15 @@ std::vector<TermField> ComponentForm(const IslandTerm &a_term,
 }
 
 std::vector<TermField> BoneForm(const BoneTerm &a_term) {
+  FormField boneList = TextEntryField({.name = "bones",
+                                       .kind = FieldKind::kText,
+                                       .text = BoneListText(a_term.bones),
+                                       .bind = {}});
+  boneList.catalog = GameObjectKind::kNode;
+  boneList.catalogPick = CatalogPick::kAppend;
   std::vector<TermField> form;
   form.push_back(
-      Setting<BoneTerm>(a_term,
-                        TextEntryField({.name = "bones",
-                                        .kind = FieldKind::kText,
-                                        .text = BoneListText(a_term.bones),
-                                        .bind = {}}),
+      Setting<BoneTerm>(a_term, std::move(boneList),
                         std::function<bool(BoneTerm &, const std::string &)>{
                             [](BoneTerm &t, const std::string &a_text) {
                               const auto bones = ParseBoneList(a_text);

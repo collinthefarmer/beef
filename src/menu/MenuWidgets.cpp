@@ -558,7 +558,9 @@ DrawCandidateRows(const CandidateRowsSpec &a_spec, int &a_id,
       break;
     }
     const std::string label =
-        std::string{a_spec.prefix} + Studio::CandidateLabel(candidate);
+        std::string{a_spec.prefix} + (a_spec.qualifiers
+                                          ? Studio::QualifiedLabel(candidate)
+                                          : Studio::CandidateLabel(candidate));
     ImGui::PushID(a_id++);
     if (ImGui::Selectable(label.c_str(), candidate.value == a_spec.current)) {
       picked = &candidate;

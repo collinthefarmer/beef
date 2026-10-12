@@ -2798,6 +2798,30 @@ cancel by the user instead of the load.
   which `ChannelSet::Parse` rejects, so `DrawChannels` disables the sole
   remaining channel toggle rather than letting a commit silently revert.
 
+### Viewed-actor catalogs (`studio/ActorCatalogs.h`, `engine/GameObjectService.cpp`, `engine/ManagerSnapshot.cpp`)
+
+- The node, texture and anim-event catalogs depend on the viewed actor.
+  `IsViewedActorKind` marks them. `GameObjectCatalogOf` returns an empty
+  catalog for them. `PublishCatalogs` builds them on every snapshot publish.
+- `NodeNamesOf` walks the actor's third-person 3D on the game thread. The walk
+  stops at depth 64 and after 4096 nodes. A vanilla skeleton with worn armor
+  has a few hundred nodes, so the limits only stop a malformed or looping
+  scene graph.
+- The node catalog lists the viewed piece's skin bones first, by highest
+  coverage across its geometries, and then every other node alphabetically.
+  Only the full piece row carries geometries, so the skin bones are that
+  piece's.
+- `TexturePathKey` folds case, turns `/` into `\` and drops a leading
+  `data\`. It keeps `textures\`, because a texture selector clause matches the
+  geometry's diffuse path as the NIF stores it, and `Compositor::LoadImage`
+  retries a path with `textures\` in front when the plain path fails.
+- The texture catalog keeps only paths that end in `.dds`. `SlotWriter::Slots`
+  reports a missing texture as `(none)` or `(unnamed)`, and the filter drops
+  those names.
+- A field with `CatalogPick::kAppend` holds a comma list. A pick from the
+  catalog adds the name to the list (`AppendName`) instead of replacing the
+  text; a name already in the list is not added twice.
+
 ## Build and tools
 
 - Project targets bypass the compiler launcher; third-party targets still

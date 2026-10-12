@@ -9,6 +9,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace BetterEnchantmentEffects {
 void RebuildGameObjectCatalogs();
@@ -18,6 +19,8 @@ GameObjectCatalogOf(Studio::GameObjectKind a_kind);
 
 [[nodiscard]] std::shared_ptr<const Studio::GameObjectCatalog>
 AnimEventCatalogOf(RE::FormID a_actor);
+
+[[nodiscard]] std::vector<std::string> NodeNamesOf(RE::FormID a_actor);
 
 void NoteAnimEvent(RE::FormID a_actor, std::string_view a_tag);
 

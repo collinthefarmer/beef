@@ -249,7 +249,8 @@ them, and `menu/InputBrowser.cpp` reads them.
 
 | Type | Description | Declared in |
 |---|---|---|
-| `GameObjectCatalog`, `GameObjectCandidate`, `GameObjectKind` | One catalog of candidates (actor values, anim events, keywords, and five more kinds). `Snapshot::catalogs` holds one per kind. | `GameObjects.h` |
+| `GameObjectCatalog`, `GameObjectCandidate`, `GameObjectKind` | One catalog of candidates (actor values, anim events, keywords, nodes, textures, and five more kinds). `Snapshot::catalogs` holds one per kind. | `GameObjects.h` |
+| `WornTextures`, `MaterialTexture`, `EffectShaderTextures` | The texture paths the viewed actor's materials and matched effect shaders use. `TextureCatalogOf` turns them into the texture catalog; `NodeCatalogOf` builds the node catalog from skin bones and skeleton nodes. | `ActorCatalogs.h` |
 | `ActorValueSample`, `InputMeasureInfo` | One actor value sampled under each `Measure`. `kInputMeasures` describes each measure. | `InputCatalog.h` |
 | `InputConnectionSpec`, `InputConnectionKind` | A request to connect a field to an actor value. `CreateInput` and `ConnectInput` turn it into an `EditBatch`. | `InputConnections.h` |
 | `ResponseGraph` | 65 sampled values of one signal over time, with the live value and a caption. `BuildResponseGraph` builds it. | `ResponseGraph.h` |
@@ -311,7 +312,7 @@ path: `KeepPaint` reaches `RecipeEditor::KeepPaint`, which calls
 | Paint mode | `PaintSession.h/.cpp`, `PaintCommit.h` |
 | Selection, board and navigation | `Selection.h/.cpp`, `Board.h/.cpp`, `Panels.h/.cpp`, `Navigation.h/.cpp`, `SelectorEdit.h/.cpp` |
 | Engine-side editor records | `DocumentRevisions.h/.cpp`, `History.h`, `Gesture.h/.cpp`, `ApplicationRecord.h/.cpp`, `ResolveOutput.h/.cpp` |
-| Game catalogs and inputs | `GameObjects.h/.cpp`, `InputCatalog.h/.cpp`, `InputConnections.h/.cpp`, `ResponseGraph.h/.cpp` |
+| Game catalogs and inputs | `GameObjects.h/.cpp`, `ActorCatalogs.h/.cpp`, `InputCatalog.h/.cpp`, `InputConnections.h/.cpp`, `ResponseGraph.h/.cpp` |
 
 ## See also
 

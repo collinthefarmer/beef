@@ -12,6 +12,7 @@
 #include "render/Compositor.h"
 #include "render/SourceSampling.h"
 #include "render/TextureLab.h"
+#include "studio/ActorCatalogs.h"
 #include "studio/Edits.h"
 #include "studio/Panels.h"
 #include "studio/RecipeSnapshot.h"
@@ -29,14 +30,24 @@
 
 namespace BetterEnchantmentEffects {
 namespace {
-void PublishCatalogs(Studio::Snapshot &a_out, std::uint32_t a_actor) {
+Studio::WornTextures WornTexturesOf(const LiveActor *a_live);
+
+void PublishCatalogs(Studio::Snapshot &a_out, std::uint32_t a_actor,
+                     const LiveActor *a_live) {
   a_out.catalogEventActor = a_actor;
   for (std::size_t kind = 0; kind < Studio::kGameObjectKindCount; ++kind) {
-    const auto value = static_cast<Studio::GameObjectKind>(kind);
-    a_out.catalogs[kind] = value == Studio::GameObjectKind::kAnimEvent
-                               ? AnimEventCatalogOf(a_actor)
-                               : GameObjectCatalogOf(value);
+    a_out.catalogs[kind] =
+        GameObjectCatalogOf(static_cast<Studio::GameObjectKind>(kind));
   }
+  a_out.catalogs[IndexOf(Studio::GameObjectKind::kAnimEvent)] =
+      AnimEventCatalogOf(a_actor);
+  const std::vector<std::string> skeleton = NodeNamesOf(a_actor);
+  a_out.catalogs[IndexOf(Studio::GameObjectKind::kNode)] =
+      std::make_shared<const Studio::GameObjectCatalog>(Studio::NodeCatalogOf(
+          Studio::SkinBonesOf(a_out.pieces, a_actor), skeleton));
+  a_out.catalogs[IndexOf(Studio::GameObjectKind::kTexture)] =
+      std::make_shared<const Studio::GameObjectCatalog>(
+          Studio::TextureCatalogOf(WornTexturesOf(a_live)));
   a_out.actorValueSamples =
       BuildActorValueSamples(*a_out.catalogs[static_cast<std::size_t>(
                                  Studio::GameObjectKind::kActorValue)],
@@ -65,6 +76,66 @@ std::vector<Studio::SlotRow> SlotRows(const SlotTarget &a_target) {
   }
   return rows;
 }
+struct MaterialMapSlot {
+  TextureRef MaterialInputs::*map;
+  Slot slot;
+};
+constexpr MaterialMapSlot kMaterialMapSlots[]{
+    {&MaterialInputs::diffuse, Slot::kDiffuse},
+    {&MaterialInputs::normal, Slot::kNormal},
+    {&MaterialInputs::rmaos, Slot::kRmaos},
+    {&MaterialInputs::displacement, Slot::kHeight},
+};
+
+std::string SourcePathOf(const TextureRef &a_texture) {
+  const RE::NiSourceTexture *texture = a_texture.get();
+  if (!texture || a_texture.Target()) {
+    return {};
+  }
+  const char *name = texture->name.c_str();
+  return name ? std::string{name} : std::string{};
+}
+
+void AppendSlotOriginals(std::vector<Studio::MaterialTexture> &a_out,
+                         const std::string &a_geometry,
+                         const SlotTarget *a_target) {
+  if (!a_target) {
+    return;
+  }
+  for (const SlotState &state : a_target->Slots()) {
+    a_out.push_back({a_geometry, state.slot, state.original});
+  }
+}
+
+void AppendGeometryTextures(std::vector<Studio::MaterialTexture> &a_out,
+                            const LiveGeometry &a_bound) {
+  for (const MaterialMapSlot &map : kMaterialMapSlots) {
+    a_out.push_back({a_bound.name, map.slot,
+                     SourcePathOf(a_bound.inputs.material.*map.map)});
+  }
+  AppendSlotOriginals(a_out, a_bound.name, a_bound.material.get());
+  AppendSlotOriginals(a_out, a_bound.name, a_bound.shell.get());
+}
+
+Studio::WornTextures WornTexturesOf(const LiveActor *a_live) {
+  Studio::WornTextures worn;
+  if (!a_live) {
+    return worn;
+  }
+  for (const LivePiece &piece : a_live->pieces) {
+    for (const LiveGeometry &bound : piece.geometries) {
+      if (!bound.lost) {
+        AppendGeometryTextures(worn.materials, bound);
+      }
+    }
+  }
+  for (const LiveInstance &instance : a_live->instances) {
+    const MatchedShaderFacts shader = MatchedShaderFactsOf(instance);
+    worn.shaders.push_back({shader.fill, shader.membrane});
+  }
+  return worn;
+}
+
 struct GeometrySnapshotBuilder {
   Manager::Snapshot &snapshot;
   const Recipe &recipe;
@@ -480,7 +551,9 @@ Manager::BuildSnapshot(const std::optional<Studio::PieceRef> &a_request,
   Snapshot out;
   PublishStatus(out);
   PublishPieces(out, a_request);
-  PublishCatalogs(out, a_request ? a_request->actorID : 0);
+  const RE::FormID actor = a_request ? a_request->actorID : 0;
+  const auto live = live_.find(actor);
+  PublishCatalogs(out, actor, live != live_.end() ? &live->second : nullptr);
   AppendLoadedRecipes(out);
   PublishDocument(out, a_document);
   return out;

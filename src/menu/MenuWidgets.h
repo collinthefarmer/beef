@@ -128,6 +128,7 @@ struct CandidateRowsSpec {
   std::string_view current = {};
   std::string_view prefix = {};
   std::size_t cap = 0;
+  bool qualifiers = false;
 };
 [[nodiscard]] const Studio::GameObjectCandidate *
 DrawCandidateRows(const CandidateRowsSpec &a_spec, int &a_id,
