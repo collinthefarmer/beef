@@ -169,6 +169,28 @@ int main() {
   Check(std::ranges::count_if(combined, roughnessOffer) == 1 &&
             std::ranges::find_if(combined, roughnessOffer)->geometry.empty(),
         "a channel threshold is offered once and belongs to no geometry");
+  const auto groupCount = [&](OfferGroup a_group) {
+    return std::ranges::count_if(combined, [&](const TermOffer &offer) {
+      return offer.group == a_group;
+    });
+  };
+  const auto singleCount = [&](OfferGroup a_group) {
+    return std::ranges::count_if(
+        OffersOf(presets, repeated, geometry, ""),
+        [&](const TermOffer &offer) { return offer.group == a_group; });
+  };
+  Check(singleCount(OfferGroup::kBones) > 0 &&
+            singleCount(OfferGroup::kPartitions) > 0 &&
+            groupCount(OfferGroup::kBones) == singleCount(OfferGroup::kBones) &&
+            groupCount(OfferGroup::kPartitions) ==
+                singleCount(OfferGroup::kPartitions),
+        "identical bone and partition terms are offered once across "
+        "geometries");
+  Check(singleCount(OfferGroup::kParts) > 0 &&
+            groupCount(OfferGroup::kParts) ==
+                2 * singleCount(OfferGroup::kParts),
+        "a part is offered per geometry, because its id names a different "
+        "area on each");
   repeated.geometries.back().clusters.front().description = "rough cloth";
   const auto varied = OffersOfRecipe(presets, repeated, "");
   const auto materialOffer =
@@ -176,7 +198,7 @@ int main() {
         return offer.group == OfferGroup::kMaterials;
       });
   Check(materialOffer != varied.end() && materialOffer->geometry.empty() &&
-            materialOffer->detail == "appearance varies by geometry",
+            materialOffer->detail == "varies by geometry",
         "a shared cluster operation does not claim one geometry's material "
         "label");
 

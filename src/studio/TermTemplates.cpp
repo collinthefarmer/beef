@@ -767,7 +767,7 @@ std::vector<TermOffer> OffersOf(const MaskPresets &a_presets,
   AppendSourceOffers(offers, a_recipe);
   for (TermOffer &offer : offers) {
     const OfferGroupSpec *row = RowOf(kOfferGroups, offer.group);
-    if (row && row->ofGeometry) {
+    if (row && row->scope != OfferScope::kRecipe) {
       offer.geometry = a_geometry.name;
     }
   }
@@ -775,40 +775,42 @@ std::vector<TermOffer> OffersOf(const MaskPresets &a_presets,
 }
 
 namespace {
-TermOffer *FindMaterialOffer(std::vector<TermOffer> &a_all,
-                             const TermKind &a_kind) {
+TermOffer *FindSameTerm(std::vector<TermOffer> &a_all,
+                        const TermOffer &a_incoming) {
   const auto existing =
       std::ranges::find_if(a_all, [&](const TermOffer &a_offer) {
-        return a_offer.group == OfferGroup::kMaterials &&
-               a_offer.kind == a_kind;
+        return a_offer.group == a_incoming.group &&
+               a_offer.kind == a_incoming.kind;
       });
   return existing != a_all.end() ? &*existing : nullptr;
 }
 
-void MergeMaterialOffer(TermOffer &a_existing, TermOffer a_incoming) {
+void MergeSameTerm(TermOffer &a_existing, TermOffer a_incoming) {
   if (a_existing.unavailable && !a_incoming.unavailable) {
     a_existing = std::move(a_incoming);
   } else if (!a_existing.unavailable && !a_incoming.unavailable) {
     a_existing.geometry.clear();
     if (a_existing.detail != a_incoming.detail) {
-      a_existing.detail = "appearance varies by geometry";
+      a_existing.detail = "varies by geometry";
     }
     if (a_existing.coverage != a_incoming.coverage) {
-      a_existing.coverage.reset();
+      a_existing.coverage = std::max(a_existing.coverage.value_or(0.0f),
+                                     a_incoming.coverage.value_or(0.0f));
     }
   }
 }
 
 void CollectOffer(std::vector<TermOffer> &a_all, TermOffer a_offer,
                   bool a_firstGeometry) {
-  if (a_offer.group == OfferGroup::kMaterials) {
-    if (TermOffer *existing = FindMaterialOffer(a_all, a_offer.kind)) {
-      MergeMaterialOffer(*existing, std::move(a_offer));
+  const OfferGroupSpec *row = RowOf(kOfferGroups, a_offer.group);
+  const OfferScope scope = row ? row->scope : OfferScope::kRecipe;
+  if (scope == OfferScope::kSharedTerm) {
+    if (TermOffer *existing = FindSameTerm(a_all, a_offer)) {
+      MergeSameTerm(*existing, std::move(a_offer));
       return;
     }
   }
-  const OfferGroupSpec *row = RowOf(kOfferGroups, a_offer.group);
-  if (a_firstGeometry || (row && row->ofGeometry)) {
+  if (a_firstGeometry || scope != OfferScope::kRecipe) {
     a_all.push_back(std::move(a_offer));
   }
 }

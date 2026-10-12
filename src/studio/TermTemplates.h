@@ -58,22 +58,28 @@ enum class OfferGroup {
   kMasks,
   kSources,
 };
+enum class OfferScope {
+  kRecipe,
+  kSharedTerm,
+  kGeometry,
+};
 struct OfferGroupSpec {
   OfferGroup value;
   std::string_view name;
   std::string_view word;
-  bool ofGeometry;
+  OfferScope scope;
 };
 inline constexpr OfferGroupSpec kOfferGroups[]{
-    {OfferGroup::kParts, "parts", "part", true},
-    {OfferGroup::kCharts, "charts", "chart", true},
-    {OfferGroup::kMaterials, "materials", "material", true},
-    {OfferGroup::kBones, "bones", "bone", true},
-    {OfferGroup::kPartitions, "partitions", "partition", true},
-    {OfferGroup::kChannels, "channels", "channel", false},
-    {OfferGroup::kPresets, "presets", "preset", false},
-    {OfferGroup::kMasks, "masks", "mask", false},
-    {OfferGroup::kSources, "sources", "source", false},
+    {OfferGroup::kParts, "parts", "part", OfferScope::kGeometry},
+    {OfferGroup::kCharts, "charts", "chart", OfferScope::kGeometry},
+    {OfferGroup::kMaterials, "materials", "material", OfferScope::kSharedTerm},
+    {OfferGroup::kBones, "bones", "bone", OfferScope::kSharedTerm},
+    {OfferGroup::kPartitions, "partitions", "partition",
+     OfferScope::kSharedTerm},
+    {OfferGroup::kChannels, "channels", "channel", OfferScope::kRecipe},
+    {OfferGroup::kPresets, "presets", "preset", OfferScope::kRecipe},
+    {OfferGroup::kMasks, "masks", "mask", OfferScope::kRecipe},
+    {OfferGroup::kSources, "sources", "source", OfferScope::kRecipe},
 };
 inline constexpr std::size_t kOfferGroupCount = 9;
 static_assert(std::size(kOfferGroups) == kOfferGroupCount);
