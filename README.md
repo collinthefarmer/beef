@@ -50,6 +50,8 @@ enchantment on the piece itself.
 | `docs/plans/pure-tick-r7b-2026-10-10.md` | How does the engine run the install program's pure stages, and which engine install code does R7b delete? |
 | `docs/plans/application-ledger-2026-10-10.md` | What is left of `ApplicationService` and `SessionQueue` after the tick core, and how would they shrink to a progress ledger and a session queue? (proposed, on hold) |
 | `docs/plans/effects-runtime-2026-10-10.md` | How would `Manager` split into named parts with a data-driven load reset and frame table, and in which order? (proposed, on hold) |
+| `docs/plans/edge-fixes-2026-10-12.md` | How are the component-edge findings fixed: the plan queue, the swap instead of the blank, narrower invalidation and the per-piece install, and which decisions are open? (proposed)
+| `docs/plans/edge-fixes-stage2-swap-2026-10-12.md` | How does a reinstall restage the render beside the published one, as a resize does, so an edit never shows the vanilla look, and which decisions are open? (proposed) |
 | `docs/plans/code-review-backlog-2026-10-11.md` | What did the code walk find, in which order is it worked through, and what needs the user's decision? |
 | `docs/checkpoints/render-performance-review-2026-09-30.md` | What did the review of the layer-field and generated-shader commits find, and which findings are fixed? |
 | `docs/checkpoints/actor-core-review-2026-10-03.md` | What did the review of the actor-core branch find, what must be fixed before it merges, and how is each fix proven? |
