@@ -59,6 +59,7 @@ constexpr const char *kMenuExports[]{
     "igGetContentRegionAvail",
     "igGetCursorPos",
     "igGetCursorPosX",
+    "igGetCursorPosY",
     "igGetCursorScreenPos",
     "igGetFont",
     "igGetFontSize",

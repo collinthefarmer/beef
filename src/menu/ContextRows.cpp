@@ -448,18 +448,12 @@ void DrawOutputHeader(const Studio::OutputRow &a_output,
   const std::string label = std::format(
       "{} / {}", SurfaceName(a_output.surface), SlotName(a_output.slot));
   static_cast<void>(Rule(
-      Studio::RuleSpec{.text = "Inspector"},
-      ButtonWidth("Reset") + ItemSpacingX() + RowButtonWidth(),
+      Studio::RuleSpec{.text = "Inspector"}, ButtonWidth("Reset"),
       [&]() {
         const bool canEdit = a_frame.recipe && a_frame.intents;
         if (ImGui::Button("Reset") && canEdit) {
           Studio::Post(*a_frame.intents, a_frame.recipe->id,
                        Studio::ResetOutput{a_output.index});
-        }
-        ImGui::SameLine();
-        if (canEdit && RemoveButton(0)) {
-          Studio::Post(*a_frame.intents, a_frame.recipe->id,
-                       Studio::RemoveOutput{a_output.index});
         }
       },
       [&]() {

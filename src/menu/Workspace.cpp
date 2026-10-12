@@ -21,6 +21,7 @@
 
 #include <algorithm>
 #include <format>
+#include <functional>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -73,7 +74,8 @@ void NavigateFromNavigator(const Frame &a_frame,
 }
 
 void PickSubject(const char *a_label, Studio::InspectorSubject a_subject,
-                 const Frame &a_frame, bool a_spanColumns = false) {
+                 const Frame &a_frame, bool a_spanColumns = false,
+                 float a_width = 0.0f) {
   const bool blocked =
       Studio::IndexedEditPendingFor(a_frame.state->pendingIndexedEdit,
                                     a_frame.recipe->id) &&
@@ -83,10 +85,26 @@ void PickSubject(const char *a_label, Studio::InspectorSubject a_subject,
       a_spanColumns ? ImGuiMCP::ImGuiSelectableFlags_SpanAllColumns : 0;
   ImGui::BeginDisabled(blocked);
   if (ImGui::Selectable(a_label, SelectionOf(a_frame).subject == a_subject,
-                        flags)) {
+                        flags, ImVec2{a_width, 0.0f})) {
     NavigateFromNavigator(a_frame, std::move(a_subject));
   }
   ImGui::EndDisabled();
+}
+
+void PickSubjectWithRemove(const char *a_label,
+                           Studio::InspectorSubject a_subject,
+                           const Frame &a_frame,
+                           const std::function<void()> &a_remove) {
+  const float remove = RowButtonWidth();
+  const float width = (std::max)(1.0f, ImGui::GetContentRegionAvail().x -
+                                           remove - ItemSpacingX());
+  PickSubject(a_label, std::move(a_subject), a_frame, false, width);
+  ImGui::SameLine();
+  RightAligned(remove, [&] {
+    if (RemoveButton(0)) {
+      a_remove();
+    }
+  });
 }
 
 void DrawSurfaceAdd(const Frame &a_frame, Surface a_surface) {
@@ -132,11 +150,6 @@ void DrawOutputLayerRow(const Frame &a_frame, const Studio::OutputRow &a_output,
   const Studio::View &view = ViewOf(a_frame);
   const Studio::LayerRow &layer = a_output.layers[a_layer];
   ImGui::PushID(static_cast<int>(a_layer));
-  if (RemoveButton(0)) {
-    Studio::Post(*a_frame.intents, id,
-                 Studio::RemoveLayer{a_output.index, a_layer});
-  }
-  ImGui::SameLine();
   if (DragHandle(kNavLayerPayload, a_layer, "layer")) {
     Studio::Post(*a_frame.intents, Studio::PickLayer{a_layer});
   }
@@ -168,8 +181,12 @@ void DrawOutputLayerRow(const Frame &a_frame, const Studio::OutputRow &a_output,
   const std::string label =
       std::format("{}: {}", a_layer + 1,
                   layer.source.empty() ? "Choose a signal" : layer.source);
-  PickSubject(label.c_str(), Studio::LayerSubject{a_output.index, a_layer},
-              a_frame);
+  PickSubjectWithRemove(
+      label.c_str(), Studio::LayerSubject{a_output.index, a_layer}, a_frame,
+      [&] {
+        Studio::Post(*a_frame.intents, id,
+                     Studio::RemoveLayer{a_output.index, a_layer});
+      });
   ImGui::PopID();
 }
 
@@ -188,7 +205,11 @@ void DrawOutputNode(const Frame &a_frame, const Studio::OutputRow &a_output,
     return;
   }
   ImGui::PushID(static_cast<int>(a_output.index));
-  PickSubject(title.c_str(), Studio::OutputSubject{a_output.index}, a_frame);
+  PickSubjectWithRemove(title.c_str(), Studio::OutputSubject{a_output.index},
+                        a_frame, [&] {
+                          Studio::Post(*a_frame.intents, a_frame.recipe->id,
+                                       Studio::RemoveOutput{a_output.index});
+                        });
   ImGui::Indent();
   for (std::size_t i = 0; i < a_output.layers.size(); ++i) {
     if (!outputMatches &&
@@ -608,17 +629,11 @@ void DrawOutput(const Studio::OutputSubject &a_subject, const Frame &a_frame) {
       return;
     }
     static_cast<void>(Rule(
-        Studio::RuleSpec{.text = "Inspector"},
-        ButtonWidth("Reset") + ItemSpacingX() + RowButtonWidth(),
+        Studio::RuleSpec{.text = "Inspector"}, ButtonWidth("Reset"),
         [&]() {
           if (ImGui::Button("Reset")) {
             Studio::Post(*a_frame.intents, a_frame.recipe->id,
                          Studio::ResetLight{light->output});
-          }
-          ImGui::SameLine();
-          if (RemoveButton(0)) {
-            Studio::Post(*a_frame.intents, a_frame.recipe->id,
-                         Studio::RemoveOutput{light->output});
           }
         },
         [&]() { Dim("Light"); }));
@@ -664,15 +679,8 @@ void DrawLayerInspector(const Studio::LayerSubject &a_layer,
       owner ? std::format("{} / {} / layer {}", SurfaceName(owner->surface),
                           SlotName(owner->slot), a_layer.layer + 1)
             : std::format("layer {}", a_layer.layer + 1);
-  static_cast<void>(Rule(
-      Studio::RuleSpec{.text = "Inspector"}, RowButtonWidth(),
-      [&]() {
-        if (RemoveButton(0)) {
-          Studio::Post(*a_frame.intents, a_frame.recipe->id,
-                       Studio::RemoveLayer{a_layer.output, a_layer.layer});
-        }
-      },
-      [&]() { Dim(label); }));
+  static_cast<void>(Rule(Studio::RuleSpec{.text = "Inspector"}, 0.0f, {},
+                         [&]() { Dim(label); }));
   const auto geometry = OutputGeometry(a_frame, a_layer.output);
   const auto inspector =
       geometry ? Studio::BuildInspector(*a_frame.recipe, *geometry,

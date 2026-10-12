@@ -91,6 +91,7 @@ struct MenuState {
   ResourceTab resource = ResourceTab::kSignals;
   float navigatorShare = 0.34f;
   float inspectorShare = 0.71f;
+  float footerHeight = 0.0f;
   std::unordered_map<FieldKey, TextBuffer> textBuffers;
   std::unordered_map<FieldKey, NumberBuffer> numberBuffers;
   FieldKey activeField = kNoField;

@@ -409,15 +409,18 @@ void DrawStudioFrame(const Frame &frame) {
     DrawStudioContext(frame);
     DrawMaskDraftHints(frame);
   });
-  const float footerRows = 2.0f;
   const float footer =
-      RuleHeight() + ImGui::GetFrameHeightWithSpacing() * footerRows + 8.0f;
+      state.footerHeight > 0.0f
+          ? state.footerHeight
+          : RuleHeight() + ImGui::GetFrameHeightWithSpacing() * 2.0f;
   if (ImGui::BeginChild("studio-body", ImVec2{0.0f, -footer}, 0, 0)) {
     Disabled(editPending || (state.paint && state.paint->pendingCommit),
              [&] { DrawBody(frame); });
   }
   ImGui::EndChild();
+  const float footerTop = ImGui::GetCursorPosY();
   DrawFooter(frame);
+  state.footerHeight = ImGui::GetCursorPosY() - footerTop;
   if (!editPending) {
     HistoryKeys(frame);
   }
