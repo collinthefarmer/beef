@@ -19,6 +19,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <format>
+#include <functional>
 #include <optional>
 #include <span>
 #include <string>
@@ -388,23 +389,20 @@ void DrawStudioContext(const Frame &a_frame) {
   if (!a_frame.snapshot || !a_frame.intents) {
     return;
   }
-  float trailing = 0.0f;
-  if (a_frame.recipe) {
-    trailing = ButtonWidth("Undo") + ItemSpacingX() + ButtonWidth("Redo") +
-               ItemSpacingX() + ButtonWidth("Save") + ItemSpacingX() +
-               ButtonWidth("Revert");
-  }
-  static_cast<void>(Rule(
-      Studio::RuleSpec{.text = "Recipe", .leadingSpace = false}, trailing,
-      [&]() {
-        if (!a_frame.recipe) {
-          return;
-        }
-        UndoRedoButtons(*a_frame.recipe, *a_frame.intents);
-        ImGui::SameLine();
-        DrawRecipeSaveRevert(a_frame);
-      },
-      [&]() { DrawRecipeRuleStatus(a_frame); }));
+  const float trailing = ButtonWidth("Undo") + ItemSpacingX() +
+                         ButtonWidth("Redo") + ItemSpacingX() +
+                         ButtonWidth("Save") + ItemSpacingX() +
+                         ButtonWidth("Revert");
+  const std::function<void()> history = [&]() {
+    UndoRedoButtons(*a_frame.recipe, *a_frame.intents);
+    ImGui::SameLine();
+    DrawRecipeSaveRevert(a_frame);
+  };
+  static_cast<void>(
+      Rule(Studio::RuleSpec{.text = "Recipe", .leadingSpace = false},
+           a_frame.recipe ? trailing : 0.0f,
+           a_frame.recipe ? history : std::function<void()>{},
+           [&]() { DrawRecipeRuleStatus(a_frame); }));
   NewRecipeButton(a_frame);
   ImGui::SameLine();
   if (a_frame.recipe) {
