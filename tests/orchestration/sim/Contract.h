@@ -23,6 +23,7 @@ enum class CommandKind : std::uint8_t {
   kDrawUnpublished,
   kBuildAwaitedRender,
   kFailAwaitedRender,
+  kCancelPlanJob,
   kInstall,
   kRetire,
   kForget,
@@ -82,6 +83,7 @@ struct StepsOutcome {
         return CommandKind::kBuildAwaitedRender;
       },
       [](const FailAwaitedRender &) { return CommandKind::kFailAwaitedRender; },
+      [](const CancelPlanJob &) { return CommandKind::kCancelPlanJob; },
       [](const Install &) { return CommandKind::kInstall; },
       [](const Retire &) { return CommandKind::kRetire; },
       [](const Forget &) { return CommandKind::kForget; },
@@ -112,6 +114,8 @@ struct StepsOutcome {
     return "BuildAwaitedRender";
   case CommandKind::kFailAwaitedRender:
     return "FailAwaitedRender";
+  case CommandKind::kCancelPlanJob:
+    return "CancelPlanJob";
   case CommandKind::kInstall:
     return "Install";
   case CommandKind::kRetire:
@@ -184,8 +188,8 @@ struct StepsOutcome {
       {"RunSync",
        RunSync,
        {CommandKind::kInstall, CommandKind::kRetire, CommandKind::kForget,
-        CommandKind::kObserve, CommandKind::kKeepModels,
-        CommandKind::kSettleApplications},
+        CommandKind::kCancelPlanJob, CommandKind::kObserve,
+        CommandKind::kKeepModels, CommandKind::kSettleApplications},
        {Field::kActorSet, Field::kSyncState, Field::kSyncLog,
         Field::kWaitingInstalls, Field::kTimers, Field::kBudget,
         Field::kReinstallLevel, Field::kReturnBytes, Field::kRenderErased}},

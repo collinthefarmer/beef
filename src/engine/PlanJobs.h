@@ -37,6 +37,7 @@ struct BookAfterClose {
   std::optional<OpenPlanJob> job;
 };
 
+[[nodiscard]] std::size_t FreePlanSlots(std::size_t a_unfinished) noexcept;
 [[nodiscard]] std::optional<JobId> OpenJobFor(const PlanJobBook &a_book,
                                               const RenderPlanKey &a_key);
 [[nodiscard]] PlanJobBook Opened(PlanJobBook a_book, OpenPlanJob a_job);

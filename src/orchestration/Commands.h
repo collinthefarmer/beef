@@ -27,6 +27,7 @@ struct SetAppliedLevel;
 struct DrawUnpublished;
 struct BuildAwaitedRender;
 struct FailAwaitedRender;
+struct CancelPlanJob;
 struct Install;
 struct Retire;
 struct Forget;
@@ -37,8 +38,8 @@ struct SettleApplications;
 using Command =
     std::variant<TickActor, StartResize, SwapResize, AbandonResize,
                  ReleaseIntermediates, SetAppliedLevel, DrawUnpublished,
-                 BuildAwaitedRender, FailAwaitedRender, Install, Retire, Forget,
-                 Observe, KeepModels, SettleApplications>;
+                 BuildAwaitedRender, FailAwaitedRender, CancelPlanJob, Install,
+                 Retire, Forget, Observe, KeepModels, SettleApplications>;
 
 struct TickActor {
   ActorId actor{};
@@ -86,6 +87,10 @@ struct BuildAwaitedRender {
 struct FailAwaitedRender {
   ActorId actor{};
   std::string problem;
+};
+
+struct CancelPlanJob {
+  PlanJobId job{};
 };
 
 struct Install {

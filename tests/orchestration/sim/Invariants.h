@@ -105,6 +105,9 @@ CommandActor(const Command &a_command) {
       [](const DrawUnpublished &) -> std::optional<ActorId> {
         return std::nullopt;
       },
+      [](const CancelPlanJob &) -> std::optional<ActorId> {
+        return std::nullopt;
+      },
       [](const auto &a_actorCommand) -> std::optional<ActorId> {
         return a_actorCommand.actor;
       });
@@ -271,6 +274,7 @@ struct Checker {
             disagree("awaited render failed but the phase has a render");
           }
         },
+        [&](const CancelPlanJob &a_cancel) { CheckCancel(a_cancel); },
         [&](const Install &a_install) {
           if (a_install.kind == InstallKind::kInstall &&
               Before(a_install.actor)) {
@@ -279,6 +283,15 @@ struct Checker {
         },
         [](const Retire &) {}, [](const Forget &) {}, [](const Observe &) {},
         [](const KeepModels &) {}, [](const SettleApplications &) {});
+  }
+
+  void CheckCancel(const CancelPlanJob &a_cancel) {
+    for (const auto &[actor, record] : view.output.world.actors) {
+      if (record.render && AwaitedJob(record.render->phase) == a_cancel.job) {
+        Flag(Rule::kCommandDisagreesWithPhase, actor,
+             "a cancelled plan job is still awaited after the tick");
+      }
+    }
   }
 
   void CheckDraw(const DrawUnpublished &a_draw) {

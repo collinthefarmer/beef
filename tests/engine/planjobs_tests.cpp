@@ -126,6 +126,16 @@ void BookHoldsGraphsUntilClosed() {
 }
 }
 
+void FreeSlotsCountDownToZero() {
+  Equal(FreePlanSlots(0), kPlanJobCapacity, "an idle queue has every slot");
+  Equal(FreePlanSlots(kPlanJobCapacity - 1), std::size_t{1},
+        "one slot is left before the queue is full");
+  Equal(FreePlanSlots(kPlanJobCapacity), std::size_t{0},
+        "a full queue has no slot");
+  Equal(FreePlanSlots(kPlanJobCapacity + 3), std::size_t{0},
+        "a count past the capacity has no slot");
+}
+
 int main() {
   OneJobPerKey();
   ClosingFreesTheKey();
@@ -133,5 +143,6 @@ int main() {
   BookHoldsGraphsUntilClosed();
   JobIdsConvertBothWays();
   DoneJobsBecomeCoreFacts();
+  FreeSlotsCountDownToZero();
   return test::Finish("engine_planjobs");
 }

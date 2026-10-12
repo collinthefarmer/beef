@@ -42,6 +42,9 @@ bool Precedes(const WaitingInstall &a_left, const WaitingInstall &a_right,
 }
 
 bool CanInstallThisTick(FrameSyncs a_frame) noexcept {
+  if (a_frame.planSlots && a_frame.installs >= *a_frame.planSlots) {
+    return false;
+  }
   return a_frame.installs == 0 || a_frame.spentUs < kInstallBudgetUs;
 }
 

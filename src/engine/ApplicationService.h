@@ -47,6 +47,7 @@ public:
   ActorsFor(std::string_view a_recipeID) const;
   [[nodiscard]] std::vector<std::uint32_t>
   FailedActorsFor(std::string_view a_recipeID) const;
+  [[nodiscard]] bool IsSettling(std::string_view a_recipeID) const;
   [[nodiscard]] std::vector<ApplicationToken>
   PendingFor(std::uint32_t a_actorID) const;
   void Report(const ApplicationToken &a_token, std::uint32_t a_actorID,

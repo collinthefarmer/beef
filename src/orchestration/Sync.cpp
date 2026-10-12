@@ -13,6 +13,7 @@
 
 #include <algorithm>
 #include <format>
+#include <optional>
 #include <set>
 #include <span>
 #include <string>
@@ -103,9 +104,16 @@ ActorList UnloadedActors(const World &a_world, const TickFacts &a_facts);
 bool Unloaded(const TickFacts &a_facts, ActorId a_actor);
 ActorList FailedInstalls(const TickFacts &a_facts);
 ActorList RequestedForgets(const World &a_world, const TickFacts &a_facts);
-void ForgetGone(TickOutput &a_output, const ActorSet &a_gone);
-void ForgetActor(TickOutput &a_output, ActorId a_actor);
+void ForgetGone(TickOutput &a_output, const ActorSet &a_gone,
+                const TickFacts &a_facts);
+void ForgetActor(TickOutput &a_output, ActorId a_actor,
+                 const TickFacts &a_facts);
 void ApplyForget(TickOutput &a_output, ActorId a_actor);
+std::optional<PlanJobId> AwaitedJobOf(const World &a_world, ActorId a_actor);
+void CancelUnawaitedJob(TickOutput &a_output, std::optional<PlanJobId> a_job,
+                        const TickFacts &a_facts);
+bool IsAwaited(const World &a_world, PlanJobId a_job);
+bool IsReportedDone(const TickFacts &a_facts, PlanJobId a_job);
 std::vector<WaitingInstall> RefreshedWaiting(const TickFacts &a_facts,
                                              const World &a_world);
 WaitingInstall Refreshed(WaitingInstall a_entry, const Sighting &a_sight);
@@ -126,19 +134,22 @@ void ApplyDeferred(TickOutput &a_output, ActorId a_actor,
 TraceRecord DeferredTrace(ActorId a_actor, Actors::SyncKind a_kind,
                           FrameSyncs a_frame, const World &a_world,
                           std::uint32_t a_now);
+std::string PlanSlotsText(std::optional<std::size_t> a_slots);
 void ApplySyncDone(TickOutput &a_output, ActorId a_actor,
                    Actors::SyncKind a_kind, std::uint32_t a_now);
 void RecordSync(World &a_world, ActorId a_actor, Actors::SyncKind a_kind,
                 std::uint32_t a_now);
 std::string NameOf(const World &a_world, ActorId a_actor);
-void ForgetWithoutPlan(TickOutput &a_output, ActorId a_actor);
+void ForgetWithoutPlan(TickOutput &a_output, ActorId a_actor,
+                       const TickFacts &a_facts);
 void Settle(TickOutput &a_output, SyncDecision a_decision, std::uint32_t a_now);
 void ApplySyncState(TickOutput &a_output, ActorId a_actor, SyncState a_state);
 FrameSyncs Change(TickOutput &a_output, SyncDecision a_decision,
                   const TickFacts &a_facts, FrameSyncs a_frame);
 ChangePlan PlanChange(const World &a_world, const SyncDecision &a_decision,
                       const TickFacts &a_facts);
-void RetireForChange(TickOutput &a_output, ActorId a_actor);
+void RetireForChange(TickOutput &a_output, ActorId a_actor,
+                     const TickFacts &a_facts);
 void InstallForChange(TickOutput &a_output, const SyncDecision &a_decision,
                       const ChangePlan &a_plan);
 void ObserveDue(TickOutput &a_output, const TickFacts &a_facts);
@@ -226,10 +237,10 @@ void AddClaim(World &a_world, const ClaimedGeometry &a_claimed) {
 TickOutput RunSync(World a_world, const TickFacts &a_facts) {
   TickOutput output{std::move(a_world), {}, {}, {}};
   const ActorSet gone = SelectGone(output.world, a_facts);
-  ForgetGone(output, gone);
+  ForgetGone(output, gone, a_facts);
   output.world.waitingInstalls = RefreshedWaiting(a_facts, output.world);
 
-  FrameSyncs frame;
+  FrameSyncs frame{.planSlots = a_facts.planSlots};
   const FormIds installOrder =
       InstallOrder(output.world.waitingInstalls, PlannerMs(a_facts.now));
   for (const StaleActor *stale :
@@ -280,20 +291,53 @@ ActorList RequestedForgets(const World &a_world, const TickFacts &a_facts) {
   });
 }
 
-void ForgetGone(TickOutput &a_output, const ActorSet &a_gone) {
+void ForgetGone(TickOutput &a_output, const ActorSet &a_gone,
+                const TickFacts &a_facts) {
   for (const ActorId actor : a_gone) {
-    ForgetActor(a_output, actor);
+    ForgetActor(a_output, actor, a_facts);
   }
 }
 
-void ForgetActor(TickOutput &a_output, ActorId a_actor) {
+void ForgetActor(TickOutput &a_output, ActorId a_actor,
+                 const TickFacts &a_facts) {
+  const std::optional<PlanJobId> job = AwaitedJobOf(a_output.world, a_actor);
   ApplyForget(a_output, a_actor);
   Issue(a_output, Forget{a_actor});
+  CancelUnawaitedJob(a_output, job, a_facts);
 }
 
 void ApplyForget(TickOutput &a_output, ActorId a_actor) {
   a_output.world.actors.erase(a_actor);
   ClearWaitingInstall(a_output.world, a_actor);
+}
+
+std::optional<PlanJobId> AwaitedJobOf(const World &a_world, ActorId a_actor) {
+  const TrackedActor *record = FindActor(a_world, a_actor);
+  if (!record || !record->render) {
+    return std::nullopt;
+  }
+  return AwaitedJob(record->render->phase);
+}
+
+void CancelUnawaitedJob(TickOutput &a_output, std::optional<PlanJobId> a_job,
+                        const TickFacts &a_facts) {
+  if (!a_job || IsAwaited(a_output.world, *a_job) ||
+      IsReportedDone(a_facts, *a_job)) {
+    return;
+  }
+  Issue(a_output, CancelPlanJob{*a_job});
+}
+
+bool IsAwaited(const World &a_world, PlanJobId a_job) {
+  return std::ranges::any_of(a_world.actors, [&](const auto &a_entry) {
+    return AwaitedJobOf(a_world, a_entry.first) == a_job;
+  });
+}
+
+bool IsReportedDone(const TickFacts &a_facts, PlanJobId a_job) {
+  return std::ranges::any_of(a_facts.jobs, [&](const PlanJobDone &a_done) {
+    return JobOf(a_done) == a_job;
+  });
 }
 
 std::vector<WaitingInstall> RefreshedWaiting(const TickFacts &a_facts,
@@ -329,7 +373,7 @@ FrameSyncs SyncStale(TickOutput &a_output, const StaleActor &a_stale,
 
   switch (outcome) {
   case SyncOutcome::kForget:
-    ForgetWithoutPlan(a_output, a_stale.actor);
+    ForgetWithoutPlan(a_output, a_stale.actor, a_facts);
     return a_frame;
   case SyncOutcome::kSettle:
     Settle(a_output, std::move(decision), now);
@@ -421,8 +465,13 @@ TraceRecord DeferredTrace(ActorId a_actor, Actors::SyncKind a_kind,
            {"kind", std::string{Actors::SyncKindName(a_kind)}},
            {"frame_us", std::to_string(a_frame.spentUs)},
            {"frame_installs", std::to_string(a_frame.installs)},
+           {"plan_slots", PlanSlotsText(a_frame.planSlots)},
            {"waited_ms", std::to_string(waited)},
            {"waiting", std::to_string(a_world.waitingInstalls.size())}}};
+}
+
+std::string PlanSlotsText(std::optional<std::size_t> a_slots) {
+  return a_slots ? std::to_string(*a_slots) : std::string{"unlimited"};
 }
 
 void ApplySyncDone(TickOutput &a_output, ActorId a_actor,
@@ -450,8 +499,9 @@ std::string NameOf(const World &a_world, ActorId a_actor) {
   return record->sight.name;
 }
 
-void ForgetWithoutPlan(TickOutput &a_output, ActorId a_actor) {
-  ForgetActor(a_output, a_actor);
+void ForgetWithoutPlan(TickOutput &a_output, ActorId a_actor,
+                       const TickFacts &a_facts) {
+  ForgetActor(a_output, a_actor, a_facts);
   Issue(a_output, SettleApplications{a_actor, true, true});
 }
 
@@ -482,7 +532,7 @@ FrameSyncs Change(TickOutput &a_output, SyncDecision a_decision,
 
   Issue(a_output, KeepModels{actor, InstalledPlanOf(a_decision.next.state)});
   if (plan.replaces) {
-    RetireForChange(a_output, actor);
+    RetireForChange(a_output, actor, a_facts);
   }
   ApplySyncState(a_output, actor, std::move(a_decision.next.state));
   if (plan.installs) {
@@ -509,9 +559,12 @@ ChangePlan PlanChange(const World &a_world, const SyncDecision &a_decision,
                               a_world.budget, replaced, a_facts.settings)};
 }
 
-void RetireForChange(TickOutput &a_output, ActorId a_actor) {
+void RetireForChange(TickOutput &a_output, ActorId a_actor,
+                     const TickFacts &a_facts) {
+  const std::optional<PlanJobId> job = AwaitedJobOf(a_output.world, a_actor);
   Issue(a_output, Retire{a_actor});
   DropRender(a_output.world.actors[a_actor]);
+  CancelUnawaitedJob(a_output, job, a_facts);
 }
 
 void InstallForChange(TickOutput &a_output, const SyncDecision &a_decision,

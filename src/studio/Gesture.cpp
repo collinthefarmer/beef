@@ -119,9 +119,13 @@ std::chrono::milliseconds Since(std::uint32_t a_thenMS,
   return std::chrono::milliseconds{std::max(elapsed, std::int32_t{0})};
 }
 
-bool Holds(const GestureMailbox &a_mailbox, std::uint32_t a_nowMS) noexcept {
-  return a_mailbox.started && !a_mailbox.latest.finish && a_mailbox.appliedMS &&
-         Since(*a_mailbox.appliedMS, a_nowMS) < kGestureApplyInterval;
+bool Holds(const GestureMailbox &a_mailbox, std::uint32_t a_nowMS,
+           bool a_settling) noexcept {
+  if (!a_mailbox.started || a_mailbox.latest.finish || !a_mailbox.appliedMS) {
+    return false;
+  }
+  const std::chrono::milliseconds since = Since(*a_mailbox.appliedMS, a_nowMS);
+  return since < (a_settling ? kGestureSettleLimit : kGestureApplyInterval);
 }
 
 GestureQueued Posting(GestureMailbox &a_mailbox) noexcept {
@@ -166,8 +170,9 @@ GestureQueued QueueGestureFinish(GestureMailbox &a_mailbox, bool a_commit,
 }
 
 std::optional<TakenGesture> TakeGestureDelivery(GestureMailbox &a_mailbox,
-                                                std::uint32_t a_nowMS) {
-  if (Holds(a_mailbox, a_nowMS)) {
+                                                std::uint32_t a_nowMS,
+                                                bool a_settling) {
+  if (Holds(a_mailbox, a_nowMS, a_settling)) {
     a_mailbox.delivery = GestureDeliveryState::kHeld;
     return std::nullopt;
   }
@@ -179,9 +184,10 @@ std::optional<TakenGesture> TakeGestureDelivery(GestureMailbox &a_mailbox,
   return taken;
 }
 
-bool ReleaseHeldGesture(GestureMailbox &a_mailbox, std::uint32_t a_nowMS) {
+bool ReleaseHeldGesture(GestureMailbox &a_mailbox, std::uint32_t a_nowMS,
+                        bool a_settling) {
   if (a_mailbox.delivery != GestureDeliveryState::kHeld ||
-      Holds(a_mailbox, a_nowMS)) {
+      Holds(a_mailbox, a_nowMS, a_settling)) {
     return false;
   }
   a_mailbox.delivery = GestureDeliveryState::kPosted;

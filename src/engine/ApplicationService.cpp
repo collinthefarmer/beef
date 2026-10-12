@@ -253,6 +253,12 @@ ApplicationService::ActorsFor(std::string_view a_recipeID) const {
   return actors;
 }
 
+bool ApplicationService::IsSettling(std::string_view a_recipeID) const {
+  const auto record = records_.find(a_recipeID);
+  return record != records_.end() &&
+         BetterEnchantmentEffects::IsSettling(record->second);
+}
+
 std::vector<std::uint32_t>
 ApplicationService::FailedActorsFor(std::string_view a_recipeID) const {
   std::vector<std::uint32_t> actors;

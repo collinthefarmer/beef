@@ -33,6 +33,15 @@ void BudgetAdmitsAtLeastOneInstall() {
         "an install counts its time and itself");
 }
 
+void PlanSlotsLimitInstalls() {
+  Check(!CanInstallThisTick({.planSlots = 0}),
+        "no install starts without a free plan slot");
+  Check(CanInstallThisTick({.installs = 1, .planSlots = 2}),
+        "an install starts while a plan slot is free");
+  Check(!CanInstallThisTick({.installs = 2, .planSlots = 2}),
+        "installs stop once the free plan slots are used");
+}
+
 void OrderPutsThePlayerFirst() {
   const std::vector<WaitingInstall> waiting{
       Other(1, true, 0.9f, 10),
@@ -123,6 +132,7 @@ void EntriesKeepTheirFirstDeferral() {
 }
 
 int main() {
+  PlanSlotsLimitInstalls();
   InstallOrderSortsTheWholeQueue();
   EveryArrivalOrderGivesOneInstallOrder();
   BudgetAdmitsAtLeastOneInstall();

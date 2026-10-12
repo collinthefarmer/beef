@@ -115,6 +115,43 @@ void DebugRecipesMatchOnlyWhenShown(const std::filesystem::path &root,
         "a user copy that replaces a debug recipe stays a debug recipe");
 }
 
+void GestureSettle(const std::filesystem::path &root, const Recipe &fixture) {
+  Start(root, "gesture_settle", fixture);
+  Manager manager;
+  manager.clockRuns = false;
+  RecipeEditor editor{manager};
+  const auto gesture =
+      editor.BeginGesture(kID, editor.DocumentRevisionOf(kID), "clock.speed");
+  manager.Drain();
+  editor.UpdateGesture(gesture, "clock.speed", {{SetClockSpeed{2.0f}}});
+  manager.Drain();
+  manager.settling = true;
+  editor.UpdateGesture(gesture, "clock.speed", {{SetClockSpeed{3.0f}}});
+  manager.Drain();
+  editor.UpdateGesture(gesture, "clock.speed", {{SetClockSpeed{4.0f}}});
+  manager.Drain();
+  manager.clockMS += 100;
+  editor.TickGesture();
+  manager.Drain();
+  Check(Current().clock.speed == 2.0f && editor.LastGesture() &&
+            editor.LastGesture()->pending,
+        "updates wait past the interval while the last apply settles");
+  manager.settling = false;
+  editor.TickGesture();
+  manager.Drain();
+  Check(Current().clock.speed == 4.0f && editor.LastGesture() &&
+            !editor.LastGesture()->pending,
+        "the tick after settling applies only the newest held value");
+  manager.settling = true;
+  editor.UpdateGesture(gesture, "clock.speed", {{SetClockSpeed{5.0f}}});
+  manager.Drain();
+  editor.EndGesture(gesture, true);
+  manager.Drain();
+  Check(Current().clock.speed == 5.0f && editor.LastGesture() &&
+            editor.LastGesture()->state == GesturePhase::kCommitted,
+        "ending the gesture applies the final value while settling");
+}
+
 void GestureHold(const std::filesystem::path &root, const Recipe &fixture) {
   Start(root, "gesture_hold", fixture);
   Manager manager;
@@ -1582,6 +1619,7 @@ int main() {
     SnapshotLifecycle(root, *parsed.recipe);
     DebugRecipesMatchOnlyWhenShown(root, *parsed.recipe);
     GestureHold(root, *parsed.recipe);
+    GestureSettle(root, *parsed.recipe);
     GestureIdleExpiry(root, *parsed.recipe);
     FailedRevert(root, *parsed.recipe);
     GestureBoundaries(root, *parsed.recipe);

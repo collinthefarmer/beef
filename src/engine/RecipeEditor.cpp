@@ -103,7 +103,10 @@ void RecipeEditor::TickGesture() {
   {
     std::scoped_lock guard{fileOperations_->lock};
     Studio::GestureMailbox &mailbox = fileOperations_->gestureMailbox;
-    if (fileOperations_->gesture && Studio::ReleaseHeldGesture(mailbox, now)) {
+    if (fileOperations_->gesture &&
+        Studio::ReleaseHeldGesture(
+            mailbox, now,
+            runtime_.IsSettling(fileOperations_->gesture->recipeID))) {
       released = fileOperations_->gesture->gestureID;
     }
     if (fileOperations_->gesture &&
@@ -149,8 +152,9 @@ void RecipeEditor::ProcessGesture(std::uint64_t a_id) {
         fileOperations_->gesture->state != Studio::GesturePhase::kActive) {
       return;
     }
-    std::optional<Studio::TakenGesture> taken =
-        Studio::TakeGestureDelivery(fileOperations_->gestureMailbox, now);
+    std::optional<Studio::TakenGesture> taken = Studio::TakeGestureDelivery(
+        fileOperations_->gestureMailbox, now,
+        runtime_.IsSettling(fileOperations_->gesture->recipeID));
     if (!taken) {
       return;
     }

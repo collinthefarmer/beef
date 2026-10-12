@@ -137,6 +137,7 @@ Manager::GatherFacts(std::uint32_t a_nowMS, const Settings &a_settings,
   facts.settings = TickSettingsOf(a_settings);
   facts.results = std::exchange(results_, {});
   facts.jobs = std::move(a_jobs);
+  facts.planSlots = FreePlanSlots(planQueue_.Unfinished());
   facts.forgets = ForgetRequests();
   facts.claims = ClaimsOf();
   facts.budgetSample = std::exchange(pendingSample_, std::nullopt);

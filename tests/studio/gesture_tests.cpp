@@ -112,7 +112,8 @@ void CheckMailbox() {
   Check(QueueGestureUpdate(mailbox, Opacity(0.9f), 0) ==
             GestureQueued::kRefused,
         "updates after commit cannot replace the final value");
-  const std::optional<TakenGesture> taken = TakeGestureDelivery(mailbox, 0);
+  const std::optional<TakenGesture> taken =
+      TakeGestureDelivery(mailbox, 0, false);
   Check(taken && taken->begins && taken->delivery.sequence == 3 &&
             taken->delivery.finish == true && taken->delivery.edits &&
             Describe(*taken->delivery.edits) == Describe(Opacity(0.7f)),
@@ -126,40 +127,74 @@ void CheckHold() {
   GestureMailbox mailbox = OpenGestureMailbox(0);
   Check(mailbox.delivery == GestureDeliveryState::kPosted,
         "an opened gesture has its first delivery posted");
-  const std::optional<TakenGesture> first = TakeGestureDelivery(mailbox, 0);
+  const std::optional<TakenGesture> first =
+      TakeGestureDelivery(mailbox, 0, false);
   Check(first && first->begins,
         "the delivery that begins a gesture is never held");
   Check(QueueGestureUpdate(mailbox, Opacity(0.2f), 10) == GestureQueued::kPost,
         "the first drag update posts");
-  Check(TakeGestureDelivery(mailbox, 10).has_value(),
+  Check(TakeGestureDelivery(mailbox, 10, false).has_value(),
         "an update before any apply goes through");
   NoteGestureApplied(mailbox, 10);
   Check(QueueGestureUpdate(mailbox, Opacity(0.3f), 50) == GestureQueued::kPost,
         "the next update posts");
-  Check(!TakeGestureDelivery(mailbox, 50) &&
+  Check(!TakeGestureDelivery(mailbox, 50, false) &&
             mailbox.delivery == GestureDeliveryState::kHeld,
         "an update soon after the last applied one waits");
   Check(QueueGestureUpdate(mailbox, Opacity(0.4f), 60) ==
             GestureQueued::kQueued,
         "updates during a hold post nothing new");
-  Check(!ReleaseHeldGesture(mailbox, 109),
+  Check(!ReleaseHeldGesture(mailbox, 109, false),
         "the hold lasts until one interval after the last apply");
-  Check(ReleaseHeldGesture(mailbox, 110) &&
+  Check(ReleaseHeldGesture(mailbox, 110, false) &&
             mailbox.delivery == GestureDeliveryState::kPosted,
         "the hold releases one interval after the last apply");
   const std::optional<TakenGesture> released =
-      TakeGestureDelivery(mailbox, 110);
+      TakeGestureDelivery(mailbox, 110, false);
   Check(released && released->delivery.edits &&
             Describe(*released->delivery.edits) == Describe(Opacity(0.4f)),
         "the released delivery carries only the newest value");
   NoteGestureApplied(mailbox, 110);
   Check(QueueGestureUpdate(mailbox, Opacity(0.5f), 120) == GestureQueued::kPost,
         "an update after the release posts");
-  Check(!TakeGestureDelivery(mailbox, 120), "it is held again");
+  Check(!TakeGestureDelivery(mailbox, 120, false), "it is held again");
   Check(QueueGestureFinish(mailbox, true, 130) == GestureQueued::kPost,
         "a finish releases a held delivery");
-  Check(TakeGestureDelivery(mailbox, 130).has_value(),
+  Check(TakeGestureDelivery(mailbox, 130, false).has_value(),
         "the final value is never held");
+}
+
+void CheckSettle() {
+  GestureMailbox mailbox = OpenGestureMailbox(0);
+  Check(TakeGestureDelivery(mailbox, 0, true).has_value(),
+        "the delivery that begins a gesture is never held by settling");
+  NoteGestureApplied(mailbox, 0);
+  Check(QueueGestureUpdate(mailbox, Opacity(0.2f), 10) == GestureQueued::kPost,
+        "an update during settling posts");
+  Check(!TakeGestureDelivery(mailbox, 200, true) &&
+            mailbox.delivery == GestureDeliveryState::kHeld,
+        "an update waits while the last apply settles, past the interval");
+  Check(QueueGestureUpdate(mailbox, Opacity(0.3f), 300) ==
+            GestureQueued::kQueued,
+        "updates while settling post nothing new");
+  Check(!ReleaseHeldGesture(mailbox, 400, true),
+        "the hold lasts while the last apply settles");
+  Check(ReleaseHeldGesture(mailbox, 400, false),
+        "the hold releases once the last apply has settled");
+  const std::optional<TakenGesture> released =
+      TakeGestureDelivery(mailbox, 400, false);
+  Check(released && released->delivery.edits &&
+            Describe(*released->delivery.edits) == Describe(Opacity(0.3f)),
+        "the settled release carries only the newest value");
+  NoteGestureApplied(mailbox, 400);
+  Check(QueueGestureUpdate(mailbox, Opacity(0.4f), 410) == GestureQueued::kPost,
+        "the next update posts");
+  Check(TakeGestureDelivery(mailbox, 5400, true).has_value(),
+        "settling holds no longer than the settle limit");
+  NoteGestureApplied(mailbox, 5400);
+  Check(QueueGestureFinish(mailbox, true, 5410) == GestureQueued::kPost &&
+            TakeGestureDelivery(mailbox, 5410, true).has_value(),
+        "the final value is never held by settling");
 }
 
 void CheckIdle() {
@@ -195,6 +230,7 @@ int main() {
   CheckNoOpAndRefusal(base);
   CheckMailbox();
   CheckHold();
+  CheckSettle();
   CheckIdle();
   return test::Finish("studio_gesture");
 }

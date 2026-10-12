@@ -25,6 +25,7 @@ struct WaitingInstall {
 struct FrameSyncs {
   std::uint64_t spentUs = 0;
   std::size_t installs = 0;
+  std::optional<std::size_t> planSlots;
 };
 
 [[nodiscard]] bool CanInstallThisTick(FrameSyncs a_frame) noexcept;

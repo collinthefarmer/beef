@@ -97,6 +97,17 @@ public:
     return taken;
   }
 
+  bool Cancel(JobId a_job) {
+    const std::scoped_lock held{shared_->lock};
+    const auto found = std::ranges::find(shared_->queued, a_job, &Queued::id);
+    if (found == shared_->queued.end()) {
+      return false;
+    }
+    shared_->queued.erase(found);
+    shared_->unfinished -= std::min(shared_->unfinished, std::size_t{1});
+    return true;
+  }
+
   std::size_t DropQueued() {
     const std::scoped_lock held{shared_->lock};
     const std::size_t dropped = shared_->queued.size();

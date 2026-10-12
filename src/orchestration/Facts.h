@@ -55,6 +55,12 @@ struct PlanJobFailed {
   std::string problem;
 };
 
+[[nodiscard]] inline PlanJobId JobOf(const PlanJobDone &a_done) noexcept {
+  return Match(
+      a_done, [](const PlanJobBuilt &a_built) { return a_built.job; },
+      [](const PlanJobFailed &a_failed) { return a_failed.job; });
+}
+
 struct PlanAwaited;
 struct Installed;
 struct InstalledWithoutRender;
@@ -132,6 +138,7 @@ struct TickFacts {
 
   std::vector<CommandResult> results;
   std::vector<PlanJobDone> jobs;
+  std::optional<std::size_t> planSlots;
 
   std::vector<ActorId> forgets;
 };

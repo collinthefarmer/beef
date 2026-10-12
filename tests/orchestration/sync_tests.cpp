@@ -23,6 +23,7 @@ namespace {
 constexpr ActorId kActor = ActorOf(0x14);
 constexpr ActorId kOther = ActorOf(0x20);
 constexpr Millis kNow = 50000;
+constexpr PlanJobId kJob{7};
 
 Actors::ActorPlan CircuitPlan() {
   return PlanBuilder{}
@@ -72,6 +73,12 @@ InstalledRender ShownRender(ResolutionLevel a_level) {
   render.levelCosts.At(ResolutionLevel::kFull) = Cost(400, 300);
   render.levelCosts.At(ResolutionLevel::kHalf) = Cost(100, 80);
   render.renderedFrame = 1;
+  return render;
+}
+
+InstalledRender PlanningRender(PlanJobId a_job) {
+  InstalledRender render;
+  render.phase = Planning{a_job};
   return render;
 }
 
@@ -576,6 +583,84 @@ void ScreenSizingOffStartsAtFullWithinTheHeadroom() {
 }
 }
 
+void AReinstallCancelsItsAwaitedJob() {
+  TrackedActor record;
+  record.syncState = InstalledState(CircuitPlan());
+  record.render = PlanningRender(kJob);
+  TickFacts facts = FactsAt(kNow);
+  facts.stale.push_back(StaleWith(kActor, FrostPlan()));
+  facts.sightings[kActor] = Seen();
+  const TickOutput out = RunSync(WorldWith(kActor, std::move(record)), facts);
+  const std::optional<std::size_t> retire = IndexOf<Retire>(out.commands);
+  const std::optional<std::size_t> cancel =
+      IndexOf<CancelPlanJob>(out.commands);
+  const std::optional<std::size_t> install = IndexOf<Install>(out.commands);
+  Check(retire && cancel && install && *retire < *cancel && *cancel < *install,
+        "a reinstall cancels its awaited job after the retire, before the "
+        "install");
+  const CancelPlanJob *command = FirstOf<CancelPlanJob>(out.commands);
+  Check(command && command->job == kJob, "the cancel names the awaited job");
+}
+
+void ASharedJobIsNotCancelled() {
+  TrackedActor record;
+  record.syncState = InstalledState(CircuitPlan());
+  record.render = PlanningRender(kJob);
+  World world = WorldWith(kActor, record);
+  world.actors.emplace(kOther, record);
+  TickFacts facts = FactsAt(kNow);
+  facts.stale.push_back(StaleWith(kActor, FrostPlan()));
+  facts.sightings[kActor] = Seen();
+  facts.sightings[kOther] = Seen();
+  const TickOutput out = RunSync(std::move(world), facts);
+  Equal(CountOf<CancelPlanJob>(out.commands), std::size_t{0},
+        "a job another actor still awaits is not cancelled");
+}
+
+void AJobDoneThisTickIsNotCancelled() {
+  TrackedActor record;
+  record.syncState = InstalledState(CircuitPlan());
+  record.render = PlanningRender(kJob);
+  TickFacts facts = FactsAt(kNow);
+  facts.jobs.push_back(PlanJobBuilt{kJob});
+  facts.stale.push_back(StaleWith(kActor, FrostPlan()));
+  facts.sightings[kActor] = Seen();
+  const TickOutput out = RunSync(WorldWith(kActor, std::move(record)), facts);
+  Equal(CountOf<CancelPlanJob>(out.commands), std::size_t{0},
+        "a job reported done in the tick is not cancelled");
+}
+
+void AForgottenActorCancelsItsJob() {
+  TrackedActor record;
+  record.syncState = InstalledState(CircuitPlan());
+  record.render = PlanningRender(kJob);
+  TickFacts facts = FactsAt(kNow);
+  facts.sightings[kActor] = Sighting{};
+  const TickOutput out = RunSync(WorldWith(kActor, std::move(record)), facts);
+  const std::optional<std::size_t> forget = IndexOf<Forget>(out.commands);
+  const std::optional<std::size_t> cancel =
+      IndexOf<CancelPlanJob>(out.commands);
+  Check(forget && cancel && *forget < *cancel,
+        "an actor forgotten while it plans cancels its job");
+}
+
+void AFullPlanQueueDefersTheInstall() {
+  TickFacts facts = FactsAt(kNow);
+  facts.planSlots = 0;
+  facts.stale.push_back(StaleWith(kActor, CircuitPlan()));
+  facts.sightings[kActor] = Seen();
+  const TickOutput out = RunSync(World{}, facts);
+  Equal(CountOf<Install>(out.commands), std::size_t{0},
+        "no install starts while the plan queue is full");
+  Check(out.world.waitingInstalls.size() == 1 &&
+            out.world.waitingInstalls.front().actor == FormOf(kActor),
+        "the install waits for a plan slot");
+  facts.planSlots = 1;
+  const TickOutput next = RunSync(World{}, facts);
+  Equal(CountOf<Install>(next.commands), std::size_t{1},
+        "the install starts once a plan slot is free");
+}
+
 int main() {
   AnInstalledRenderChargesTheBudget();
   ARetiredRenderLeavesItsLevelAndReturnBytes();
@@ -601,5 +686,10 @@ int main() {
   ANewActorInstallsAtItsWantedLevel();
   ReturnBytesFollowTheTarget();
   ScreenSizingOffStartsAtFullWithinTheHeadroom();
+  AReinstallCancelsItsAwaitedJob();
+  ASharedJobIsNotCancelled();
+  AJobDoneThisTickIsNotCancelled();
+  AForgottenActorCancelsItsJob();
+  AFullPlanQueueDefersTheInstall();
   return test::Finish("orchestration_sync");
 }

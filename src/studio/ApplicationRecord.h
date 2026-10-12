@@ -43,4 +43,5 @@ struct ApplicationRecord {
 
 [[nodiscard]] std::string_view
 ApplicationPhaseName(ApplicationPhase a_phase) noexcept;
+[[nodiscard]] bool IsSettling(const ApplicationRecord &a_record) noexcept;
 }

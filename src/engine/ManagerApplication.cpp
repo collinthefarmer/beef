@@ -168,6 +168,10 @@ Manager::ActorsApplying(std::string_view a_recipeID) const {
   return ids;
 }
 
+bool Manager::IsSettling(std::string_view a_recipeID) const {
+  return applications_.IsSettling(a_recipeID);
+}
+
 void Manager::ChangeAndRebuildActors(std::string a_reportRecipe,
                                      const std::function<void()> &a_action) {
   const std::vector<MatchFacts> matchingBefore = MatchFactsOf(LoadedRecipes());

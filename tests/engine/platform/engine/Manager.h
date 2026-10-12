@@ -20,12 +20,14 @@ public:
 
   std::uint32_t clockMS = 0;
   bool clockRuns = true;
+  bool settling = false;
 
   Manager() { queue.Resume(); }
   void PostTask(std::function<void()> task) { queue.Post(std::move(task)); }
   std::uint32_t EditorClockMS() {
     return clockRuns ? (clockMS += 1000) : clockMS;
   }
+  bool IsSettling(std::string_view) const { return settling; }
   void ChangeAndRebuildActors(std::string, std::function<void()> change) {
     change();
   }

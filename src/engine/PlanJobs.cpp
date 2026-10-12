@@ -5,6 +5,10 @@
 #include <utility>
 
 namespace BetterEnchantmentEffects {
+std::size_t FreePlanSlots(std::size_t a_unfinished) noexcept {
+  return kPlanJobCapacity - std::min(a_unfinished, kPlanJobCapacity);
+}
+
 std::optional<JobId> OpenJobFor(const PlanJobBook &a_book,
                                 const RenderPlanKey &a_key) {
   const auto found = std::ranges::find(a_book.open, a_key, &OpenPlanJob::key);

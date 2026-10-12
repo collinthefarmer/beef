@@ -57,7 +57,6 @@ void KeepInstalledCosts(InstalledRender &a_render, const PhaseChange &a_change,
                         const RenderEvent &a_event);
 void RecordJob(TickOutput &a_out, const PlanJobDone &a_done,
                const TickSettings &a_settings);
-PlanJobId JobOf(const PlanJobDone &a_done) noexcept;
 bool AwaitsJob(const TrackedActor &a_record, PlanJobId a_job) noexcept;
 void ApplyJob(TickOutput &a_out, ActorId a_actor, TrackedActor &a_record,
               const PlanJobDone &a_done, const TickSettings &a_settings);
@@ -211,12 +210,6 @@ void RecordJob(TickOutput &a_out, const PlanJobDone &a_done,
       ApplyJob(a_out, actor, record, a_done, a_settings);
     }
   }
-}
-
-PlanJobId JobOf(const PlanJobDone &a_done) noexcept {
-  return Match(
-      a_done, [](const PlanJobBuilt &a_built) { return a_built.job; },
-      [](const PlanJobFailed &a_failed) { return a_failed.job; });
 }
 
 bool AwaitsJob(const TrackedActor &a_record, PlanJobId a_job) noexcept {

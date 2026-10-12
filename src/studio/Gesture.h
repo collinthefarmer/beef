@@ -78,6 +78,7 @@ enum class GestureQueued { kRefused, kQueued, kPost };
 
 inline constexpr std::chrono::milliseconds kGestureApplyInterval{100};
 inline constexpr std::chrono::milliseconds kGestureIdleTimeout{2000};
+inline constexpr std::chrono::milliseconds kGestureSettleLimit{5000};
 
 [[nodiscard]] std::optional<std::string>
 CheckEditRevision(std::optional<std::uint64_t> a_expected,
@@ -104,9 +105,10 @@ FinishRecipeGesture(const RecipeGesture &a_gesture, const Recipe &a_current,
                                                bool a_commit,
                                                std::uint32_t a_nowMS);
 [[nodiscard]] std::optional<TakenGesture>
-TakeGestureDelivery(GestureMailbox &a_mailbox, std::uint32_t a_nowMS);
+TakeGestureDelivery(GestureMailbox &a_mailbox, std::uint32_t a_nowMS,
+                    bool a_settling);
 [[nodiscard]] bool ReleaseHeldGesture(GestureMailbox &a_mailbox,
-                                      std::uint32_t a_nowMS);
+                                      std::uint32_t a_nowMS, bool a_settling);
 void NoteGestureApplied(GestureMailbox &a_mailbox, std::uint32_t a_nowMS);
 void TouchGesture(GestureMailbox &a_mailbox, std::uint32_t a_nowMS);
 [[nodiscard]] bool GestureIdle(const GestureMailbox &a_mailbox,

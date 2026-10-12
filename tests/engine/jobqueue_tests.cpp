@@ -134,11 +134,31 @@ void DestroyingTheQueueLeavesARunningJobSafe() {
 }
 }
 
+void ACancelledJobNeverRuns() {
+  g_gateOpen = false;
+  IntQueue queue{Doubled, 4};
+  const auto running = queue.Submit(1);
+  std::this_thread::sleep_for(std::chrono::milliseconds{20});
+  const auto queued = queue.Submit(2);
+  const auto kept = queue.Submit(3);
+  Check(running && queued && kept, "three jobs are accepted");
+  Check(queue.Cancel(*queued), "a queued job is cancelled");
+  Check(!queue.Cancel(*queued), "a cancelled job cannot be cancelled again");
+  Check(!queue.Cancel(*running), "a running job is not cancelled");
+  Check(!queue.Cancel(JobId{999}), "an unknown job is not cancelled");
+  Equal(queue.Unfinished(), std::size_t{2}, "the cancel frees its place");
+  g_gateOpen = true;
+  const std::vector<JobDone<int>> done = AwaitDone(queue, 2);
+  Check(done.size() == 2 && done[0].id == *running && done[1].id == *kept,
+        "only the running and the kept job deliver results");
+}
+
 int main() {
   JobsRunInOrderAndReturnTheirIds();
   ExceptionsBecomeErrorResults();
   TheQueueIsBounded();
   DroppedJobsNeverRun();
+  ACancelledJobNeverRuns();
   TimingsAreReported();
   DestroyingTheQueueLeavesARunningJobSafe();
   return test::Finish("engine_jobqueue");

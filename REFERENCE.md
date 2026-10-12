@@ -1259,7 +1259,14 @@ layout, and so its out-of-view share, did not exist.
   state, whether the gesture started, the time of the last apply and the
   last touch. Every time comes from `EditorClockMS`, which the caller
   passes in, so the hold and the 2 s idle commit (`kGestureIdleTimeout`)
-  read one clock and native tests drive both. `Since` reads the
+  read one clock and native tests drive both. While the last apply
+  settles (`Manager::IsSettling`: an actor of the recipe's application
+  is still `queued` or `prepared`, so it plans or first-draws), the hold
+  lasts up to `kGestureSettleLimit` (5 s) instead of one interval. Each
+  apply reinstalls every actor of the recipe and starts a plan job; on
+  2026-10-12 a drag queued one 2.7 s job per 100 ms step, and the plan
+  for the final value attached 37.5 s late. The limit keeps a drag
+  responsive when an actor never settles. `Since` reads the
   difference of two clock values as signed: a clock wrap gives a small
   positive interval, and a time read before the last touch gives 0 instead
   of about 49 days, which would trigger the idle commit. The held value never reaches the
@@ -1605,7 +1612,18 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
   running, or finished and not yet drained. A full queue refuses a job. The
   install executor then builds the plan on the main thread and stores it, as
   before 2026-10-08. A spawn burst gave 8 misses, and equal plan keys share
-  one job.
+  one job. Since 2026-10-12 the core sees the free slots
+  (`TickFacts::planSlots`, `FreePlanSlots`) and starts no more installs in a
+  tick than there are free slots, so the main-thread build happens only
+  when the engine and the core disagree. A 532-step plan takes about 2.7 s.
+- The core cancels a plan job that no actor awaits (`CancelPlanJob`): when
+  it retires or forgets an actor in `Planning` and no other actor awaits
+  the same job, after the `Retire` or `Forget` and before any `Install`, so
+  a reinstall with the same key cannot share the cancelled job. A job
+  reported done in the same tick is not cancelled: `PlanBuilt` keeps the
+  phase `Planning` until `Installed` arrives. `JobQueue::Cancel` removes
+  only a queued job; a running job runs to the end, keeps its book entry
+  and stores its plan in the cache.
 - The worker starts at the first submission, so no thread exists before
   `kDataLoaded`. A thread that cannot start makes every later submission
   build on the main thread.
@@ -1699,8 +1717,12 @@ them:
   and installs anything (`Installs`, `orchestration/Sync.cpp`). A first
   install, a reinstall after an equip change and a return into the budget
   radius are installs.
-- `FrameSyncs` holds the install time spent and the install count.
-  `RunSync` starts each tick from an empty `FrameSyncs`.
+- `FrameSyncs` holds the install time spent, the install count and the
+  free plan slots. `RunSync` starts each tick from an empty `FrameSyncs`
+  with the tick's `planSlots`. `CanInstallThisTick` refuses an install when
+  the installs already started fill the free slots; the deferral trace
+  names them (`plan_slots`). An install that hits the plan cache needs no
+  slot, so the rule is conservative.
 - `CanInstallThisTick` lets an install start when no install ran yet or when
   less than 8 ms (`kInstallBudgetUs`) was spent. The core cannot measure
   install time, so it charges each issued install the full `kInstallBudgetUs`

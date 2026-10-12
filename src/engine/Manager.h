@@ -197,6 +197,7 @@ private:
   Manager();
   void PostTask(std::function<void()> a_task);
   [[nodiscard]] std::uint32_t EditorClockMS() const;
+  [[nodiscard]] bool IsSettling(std::string_view a_recipeID) const;
 
   void NoteStale(RE::FormID a_actorID,
                  const std::vector<ApplicationToken> &a_tokens);
@@ -245,6 +246,8 @@ private:
                         const TickContext &a_context);
   [[nodiscard]] CommandResults
   RunFailAwaitedRender(const Orchestration::FailAwaitedRender &a_command);
+  [[nodiscard]] CommandResults
+  RunCancelPlanJob(const Orchestration::CancelPlanJob &a_command);
   [[nodiscard]] CommandResults
   RunInstall(const Orchestration::Install &a_command,
              const TickContext &a_context);

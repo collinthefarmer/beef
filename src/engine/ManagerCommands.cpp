@@ -120,6 +120,9 @@ Manager::Execute(const std::vector<Orchestration::Command> &a_commands,
                [&](const Orchestration::FailAwaitedRender &a_command) {
                  return RunFailAwaitedRender(a_command);
                },
+               [&](const Orchestration::CancelPlanJob &a_command) {
+                 return RunCancelPlanJob(a_command);
+               },
                [&](const Orchestration::Install &a_command) {
                  return RunInstall(a_command, a_context);
                },
@@ -266,6 +269,21 @@ CommandResults Manager::RunFailAwaitedRender(
     return {};
   }
   FailAwaitedRender(found->second, a_command.problem);
+  return {};
+}
+
+CommandResults
+Manager::RunCancelPlanJob(const Orchestration::CancelPlanJob &a_command) {
+  const JobId job = JobIdOf(a_command.job);
+  const bool queued = planQueue_.Cancel(job);
+  if (queued) {
+    planJobs_ = Closed(std::move(planJobs_), job).book;
+  }
+  Trace::EmitSafely(Trace::Event::kMetrics,
+                    {{"action", "render_plan_job"},
+                     {"result", queued ? "cancelled" : "cancel_too_late"},
+                     {"job", std::to_string(static_cast<std::uint64_t>(job))},
+                     {"unfinished", std::to_string(planQueue_.Unfinished())}});
   return {};
 }
 

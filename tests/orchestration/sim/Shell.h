@@ -323,16 +323,7 @@ struct Executor {
                               bytes.At(level).value_or(0)});
   }
 
-  void Drop(ActorId a_actor) {
-    EngineActor &actor = shell.actors[a_actor];
-    if (actor.awaiting) {
-      const PlanJobId job = actor.awaiting->job;
-      std::erase_if(shell.jobs, [job](const PendingJob &a_job) {
-        return a_job.job == job;
-      });
-    }
-    actor = EngineActor{};
-  }
+  void Drop(ActorId a_actor) { shell.actors[a_actor] = EngineActor{}; }
 
   void operator()(const TickActor &a_command) {
     auto found = shell.actors.find(a_command.actor);
@@ -457,6 +448,16 @@ struct Executor {
     }
     actor.awaiting.reset();
     actor.withoutRender = true;
+  }
+
+  void operator()(const CancelPlanJob &a_command) {
+    const std::size_t cancelled =
+        std::erase_if(shell.jobs, [&](const PendingJob &a_job) {
+          return a_job.job == a_command.job;
+        });
+    if (cancelled == 0) {
+      Disagree(ActorId{}, "cancel of a plan job that is not pending");
+    }
   }
 
   void operator()(const Install &a_command) {
