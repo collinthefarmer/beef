@@ -2,6 +2,7 @@
 #pragma once
 
 #include "studio/ClusterReadout.h"
+#include "studio/Snapshot.h"
 
 #include <cstdint>
 #include <optional>
@@ -15,12 +16,21 @@ struct ChartClick {
 };
 
 struct ChartFocus {
-  std::uint8_t picked = 0;
+  std::optional<std::uint8_t> picked;
   std::optional<std::uint8_t> compared;
+};
+
+struct ClusterSubject {
+  const Studio::GeometryRow &geometry;
+  ClusterSettings settings;
+  std::optional<std::uint8_t> picked;
 };
 
 [[nodiscard]] std::uint32_t ClusterInk(std::uint8_t a_cluster,
                                        std::uint8_t a_alpha) noexcept;
+[[nodiscard]] std::optional<std::uint8_t>
+DrawClusterExplorer(const ClusterSubject &a_subject,
+                    Studio::ClusterMemo &a_memo, float a_scale);
 [[nodiscard]] std::optional<ChartClick>
 DrawClusterChart(const Studio::ClusterChart &a_chart, ChartFocus a_focus,
                  float a_scale);

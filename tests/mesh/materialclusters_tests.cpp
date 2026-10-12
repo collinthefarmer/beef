@@ -195,5 +195,17 @@ int main() {
           "every pick lands on an existing cluster and is stable");
   }
 
+  for (const MaterialCluster &cluster : analysis.clusters) {
+    for (const float bias : {0.0f, 1.0f, 2.5f}) {
+      const std::optional<float> pick = PickValueOf(analysis, cluster.id, bias);
+      Check(pick && PickCluster(analysis, *pick, bias) == cluster.id,
+            "the pick value of a cluster picks that cluster");
+    }
+  }
+  Check(!PickValueOf(analysis, 9, 1.0f).has_value(),
+        "a cluster the analysis lacks has no pick value");
+  Check(!PickValueOf(MaterialAnalysis{}, 0, 1.0f).has_value(),
+        "an empty analysis has no pick value");
+
   return test::Finish("materialclusters");
 }

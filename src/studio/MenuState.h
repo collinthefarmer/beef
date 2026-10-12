@@ -102,6 +102,7 @@ struct MenuState {
   FiringDraft firing;
   History<MaskStack> maskHistory;
   ClusterMemo clusterMemo;
+  ClusterMemo sourceClusterMemo;
 };
 
 [[nodiscard]] inline MenuState &State() {

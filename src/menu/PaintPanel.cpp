@@ -691,15 +691,6 @@ void DrawMaskTask(const Frame &a_frame) {
 namespace {
 void DrawClusterReadout(std::size_t a_index, const Studio::ClusterTerm &a_term,
                         const Frame &a_preview, Studio::ClusterMemo &a_memo);
-void ApplyChartClick(std::size_t a_index, const Studio::ClusterTerm &a_term,
-                     const ChartClick &a_click, const Frame &a_preview,
-                     Studio::ClusterMemo &a_memo);
-void DrawSeparation(const Studio::ClusterChart &a_chart, ChartFocus a_focus);
-void DrawClusterTable(const MaterialAnalysis &a_analysis,
-                      std::uint8_t a_picked);
-void DrawClusterRow(const MaterialCluster &a_cluster, bool a_picked,
-                    Table &a_table);
-ImGuiMCP::ImVec4 InkColour(std::uint32_t a_ink);
 
 std::optional<Frame> PaintPreviewFrame(const Frame &a_frame,
                                        Studio::Names &a_names) {
@@ -757,12 +748,6 @@ void DrawTermParameter(std::size_t a_index, const Studio::TermField &a_field,
   ImGui::PopID();
 }
 
-ImGuiMCP::ImVec4 InkColour(std::uint32_t a_ink) {
-  const auto channel = [&](int a_shift) {
-    return static_cast<float>((a_ink >> a_shift) & 0xFFU) / 255.0f;
-  };
-  return ImGuiMCP::ImVec4{channel(0), channel(8), channel(16), channel(24)};
-}
 }
 
 void DrawTermTuningPane(const Frame &a_frame) {
@@ -809,132 +794,16 @@ void DrawTermTuningPane(const Frame &a_frame) {
 namespace {
 void DrawClusterReadout(std::size_t a_index, const Studio::ClusterTerm &a_term,
                         const Frame &a_preview, Studio::ClusterMemo &a_memo) {
-  const Studio::GeometryRow &geometry = *a_preview.geometry;
-  const Studio::ClusterView *view =
-      Studio::ClustersOf(a_memo, geometry.materialSample, a_term.settings);
-  if (!view) {
-    Dim("The material of this geometry has not been sampled.");
+  const std::optional<std::uint8_t> picked =
+      DrawClusterExplorer({*a_preview.geometry, a_term.settings, a_term.id},
+                          a_memo, a_preview.scale);
+  if (!picked || *picked == a_term.id) {
     return;
   }
-  Dim(std::format("{} clusters on {}", view->analysis.clusters.size(),
-                  geometry.name));
-  const ChartFocus focus{a_term.id,
-                         a_memo.compared
-                             ? a_memo.compared
-                             : Studio::NearestOther(view->chart, a_term.id)};
-  if (const std::optional<ChartClick> click =
-          DrawClusterChart(view->chart, focus, a_preview.scale)) {
-    ApplyChartClick(a_index, a_term, *click, a_preview, a_memo);
-  }
-  DrawSeparation(view->chart, focus);
-  DrawClusterTable(view->analysis, a_term.id);
+  Studio::ClusterTerm changed = a_term;
+  changed.id = *picked;
+  PostTermKind(a_index, Studio::TermKind{changed}, a_preview);
 }
 
-void ApplyChartClick(std::size_t a_index, const Studio::ClusterTerm &a_term,
-                     const ChartClick &a_click, const Frame &a_preview,
-                     Studio::ClusterMemo &a_memo) {
-  if (a_click.action == ChartAction::kCompare) {
-    a_memo.compared = a_click.cluster;
-    return;
-  }
-  if (a_click.cluster == a_term.id) {
-    return;
-  }
-  Studio::ClusterTerm picked = a_term;
-  picked.id = a_click.cluster;
-  if (a_memo.compared == a_click.cluster) {
-    a_memo.compared.reset();
-  }
-  PostTermKind(a_index, Studio::TermKind{picked}, a_preview);
-}
-
-void DrawSeparation(const Studio::ClusterChart &a_chart, ChartFocus a_focus) {
-  if (!a_focus.compared || *a_focus.compared == a_focus.picked) {
-    return;
-  }
-  const std::vector<Studio::AxisSeparation> axes =
-      Studio::SeparationOf(a_chart, a_focus.picked, *a_focus.compared);
-  Dim(std::format("What separates cluster {} from cluster {}", a_focus.picked,
-                  *a_focus.compared));
-  if (!Studio::CanSeparate(axes)) {
-    Warn("These two overlap on every axis. A part, bone or chart term may "
-         "separate them where the material cannot.");
-  }
-  auto table = Table::Begin("cluster-separation",
-                            {{"axis", Studio::Width::Fit("rough")},
-                             {"separation", Studio::Width::Fit("separation")},
-                             {"weight", Studio::Width::Fit("weight")},
-                             {"advice", Studio::Width::Fill()}},
-                            Studio::kColumnsTable);
-  if (!table.Open()) {
-    return;
-  }
-  for (const Studio::AxisSeparation &axis : axes) {
-    table.Cell();
-    ImGui::TextUnformatted(std::string{
-        Studio::kClusterAxes[static_cast<std::size_t>(axis.axis)].name}
-                               .c_str());
-    table.Cell();
-    ImGui::TextUnformatted(std::format("{:.1f}", axis.separation).c_str());
-    table.Cell();
-    ImGui::TextUnformatted(std::format("{:.1f}", axis.weight).c_str());
-    table.Cell();
-    Warn(Studio::AdviceText(axis.advice));
-  }
-  table.End();
-}
-
-void DrawClusterTable(const MaterialAnalysis &a_analysis,
-                      std::uint8_t a_picked) {
-  auto table = Table::Begin("cluster-readout",
-                            {{"id", Studio::Width::Fit("0000")},
-                             {"colour", Studio::Width::Fit("0000")},
-                             {"looks", Studio::Width::Fill()},
-                             {"rough", Studio::Width::Fit("0.00")},
-                             {"metal", Studio::Width::Fit("0.00")},
-                             {"occl", Studio::Width::Fit("0.00")},
-                             {"refl", Studio::Width::Fit("0.00")},
-                             {"cover", Studio::Width::Fit("100%")}},
-                            Studio::kColumnsTable);
-  if (!table.Open()) {
-    return;
-  }
-  for (const MaterialCluster *cluster : Studio::LargestFirst(a_analysis)) {
-    DrawClusterRow(*cluster, cluster->id == a_picked, table);
-  }
-  table.End();
-}
-
-void DrawClusterRow(const MaterialCluster &a_cluster, bool a_picked,
-                    Table &a_table) {
-  const MaterialTexel &centre = a_cluster.centroid;
-  ImGui::PushID(a_cluster.id);
-  a_table.Cell();
-  ImGui::ColorButton("##ink", InkColour(ClusterInk(a_cluster.id, 255)), 0,
-                     ImGuiMCP::ImVec2{10.0f, 10.0f});
-  ImGui::SameLine();
-  const std::string id = std::to_string(a_cluster.id);
-  if (a_picked) {
-    Ok(id);
-  } else {
-    ImGui::TextUnformatted(id.c_str());
-  }
-  a_table.Cell();
-  ImGui::ColorButton("##centre",
-                     ImGuiMCP::ImVec4{centre.diffuse.x, centre.diffuse.y,
-                                      centre.diffuse.z, 1.0f},
-                     0, ImGuiMCP::ImVec2{16.0f, 16.0f});
-  a_table.Cell();
-  ImGui::TextUnformatted(a_cluster.description.c_str());
-  for (const float channel : {centre.roughness, centre.metallic,
-                              centre.occlusion, centre.reflectance}) {
-    a_table.Cell();
-    ImGui::TextUnformatted(std::format("{:.2f}", channel).c_str());
-  }
-  a_table.Cell();
-  ImGui::TextUnformatted(
-      std::format("{:.0f}%", a_cluster.share * 100.0f).c_str());
-  ImGui::PopID();
-}
 }
 }

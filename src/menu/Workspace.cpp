@@ -1,6 +1,7 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #include "menu/Workspace.h"
 
+#include "menu/ClusterChart.h"
 #include "menu/ContextRows.h"
 #include "menu/FormDraw.h"
 #include "menu/InputBrowser.h"
@@ -18,11 +19,13 @@
 #include "studio/Names.h"
 #include "studio/Navigation.h"
 #include "studio/Panels.h"
+#include "studio/Rows.h"
 
 #include <algorithm>
 #include <format>
 #include <functional>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -722,6 +725,10 @@ void DrawResourceRemove(std::string_view a_name, std::size_t a_references,
       "Remove", [&] { a_post(true); });
 }
 
+void DrawSourceClusters(const MaterialClustersSource &a_source,
+                        std::span<const Studio::FormField> a_form,
+                        const Frame &a_frame);
+
 void DrawSourceInspector(const Studio::SourceSubject &a_source,
                          const Frame &a_frame) {
   const Studio::RecipeRow &recipe = *a_frame.recipe;
@@ -745,9 +752,42 @@ void DrawSourceInspector(const Studio::SourceSubject &a_source,
       Studio::SourceKindOf(*row).value_or(SourceKind{MaterialSource{}}));
   const ResourceCells cells{.name = row->name, .type = type};
   ResourceTable("source-header", {&cells, 1});
-  DrawFormWithSignals("source",
-                      Studio::SourceForm(*row, Studio::SignalNamesOf(recipe)),
-                      a_frame);
+  const std::vector<Studio::FormField> form =
+      Studio::SourceForm(*row, Studio::SignalNamesOf(recipe));
+  DrawFormWithSignals("source", form, a_frame);
+  const std::optional<SourceKind> kind = Studio::SourceKindOf(*row);
+  if (const auto *clusters =
+          kind ? Get<MaterialClustersSource>(*kind) : nullptr) {
+    DrawSourceClusters(*clusters, form, a_frame);
+  }
+}
+
+void DrawSourceClusters(const MaterialClustersSource &a_source,
+                        std::span<const Studio::FormField> a_form,
+                        const Frame &a_frame) {
+  if (!a_frame.geometry) {
+    Dim("View a piece to chart its material's clusters.");
+    return;
+  }
+  Studio::ClusterMemo &memo = a_frame.state->sourceClusterMemo;
+  const Studio::ClusterView *view = Studio::ClustersOf(
+      memo, a_frame.geometry->materialSample, a_source.settings);
+  const float bias =
+      Get<float>(a_source.areaBias) ? *Get<float>(a_source.areaBias) : 1.0f;
+  const float *pick = a_source.pick ? Get<float>(*a_source.pick) : nullptr;
+  const std::optional<std::uint8_t> picked =
+      view && pick ? PickCluster(view->analysis, *pick, bias) : std::nullopt;
+  const std::optional<std::uint8_t> chosen = DrawClusterExplorer(
+      {*a_frame.geometry, a_source.settings, picked}, memo, a_frame.scale);
+  if (!chosen || chosen == picked || !view) {
+    return;
+  }
+  const std::optional<float> value = PickValueOf(view->analysis, *chosen, bias);
+  const auto field =
+      std::ranges::find(a_form, std::string{"pick"}, &Studio::FormField::name);
+  if (value && field != a_form.end()) {
+    PostField(*field, ParamText(Param{*value}), a_frame);
+  }
 }
 
 void DrawSignalInspector(const Studio::SignalSubject &a_signal,

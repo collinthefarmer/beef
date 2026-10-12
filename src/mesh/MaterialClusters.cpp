@@ -371,4 +371,30 @@ std::optional<std::uint8_t> PickCluster(const MaterialAnalysis &a_analysis,
   return a_analysis.clusters.back().id;
 }
 
+std::optional<float> PickValueOf(const MaterialAnalysis &a_analysis,
+                                 std::uint8_t a_cluster,
+                                 float a_areaBias) noexcept {
+  const float bias = std::isfinite(a_areaBias)
+                         ? std::clamp(a_areaBias, 0.0f, kMaxAreaBias)
+                         : 1.0f;
+  float total = 0.0f;
+  for (const MaterialCluster &cluster : a_analysis.clusters) {
+    total += ClusterWeight(cluster.share, bias);
+  }
+  if (!(total > 0.0f) || !std::isfinite(total)) {
+    return std::nullopt;
+  }
+  float reached = 0.0f;
+  for (const MaterialCluster &cluster : a_analysis.clusters) {
+    const float weight = ClusterWeight(cluster.share, bias);
+    if (cluster.id == a_cluster) {
+      return weight > 0.0f
+                 ? std::optional<float>{(reached + weight / 2.0f) / total}
+                 : std::nullopt;
+    }
+    reached += weight;
+  }
+  return std::nullopt;
+}
+
 }

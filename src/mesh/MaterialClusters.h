@@ -52,4 +52,7 @@ NearestCluster(const MaterialTexel &a_texel,
 [[nodiscard]] std::optional<std::uint8_t>
 PickCluster(const MaterialAnalysis &a_analysis, float a_pick,
             float a_areaBias) noexcept;
+[[nodiscard]] std::optional<float>
+PickValueOf(const MaterialAnalysis &a_analysis, std::uint8_t a_cluster,
+            float a_areaBias) noexcept;
 }
