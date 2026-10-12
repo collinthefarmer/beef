@@ -375,9 +375,11 @@ void SoloRecipeButton(const Studio::RecipeRow &a_recipe,
       text += std::format(" layer {}", *a_view.isolation.layer);
     }
   }
+  ImGui::PushID("recipe-solo");
   if (SoloButton(soloed, text)) {
     Studio::Post(a_out, Studio::SoloRecipe{a_recipe.id, soloed});
   }
+  ImGui::PopID();
 }
 
 }

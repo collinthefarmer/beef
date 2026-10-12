@@ -155,9 +155,11 @@ void SoloPieceButton(const Frame &a_frame) {
     text =
         std::format("showing only {} / {}", piece->actorName, piece->armorName);
   }
+  ImGui::PushID("piece-solo");
   if (SoloButton(solo, text)) {
     Studio::Post(*a_frame.intents, Studio::SoloPiece{piece->ref, solo});
   }
+  ImGui::PopID();
 }
 
 constexpr float kPieceComboWidth = 480.0f;
@@ -332,7 +334,6 @@ void DrawClock(const Frame &a_frame) {
 void DrawFooter(const Frame &a_frame) {
   const Studio::View &view = ViewOf(a_frame);
   DrawInspectorNav(a_frame);
-  DrawPieceBar(a_frame);
   static_cast<void>(Rule(
       Studio::RuleSpec{.text = "Session"}, ButtonWidth("Return to live"),
       [&]() {
@@ -403,13 +404,14 @@ void DrawStudioFrame(const Frame &frame) {
                            state.pendingRecipeFile.has_value() ||
                            state.pendingEditorChange.has_value() ||
                            RecipeFilePending(frame);
+  DrawPieceBar(frame);
   Disabled(editPending || (state.paint && state.paint->pendingCommit), [&] {
     DrawStudioContext(frame);
     DrawMaskDraftHints(frame);
   });
   const float footerRows = 2.0f;
-  const float footer = RuleHeight() * 2.0f +
-                       ImGui::GetFrameHeightWithSpacing() * footerRows + 8.0f;
+  const float footer =
+      RuleHeight() + ImGui::GetFrameHeightWithSpacing() * footerRows + 8.0f;
   if (ImGui::BeginChild("studio-body", ImVec2{0.0f, -footer}, 0, 0)) {
     Disabled(editPending || (state.paint && state.paint->pendingCommit),
              [&] { DrawBody(frame); });
