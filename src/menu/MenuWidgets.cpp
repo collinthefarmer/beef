@@ -528,6 +528,10 @@ std::optional<std::string> TextField(const char *a_key,
   return result;
 }
 
+std::string_view LiveText(const char *a_key) {
+  return std::string_view{Studio::State().textBuffers[KeyOf(a_key)].data()};
+}
+
 std::string_view LiveTextField(const char *a_key, const char *a_hint,
                                const Studio::Width &a_width, float a_scale) {
   auto &buffer = Studio::State().textBuffers[KeyOf(a_key)];

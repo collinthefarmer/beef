@@ -207,11 +207,6 @@ void DrawKeyAdd(const Frame &a_frame, const Studio::PieceRow &a_piece,
 
 void DrawKeys(const Frame &a_frame, const Studio::PieceRow &a_piece,
               const Studio::RecipeRow &a_recipe, Studio::Intents &a_out) {
-  if (!Rule(Studio::RuleSpec{
-                .text = "Keys", .collapsible = true, .leadingSpace = false})
-           .open) {
-    return;
-  }
   auto table = Table::Begin("keys",
                             {{"Kind", Studio::Width::Fit()},
                              {"Value", Studio::Width::Fill()},
@@ -434,9 +429,15 @@ void DrawRecipeSettings(const Frame &a_frame) {
       [&]() { RenameRecipeButton(a_frame); }, [&]() { Dim(recipe.id); }));
   [[maybe_unused]] const std::optional<std::size_t> detail =
       DrawForm("recipe-header", Studio::RecipeHeaderForm(recipe), a_frame);
-  DrawKeys(a_frame, a_frame.piece ? *a_frame.piece : Studio::PieceRow{}, recipe,
-           *a_frame.intents);
   DrawDiagnostics(recipe.problems, recipe.heldBack);
+}
+
+void DrawRecipeKeys(const Frame &a_frame) {
+  if (!a_frame.recipe || !a_frame.intents) {
+    return;
+  }
+  DrawKeys(a_frame, a_frame.piece ? *a_frame.piece : Studio::PieceRow{},
+           *a_frame.recipe, *a_frame.intents);
 }
 
 void DrawOutputHeader(const Studio::OutputRow &a_output,

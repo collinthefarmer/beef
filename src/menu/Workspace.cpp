@@ -371,9 +371,10 @@ const char *ResourceAddLabel(Studio::ResourceTab a_tab) {
   return "+";
 }
 
-void DrawResourceTabs(const Frame &a_frame, std::string_view a_filter) {
+void DrawResourceTabs(const Frame &a_frame, std::string_view a_filter,
+                      float a_reserve) {
   if (!a_filter.empty()) {
-    if (ImGui::BeginChild("resource-rows", ImVec2{0.0f, 0.0f}, 0, 0)) {
+    if (ImGui::BeginChild("resource-rows", ImVec2{0.0f, -a_reserve}, 0, 0)) {
       for (const Studio::ResourceTab tab : Studio::kResourceTabs) {
         Dim(std::string{Studio::ResourceTabName(tab)});
         DrawResourceRows(a_frame, tab, a_filter);
@@ -393,7 +394,7 @@ void DrawResourceTabs(const Frame &a_frame, std::string_view a_filter) {
     if (tab != a_frame.state->resource) {
       Studio::Post(*a_frame.intents, Studio::ShowResource{tab});
     }
-    if (ImGui::BeginChild("resource-rows", ImVec2{0.0f, 0.0f}, 0, 0)) {
+    if (ImGui::BeginChild("resource-rows", ImVec2{0.0f, -a_reserve}, 0, 0)) {
       DrawResourceRows(a_frame, tab, a_filter);
     }
     ImGui::EndChild();
@@ -541,27 +542,39 @@ void DrawRecipeTree(const Frame &a_frame, std::string_view a_filter) {
   DrawLightLine(a_frame);
 }
 
+void DrawRecipeNavigator(const Frame &a_frame);
+void DrawResourceNavigator(const Frame &a_frame);
+
 void DrawNavigator(const Frame &a_frame) {
-  if (!ImGui::BeginTabBar("navigator")) {
-    return;
+  const float half = ImGui::GetContentRegionAvail().y * 0.5f;
+  if (ImGui::BeginChild("navigator-recipe", ImVec2{0.0f, half}, 0, 0)) {
+    DrawRecipeNavigator(a_frame);
   }
-  if (ImGui::BeginTabItem("Recipe")) {
-    const std::string_view filter = LiveTextField(
-        "recipe-search", "Find outputs", Studio::Width::Fill(), a_frame.scale);
-    if (ImGui::BeginChild("recipe-scroll", ImVec2{0.0f, 0.0f}, 0, 0)) {
-      DrawRecipeTree(a_frame, filter);
-    }
-    ImGui::EndChild();
-    ImGui::EndTabItem();
+  ImGui::EndChild();
+  if (ImGui::BeginChild("navigator-resources", ImVec2{0.0f, 0.0f}, 0, 0)) {
+    DrawResourceNavigator(a_frame);
   }
-  if (ImGui::BeginTabItem("Resources")) {
-    const std::string_view filter =
-        LiveTextField("resource-search", "Find resources",
-                      Studio::Width::Fill(), a_frame.scale);
-    DrawResourceTabs(a_frame, filter);
-    ImGui::EndTabItem();
+  ImGui::EndChild();
+}
+
+void DrawRecipeNavigator(const Frame &a_frame) {
+  static_cast<void>(
+      Rule(Studio::RuleSpec{.text = "Recipe", .leadingSpace = false}));
+  const float find = ImGui::GetFrameHeightWithSpacing();
+  if (ImGui::BeginChild("recipe-scroll", ImVec2{0.0f, -find}, 0, 0)) {
+    DrawRecipeTree(a_frame, LiveText("recipe-search"));
   }
-  ImGui::EndTabBar();
+  ImGui::EndChild();
+  static_cast<void>(LiveTextField("recipe-search", "Find outputs",
+                                  Studio::Width::Fill(), a_frame.scale));
+}
+
+void DrawResourceNavigator(const Frame &a_frame) {
+  static_cast<void>(Rule(Studio::RuleSpec{.text = "Resources"}));
+  const float find = ImGui::GetFrameHeightWithSpacing();
+  DrawResourceTabs(a_frame, LiveText("resource-search"), find);
+  static_cast<void>(LiveTextField("resource-search", "Find resources",
+                                  Studio::Width::Fill(), a_frame.scale));
 }
 
 [[nodiscard]] std::optional<Studio::GeometryRow>
@@ -1028,11 +1041,23 @@ struct InspectorPass {
   bool editPending = false;
 };
 
-[[nodiscard]] float InspectorFooterHeight(bool a_hasRelationships) {
-  return a_hasRelationships
-             ? (std::min)(ImGui::GetContentRegionAvail().y * 0.35f,
-                          ImGui::GetFrameHeightWithSpacing() * 6.0f)
-             : 0.0f;
+enum class InspectorFooter { kNone, kRelationships, kKeys };
+
+[[nodiscard]] InspectorFooter FooterOf(const Frame &a_frame) {
+  if (a_frame.recipe &&
+      Is<Studio::RecipeSubject>(SelectionOf(a_frame).subject)) {
+    return InspectorFooter::kKeys;
+  }
+  return HasRelationships(a_frame) ? InspectorFooter::kRelationships
+                                   : InspectorFooter::kNone;
+}
+
+[[nodiscard]] float InspectorFooterHeight(InspectorFooter a_footer) {
+  if (a_footer == InspectorFooter::kNone) {
+    return 0.0f;
+  }
+  return (std::min)(ImGui::GetContentRegionAvail().y * 0.35f,
+                    ImGui::GetFrameHeightWithSpacing() * 6.0f);
 }
 
 void DrawInspectorBody(const Frame &a_frame, const InspectorPass &a_pass,
@@ -1062,13 +1087,33 @@ void DrawInspectorRelationships(const Frame &a_frame, bool a_editPending) {
   ImGui::EndChild();
 }
 
+void DrawInspectorKeys(const Frame &a_frame, bool a_editPending) {
+  static_cast<void>(Rule(Studio::RuleSpec{.text = "Keys"}));
+  if (ImGui::BeginChild("inspector-keys", ImVec2{0.0f, 0.0f}, 0, 0)) {
+    Disabled(a_editPending, [&] { DrawRecipeKeys(a_frame); });
+  }
+  ImGui::EndChild();
+}
+
+void DrawInspectorFooter(const Frame &a_frame, InspectorFooter a_footer,
+                         bool a_editPending) {
+  switch (a_footer) {
+  case InspectorFooter::kRelationships:
+    DrawInspectorRelationships(a_frame, a_editPending);
+    return;
+  case InspectorFooter::kKeys:
+    DrawInspectorKeys(a_frame, a_editPending);
+    return;
+  case InspectorFooter::kNone:
+    return;
+  }
+}
+
 void DrawInspectorPane(const Frame &a_frame, const InspectorPass &a_pass) {
   if (ImGui::BeginChild("inspector", ImVec2{0.0f, 0.0f}, 0, 0)) {
-    const bool hasRelationships = HasRelationships(a_frame);
-    DrawInspectorBody(a_frame, a_pass, InspectorFooterHeight(hasRelationships));
-    if (hasRelationships) {
-      DrawInspectorRelationships(a_frame, a_pass.editPending);
-    }
+    const InspectorFooter footer = FooterOf(a_frame);
+    DrawInspectorBody(a_frame, a_pass, InspectorFooterHeight(footer));
+    DrawInspectorFooter(a_frame, footer, a_pass.editPending);
   }
   ImGui::EndChild();
 }

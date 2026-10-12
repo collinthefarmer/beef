@@ -15,6 +15,7 @@ namespace BetterEnchantmentEffects::Menu {
 DefaultKeyOf(const Studio::PieceRow &a_piece);
 
 void DrawRecipeSettings(const Frame &a_frame);
+void DrawRecipeKeys(const Frame &a_frame);
 void DrawStudioContext(const Frame &a_frame);
 void DrawOutputHeader(const Studio::OutputRow &a_output,
                       std::span<const Studio::FormField> a_scalars,

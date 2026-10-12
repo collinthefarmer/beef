@@ -90,6 +90,7 @@ void NextItemWidth(const Studio::Width &a_width, float a_scale = 1.0f);
 [[nodiscard]] std::optional<std::string>
 TextField(const char *a_key, const std::string &a_model,
           const WidgetSize &a_size, const TextCheck &a_check = {});
+[[nodiscard]] std::string_view LiveText(const char *a_key);
 [[nodiscard]] std::string_view LiveTextField(const char *a_key,
                                              const char *a_hint,
                                              const Studio::Width &a_width,
