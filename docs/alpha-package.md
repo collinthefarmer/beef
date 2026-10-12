@@ -67,3 +67,13 @@ versions. The initial profile targets Steam Skyrim 1.6.1170 / SKSE 2.2.6; CS
 1.8.3 and Menu Framework 3.13.0 are preliminary baselines, and the Address
 Library AE package version still needs recording. These are not tested-support
 claims. Runtime acceptance must identify the exact archive checksum and installed peers.
+
+Texture streaming plugins can replace the textures this plugin writes into
+armor materials. The plugin shows each effect through files under
+`textures\BetterEnchantmentEffects\slots\`, and a plugin that shrinks and
+reloads textures by path treats them like any other armor texture. Exclude
+that folder from streaming. For Skyrim Performance Solution, add
+`betterenchantmenteffects\slots\` to `sExclude` in `SPS.ini`. When a written
+texture is replaced, the slot falls back to the original texture and the
+plugin log says so once. Texture Downscaler only reduces textures while they
+load and needs no exclusion.

@@ -1,6 +1,7 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #include "render/Binding.h"
 #include "Core.h"
+#include "Identity.h"
 #include "diagnostics/Trace.h"
 
 #include <type_traits>
@@ -53,6 +54,20 @@ bool FuzzPossible(const PBRMaterialLayout &a_material) {
 }
 
 RE::NiColor ToNi(const Vec3 &a_v) { return RE::NiColor{a_v.x, a_v.y, a_v.z}; }
+
+void ReportLostTexture(Slot a_slot) {
+  static bool logged = false;
+  Trace::EmitSafely(Trace::Event::kTexture,
+                    {{"action", "slot_texture_lost"},
+                     {"slot", std::string{SlotName(a_slot)}}});
+  if (std::exchange(logged, true)) {
+    return;
+  }
+  logger::warn("a texture this plugin wrote is no longer its own; the slot "
+               "shows the original. Another plugin may have replaced it: "
+               "exclude {} from texture streaming",
+               Identity::PresenterTextureFolder());
+}
 }
 
 namespace {
@@ -284,17 +299,24 @@ std::optional<std::string> SlotWriter::ProblemMessage(Slot a_slot) const {
 }
 
 void SlotWriter::WriteTexture(Slot a_slot, const TextureRef &a_texture) {
-  if (!a_texture.Valid() || !TextureFieldOf(*material_.layout_, a_slot))
+  if (!TextureFieldOf(*material_.layout_, a_slot))
     return;
   auto *group = BeginWrite(a_slot);
   if (!group)
     return;
-  const TextureRef &target = a_texture ? a_texture : group->original;
-  *TextureFieldOf(*material_.layout_, a_slot) =
-      RE::NiPointer<RE::NiSourceTexture>{target.get()};
+  RE::NiPointer<RE::NiSourceTexture> &field =
+      *TextureFieldOf(*material_.layout_, a_slot);
+  const bool ours = a_texture.Valid();
+  const bool written = ours && static_cast<bool>(a_texture);
+  const TextureRef &target = written ? a_texture : group->original;
+  const bool changed = field.get() != target.get();
+  field = RE::NiPointer<RE::NiSourceTexture>{target.get()};
   group->written = target;
-  SetFeature(a_slot, static_cast<bool>(a_texture));
+  SetFeature(a_slot, written);
   EndWrite(a_slot);
+  if (!ours && changed) {
+    ReportLostTexture(a_slot);
+  }
 }
 
 void SlotWriter::WriteEmissive(const Vec3 &a_color, float a_multiplier) {

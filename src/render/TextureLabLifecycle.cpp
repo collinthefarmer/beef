@@ -62,11 +62,15 @@ TextureLab::RenderTarget::~RenderTarget() {
 }
 
 RE::NiSourceTexture *TextureLab::RenderTarget::Texture() const noexcept {
-  return presenter && ourData &&
-                 presenter->rendererTexture ==
-                     reinterpret_cast<RE::BSGraphics::Texture *>(ourData.get())
-             ? presenter.get()
-             : nullptr;
+  const bool ours =
+      presenter && ourData &&
+      presenter->rendererTexture ==
+          reinterpret_cast<RE::BSGraphics::Texture *>(ourData.get()) &&
+      ourData->texture ==
+          reinterpret_cast<::ID3D11Texture2D *>(texture.Get()) &&
+      ourData->resourceView ==
+          reinterpret_cast<::ID3D11ShaderResourceView *>(srv.Get());
+  return ours ? presenter.get() : nullptr;
 }
 
 TextureLab::TextureLab()
