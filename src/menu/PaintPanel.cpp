@@ -821,10 +821,10 @@ void DrawClusterRow(const MaterialCluster &a_cluster, bool a_picked,
     ImGui::TextUnformatted(id.c_str());
   }
   a_table.Cell();
-  ImGui::ColorButton(
-      "##centre",
-      ImVec4{centre.diffuse.x, centre.diffuse.y, centre.diffuse.z, 1.0f}, 0,
-      ImVec2{16.0f, 16.0f});
+  ImGui::ColorButton("##centre",
+                     ImGuiMCP::ImVec4{centre.diffuse.x, centre.diffuse.y,
+                                      centre.diffuse.z, 1.0f},
+                     0, ImGuiMCP::ImVec2{16.0f, 16.0f});
   a_table.Cell();
   ImGui::TextUnformatted(a_cluster.description.c_str());
   for (const float channel : {centre.roughness, centre.metallic,

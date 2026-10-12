@@ -131,8 +131,8 @@ void DrawRangeSlider(const SliderScope &a_scope, float a_value,
       }
       a_change(a_value);
     }
-    Tooltip("Drag to preview; release to keep one undo step. Escape cancels. "
-            "Exact input is above.");
+    Tooltip("Drag to preview; release to keep one undo step. Ctrl-click to "
+            "type an exact value. Escape cancels.");
     a_observe();
   });
   if (a_scope.range.adjustable) {

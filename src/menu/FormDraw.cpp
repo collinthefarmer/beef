@@ -412,6 +412,30 @@ void DrawFieldInput(const FormField &a_field, const Frame &a_frame,
   }
 }
 
+void DrawTypedValueOpener(const FormField &a_field, const Frame &a_frame) {
+  const float side = ImGui::GetFrameHeight();
+  if (ImGui::Button("=", ImGui::ImVec2{side, side})) {
+    ImGui::OpenPopup("typed-value");
+  }
+  Tooltip("Type a signal name or an expression in place of this number.");
+  if (!ImGui::BeginPopup("typed-value")) {
+    return;
+  }
+  if (const auto text = FieldInput(a_field, a_frame.scale, *a_frame.names,
+                                   Width::Px(320.0f))) {
+    CommitField(a_field, *text, a_frame);
+    ImGui::CloseCurrentPopup();
+  }
+  ImGui::EndPopup();
+}
+
+void DrawTunableField(const FormField &a_field, const Frame &a_frame) {
+  DrawTypedValueOpener(a_field, a_frame);
+  ImGui::SameLine(0.0f, 0.0f);
+  DrawInputWizard(a_frame, a_field);
+  DrawTuning(a_field, a_frame);
+}
+
 void DrawRowField(const char *a_key, const FormField &a_field,
                   const Frame &a_frame) {
   if (a_frame.recipe == nullptr || a_frame.names == nullptr ||
@@ -420,9 +444,12 @@ void DrawRowField(const char *a_key, const FormField &a_field,
   }
   ImGui::PushID(a_key);
   RevealProperty(a_field, a_frame);
-  DrawFieldInput(a_field, a_frame);
-  DrawInputWizard(a_frame, a_field);
-  DrawTuning(a_field, a_frame);
+  if (FieldTunable(a_field, a_frame)) {
+    DrawTunableField(a_field, a_frame);
+  } else {
+    DrawFieldInput(a_field, a_frame);
+    DrawInputWizard(a_frame, a_field);
+  }
   ImGui::PopID();
 }
 
@@ -472,10 +499,7 @@ std::optional<std::size_t> DrawFieldTable(const char *a_id,
       ImGui::SameLine();
     }
     if (FieldTunable(field, a_frame)) {
-      DrawFieldInput(field, a_frame, Width::Fill(0.5f));
-      DrawInputWizard(a_frame, field);
-      ImGui::SameLine();
-      DrawTuning(field, a_frame);
+      DrawTunableField(field, a_frame);
     } else {
       DrawFieldInput(field, a_frame);
       DrawInputWizard(a_frame, field);
