@@ -559,7 +559,6 @@ void DrawLightLine(const Frame &a_frame) {
 }
 
 void DrawRecipeTree(const Frame &a_frame, std::string_view a_filter) {
-  PickSubject("Recipe / overview", Studio::RecipeSubject{}, a_frame);
   DrawSurfaceLine(a_frame, "Material", Surface::kMaterial, a_filter);
   DrawSurfaceLine(a_frame, "Shell", Surface::kShell, a_filter);
   DrawLightLine(a_frame);
@@ -582,7 +581,13 @@ void DrawNavigator(const Frame &a_frame) {
 
 void DrawRecipeNavigator(const Frame &a_frame) {
   static_cast<void>(
-      Rule(Studio::RuleSpec{.text = "Recipe", .leadingSpace = false}));
+      Rule(Studio::RuleSpec{.text = "Recipe", .leadingSpace = false},
+           ButtonWidth("settings"), [&] {
+             if (ImGui::Button("settings")) {
+               NavigateFromNavigator(a_frame, Studio::RecipeSubject{});
+             }
+             Tooltip("the recipe's settings and keys");
+           }));
   const float find = ImGui::GetFrameHeightWithSpacing();
   if (ImGui::BeginChild("recipe-scroll", ImVec2{0.0f, -find}, 0, 0)) {
     DrawRecipeTree(a_frame, LiveText("recipe-search"));
