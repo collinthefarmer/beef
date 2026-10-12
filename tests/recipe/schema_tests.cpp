@@ -157,6 +157,10 @@ void SourceEnumsMatchTheTables(const json &a_schema) {
   EnumMatches(a_schema,
               "/$defs/source/oneOf/0/properties/image/properties/space/enum",
               WordsOf(kImageSpaces), "image space");
+  EnumMatches(
+      a_schema,
+      "/$defs/source/oneOf/0/properties/image/properties/effectShader/enum",
+      WordsOf(kEffectShaderTextures), "image effect shader texture");
   EnumMatches(a_schema, "/$defs/source/oneOf/1/properties/material/enum",
               WordsOf(kMaterialChannels), "material channel");
   EnumMatches(a_schema,

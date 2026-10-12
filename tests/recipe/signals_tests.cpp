@@ -25,6 +25,7 @@ public:
   float state = 0.0f;
   float enchantment = 0.0f;
   std::optional<Efsh::EffectParams> effect;
+  std::optional<Efsh::EffectParams> matched;
   Vec3 vector{};
   Vec3 rootOrigin{};
 
@@ -42,6 +43,9 @@ public:
   std::optional<Efsh::EffectParams>
   EffectShader(const FormRef &) const override {
     return effect;
+  }
+  std::optional<Efsh::EffectParams> MatchedEffectShader() const override {
+    return matched;
   }
 };
 
@@ -447,6 +451,44 @@ int main() {
   }
 
   {
+    Efsh::EffectParams named;
+    named.fill.persistentAlphaRatio = 0.25f;
+    Efsh::EffectParams matched;
+    matched.fill.persistentAlphaRatio = 0.75f;
+    matched.animationSpeedU = 0.5f;
+
+    std::vector<Signal> signals{
+        Signal{"alpha", EfshSignal{EfshField::kFillAlpha, std::nullopt},
+               std::nullopt},
+        Signal{"scroll", EfshSignal{EfshField::kScroll, std::nullopt},
+               std::nullopt},
+        Signal{"named", EfshSignal{EfshField::kFillAlpha, FormRef{}},
+               std::nullopt}};
+    const auto graph = CompileSignals(signals);
+    Check(graph.Diagnostics().empty(),
+          "an efsh signal without a record compiles");
+    SignalState state{graph};
+    FakeEnvironment environment;
+    environment.effect = named;
+    environment.matched = matched;
+    state.Tick(environment, TickInputs{1.0f, 0.0f});
+    Check(Near(state.Scalar("alpha"), 0.75f),
+          "an efsh signal without a record reads the matched shader");
+    Check(Near(AsVec2(state.ValueOf("scroll")).x, 0.5f),
+          "the matched shader's scroll advances with its animation speed");
+    Check(Near(state.Scalar("named"), 0.25f),
+          "an efsh signal with a record still reads the named shader");
+
+    SignalState unmatched{graph};
+    FakeEnvironment noShader;
+    noShader.effect = named;
+    unmatched.Tick(noShader, TickInputs{1.0f, 0.0f});
+    Check(Near(unmatched.Scalar("alpha"), 0.0f) &&
+              Near(AsVec2(unmatched.ValueOf("scroll")).x, 0.0f),
+          "an effect with no shader reads zero for every efsh field");
+  }
+
+  {
     Signal signal = Const("g", Vec3{1.0f, 1.0f, 1.0f});
     signal.curve = CurveRef{"x"};
     std::vector<Signal> signals{signal};
@@ -762,7 +804,7 @@ int main() {
     Check(!CheckLayer(rows, layer, Slot::kEmissive, LayerWhere(0, 1)).empty(),
           "new layer checks compile named function dependencies");
     ImageSource source;
-    source.path = "textures/test.dds";
+    source.texture = ImageFile{"textures/test.dds"};
     source.scroll = Ref{"missing"};
     Check(!CheckSource(rows, Source{"image", source}).empty(),
           "candidate sources check newly introduced signal dependencies");
@@ -772,7 +814,7 @@ int main() {
     Recipe recipe;
     recipe.signals = {Const("uv", Vec2{1.0f, 1.0f}), Const("scalar", 1.0f)};
     ImageSource valid;
-    valid.path = "textures/test.dds";
+    valid.texture = ImageFile{"textures/test.dds"};
     valid.tile = Ref{"uv"};
     ImageSource malformed = valid;
     malformed.tile = Ref{"scalar"};

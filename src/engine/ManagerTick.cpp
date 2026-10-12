@@ -144,8 +144,9 @@ void UpdateRenderInputs(LiveActor &a_state, LiveGeometry &a_bound,
     const auto &instance = a_state.instances[i];
     if (!instance.graph || !instance.signals)
       continue;
-    if (auto updated = a_bound.inputs.render->Update(*instance.graph, i + 1,
-                                                     *instance.signals);
+    if (auto updated = a_bound.inputs.render->Update(
+            *instance.graph, i + 1, *instance.signals,
+            MatchedShaderFactsOf(instance));
         !updated)
       LogOnce(a_warnings, Severity::kError,
               std::format("render inputs of '{}': {}", a_bound.name,

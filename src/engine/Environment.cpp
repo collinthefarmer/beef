@@ -12,7 +12,15 @@ ActorEnvironment::ActorEnvironment(RE::Actor *a_actor,
                                    std::optional<RecipeKey> a_effectKey)
     : actor_(a_actor ? a_actor->GetHandle() : RE::ActorHandle{}),
       enchantment_(a_enchantment ? a_enchantment->GetFormID() : 0),
-      effectKey_(std::move(a_effectKey)) {}
+      effectKey_(std::move(a_effectKey)) {
+  const RE::TESEffectShader *shader =
+      MatchedShaderOf(a_enchantment, effectKey_);
+  if (!shader) {
+    return;
+  }
+  matchedParams_ = RecordFrom(*shader).params;
+  matchedShader_ = MatchedFactsFrom(*shader);
+}
 
 RE::NiPointer<RE::Actor> ActorEnvironment::Actor() const noexcept {
   return actor_.get();
@@ -154,5 +162,14 @@ ActorEnvironment::EffectShader(const FormRef &a_record) const {
   }
   shaders_.emplace(a_record.text, params);
   return params;
+}
+
+std::optional<Efsh::EffectParams>
+ActorEnvironment::MatchedEffectShader() const {
+  return matchedParams_;
+}
+
+const MatchedShaderFacts &ActorEnvironment::MatchedShader() const noexcept {
+  return matchedShader_;
 }
 }

@@ -30,6 +30,9 @@ public:
   EffectShader(const FormRef &) const override {
     return std::nullopt;
   }
+  std::optional<Efsh::EffectParams> MatchedEffectShader() const override {
+    return std::nullopt;
+  }
 };
 
 [[nodiscard]] Recipe SampleRecipe() {

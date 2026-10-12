@@ -171,12 +171,8 @@ std::optional<SignalKind> ParseEfsh(const json &a_v, const Reporter &a_ctx) {
         r.Read("field", kEfshFields, k.field);
         if (!r.Has("field"))
           a_ctx.Error("'efsh' needs 'field'");
-        if (const auto *rec = r.Child("record")) {
-          if (auto form = FormFrom(*rec, a_ctx, "record"))
-            k.record = *form;
-        } else {
-          a_ctx.Error("'efsh' needs 'record'");
-        }
+        if (const auto *rec = r.Child("record"))
+          k.record = FormFrom(*rec, a_ctx, "record");
       })) {
     return std::nullopt;
   }
@@ -499,16 +495,18 @@ template <class Alternative>
 std::optional<Alternative> ParseSourceAlternative(const json &a_v,
                                                   const Reporter &a_ctx);
 
+ImageTexture ReadImageTexture(Reader &a_reader);
+
 template <>
 std::optional<ImageSource>
 ParseSourceAlternative<ImageSource>(const json &a_v, const Reporter &a_ctx) {
   if (!a_v.is_object()) {
-    a_ctx.Error("'image' takes an object with 'path'");
+    a_ctx.Error("'image' takes an object with 'path' or 'effectShader'");
     return std::nullopt;
   }
   ImageSource k;
   Reader r(a_v, a_ctx);
-  k.path = r.Required("path");
+  k.texture = ReadImageTexture(r);
   r.Read("channel", kImageChannels, k.channel);
   r.Read("space", kImageSpaces, k.space);
   r.Read("scroll", k.scroll);
@@ -530,6 +528,20 @@ ParseSourceAlternative<ImageSource>(const json &a_v, const Reporter &a_ctx) {
   }
   r.Finish();
   return k;
+}
+
+ImageTexture ReadImageTexture(Reader &a_reader) {
+  const bool hasPath = a_reader.Has("path");
+  const bool hasShader = a_reader.Has("effectShader");
+  if (hasPath == hasShader)
+    a_reader.Context().Error(
+        "'image' needs exactly one of 'path' and 'effectShader'");
+  const std::optional<std::string> path = a_reader.String("path");
+  if (!hasShader)
+    return ImageFile{path.value_or(std::string{})};
+  EffectShaderImage shader;
+  a_reader.Read("effectShader", kEffectShaderTextures, shader.texture);
+  return shader;
 }
 
 template <>

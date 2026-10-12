@@ -74,7 +74,8 @@ std::string DescribeSource(const SourceKind &a_kind) {
       a_kind,
       [](const ImageSource &s) {
         return std::format(
-            "image {} ({}, {}{}{})", s.path, ImageChannelName(s.channel),
+            "image {} ({}, {}{}{})", DescribeImageTexture(s.texture),
+            ImageChannelName(s.channel),
             s.space == ImageSpace::kMesh ? "mesh" : "tiled",
             s.scroll ? ", scrolling" : "", s.tile ? ", tiled" : "");
       },
@@ -101,6 +102,15 @@ std::string DescribeSource(const SourceKind &a_kind) {
       },
       [](const MaterialClustersSource &s) {
         return DescribeMaterialClustersSource(s);
+      });
+}
+
+std::string DescribeImageTexture(const ImageTexture &a_texture) {
+  return Match(
+      a_texture, [](const ImageFile &f) { return f.path; },
+      [](const EffectShaderImage &e) {
+        return std::format("matched effect's {} texture",
+                           NameOf(kEffectShaderTextures, e.texture));
       });
 }
 
@@ -233,8 +243,10 @@ json RampToJson(const RampSignal &k) {
 }
 
 json EfshToJson(const EfshSignal &k) {
-  return json::object(
-      {{"field", NameOf(kEfshFields, k.field)}, {"record", k.record.text}});
+  json o = json::object({{"field", NameOf(kEfshFields, k.field)}});
+  if (k.record)
+    o["record"] = k.record->text;
+  return o;
 }
 
 json AccumulateToJson(const AccumulateSignal &k) {
@@ -290,7 +302,11 @@ json SignalToJson(const Signal &a_signal) {
 json ImageToJson(const ImageSource &k) {
   json o = json::object();
   Writer w{o};
-  w.WriteText("path", k.path);
+  Match(
+      k.texture, [&](const ImageFile &f) { w.WriteText("path", f.path); },
+      [&](const EffectShaderImage &e) {
+        w.WriteText("effectShader", NameOf(kEffectShaderTextures, e.texture));
+      });
   w.WriteEnumIf("channel", kImageChannels, k.channel, ImageChannel::kRgb);
   w.WriteEnumIf("space", kImageSpaces, k.space, ImageSpace::kTiled);
   w.WriteIf("scroll", k.scroll);

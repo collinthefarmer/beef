@@ -356,6 +356,7 @@ StackInputsOf(const LiveActor &a_state, const StackRequest &a_stack,
   GeometryInputs inputs = a_geometries[geometry];
   inputs.scope = {instance + 1, a_actor};
   inputs.enchantment = EnchantmentValuesOf(live);
+  inputs.shader = MatchedShaderFactsOf(live);
   return StackInputs{live.recipe, live.graph,
                      std::shared_ptr<const SurfaceOutput>{live.recipe, output},
                      std::move(inputs)};

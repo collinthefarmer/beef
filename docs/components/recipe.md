@@ -96,7 +96,7 @@ tune.
 | `ConstantSignal` | `constant` | A fixed `Value`. |
 | `WaveSignal` | `wave` | `base` plus `amplitude` times a sine, triangle, square, or saw `Waveform` with `period` and `phase`. |
 | `RampSignal` | `ramp` | A value that moves from `from` to `to` over `seconds`, then holds `to`. |
-| `EfshSignal` | `efsh` | One `EfshField` of a vanilla effect shader record: fillAlpha, fillColor, edgeAlpha, edgeColor, or scroll. |
+| `EfshSignal` | `efsh` | One `EfshField` of a vanilla effect shader record: fillAlpha, fillColor, edgeAlpha, edgeColor, or scroll. The `record` is optional. Without it, the signal reads the shader of the effect that the recipe instance matched. |
 | `ActorValueSignal` | `av` | The wearer's actor value under one `Measure`: current, base, permanent, temporaryModifier, damage, or max. |
 | `ActorStateSignal` | `actorState` | One `ActorStateKind`: seven 0/1 flags, the scalars movementSpeed and resolutionLevel, and the vec3 positions position and target. |
 | `EnchantmentSignal` | `enchantment` | One field of the matched enchantment and effect: `magnitude`, `cost`, `idHash` or `effectHash`. The fields are fixed for an instance, so they are static inputs. |
@@ -119,7 +119,7 @@ order, and the asserts in `Words.h` keep `kSourceKindWords` in the same order.
 
 | Alternative | File word | Produces |
 |---|---|---|
-| `ImageSource` | `image` | A texture sampled per texel: one `ImageChannel` in tiled or mesh `ImageSpace`, with optional scroll, tile, mirror, transpose, and mip. |
+| `ImageSource` | `image` | A texture sampled per texel: one `ImageChannel` in tiled or mesh `ImageSpace`, with optional scroll, tile, mirror, transpose, and mip. Its `ImageTexture` is an `ImageFile` (`path`) or an `EffectShaderImage` (`effectShader`: the fill or membrane texture of the matched effect's shader). |
 | `MaterialSource` | `material` | One `MaterialChannel` of the piece's own material, such as diffuseRgb, roughness, or relief. |
 | `BakeSource` | `bake` | One `BakeKind` computed from the mesh: position, localPosition, normal, uv, partition, boneWeight, componentId, or chartId. |
 | `PieceSource` | `piece` | One `PieceField`, a single value for the whole piece: `itemHash` (a stable hash of the worn item) or `chartCount` (how many UV charts the mesh has). |
@@ -206,7 +206,7 @@ dependence from these connections.
 | `GraphValueType` | A `ValueType` or a `ResourceType` (firings, count, events, texture, material, geometry, transform, effectShader). |
 | `RecipeNode` | A `displayName`, a `NodeKind`, and the `outputs`. |
 | `OutputBinding` | A property name, such as `output 0 layer 1 opacity` or `shell spin`, and the `OutputRef` that feeds it. The render layer reads these. |
-| `ExternalInput` | A node that brings a value in from outside: time, delta time, sample UV, root transform, geometry, material, texture, effect shader, events, node position, actor value, actor state, or enchantment (`ExternalSource`). |
+| `ExternalInput` | A node that brings a value in from outside: time, delta time, sample UV, root transform, geometry, material, texture, effect shader, the matched effect's shader (`MatchedShaderInput`) or its texture (`MatchedShaderTextureInput`), events, node position, actor value, actor state, or enchantment (`ExternalSource`). |
 | `ConstantOperation`, `VectorOperation`, `ParameterOperation` | A constant value, a vector built from components, and a function parameter. |
 | `ExpressionOperation` | A `BoundExpression`. |
 | `BoundExpression` | A compiled `Program`, its `valueBindings` to `OutputRef`s, and its `BoundFunction`s. |

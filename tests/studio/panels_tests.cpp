@@ -155,13 +155,61 @@ void TestSourceForm() {
         "editing an image field emits a source edit");
 }
 
+void TestEffectShaderImageForm() {
+  const Source source{
+      "fill", ImageSource{EffectShaderImage{EffectShaderTexture::kMembrane}}};
+  const SourceRow row = SourceRowOf(source, 0);
+  const std::optional<SourceKind> back = SourceKindOf(row);
+  Check(back && *back == source.kind,
+        "an effect-shader image round-trips through its row");
+  const std::vector<FormField> form = SourceForm(row, SignalNames{});
+  const FormField *shader = Field(form, "effectShader");
+  Check(shader != nullptr && shader->kind == FieldKind::kChoice &&
+            shader->text == "membrane" && Field(form, "path") == nullptr,
+        "an effect-shader image shows its texture choice in place of a path");
+  const auto edit =
+      shader && shader->bind ? shader->bind("fill") : std::nullopt;
+  const auto *set = edit ? Get<SetSource>(*edit) : nullptr;
+  const auto *image = set ? Get<ImageSource>(set->kind) : nullptr;
+  Check(image && image->texture == ImageTexture{EffectShaderImage{
+                                       EffectShaderTexture::kFill}},
+        "choosing the fill texture edits the effect-shader image");
+}
+
+void TestMatchedEfshForm() {
+  SignalRow efsh;
+  efsh.name = "glow";
+  efsh.kind = SignalKindId::kEfsh;
+  efsh.type = ValueType::kScalar;
+  efsh.definition = EfshSignal{EfshField::kFillAlpha, std::nullopt};
+  const std::vector<FormField> form = SignalForm(efsh, SignalNames{});
+  const FormField *record = Field(form, "record");
+  Check(record != nullptr && record->text.empty() && record->allowEmpty &&
+            !record->help.empty(),
+        "an efsh signal without a record shows an empty record that reads "
+        "the matched effect");
+  const auto named =
+      record && record->bind ? record->bind("0x1~A.esp") : std::nullopt;
+  const auto *setNamed = named ? Get<SetSignal>(*named) : nullptr;
+  const auto *withRecord = setNamed ? Get<EfshSignal>(setNamed->kind) : nullptr;
+  Check(withRecord && withRecord->record &&
+            withRecord->record->text == "0x1~A.esp",
+        "typing a form names the efsh record");
+  const auto cleared = record && record->bind ? record->bind("") : std::nullopt;
+  const auto *setCleared = cleared ? Get<SetSignal>(*cleared) : nullptr;
+  const auto *matched =
+      setCleared ? Get<EfshSignal>(setCleared->kind) : nullptr;
+  Check(matched && !matched->record,
+        "clearing the record returns the efsh signal to the matched effect");
+}
+
 void TestSourceFormLifetime() {
   for (int iteration = 0; iteration < 64; ++iteration) {
     FieldBinding retained;
     const std::string name(128, 's');
     {
       ImageSource image;
-      image.path = std::string(2048, 'p');
+      image.texture = ImageFile{std::string(2048, 'p')};
       image.mirror[0] = true;
       std::vector<FormField> copied;
       {
@@ -182,7 +230,8 @@ void TestSourceFormLifetime() {
     const auto *set = edit ? Get<SetSource>(*edit) : nullptr;
     const auto *image = set ? Get<ImageSource>(set->kind) : nullptr;
     Check(set && set->name == name && image && image->mirror[0] &&
-              image->path == "textures/retained.dds",
+              image->texture ==
+                  ImageTexture{ImageFile{"textures/retained.dds"}},
           "image binding owns its source record after rows and forms are "
           "destroyed");
   }
@@ -561,6 +610,8 @@ int main() {
   TestSourceRoundTrip();
   TestClusterPickRoundTrip();
   TestSourceForm();
+  TestEffectShaderImageForm();
+  TestMatchedEfshForm();
   TestSourceFormLifetime();
   TestIncompleteRippleForm();
   TestLightAndShellRows();

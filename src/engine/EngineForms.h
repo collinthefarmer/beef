@@ -2,6 +2,7 @@
 #pragma once
 
 #include "PCH.h"
+#include "planners/IdentityFacts.h"
 #include "recipe/Importer.h"
 #include "recipe/Recipe.h"
 
@@ -20,6 +21,8 @@ template <class Form> [[nodiscard]] Form *LookupForm(const FormKey &a_key) {
 
 [[nodiscard]] EffectShaderRecord
 RecordFrom(const RE::TESEffectShader &a_shader);
+[[nodiscard]] MatchedShaderFacts
+MatchedFactsFrom(const RE::TESEffectShader &a_shader);
 
 [[nodiscard]] RE::TESEffectShader *ShaderFor(const RE::EffectSetting *a_effect);
 [[nodiscard]] RE::TESEffectShader *ShaderFor(const RE::MagicItem *a_item);

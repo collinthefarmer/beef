@@ -212,7 +212,7 @@ Recipe RippleBeforePositionBake() {
 Recipe ImageOverBake() {
   Recipe recipe;
   ImageSource image;
-  image.path = "shared.dds";
+  image.texture = ImageFile{"shared.dds"};
   recipe.sources = {{"pattern", image},
                     {"position", BakeSource{PositionBake{}}}};
   SurfaceOutput surface;
@@ -228,7 +228,7 @@ Recipe ImageOverBake() {
 Recipe ImageLayer(const std::optional<CurveRef> &a_curve) {
   Recipe recipe;
   ImageSource image;
-  image.path = "scrolled.dds";
+  image.texture = ImageFile{"scrolled.dds"};
   image.scroll = Vec2Param{std::array<Param, 2>{0.25f, 0.5f}};
   recipe.sources = {{"pattern", image}};
   SurfaceOutput surface;
@@ -414,7 +414,7 @@ Recipe ImageFields(const std::string &a_prefix,
     std::string product = "sin(@t + " + std::to_string(field) + ")";
     for (int i = 0; i < images; ++i, ++image) {
       ImageSource source;
-      source.path = a_prefix + std::to_string(image) + ".dds";
+      source.texture = ImageFile{a_prefix + std::to_string(image) + ".dds"};
       const std::string name = "i" + std::to_string(image);
       recipe.sources.push_back({name, source});
       product += " * @" + name;

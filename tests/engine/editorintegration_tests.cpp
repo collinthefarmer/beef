@@ -1148,7 +1148,7 @@ void SemanticDiagnosticLifecycle(const std::filesystem::path &root) {
   fixture.id = kID;
   fixture.keys = {RecipeKey{}};
   ImageSource image;
-  image.path = "textures/test.dds";
+  image.texture = ImageFile{"textures/test.dds"};
   fixture.sources = {Source{"image", image, {}}};
   Start(root, "semantic_diagnostics", fixture);
   Manager manager;

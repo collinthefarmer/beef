@@ -324,6 +324,19 @@ atom   := number | "[" expr "," expr ("," expr)? "]" | "(" expr ")"
   form for every actor. Before 2026-10-07 the identity carried the instance
   string, so two instances of one recipe got different render plan keys and
   their sharing depended on which plan the cache held first.
+- An `efsh` signal without `record` lowers to a `MatchedShaderInput`, and an
+  `image` with `effectShader` lowers to a `MatchedShaderTextureInput`
+  (2026-10-12). Their values depend on the effect that the recipe instance
+  matched, so one recipe on two effects can read two shaders. Their
+  identities come from `IdentityFacts::shader` (`MatchedShaderFacts`), which
+  holds the resolved shader. A `MatchedShaderInput` is
+  `efsh:matched:<form key>`, with an empty form key when the effect has no
+  shader. A `MatchedShaderTextureInput` is `ImageCacheKey` of the resolved
+  texture path, the same identity as a `TextureInput` with that path. The
+  identity never names the instance or the actor. The render plan key
+  leaves the actor out, so an identity by instance would not separate two
+  shaders, and the 2026-10-06 `item:<hash>` bug shows what a key that misses
+  an input does: two items shared static outputs.
 - `hue(turns)` is the fully saturated wheel colour
   `saturate(|frac(turns + [0, 2/3, 1/3]) · 6 - 3| - 1)`: 0 red, 1/3 green,
   2/3 blue, wrapping each turn. `hueShift(colour, turns)` rotates the colour
@@ -1436,6 +1449,30 @@ layout, and so its out-of-view share, did not exist.
   available keys beyond the costliest effect. The adapter also collects each
   effect's shader, preserving `ShaderFor(EffectSetting*)` precedence (enchant
   visuals, then enchant shader). It does not inspect the wearer's active spells.
+- `MatchedShaderOf` (`engine/EnchantmentEffects.cpp`) is the shader of the
+  matched effect: the effect `EnchantmentValueFor` selects, then
+  `ShaderFor(EffectSetting*)`. Under a `magicEffect` or `effectShader` key it
+  is the costliest effect that matches the key. Under any other key it is the
+  costliest effect. `ActorEnvironment` resolves it once, at construction,
+  because the enchantment and the effect key are part of the instance and a
+  re-equip builds a new instance. `StackInputsOf` (`engine/ManagerApply.cpp`)
+  copies its `MatchedShaderFacts` into `GeometryInputs::shader`, which the
+  identities read. A `RenderInstance` holds one `GeometryInputs` per
+  geometry, and several instances share a geometry, so
+  `RenderInstance::Update` takes the instance's `MatchedShaderFacts` with its
+  signals and loads the texture from them. The fill
+  texture is the EFSH `ICON` field (`TESEffectShader::fillTexture`). The
+  membrane texture is the `NAM8` field
+  (`TESEffectShader::membranePaletteTexture`), the palette that the vanilla
+  membrane shader reads.
+- An `effectShader` image whose effect has no shader, or whose shader has no
+  such texture, gets an empty path. `Compositor::LoadImage` returns no texture
+  for an empty path, as for a file that does not load, so the render input
+  stays unset and a stack that reads it reports `render input is
+  unavailable`. An `efsh` signal without a shader reads zero in every field,
+  as a `record` that names no form does.
+- `ImportEffectShader` still sets `record` on every `efsh` row of a template,
+  so an imported recipe reads the imported shader by name.
 - `EnchantmentValueFor` resolves the winning magic-effect or effect-shader key
   against the enchantment's effect entries. Highest matching cost wins, with
   first-entry ties; absent selected effects return zero. Non-effect selectors
@@ -2451,6 +2488,11 @@ them outside as separate passes.
   instead (the behaviour until 2026-09-14) left no recipe for the menu, and
   the store reported the file as unreadable, which the in-game checkpoint
   for Plan A showed.
+- An `image` source names exactly one of `path` and `effectShader`
+  (`ReadImageTexture` in `RecipeRead.cpp`). Both or neither is one error on
+  the row, so the row is inert. The model holds the choice as the
+  `ImageTexture` variant, so a recipe in memory cannot hold both. An `efsh`
+  signal without `record` is written without the key.
 - Duplicate keys inside one JSON object are an error, found while parsing;
   every key no reader asked for is reported. `//` and `/* */` comments are
   accepted in recipe files. Nesting past `kMaxRecipeDepth` levels is rejected

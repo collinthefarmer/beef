@@ -60,7 +60,7 @@ public:
   RenderInstance &operator=(RenderInstance &&) = delete;
   [[nodiscard]] std::expected<void, std::string>
   Update(const RecipeGraph &graph, std::size_t instance,
-         const SignalState &signals);
+         const SignalState &signals, const MatchedShaderFacts &shader);
   [[nodiscard]] std::expected<StackOutcome, std::string>
   Render(StepOutputRef output, const LayerFilter &filter,
          const StackBase &base);

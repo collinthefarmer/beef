@@ -9,6 +9,11 @@ Vec3 ToRgb(const RE::Color &a_color) {
   return Vec3{a_color.red / 255.0f, a_color.green / 255.0f,
               a_color.blue / 255.0f};
 }
+
+std::string TextureNameOf(const RE::TESTexture &a_texture) {
+  const char *name = a_texture.textureName.c_str();
+  return name ? std::string{name} : std::string{};
+}
 }
 
 FormKey FormKeyFor(const RE::TESForm &a_form) {
@@ -35,9 +40,7 @@ EffectShaderRecord RecordFrom(const RE::TESEffectShader &a_shader) {
   EffectShaderRecord r;
   r.key = FormKeyFor(a_shader);
   r.editorId = EditorIdOf(a_shader);
-  r.fillTexture = a_shader.fillTexture.textureName.c_str()
-                      ? a_shader.fillTexture.textureName.c_str()
-                      : "";
+  r.fillTexture = TextureNameOf(a_shader.fillTexture);
   auto &p = r.params;
   p.colorKeys = {ToRgb(d.fillTextureEffectColorKey1),
                  ToRgb(d.fillTextureEffectColorKey2),
@@ -65,6 +68,12 @@ EffectShaderRecord RecordFrom(const RE::TESEffectShader &a_shader) {
   r.tileU = d.fillTextureEffectTextureScaleU;
   r.tileV = d.fillTextureEffectTextureScaleV;
   return r;
+}
+
+MatchedShaderFacts MatchedFactsFrom(const RE::TESEffectShader &a_shader) {
+  return MatchedShaderFacts{FormKeyFor(a_shader).ToString(),
+                            TextureNameOf(a_shader.fillTexture),
+                            TextureNameOf(a_shader.membranePaletteTexture)};
 }
 
 RE::TESEffectShader *ShaderFor(const RE::EffectSetting *a_effect) {

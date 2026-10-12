@@ -1,4 +1,5 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
+#include "planners/IdentityFacts.h"
 #include "planners/RenderPlanCache.h"
 #include "planners/RenderPlanKey.h"
 #include "test_support.h"
@@ -31,6 +32,16 @@ Recipe ItemRecipe() {
 Recipe DistanceRecipe() {
   Recipe recipe;
   recipe.sources = {{"near", DistanceSource{"NPC Head [Head]"}}};
+  return recipe;
+}
+
+Recipe MatchedShaderRecipe() {
+  Recipe recipe;
+  recipe.signals = {
+      {"glow", EfshSignal{EfshField::kFillAlpha, std::nullopt}, std::nullopt}};
+  recipe.sources = {
+      {"fill", ImageSource{EffectShaderImage{EffectShaderTexture::kFill}}}};
+  recipe.masks = {{"lit", "@fill * @glow"}};
   return recipe;
 }
 
@@ -105,6 +116,61 @@ void ItemHashSeparatesKeysOnlyWhenRead() {
       KeyOf(Request(plain, "item:2"));
   Check(plainFirst && plainSecond && *plainFirst == *plainSecond,
         "a graph that does not read the item hash shares across items");
+}
+
+ValueBindings ShaderBindings(std::uint32_t a_actor, std::string a_form,
+                             std::string a_fill) {
+  IdentityFacts facts;
+  facts.instance = InstanceIdentity(1, 1, a_actor);
+  facts.shader = {std::move(a_form), std::move(a_fill), "membrane.dds"};
+  return IdentityBindings(std::make_shared<const IdentityFacts>(facts));
+}
+
+std::optional<RenderPlanKey> ShaderKeyOf(const RecipeGraph &a_graph,
+                                         ValueBindings a_bindings) {
+  StackKeyRequest request = Request(a_graph, "item:1");
+  request.bindings = std::move(a_bindings);
+  return KeyOf(request);
+}
+
+void MatchedShaderSeparatesKeys() {
+  const RecipeGraph graph = RecipeGraph::Compile(MatchedShaderRecipe());
+  Check(graph.Diagnostics().empty(), "the matched-shader recipe compiles");
+  const std::optional<RenderPlanKey> frost =
+      ShaderKeyOf(graph, ShaderBindings(0x14, "0x1~A.esp", "frost.dds"));
+  const std::optional<RenderPlanKey> frostOther =
+      ShaderKeyOf(graph, ShaderBindings(0x15, "0x1~A.esp", "frost.dds"));
+  const std::optional<RenderPlanKey> fire =
+      ShaderKeyOf(graph, ShaderBindings(0x14, "0x2~A.esp", "frost.dds"));
+  const std::optional<RenderPlanKey> fireTexture =
+      ShaderKeyOf(graph, ShaderBindings(0x14, "0x1~A.esp", "fire.dds"));
+  const std::optional<RenderPlanKey> none =
+      ShaderKeyOf(graph, ShaderBindings(0x14, "", ""));
+  Check(frost && frostOther && *frost == *frostOther,
+        "two actors whose matched effects share a shader share a key");
+  Check(frost && fire && *frost != *fire,
+        "matched effects with different shaders key apart");
+  Check(frost && fireTexture && *frost != *fireTexture,
+        "matched shaders with different fill textures key apart");
+  Check(frost && none && *frost != *none,
+        "an effect without a shader keys apart from one with a shader");
+
+  const std::optional<std::size_t> fill = graph.FindNodeIndex("fill");
+  const auto contentOf = [&](const ValueBindings &a_bindings) {
+    return fill ? IdentifyValue(graph, OutputRef{*fill, 0}, a_bindings)
+                : std::unexpected{std::string{"no fill node"}};
+  };
+  const auto frostContent =
+      contentOf(ShaderBindings(0x14, "0x1~A.esp", "frost.dds"));
+  const auto frostOtherContent =
+      contentOf(ShaderBindings(0x15, "0x1~A.esp", "frost.dds"));
+  const auto fireContent =
+      contentOf(ShaderBindings(0x14, "0x1~A.esp", "fire.dds"));
+  Check(frostContent && frostOtherContent &&
+            *frostContent == *frostOtherContent,
+        "one resolved fill texture gives one content identity across actors");
+  Check(frostContent && fireContent && *frostContent != *fireContent,
+        "different resolved fill textures give different content identities");
 }
 
 void UncacheableRequestsGiveNoKey() {
@@ -208,6 +274,7 @@ int main() {
   EqualRequestsGiveEqualKeys();
   EachFieldSeparatesKeys();
   ItemHashSeparatesKeysOnlyWhenRead();
+  MatchedShaderSeparatesKeys();
   UncacheableRequestsGiveNoKey();
   ChainsEnterTheKey();
   GraphsNamedByTheKeyAreKept();

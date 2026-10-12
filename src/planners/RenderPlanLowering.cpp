@@ -103,6 +103,9 @@ std::optional<RenderValueType> ExternalInputType(const ExternalInput &operation,
       [](const TextureInput &) -> Resource {
         return RenderResourceType::kTexture;
       },
+      [](const MatchedShaderTextureInput &) -> Resource {
+        return RenderResourceType::kTexture;
+      },
       [](const RootTransformInput &) -> Resource {
         return RenderResourceType::kTransform;
       },

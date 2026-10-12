@@ -107,6 +107,20 @@ class RecipeContractTests(unittest.TestCase):
                          'color': [1, 1, 1], 'intensity': 1}
                 self.check_case(recipe(outputs=[light]), 0.3 <= value <= 1, 0.3 <= value <= 1)
 
+    def test_matched_effect_shader_forms(self):
+        images = [({'path': 'test.dds'}, True), ({'effectShader': 'fill'}, True),
+                  ({'effectShader': 'membrane', 'channel': 'a'}, True),
+                  ({'path': 'test.dds', 'effectShader': 'fill'}, False),
+                  ({'channel': 'r'}, False), ({'effectShader': 'holes'}, False)]
+        for image, valid in images:
+            with self.subTest(image=image):
+                self.check_case(recipe(sources={'image': {'image': image}}), valid, valid)
+        for efsh, valid in (({'field': 'fillAlpha'}, True),
+                            ({'field': 'scroll', 'record': '0x1~A.esp'}, True),
+                            ({'record': '0x1~A.esp'}, False)):
+            with self.subTest(efsh=efsh):
+                self.check_case(recipe(signals={'glow': {'efsh': efsh}}), valid, valid)
+
     def test_event_filter_bounds(self):
         for bounds, valid in (([None, None], True), ([0, 1], True),
                               ([None, 1e39], False), ([-1e39, None], False),

@@ -92,8 +92,8 @@
             "type": "object", "additionalProperties": false,
             "properties": { "from": { "$ref": "#/$defs/param" }, "to": { "$ref": "#/$defs/param" }, "seconds": { "$ref": "#/$defs/param" } } } } },
         { "$ref": "#/$defs/signalKind", "required": ["efsh"], "properties": { "efsh": {
-            "type": "object", "additionalProperties": false, "required": ["field", "record"],
-            "properties": { "field": { "enum": ["fillAlpha", "fillColor", "edgeAlpha", "edgeColor", "scroll"] }, "record": { "$ref": "#/$defs/form" } } } } },
+            "type": "object", "additionalProperties": false, "required": ["field"],
+            "properties": { "field": { "enum": ["fillAlpha", "fillColor", "edgeAlpha", "edgeColor", "scroll"] }, "record": { "$ref": "#/$defs/form", "description": "The effect shader to read. Absent: the shader of the effect this recipe instance matched; an effect without a shader reads zero." } } } } },
         { "$ref": "#/$defs/signalKind", "required": ["av"], "properties": { "av": { "oneOf": [
             { "$ref": "#/$defs/name" },
             { "type": "object", "additionalProperties": false, "required": ["of"],
@@ -164,9 +164,11 @@
       "properties": { "note": { "$ref": "#/$defs/note" } },
       "oneOf": [
         { "required": ["image"], "properties": { "image": {
-            "type": "object", "additionalProperties": false, "required": ["path"],
+            "type": "object", "additionalProperties": false,
+            "oneOf": [ { "required": ["path"] }, { "required": ["effectShader"] } ],
             "properties": {
               "path": { "type": "string", "minLength": 1, "description": "Relative to Data/Textures." },
+              "effectShader": { "enum": ["fill", "membrane"], "description": "The fill or membrane texture of the shader of the effect this recipe instance matched, in place of 'path'. Without that shader or texture the source behaves as a path whose file does not load." },
               "channel": { "enum": ["rgb", "r", "g", "b", "a", "luma"] },
               "space": { "enum": ["tiled", "mesh"] },
               "scroll": { "$ref": "#/$defs/vec2" }, "tile": { "$ref": "#/$defs/vec2" },

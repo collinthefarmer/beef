@@ -170,7 +170,8 @@ reads no engine state.
 
 | Type or function | Description |
 |---|---|
-| `IdentityFacts` | The facts that identities read for one stack: the instance string, the mesh and material identities, the geometry and root addresses as numbers, the item hash and the enchantment fields. |
+| `IdentityFacts` | The facts that identities read for one stack: the instance string, the mesh and material identities, the geometry and root addresses as numbers, the item hash, the enchantment fields and the `MatchedShaderFacts`. |
+| `MatchedShaderFacts` | The shader of the effect that the recipe instance matched: its form key text and its fill and membrane texture paths. All three are empty when the effect has no shader. `TexturePathOf` picks one path. |
 | `InstanceIdentity` | The instance string: graph address, application context and actor. |
 | `IdentityBindings` | `ValueBindings` over shared `IdentityFacts`. Missing facts give empty identities. |
 | `PlanStackRequest` | One stack with owned inputs: the graph, the `SurfaceOutput` (aliasing its recipe), the recipe id, the output, placement, geometry, context, side and identity facts. |

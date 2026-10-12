@@ -68,6 +68,12 @@ Identity ExternalSourceIdentity(const ExternalSource &a_source,
       [&](const EffectShaderInput &a_input) -> Identity {
         return "efsh:" + a_input.record.text;
       },
+      [&](const MatchedShaderInput &) -> Identity {
+        return "efsh:matched:" + a_facts.shader.form;
+      },
+      [&](const MatchedShaderTextureInput &a_input) -> Identity {
+        return ImageCacheKey(TexturePathOf(a_facts.shader, a_input.texture));
+      },
       [&](const EventInput &a_input) -> Identity {
         return EventOriginIdentity(a_input, instance);
       },
@@ -76,6 +82,12 @@ Identity ExternalSourceIdentity(const ExternalSource &a_source,
       [&](const DeltaTimeInput &) -> Identity { return instance; },
       [](const SampleUvInput &) -> Identity { return "uv"; });
 }
+}
+
+const std::string &TexturePathOf(const MatchedShaderFacts &a_shader,
+                                 EffectShaderTexture a_texture) noexcept {
+  return a_texture == EffectShaderTexture::kMembrane ? a_shader.membrane
+                                                     : a_shader.fill;
 }
 
 std::string InstanceIdentity(std::uintptr_t a_graph, std::size_t a_context,

@@ -448,6 +448,56 @@ int main() {
                     "outputs/shell/variants recipe");
   }
 
+  {
+    constexpr std::string_view matched = R"({
+  "format": 1,
+  "keys": [{ "magicEffect": "0x1~A.esp" }],
+  "signals": {
+    "matchedAlpha": { "efsh": { "field": "fillAlpha" } },
+    "namedAlpha": { "efsh": { "field": "edgeColor", "record": "0x2~A.esp" } }
+  },
+  "sources": {
+    "fill": { "image": { "effectShader": "fill", "channel": "a", "tile": [2.0, 2.0] } },
+    "membrane": { "image": { "effectShader": "membrane" } },
+    "file": { "image": { "path": "a.dds" } }
+  }
+})";
+    const Recipe r =
+        StableRoundTrip(matched, "matched", "matched-effect shader recipe");
+    const Signal *matchedAlpha = r.FindSignal("matchedAlpha");
+    const auto *unnamed =
+        matchedAlpha ? Get<EfshSignal>(matchedAlpha->kind) : nullptr;
+    Check(unnamed && !unnamed->record,
+          "an efsh signal without a record reads as the matched effect");
+    const Signal *namedAlpha = r.FindSignal("namedAlpha");
+    const auto *named =
+        namedAlpha ? Get<EfshSignal>(namedAlpha->kind) : nullptr;
+    Check(named && named->record && named->record->text == "0x2~A.esp",
+          "an efsh signal with a record keeps it");
+    const Source *fill = r.FindSource("fill");
+    const auto *fillImage = fill ? Get<ImageSource>(fill->kind) : nullptr;
+    Check(fillImage &&
+              fillImage->texture ==
+                  ImageTexture{EffectShaderImage{EffectShaderTexture::kFill}} &&
+              fillImage->channel == ImageChannel::kA && fillImage->tile,
+          "an effect-shader image keeps its texture and image properties");
+    const Source *membrane = r.FindSource("membrane");
+    const auto *membraneImage =
+        membrane ? Get<ImageSource>(membrane->kind) : nullptr;
+    Check(membraneImage &&
+              membraneImage->texture == ImageTexture{EffectShaderImage{
+                                            EffectShaderTexture::kMembrane}},
+          "a membrane image reads the membrane texture");
+    const std::string written = SerializeRecipe(r);
+    Check(written.contains(R"("effectShader": "membrane")") &&
+              written.contains(R"("matchedAlpha": {
+      "efsh": {
+        "field": "fillAlpha"
+      })"),
+          "the writer spells the effect-shader image and omits an absent "
+          "record");
+  }
+
   ExpectError("", "empty input", "not a JSON object");
   ExpectError("not json", "non-JSON input", "not a JSON object");
   ExpectError("[]", "a top-level array", "not a JSON object");
@@ -475,8 +525,20 @@ int main() {
       R"({"format": 1, "keys": ["default"], "sources": { "x": { "bogus": 1 } }})",
       "an unknown source kind", "unknown source kind 'bogus'");
   ExpectError(
-      R"({"format": 1, "keys": ["default"], "signals": { "x": { "efsh": { "field": "fillAlpha" } } }})",
-      "an efsh signal missing its record", "'efsh' needs 'record'");
+      R"({"format": 1, "keys": ["default"], "signals": { "x": { "efsh": { "record": "0x1~A.esp" } } }})",
+      "an efsh signal missing its field", "'efsh' needs 'field'");
+  ExpectError(
+      R"({"format": 1, "keys": ["default"], "sources": { "x": { "image": { "path": "a.dds", "effectShader": "fill" } } }})",
+      "an image with both a path and an effect shader",
+      "exactly one of 'path' and 'effectShader'");
+  ExpectError(
+      R"({"format": 1, "keys": ["default"], "sources": { "x": { "image": { "channel": "r" } } }})",
+      "an image with neither a path nor an effect shader",
+      "exactly one of 'path' and 'effectShader'");
+  ExpectError(
+      R"({"format": 1, "keys": ["default"], "sources": { "x": { "image": { "effectShader": "holes" } } }})",
+      "an image with an unknown effect shader texture",
+      "'effectShader' is not one of");
   ExpectError(R"({"format": 1, "format": 1, "keys": ["default"]})",
               "a duplicate key", "duplicate key 'format'");
   ExpectError(R"({"format": 1, "keys": ["default"], "nonsense": true})",

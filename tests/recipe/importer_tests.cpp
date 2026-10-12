@@ -136,7 +136,7 @@ int main() {
       }
       for (const Signal &s : t->signals) {
         if (const EfshSignal *efsh = Get<EfshSignal>(s.kind)) {
-          Check(efsh->record.text == "ImportedEffectShader",
+          Check(efsh->record && efsh->record->text == "ImportedEffectShader",
                 std::format("template {} efsh row {} names the placeholder",
                             t->id, s.name));
         }
@@ -144,7 +144,8 @@ int main() {
     }
     for (const Source &s : bareTemplate.sources) {
       const ImageSource *image = Get<ImageSource>(s.kind);
-      Check(!image || image->path != kFillTextureToken,
+      Check(!image || image->texture != ImageTexture{ImageFile{
+                                            std::string{kFillTextureToken}}},
             "the bare template has no fill-texture sources");
     }
   }
@@ -195,10 +196,10 @@ int main() {
 
       const EfshSignal *fillRaw = EfshSig(r, "fillRaw");
       Check(fillRaw && fillRaw->field == EfshField::kFillAlpha &&
-                fillRaw->record.text == "SyntheticTiled",
+                fillRaw->record && fillRaw->record->text == "SyntheticTiled",
             "fillRaw reads the fill alpha of the imported shader");
-      Check(EfshSig(r, "edgeRaw") &&
-                EfshSig(r, "edgeRaw")->record.text == "SyntheticTiled",
+      Check(EfshSig(r, "edgeRaw") && EfshSig(r, "edgeRaw")->record &&
+                EfshSig(r, "edgeRaw")->record->text == "SyntheticTiled",
             "edgeRaw is retargeted to the imported shader");
       Check(EfshSig(r, "edgeColor") &&
                 EfshSig(r, "edgeColor")->field == EfshField::kEdgeColor,
@@ -225,7 +226,8 @@ int main() {
       const Recipe tokened = ImportEffectShader(rec, fillFixture);
       const Source *fill = tokened.FindSource("fill");
       const ImageSource *img = fill ? Get<ImageSource>(fill->kind) : nullptr;
-      Check(img && img->path == "Synthetic\\Grid.dds",
+      Check(img &&
+                img->texture == ImageTexture{ImageFile{"Synthetic\\Grid.dds"}},
             "a $fillTexture source is patched to the fill texture");
       const std::array<Param, 2> *tile =
           img && img->tile ? Get<std::array<Param, 2>>(*img->tile) : nullptr;
@@ -291,7 +293,8 @@ int main() {
                   r.metadata.name == "0x807~SyntheticTests.esp",
               "missing editor id uses the synthetic form key");
         const EfshSignal *fill = EfshSig(r, "fillRaw");
-        Check(fill && fill->record.text == "0x807~SyntheticTests.esp",
+        Check(fill && fill->record &&
+                  fill->record->text == "0x807~SyntheticTests.esp",
               "form-key fallback retargets effect signals");
       }
     }

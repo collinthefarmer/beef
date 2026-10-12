@@ -11,6 +11,13 @@
 #include <string>
 
 namespace BetterEnchantmentEffects {
+struct MatchedShaderFacts {
+  std::string form;
+  std::string fill;
+  std::string membrane;
+  [[nodiscard]] bool operator==(const MatchedShaderFacts &) const = default;
+};
+
 struct IdentityFacts {
   std::string instance;
   std::string mesh;
@@ -19,7 +26,12 @@ struct IdentityFacts {
   std::uintptr_t root = 0;
   float itemHash = 0.0f;
   std::array<float, kEnchantmentFieldCount> enchantment{};
+  MatchedShaderFacts shader;
 };
+
+[[nodiscard]] const std::string &
+TexturePathOf(const MatchedShaderFacts &a_shader,
+              EffectShaderTexture a_texture) noexcept;
 
 [[nodiscard]] std::string InstanceIdentity(std::uintptr_t a_graph,
                                            std::size_t a_context,

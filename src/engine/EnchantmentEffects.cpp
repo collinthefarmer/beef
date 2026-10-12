@@ -63,4 +63,14 @@ float EnchantmentValueFor(const RE::MagicItem *a_item,
   }
   return 0.0f;
 }
+
+RE::TESEffectShader *
+MatchedShaderOf(const RE::MagicItem *a_item,
+                const std::optional<RecipeKey> &a_effectKey) {
+  if (!a_item) {
+    return nullptr;
+  }
+  const RE::Effect *effect = SelectedEffect(*a_item, a_effectKey);
+  return effect ? ShaderFor(effect->baseEffect) : nullptr;
+}
 }

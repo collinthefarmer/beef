@@ -8,6 +8,7 @@
 #include "engine/JobQueue.h"
 #include "planners/ActorMatches.h"
 #include "planners/BindingPlan.h"
+#include "planners/IdentityFacts.h"
 #include "planners/OutputState.h"
 #include "planners/PlanSizes.h"
 #include "planners/RenderBudget.h"
@@ -144,6 +145,8 @@ void RetireGeometry(LiveActor &a_actor, LiveGeometry &a_geometry);
 void RetireActorEffects(LiveActor &a_actor);
 void SetAppliedResolution(LiveActor &a_actor, ResolutionLevel a_level);
 [[nodiscard]] std::size_t LiveInstanceCount(const LiveActor &a_actor) noexcept;
+[[nodiscard]] MatchedShaderFacts
+MatchedShaderFactsOf(const LiveInstance &a_instance);
 [[nodiscard]] std::span<const Recipe>
 RecipesOf(const LiveActor &a_actor) noexcept;
 [[nodiscard]] SlotTarget *TargetFor(LiveGeometry &a_bound, Surface a_surface);

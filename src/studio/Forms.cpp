@@ -164,6 +164,25 @@ OptionalNumberOf(const std::string &a_text) {
   return a_text.empty() ? std::nullopt : std::optional{FormRef::From(a_text)};
 }
 
+[[nodiscard]] std::optional<std::optional<FormRef>>
+OptionalFormOf(const std::string &a_text) {
+  return std::optional{FormOf(a_text)};
+}
+
+[[nodiscard]] std::optional<ImageTexture>
+ImageFileOf(const std::string &a_text) {
+  return ImageTexture{ImageFile{a_text}};
+}
+
+[[nodiscard]] std::optional<ImageTexture>
+EffectShaderImageOf(const std::string &a_text) {
+  const auto texture = FromName(kEffectShaderTextures, a_text);
+  if (!texture) {
+    return std::nullopt;
+  }
+  return ImageTexture{EffectShaderImage{*texture}};
+}
+
 [[nodiscard]] std::optional<std::string>
 DistanceFromOf(const std::string &a_text) {
   return a_text.empty() ? std::nullopt : std::optional{a_text};
@@ -892,12 +911,15 @@ void EfshFields(std::vector<FormField> &a_form, const SignalContext &a_ctx,
                   WordsOf(kEfshFields),
                   BindSignalMember(a_ctx.name, a_ctx.record, &EfshSignal::field,
                                    WordOf(kEfshFields))));
-  a_form.push_back(
-      TextEntryField({.name = "record",
-                      .kind = FieldKind::kText,
-                      .text = a_efsh.record.text,
-                      .bind = BindSignalMember(a_ctx.name, a_ctx.record,
-                                               &EfshSignal::record, FormOf)}));
+  FormField record = TextEntryField(
+      {.name = "record",
+       .kind = FieldKind::kText,
+       .text = a_efsh.record ? a_efsh.record->text : std::string{},
+       .bind = BindSignalMember(a_ctx.name, a_ctx.record, &EfshSignal::record,
+                                OptionalFormOf),
+       .allowEmpty = true});
+  record.help = "Empty reads the shader of the matched effect.";
+  a_form.push_back(std::move(record));
 }
 
 void ActorValueFields(std::vector<FormField> &a_form,
@@ -1283,17 +1305,15 @@ struct SourceContext {
   const SignalNames &names;
 };
 
+FormField ImageTextureField(const SourceContext &a_ctx,
+                            const ImageSourceRow &a_source);
+
 void ImageFields(std::vector<FormField> &a_form, const SourceContext &a_ctx,
                  const ImageSourceRow &a_source) {
   const std::string &name = a_ctx.name;
   const SourceKind &record = a_ctx.record;
   const ImageSourceRow &source = a_source;
-  a_form.push_back(
-      TextEntryField({.name = "path",
-                      .kind = FieldKind::kText,
-                      .text = source.path,
-                      .bind = BindSourceMember(name, record, &ImageSource::path,
-                                               AlwaysString)}));
+  a_form.push_back(ImageTextureField(a_ctx, source));
   a_form.push_back(
       ChoiceField("channel", source.channel, WordsOf(kImageChannels),
                   BindSourceMember(name, record, &ImageSource::channel,
@@ -1337,6 +1357,22 @@ void ImageFields(std::vector<FormField> &a_form, const SourceContext &a_ctx,
        .workingRange = kImageMipRange,
        .units = "mip level",
        .integral = true}));
+}
+
+FormField ImageTextureField(const SourceContext &a_ctx,
+                            const ImageSourceRow &a_source) {
+  if (a_source.effectShader.empty()) {
+    return TextEntryField(
+        {.name = "path",
+         .kind = FieldKind::kText,
+         .text = a_source.path,
+         .bind = BindSourceMember(a_ctx.name, a_ctx.record,
+                                  &ImageSource::texture, ImageFileOf)});
+  }
+  return ChoiceField(
+      "effectShader", a_source.effectShader, WordsOf(kEffectShaderTextures),
+      BindSourceMember(a_ctx.name, a_ctx.record, &ImageSource::texture,
+                       EffectShaderImageOf));
 }
 
 void MaterialFields(std::vector<FormField> &a_form, const SourceContext &a_ctx,

@@ -122,6 +122,7 @@ struct GeometryRow {
 
 struct ImageSourceRow {
   std::string path;
+  std::string effectShader;
   std::string channel;
   std::string space;
   std::string scroll;

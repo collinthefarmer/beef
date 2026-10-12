@@ -36,6 +36,7 @@ IdentityFacts FactsOf(std::string a_mesh) {
   facts.geometry = 11;
   facts.root = 12;
   facts.itemHash = 0.5f;
+  facts.shader = {"0x1~A.esp", "Effects/Fill.dds", "Effects/Membrane.dds"};
   return facts;
 }
 
@@ -111,6 +112,16 @@ void IdentityBindingsReadOnlyTheFacts() {
   Check(bindings.external(ExternalSource{TextureInput{"A/B.dds"}}) ==
             std::string{"a/b.dds"},
         "a texture input names its cache key");
+  Check(bindings.external(ExternalSource{MatchedShaderInput{}}) ==
+            std::string{"efsh:matched:0x1~A.esp"},
+        "the matched shader names the resolved shader form");
+  Check(bindings.external(ExternalSource{MatchedShaderTextureInput{
+            EffectShaderTexture::kFill}}) == std::string{"effects/fill.dds"},
+        "the matched fill texture names its resolved path's cache key");
+  Check(bindings.external(ExternalSource{
+            MatchedShaderTextureInput{EffectShaderTexture::kMembrane}}) ==
+            std::string{"effects/membrane.dds"},
+        "the matched membrane texture names its resolved path's cache key");
   Equal(bindings.state(3), InstanceIdentity(1, 1, 0x14) + ":3",
         "state is scoped to the instance");
   Equal(InstanceIdentity(1, 2, 0x14), std::string{"1:2:00000014"},

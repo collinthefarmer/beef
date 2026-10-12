@@ -53,6 +53,8 @@ public:
   [[nodiscard]] virtual float Enchantment(EnchantmentField a_field) const = 0;
   [[nodiscard]] virtual std::optional<Efsh::EffectParams>
   EffectShader(const FormRef &a_record) const = 0;
+  [[nodiscard]] virtual std::optional<Efsh::EffectParams>
+  MatchedEffectShader() const = 0;
 };
 
 class NullEnvironment final : public SignalEnvironment {
@@ -64,6 +66,9 @@ public:
   float Enchantment(EnchantmentField) const override { return 0.0f; }
   std::optional<Efsh::EffectParams>
   EffectShader(const FormRef &) const override {
+    return std::nullopt;
+  }
+  std::optional<Efsh::EffectParams> MatchedEffectShader() const override {
     return std::nullopt;
   }
 };

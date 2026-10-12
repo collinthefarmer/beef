@@ -77,6 +77,7 @@ struct GeometryInputs {
   RE::NiPointer<RE::NiAVObject> root;
   float itemHash = 0.0f;
   EnchantmentValues enchantment;
+  MatchedShaderFacts shader;
 };
 
 struct StackTextureRequest {

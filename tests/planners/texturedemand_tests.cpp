@@ -188,7 +188,7 @@ int main() {
   for (int i = 0; i < 9; ++i) {
     const auto name = "texture" + std::to_string(i);
     ImageSource image;
-    image.path = name + ".dds";
+    image.texture = ImageFile{name + ".dds"};
     excessive.sources.push_back({name, image});
     if (i)
       expression += "+";

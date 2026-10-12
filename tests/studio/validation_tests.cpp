@@ -29,7 +29,7 @@ int main() {
   recipe.keys.push_back(RecipeKey{});
   recipe.signals.push_back(Signal{"drive", ConstantSignal{1.0f}, {}, {}});
   recipe.sources.push_back(
-      Source{"image", ImageSource{"textures/test.dds"}, {}});
+      Source{"image", ImageSource{ImageFile{"textures/test.dds"}}, {}});
   recipe.outputs.push_back(LightOutput{});
   const float infinity = std::numeric_limits<float>::infinity();
   const auto gesture = BeginRecipeGesture(recipe, 1, 1, "clock.speed");
@@ -49,7 +49,7 @@ int main() {
                     NoiseSignal{1.0f, 1.0f,
                                 std::numeric_limits<std::uint32_t>::max()}},
           "oversized seed");
-  ImageSource image{"textures/test.dds"};
+  ImageSource image{ImageFile{"textures/test.dds"}};
   image.mip = -1.0f;
   Refused(recipe, SetSource{"image", image}, "negative mip");
   MaterialClustersSource clusters;
@@ -79,9 +79,11 @@ int main() {
   Check(!Apply(recipe, SetSource{"image", ImageSource{}}) &&
             HasErrors(Validate(recipe)),
         "incomplete image type switch remains editable with diagnostics");
-  Check(!Apply(recipe, SetSource{"image", ImageSource{"textures/test.dds"}}) &&
-            !HasErrors(Validate(recipe)),
-        "completing an image draft clears its model diagnostics");
+  Check(
+      !Apply(recipe,
+             SetSource{"image", ImageSource{ImageFile{"textures/test.dds"}}}) &&
+          !HasErrors(Validate(recipe)),
+      "completing an image draft clears its model diagnostics");
   Check(!Apply(recipe, SetSignal{"drive", GradientSignal{}}) &&
             HasErrors(Validate(recipe)),
         "incomplete gradient draft remains editable with diagnostics");

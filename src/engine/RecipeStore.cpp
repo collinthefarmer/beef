@@ -187,8 +187,9 @@ void ResolveForms(Recipe &a_recipe, std::vector<Diagnostic> &a_out) {
     }
   }
   for (auto &signal : a_recipe.signals) {
-    if (auto *efsh = Get<EfshSignal>(signal.kind)) {
-      ResolveForm(efsh->record, a_recipe.id, SignalWhere(signal.name), a_out);
+    auto *efsh = Get<EfshSignal>(signal.kind);
+    if (efsh && efsh->record) {
+      ResolveForm(*efsh->record, a_recipe.id, SignalWhere(signal.name), a_out);
     }
   }
   std::size_t index = 0;
@@ -417,8 +418,9 @@ void ImportMissing(const std::filesystem::path &a_folder) {
       }
     }
     for (auto &signal : recipe.signals) {
-      if (auto *efsh = Get<EfshSignal>(signal.kind)) {
-        efsh->record.key = record.key;
+      auto *efsh = Get<EfshSignal>(signal.kind);
+      if (efsh && efsh->record) {
+        efsh->record->key = record.key;
       }
     }
     ++g_status.imported;

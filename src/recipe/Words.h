@@ -92,6 +92,10 @@ static_assert(Complete(kImageChannels, kImageChannelCount));
 inline constexpr Named<ImageSpace> kImageSpaces[]{{ImageSpace::kTiled, "tiled"},
                                                   {ImageSpace::kMesh, "mesh"}};
 static_assert(Complete(kImageSpaces, kImageSpaceCount));
+inline constexpr Named<EffectShaderTexture> kEffectShaderTextures[]{
+    {EffectShaderTexture::kFill, "fill"},
+    {EffectShaderTexture::kMembrane, "membrane"}};
+static_assert(Complete(kEffectShaderTextures, kEffectShaderTextureCount));
 inline constexpr MaterialChannelSpec kMaterialChannels[]{
     {MaterialChannel::kDiffuseRgb, "diffuseRgb", MaterialMap::kDiffuse,
      ShaderChannel::kRgb, ValueType::kVec3},

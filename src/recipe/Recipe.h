@@ -166,7 +166,7 @@ enum class EfshField {
 inline constexpr std::size_t kEfshFieldCount = 5;
 struct EfshSignal {
   EfshField field = EfshField::kFillAlpha;
-  FormRef record;
+  std::optional<FormRef> record;
   [[nodiscard]] bool operator==(const EfshSignal &) const = default;
 };
 enum class Measure {
@@ -381,8 +381,22 @@ enum class ImageSpace {
   kMesh,
 };
 inline constexpr std::size_t kImageSpaceCount = 2;
-struct ImageSource {
+enum class EffectShaderTexture {
+  kFill,
+  kMembrane,
+};
+inline constexpr std::size_t kEffectShaderTextureCount = 2;
+struct ImageFile {
   std::string path;
+  [[nodiscard]] bool operator==(const ImageFile &) const = default;
+};
+struct EffectShaderImage {
+  EffectShaderTexture texture = EffectShaderTexture::kFill;
+  [[nodiscard]] bool operator==(const EffectShaderImage &) const = default;
+};
+using ImageTexture = std::variant<ImageFile, EffectShaderImage>;
+struct ImageSource {
+  ImageTexture texture;
   ImageChannel channel = ImageChannel::kRgb;
   ImageSpace space = ImageSpace::kTiled;
   std::optional<Vec2Param> scroll;
@@ -687,6 +701,7 @@ DefaultSourceKind(std::string_view a_name);
 [[nodiscard]] std::string_view BakeKindName(const BakeKind &a_bake) noexcept;
 [[nodiscard]] std::optional<BakeKind> DefaultBakeKind(std::string_view a_name);
 [[nodiscard]] std::string DescribeSource(const SourceKind &a_kind);
+[[nodiscard]] std::string DescribeImageTexture(const ImageTexture &a_texture);
 
 struct Layer {
   LayerSource source = Ref{};

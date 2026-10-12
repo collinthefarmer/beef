@@ -46,6 +46,9 @@ public:
   EffectShader(const FormRef &) const override {
     return std::nullopt;
   }
+  std::optional<Efsh::EffectParams> MatchedEffectShader() const override {
+    return std::nullopt;
+  }
 };
 
 float RandomRows(float a_id, float a_effect, const char *a_row) {
@@ -111,7 +114,7 @@ int main() {
     recipe.signals = {{"placement", ConstantSignal{Vec2{1, 2}}},
                       {"clock", ExprSignal{"time"}}};
     ImageSource image;
-    image.path = "test.dds";
+    image.texture = ImageFile{"test.dds"};
     image.channel = ImageChannel::kR;
     image.tile = Ref{"placement"};
     recipe.sources = {{"image", image}};
@@ -227,7 +230,7 @@ int main() {
     Recipe recipe;
     recipe.signals = {{"scalar", ConstantSignal{1.0f}}};
     ImageSource image;
-    image.path = "test.dds";
+    image.texture = ImageFile{"test.dds"};
     image.tile = Ref{"scalar"};
     recipe.sources = {{"badImage", image}};
     recipe.masks = {{"dependent", "@badImage"}};
@@ -292,7 +295,7 @@ int main() {
   {
     Recipe recipe;
     ImageSource image;
-    image.path = "test.dds";
+    image.texture = ImageFile{"test.dds"};
     image.scroll = std::array<Param, 2>{0.25f, 0.5f};
     recipe.sources = {{"offset", image}};
     const auto graph = RecipeGraph::Compile(recipe);
@@ -318,7 +321,7 @@ int main() {
     Recipe recipe;
     recipe.signals = {{"drift", ExprSignal{"time * 0.1"}}};
     ImageSource image;
-    image.path = "test.dds";
+    image.texture = ImageFile{"test.dds"};
     image.scroll = std::array<Param, 2>{Ref{"drift"}, 0.0f};
     image.tile = std::array<Param, 2>{2.0f, 2.0f};
     recipe.sources = {{"drifting", image}};
@@ -361,7 +364,7 @@ int main() {
     Recipe recipe;
     recipe.signals = {{"drift", ExprSignal{"time * 0.1"}}};
     ImageSource image;
-    image.path = "test.dds";
+    image.texture = ImageFile{"test.dds"};
     image.channel = ImageChannel::kLuma;
     image.scroll = std::array<Param, 2>{Ref{"drift"}, 0.0f};
     recipe.sources = {{"gloss", image}};

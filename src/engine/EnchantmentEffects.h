@@ -9,4 +9,7 @@ namespace BetterEnchantmentEffects {
 EnchantmentValueFor(const RE::MagicItem *a_item,
                     const std::optional<RecipeKey> &a_effectKey,
                     EnchantmentField a_field);
+[[nodiscard]] RE::TESEffectShader *
+MatchedShaderOf(const RE::MagicItem *a_item,
+                const std::optional<RecipeKey> &a_effectKey);
 }

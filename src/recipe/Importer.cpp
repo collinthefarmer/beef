@@ -281,10 +281,11 @@ Recipe ImportEffectShader(const EffectShaderRecord &a_record,
 
   for (Source &source : r.sources) {
     auto *image = Get<ImageSource>(source.kind);
-    if (!image || image->path != kFillTextureToken) {
+    auto *file = image ? Get<ImageFile>(image->texture) : nullptr;
+    if (!file || file->path != kFillTextureToken) {
       continue;
     }
-    image->path = a_record.fillTexture;
+    file->path = a_record.fillTexture;
     image->tile = Vec2Param{std::array<Param, 2>{
         std::max(a_record.tileU, 0.01f), std::max(a_record.tileV, 0.01f)}};
   }

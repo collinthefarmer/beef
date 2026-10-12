@@ -360,7 +360,7 @@ int main() {
     recipe.id = "sourceRefs";
     recipe.signals.push_back(Signal{"drive", ConstantSignal{1.0f}, {}});
     ImageSource image;
-    image.path = "a.dds";
+    image.texture = ImageFile{"a.dds"};
     image.scroll = Vec2Param{Ref{"drive"}};
     image.tile = Vec2Param{std::array<Param, 2>{Param{Ref{"drive"}}, 1.0f}};
     recipe.sources.push_back(Source{"pattern", image});

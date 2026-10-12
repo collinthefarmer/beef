@@ -803,7 +803,8 @@ std::string SourceValueText(const SourceKind &a_kind) {
   return Match(
       a_kind,
       [](const ImageSource &s) {
-        return std::format("{} ({})", s.path, ImageChannelName(s.channel));
+        return std::format("{} ({})", DescribeImageTexture(s.texture),
+                           ImageChannelName(s.channel));
       },
       [](const MaterialSource &s) {
         return std::string{MaterialChannelName(s.channel)};

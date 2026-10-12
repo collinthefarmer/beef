@@ -23,7 +23,13 @@ namespace {
 
 [[nodiscard]] ImageSourceRow ImageRowOf(const ImageSource &a_image) {
   ImageSourceRow image;
-  image.path = a_image.path;
+  Match(
+      a_image.texture,
+      [&](const ImageFile &a_file) { image.path = a_file.path; },
+      [&](const EffectShaderImage &a_shader) {
+        image.effectShader =
+            std::string{NameOf(kEffectShaderTextures, a_shader.texture)};
+      });
   image.channel = std::string{ImageChannelName(a_image.channel)};
   image.space = std::string{ImageSpaceName(a_image.space)};
   image.scroll = a_image.scroll ? Vec2ParamText(*a_image.scroll) : "";
@@ -122,10 +128,17 @@ SourceRow SourceRowOf(const Source &a_source, std::size_t a_references) {
 }
 
 namespace {
+[[nodiscard]] std::optional<ImageTexture>
+ImageTextureOf(const ImageSourceRow &a_row);
+
 [[nodiscard]] std::optional<SourceKind>
 ImageKindOf(const ImageSourceRow &a_row) {
   ImageSource image;
-  image.path = a_row.path;
+  const std::optional<ImageTexture> texture = ImageTextureOf(a_row);
+  if (!texture) {
+    return std::nullopt;
+  }
+  image.texture = *texture;
   const auto channel = ParseImageChannel(a_row.channel);
   const auto space = ParseImageSpace(a_row.space);
   const auto mip = ParseParam(a_row.mip);
@@ -153,6 +166,18 @@ ImageKindOf(const ImageSourceRow &a_row) {
   image.mirror = {a_row.mirrorU == "on", a_row.mirrorV == "on"};
   image.transpose = a_row.transpose == "on";
   return SourceKind{image};
+}
+
+[[nodiscard]] std::optional<ImageTexture>
+ImageTextureOf(const ImageSourceRow &a_row) {
+  if (a_row.effectShader.empty()) {
+    return ImageTexture{ImageFile{a_row.path}};
+  }
+  const auto texture = FromName(kEffectShaderTextures, a_row.effectShader);
+  if (!texture) {
+    return std::nullopt;
+  }
+  return ImageTexture{EffectShaderImage{*texture}};
 }
 
 [[nodiscard]] std::optional<SourceKind>

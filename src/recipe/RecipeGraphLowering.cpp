@@ -1,6 +1,8 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #include "recipe/RecipeGraph.h"
 
+#include "recipe/Words.h"
+
 #include <algorithm>
 #include <format>
 #include <limits>
@@ -227,10 +229,7 @@ struct RecipeGraphLowering {
                                Parameter(k.seconds), Time()};
         },
         [&](const EfshSignal &k) -> NodeKind {
-          return EffectShaderOperation{Input(EffectShaderInput{k.record},
-                                             ResourceType::kEffectShader,
-                                             "effect shader record"),
-                                       Time(), k.field};
+          return EffectShaderOperation{ShaderRecord(k), Time(), k.field};
         },
         [&](const ActorValueSignal &k) -> NodeKind { return ExternalInput{k}; },
         [&](const ActorStateSignal &k) -> NodeKind { return ExternalInput{k}; },
@@ -277,6 +276,13 @@ struct RecipeGraphLowering {
                                      Parameter(k.decay), Delta()};
         });
   }
+  OutputRef ShaderRecord(const EfshSignal &signal) {
+    if (!signal.record)
+      return Shared(MatchedShaderInput{}, ResourceType::kEffectShader,
+                    "matched effect shader");
+    return Input(EffectShaderInput{*signal.record}, ResourceType::kEffectShader,
+                 "effect shader record");
+  }
   ImageOperation ImageAt(const ImageSource &image, OutputRef texture,
                          bool scrolled) {
     TextureCoordinatesOperation coordinates;
@@ -302,8 +308,7 @@ struct RecipeGraphLowering {
   }
   NodeKind ImageKindOf(const ImageSource &image, const std::string &name,
                        ValueType type) {
-    const auto texture = Input(TextureInput{image.path}, ResourceType::kTexture,
-                               "texture " + image.path);
+    const auto texture = ImageTextureInput(image.texture);
     const auto shown = ImageAt(image, texture, true);
     if (image.channel != ImageChannel::kRgb) {
       if (image.scroll)
@@ -330,6 +335,20 @@ struct RecipeGraphLowering {
                                   Add(std::move(*coverage), ValueType::kVec3,
                                       name + " unscrolled coverage"));
     return std::move(*normalized);
+  }
+  OutputRef ImageTextureInput(const ImageTexture &texture) {
+    return Match(
+        texture,
+        [&](const ImageFile &file) {
+          return Input(TextureInput{file.path}, ResourceType::kTexture,
+                       "texture " + file.path);
+        },
+        [&](const EffectShaderImage &shader) {
+          const std::string word{NameOf(kEffectShaderTextures, shader.texture)};
+          return Shared(MatchedShaderTextureInput{shader.texture},
+                        ResourceType::kTexture,
+                        "matched effect shader " + word + " texture");
+        });
   }
   OutputRef SourceMean(const Layer &layer, OutputRef source,
                        GraphValueType type, const std::string &location) {

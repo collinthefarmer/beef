@@ -1052,6 +1052,7 @@ struct BoundTextureValue {
   const TextureValue &binding;
   const GeometryInputs &geometry;
   const SignalState &signals;
+  const MatchedShaderFacts &shader;
   const ExternalInput *external;
 };
 bool ImportsResource(const RenderValueType &type) {
@@ -1061,7 +1062,8 @@ bool ImportsResource(const RenderValueType &type) {
 bool StableResource(const ExternalInput *external) {
   return external && (Is<GeometryInput>(external->source) ||
                       Is<MaterialInput>(external->source) ||
-                      Is<TextureInput>(external->source));
+                      Is<TextureInput>(external->source) ||
+                      Is<MatchedShaderTextureInput>(external->source));
 }
 std::optional<RenderValue> NumberValueOf(const BoundTextureValue &bound,
                                          ValueType type) {
@@ -1111,6 +1113,7 @@ RenderFirings FiringsOf(const BoundTextureValue &bound) {
   }
   return firings;
 }
+std::optional<RenderValue> LoadedImage(std::string_view path);
 std::optional<RenderValue> ExternalResourceOf(const BoundTextureValue &bound) {
   if (!bound.external)
     return std::nullopt;
@@ -1124,14 +1127,18 @@ std::optional<RenderValue> ExternalResourceOf(const BoundTextureValue &bound) {
   }
   if (Is<MaterialInput>(source))
     return bound.geometry.material;
-  if (const auto *texture = Get<TextureInput>(source)) {
-    const auto loaded = Compositor::GetSingleton()->LoadImage(texture->path);
-    if (loaded)
-      return TextureView{loaded};
-    return std::nullopt;
-  }
+  if (const auto *texture = Get<TextureInput>(source))
+    return LoadedImage(texture->path);
+  if (const auto *shader = Get<MatchedShaderTextureInput>(source))
+    return LoadedImage(TexturePathOf(bound.shader, shader->texture));
   if (Is<RootTransformInput>(source))
     return RenderTransform{bound.geometry.root};
+  return std::nullopt;
+}
+std::optional<RenderValue> LoadedImage(std::string_view path) {
+  const auto loaded = Compositor::GetSingleton()->LoadImage(path);
+  if (loaded)
+    return TextureView{loaded};
   return std::nullopt;
 }
 std::optional<RenderValue> ImportedValueOf(const BoundTextureValue &bound,
@@ -1274,7 +1281,8 @@ RenderInstance::UpdateInput(RenderInputId input, RenderValue value) {
 }
 std::expected<void, std::string>
 RenderInstance::Update(const RecipeGraph &graph, std::size_t instance,
-                       const SignalState &signals) {
+                       const SignalState &signals,
+                       const MatchedShaderFacts &shader) {
   for (std::size_t i = 0; i < Plan().inputs.size(); ++i) {
     const auto &input = Plan().inputs[i];
     const auto *binding = Get<TextureValue>(input.binding);
@@ -1290,8 +1298,8 @@ RenderInstance::Update(const RecipeGraph &graph, std::size_t instance,
     if (ImportsResource(input.type) && StableResource(external) &&
         execution_.Inputs()[i].value)
       continue;
-    const BoundTextureValue bound{graph, *binding, *geometry, signals,
-                                  external};
+    const BoundTextureValue bound{graph,   *binding, *geometry,
+                                  signals, shader,   external};
     std::optional<RenderValue> value = ImportedValueOf(bound, input.type);
     if (!value) {
       execution_.UnsetInput(i);

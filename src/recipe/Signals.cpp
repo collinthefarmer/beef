@@ -299,7 +299,8 @@ std::vector<Diagnostic> CheckSourceInputs(const RowTypes &a_rows,
   Match(
       a_source.kind,
       [&](const ImageSource &s) {
-        if (s.path.empty()) {
+        const auto *file = Get<ImageFile>(s.texture);
+        if (file && file->path.empty()) {
           report.Error("'path' is empty");
         }
         if (s.scroll) {
@@ -963,12 +964,7 @@ struct SignalState::Evaluator {
     return from + (Scalar(operation.to) - from) * progress;
   }
   Value operator()(const EffectShaderOperation &operation) const {
-    const auto *node = state.graph_.NodeAt(operation.record.node);
-    const auto *external = node ? Get<ExternalInput>(node->kind) : nullptr;
-    const auto *record =
-        external ? Get<EffectShaderInput>(external->source) : nullptr;
-    const auto params =
-        record ? environment.EffectShader(record->record) : std::nullopt;
+    const auto params = ShaderParams(operation.record);
     if (!params)
       return Default();
     const auto fill =
@@ -987,6 +983,16 @@ struct SignalState::Evaluator {
       return Vec2{fill.uOffset, fill.vOffset};
     }
     return Default();
+  }
+  std::optional<Efsh::EffectParams> ShaderParams(OutputRef record) const {
+    const auto *node = state.graph_.NodeAt(record.node);
+    const auto *external = node ? Get<ExternalInput>(node->kind) : nullptr;
+    if (!external)
+      return std::nullopt;
+    if (Is<MatchedShaderInput>(external->source))
+      return environment.MatchedEffectShader();
+    const auto *named = Get<EffectShaderInput>(external->source);
+    return named ? environment.EffectShader(named->record) : std::nullopt;
   }
   Value operator()(const NoiseOperation &operation) const {
     return Scalar(operation.amplitude) *

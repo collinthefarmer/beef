@@ -42,6 +42,10 @@ struct TextureInput {
 struct EffectShaderInput {
   FormRef record;
 };
+struct MatchedShaderInput {};
+struct MatchedShaderTextureInput {
+  EffectShaderTexture texture = EffectShaderTexture::kFill;
+};
 struct EventInput {
   std::variant<EventOrigin, PluginOrigin> origin;
 };
@@ -53,7 +57,8 @@ struct ChartCountInput {};
 using ExternalSource =
     std::variant<TimeInput, DeltaTimeInput, SampleUvInput, RootTransformInput,
                  GeometryInput, MaterialInput, TextureInput, EffectShaderInput,
-                 EventInput, NodePositionInput, ItemHashInput, ChartCountInput,
+                 MatchedShaderInput, MatchedShaderTextureInput, EventInput,
+                 NodePositionInput, ItemHashInput, ChartCountInput,
                  ActorValueSignal, ActorStateSignal, EnchantmentSignal>;
 struct ExternalInput {
   ExternalSource source;

@@ -122,7 +122,8 @@ void UpdateResizeInputs(RenderInstance &a_render, const LiveActor &a_state,
       continue;
     }
     if (const auto updated =
-            a_render.Update(*instance.graph, i + 1, *instance.signals);
+            a_render.Update(*instance.graph, i + 1, *instance.signals,
+                            MatchedShaderFactsOf(instance));
         !updated) {
       LogOnce(a_warnings, Severity::kError,
               std::format("render inputs of a resized instance: {}",
