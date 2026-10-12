@@ -26,6 +26,23 @@ struct Simulation {
   bool checkSteps = true;
 };
 
+[[nodiscard]] inline EngineStage
+StageOf(const RestageStep &a_step,
+        const PerLevel<std::optional<LevelCost>> &a_costs) {
+  return Match(
+      a_step, [](const RestageRequested &) { return EngineStage{}; },
+      [](const RestagePlanning &a_planning) {
+        return EngineStage{AwaitedPlanJob{a_planning.job, false}, std::nullopt};
+      },
+      [&](const RestageDrawing &a_drawing) {
+        const UnpublishedDraw &draw = a_drawing.draw;
+        return EngineStage{
+            std::nullopt,
+            EngineRender{a_drawing.level, IntermediateHolding::kHeld, a_costs,
+                         UnpublishedWork{draw.total, draw.drawn}}};
+      });
+}
+
 [[nodiscard]] inline EngineActor
 EngineActorOf(const InstalledRender &a_render) {
   EngineActor actor;
@@ -57,6 +74,12 @@ EngineActorOf(const InstalledRender &a_render) {
             EngineRender{resize.from, resize.holding, costs, std::nullopt};
         actor.resize =
             EngineResize{resize.to, UnpublishedWork{draw.total, draw.drawn}};
+      },
+      [&](const Restaging &a_restaging) {
+        const Shown &shown = a_restaging.shown;
+        actor.render = EngineRender{shown.level, HoldingOf(shown.intermediates),
+                                    costs, std::nullopt};
+        actor.staged = StageOf(a_restaging.step, costs);
       });
   return actor;
 }

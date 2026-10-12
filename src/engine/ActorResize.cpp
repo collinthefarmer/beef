@@ -99,14 +99,6 @@ void ConcealStackSlots(LiveGeometry &a_geometry) {
   }
 }
 
-void ConcealStackSlots(LiveActor &a_state) {
-  for (LivePiece &piece : a_state.pieces) {
-    for (LiveGeometry &geometry : piece.geometries) {
-      ConcealStackSlots(geometry);
-    }
-  }
-}
-
 bool StacksMatch(const std::vector<StackHolder> &a_holders,
                  const std::vector<ResizedStack> &a_resized) {
   if (a_holders.size() != a_resized.size()) {
@@ -255,6 +247,14 @@ std::expected<ResizeSwap, std::string> FinishResize(LiveActor &a_state) {
 }
 
 void DropResize(LiveActor &a_state) { a_state.resize.reset(); }
+
+void ConcealStackSlots(LiveActor &a_state) {
+  for (LivePiece &piece : a_state.pieces) {
+    for (LiveGeometry &geometry : piece.geometries) {
+      ConcealStackSlots(geometry);
+    }
+  }
+}
 
 const ResizeInFlight *InFlightOf(const LiveActor &a_state) noexcept {
   return a_state.resize ? &*a_state.resize : nullptr;

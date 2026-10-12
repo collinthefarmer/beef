@@ -1,4 +1,4 @@
-Status: proposed (2026-10-12) on branch `pure-tick`. Nothing is started. It designs stage 2 of `docs/plans/edge-fixes-2026-10-12.md` and needs decisions D3, D4 and D5. Stage 1 is implemented but its in-game check has not run; stage 2 code starts after that check or after stage 1 is committed on its own.
+Status: active (2026-10-12) on branch `pure-tick`. It designs stage 2 of `docs/plans/edge-fixes-2026-10-12.md`. D3 and D4 are decided as recommended; D5 is decided as (a), signal state carries across the swap. Done: the full native suite and the Windows build pass, and an in-game run on 2026-10-12 (trace `...-1791820872560376-2.jsonl`) restaged and swapped 62 times with no first draw and 0 resource disagreements; 2 edits that changed a shell binding fell back to a reinstall, as designed. Beyond the design, a restage while restaging restages again, and the engine falls back by retiring and installing in the same command (`ReinstallFor`), so the core needs no refusal event.
 
 # Stage 2: restage a render instead of retiring it
 
@@ -64,6 +64,19 @@ A **restage** builds new instances, placements, stacks and a new `RenderInstance
 | Equip of one piece | Retire + install, blank | Unchanged; stage 4 |
 | 3D rebuild | Retire + install, blank | Unchanged; the old nodes are gone (F5) |
 
+## Signal state across the swap (D5)
+
+A recipe's **signal state** is the memory of its stateful signal rows, held in `SignalState` (`recipe/Signals.h`): a wave's phase, a trigger's live firings and counts, a hold's held value, a counter's and an accumulator's value, and the previous value of a rate or a smooth. A new instance starts with empty state today, so a restage or a reinstall restarts every wave, drops every live firing and zeroes every counter. `carriedTimes_` carries only the animation clock.
+
+Stateful operations exist only as named signal rows (`RecipeGraph::NameOf`, `recipe/RecipeGraphLowering.cpp`), so the state can be matched across an edit by name:
+
+- `SignalState` exports a **signal memory**: one entry per stateful row, keyed by the row's name, holding the row's state.
+- A new `SignalState` adopts a signal memory: each entry whose name exists in the new graph with the same operation kind replaces the fresh state. An entry with no such row, or with another kind, is dropped. A new row starts fresh.
+- An edit to a row's parameters keeps its state (a wave keeps its phase at its new frequency). An edit that renames a row or changes its kind starts it fresh.
+- The restage builds its instances from the published instances' memories, matched by recipe, enchantment and effect scope (the `CarriedTimeKey` fields). The plain reinstall path (equip, 3D rebuild) carries the memory through the same store as the animation clock, so stage 2 fixes the restart there too.
+
+The memory is plain data and the matching is engine-free, so `tests/recipe/signals_tests.cpp` covers it: a kept row keeps its state, a renamed row and a changed kind start fresh, a removed row is dropped, and a trigger keeps its live firings.
+
 ## Tests
 
 - Core (`tests/orchestration/sync_tests.cpp`, `lifecycle_tests.cpp`, `phasechanges_tests.cpp`): a reinstall of a `Shown` actor issues `Restage`, not `Retire`; `Restaging` publishes in `TickActorFor`; the swap follows `SwapDue`; `RestageRefused` and `RestageNotSwapped` fall back to retire and install; a restage while restaging cancels the first plan job.
@@ -79,6 +92,6 @@ About the size of the R4 resize work: one new phase and its machine, two command
 
 | # | Question | Options | Recommendation |
 |---|---|---|---|
-| D3 | Which actors restage? | (a) Every actor; the staged render must be admitted by the budget like a step up, and a refusal falls back to retire and install. (b) The player and the inspected actor only. | (a). The budget already decides this for resizes, and an NPC without headroom only loses what it loses today. |
-| D4 | What does a restage do when the binding plan differs? | (a) Fall back to retire and install (a blank, as today). (b) Hand the bindings over at the swap: move each kept `MaterialBinding` and re-create only the changed shells. | (a) first. (b) touches the scene-graph code (F2, F3) and is worth it only if added outputs or shell changes turn out to be common edits. |
-| D5 | Does the staged render start from the old render's signal state? | (a) Yes: copy the signal and trigger state into the new instances, so an animation continues across the swap. (b) No: new instances start fresh, and `carriedTimes_` carries only the animation clock, as on a reinstall today. | (b). It matches today's reinstall; (a) is a later refinement if a visible restart shows in the in-game check. |
+| D3 (decided: a) | Which actors restage? | (a) Every actor; the staged render must be admitted by the budget like a step up, and a refusal falls back to retire and install. (b) The player and the inspected actor only. | (a). The budget already decides this for resizes, and an NPC without headroom only loses what it loses today. |
+| D4 (decided: a) | What does a restage do when the binding plan differs? | (a) Fall back to retire and install (a blank, as today). (b) Hand the bindings over at the swap: move each kept `MaterialBinding` and re-create only the changed shells. | (a) first. (b) touches the scene-graph code (F2, F3) and is worth it only if added outputs or shell changes turn out to be common edits. |
+| D5 | Does the staged render start from the old render's signal state? | (a) Yes: copy the signal and trigger state into the new instances, so an animation continues across the swap. (b) No: new instances start fresh, and `carriedTimes_` carries only the animation clock, as on a reinstall today. | Decided: (a), matched by row name and kind (section "Signal state across the swap"). |

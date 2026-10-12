@@ -482,6 +482,13 @@ void WriteSlots(LiveActor &a_state, LiveGeometry &a_bound,
   }
 }
 
+LiveActor *FirstDrawnOf(LiveActor &a_state) noexcept {
+  if (a_state.restage && a_state.restage->firstDraw) {
+    return a_state.restage.get();
+  }
+  return a_state.firstDraw ? &a_state : nullptr;
+}
+
 DrawPace DrawFirstSlots(LiveActor &a_state, const SlotRenderView &a_view,
                         DrawPace a_pace, std::uint64_t a_budgetUs) {
   TextureLab *lab = TextureLab::GetSingleton();
@@ -562,7 +569,7 @@ std::optional<HeartbeatReading> Manager::RunFrame(TextureLab &a_lab,
   ++renderFrame_;
   if (a_nowMS - lastSweepMS_ >= 1000) {
     lastSweepMS_ = a_nowMS;
-    carriedTimes_.Expire(a_nowMS);
+    carriedInstances_.Expire(a_nowMS);
     SweepAnimationEvents();
   }
   const Settings settings = GetSettings();
@@ -799,19 +806,20 @@ Manager::RunDrawUnpublished(const Orchestration::DrawUnpublished &a_command,
       continue;
     }
     LiveActor &state = found->second;
+    LiveActor *firstDrawn = FirstDrawnOf(state);
+    const SlotRenderView slotView{
+        view, view.isolation.layer.has_value() || !view.muted.empty(),
+        a_context.settings.publishEffects, a_context.inspected != id};
     const std::size_t before = pace.stacks;
     std::size_t drawn = 0;
-    if (InFlightOf(state)) {
+    if (InFlightOf(state) && !state.restage) {
       pace = DrawResize(state, renderFrame_, a_context.nowMS, warningHistory_,
                         pace, a_command.budgetUs);
       const ResizeInFlight *resize = InFlightOf(state);
       drawn = resize ? DrawnStacks(*resize) : 0;
-    } else if (state.firstDraw) {
-      const SlotRenderView slotView{
-          view, view.isolation.layer.has_value() || !view.muted.empty(),
-          a_context.settings.publishEffects, a_context.inspected != id};
-      pace = DrawFirstSlots(state, slotView, pace, a_command.budgetUs);
-      drawn = state.firstDraw ? DrawnSlots(*state.firstDraw) : 0;
+    } else if (firstDrawn) {
+      pace = DrawFirstSlots(*firstDrawn, slotView, pace, a_command.budgetUs);
+      drawn = firstDrawn->firstDraw ? DrawnSlots(*firstDrawn->firstDraw) : 0;
     } else {
       ReportDisagreement(id, {"command", "draw_unpublished"},
                          "nothing unpublished to draw");

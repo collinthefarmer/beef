@@ -11,6 +11,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <variant>
 #include <vector>
 
 namespace BetterEnchantmentEffects {
@@ -102,6 +103,8 @@ SignalTypeOf(const RowTypes &a_rows, std::string_view a_name) noexcept;
                                                   const Output &a_output,
                                                   std::string_view a_where);
 
+struct SignalMemoryEntry;
+
 class SignalState {
 public:
   explicit SignalState(const RecipeGraph &a_graph);
@@ -129,8 +132,6 @@ public:
   AnchorOf(std::string_view a_trigger,
            const TriggerFiring &a_firing) const noexcept;
 
-private:
-  struct Evaluator;
   struct WaveState {
     float phase = 0.0f;
   };
@@ -163,6 +164,12 @@ private:
       std::variant<WaveState, TriggerState, HoldState, CounterState,
                    AccumulateState, RateState, SmoothState>;
 
+  [[nodiscard]] std::vector<SignalMemoryEntry> Remembered() const;
+  void Adopt(std::span<const SignalMemoryEntry> a_memory);
+
+private:
+  struct Evaluator;
+
   template <class State> [[nodiscard]] State *Memory(NodeId a_node) noexcept;
   template <class State>
   [[nodiscard]] const State *Memory(NodeId a_node) const noexcept;
@@ -181,5 +188,10 @@ private:
   std::vector<OperationState> states_;
   std::vector<NodeId> triggers_;
   bool ticked_ = false;
+};
+
+struct SignalMemoryEntry {
+  std::string name;
+  SignalState::OperationState state;
 };
 }

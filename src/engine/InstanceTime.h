@@ -7,37 +7,46 @@
 #include <map>
 #include <optional>
 #include <string>
+#include <vector>
+
+#include "recipe/Signals.h"
 
 namespace BetterEnchantmentEffects {
 inline constexpr std::uint32_t kCarryWindowMS = 2000;
-inline constexpr std::size_t kMaxCarriedInstanceTimes = 4096;
+inline constexpr std::size_t kMaxCarriedInstances = 4096;
 
-struct CarriedTimeKey {
+struct CarriedInstanceKey {
   std::uint32_t actorID = 0;
   std::string recipeID;
   std::uint32_t enchantmentID = 0;
   std::string effectScope{};
   [[nodiscard]] std::strong_ordering
-  operator<=>(const CarriedTimeKey &) const = default;
+  operator<=>(const CarriedInstanceKey &) const = default;
+};
+
+struct CarriedInstance {
+  float seconds = 0.0f;
+  std::vector<SignalMemoryEntry> signals;
 };
 
 [[nodiscard]] std::optional<std::uint32_t>
 ClockOffsetMS(float a_seconds, float a_speed) noexcept;
 
-class CarriedTimes {
+class CarriedInstances {
 public:
-  void Remember(CarriedTimeKey a_key, float a_seconds, std::uint32_t a_nowMS);
-  [[nodiscard]] std::optional<float> Take(const CarriedTimeKey &a_key,
-                                          std::uint32_t a_nowMS);
+  void Remember(CarriedInstanceKey a_key, CarriedInstance a_instance,
+                std::uint32_t a_nowMS);
+  [[nodiscard]] std::optional<CarriedInstance>
+  Take(const CarriedInstanceKey &a_key, std::uint32_t a_nowMS);
   void Expire(std::uint32_t a_nowMS);
   void Clear() noexcept;
   [[nodiscard]] std::size_t Size() const noexcept;
 
 private:
   struct Entry {
-    float seconds = 0.0f;
+    CarriedInstance instance;
     std::uint32_t retiredMS = 0;
   };
-  std::map<CarriedTimeKey, Entry> entries_;
+  std::map<CarriedInstanceKey, Entry> entries_;
 };
 }

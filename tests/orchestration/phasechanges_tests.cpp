@@ -42,6 +42,18 @@ RenderPhase RunningPhase() {
   return Running{Resize{kFull, kHalf, IntermediateHolding::kReleased},
                  UnpublishedDraw{2, 0, 10, 0}};
 }
+RenderPhase RestagingWith(RestageStep a_step) {
+  return Restaging{ShownWith(Held{}), 300, a_step};
+}
+RenderPhase RestageRequestedPhase() {
+  return RestagingWith(RestageRequested{});
+}
+RenderPhase RestagePlanningPhase() {
+  return RestagingWith(RestagePlanning{kJob});
+}
+RenderPhase RestageDrawingPhase() {
+  return RestagingWith(RestageDrawing{kHalf, UnpublishedDraw{3, 0, 1, 0}, 200});
+}
 
 SeenThisTick OutOfView(Millis a_now) {
   return {false, false, kFull, a_now, 5000, 64};
@@ -60,15 +72,19 @@ template <class T> bool FirstCommandIs(const PhaseChange &a_change) {
 }
 
 void EveryEventHasItsNextPhase() {
-  const std::array<std::pair<std::string_view, std::function<RenderPhase()>>, 7>
+  const std::array<std::pair<std::string_view, std::function<RenderPhase()>>,
+                   10>
       phases{{{"shown held", ShownHeld},
               {"shown freed", ShownFreed},
               {"empty", EmptyPhase},
               {"planning", PlanningPhase},
               {"drawing", DrawingPhase},
               {"queued", QueuedPhase},
-              {"running", RunningPhase}}};
-  const std::array<std::pair<std::string_view, RenderEvent>, 8> events{{
+              {"running", RunningPhase},
+              {"restage requested", RestageRequestedPhase},
+              {"restage planning", RestagePlanningPhase},
+              {"restage drawing", RestageDrawingPhase}}};
+  const std::array<std::pair<std::string_view, RenderEvent>, 10> events{{
       {"plan awaited", PlanAwaited{kOtherJob}},
       {"installed", Installed{kHalf, 1, {}, 0}},
       {"installed without render", InstalledWithoutRender{}},
@@ -77,37 +93,57 @@ void EveryEventHasItsNextPhase() {
       {"resize not started", ResizeNotStarted{"no stack"}},
       {"resize swapped", ResizeSwapped{}},
       {"resize not swapped", ResizeNotSwapped{}},
+      {"restage swapped", RestageSwapped{}},
+      {"restage not swapped", RestageNotSwapped{}},
   }};
-  const std::array<std::array<std::string_view, 8>, 7> names{{
-      {"shown", "shown", "shown", "shown", "shown", "shown", "shown", "shown"},
-      {"shown", "shown", "shown", "shown", "shown", "shown", "shown", "shown"},
-      {"empty", "empty", "empty", "empty", "empty", "empty", "empty", "empty"},
+  constexpr std::string_view kRestaging = "restaging";
+  const std::array<std::array<std::string_view, 10>, 10> names{{
+      {"shown", "shown", "shown", "shown", "shown", "shown", "shown", "shown",
+       "shown", "shown"},
+      {"shown", "shown", "shown", "shown", "shown", "shown", "shown", "shown",
+       "shown", "shown"},
+      {"empty", "empty", "empty", "empty", "empty", "empty", "empty", "empty",
+       "empty", "empty"},
       {"planning", "drawing", "empty", "planning", "planning", "planning",
-       "planning", "planning"},
+       "planning", "planning", "planning", "planning"},
       {"drawing", "drawing", "drawing", "drawing", "drawing", "drawing",
-       "drawing", "drawing"},
+       "drawing", "drawing", "drawing", "drawing"},
       {"resize_queued", "resize_queued", "resize_queued", "resize_queued",
-       "resize_running", "shown", "resize_queued", "resize_queued"},
+       "resize_running", "shown", "resize_queued", "resize_queued",
+       "resize_queued", "resize_queued"},
       {"resize_running", "resize_running", "resize_running", "resize_running",
-       "resize_running", "resize_running", "shown", "shown"},
+       "resize_running", "resize_running", "shown", "shown", "resize_running",
+       "resize_running"},
+      {kRestaging, kRestaging, kRestaging, kRestaging, kRestaging, kRestaging,
+       kRestaging, kRestaging, kRestaging, "shown"},
+      {kRestaging, kRestaging, kRestaging, kRestaging, kRestaging, kRestaging,
+       kRestaging, kRestaging, kRestaging, "shown"},
+      {kRestaging, kRestaging, kRestaging, kRestaging, kRestaging, kRestaging,
+       kRestaging, kRestaging, "shown", "shown"},
   }};
-  const std::array<std::array<bool, 8>, 7> ignored{{
-      {true, true, true, true, true, true, true, true},
-      {true, true, true, true, true, true, true, true},
-      {true, true, true, true, true, true, true, true},
-      {false, false, false, true, true, true, true, true},
-      {true, true, true, false, true, true, true, true},
-      {true, true, true, true, false, false, true, true},
-      {true, true, true, false, true, true, false, false},
+  const std::array<std::array<bool, 10>, 10> ignored{{
+      {true, true, true, true, true, true, true, true, true, true},
+      {true, true, true, true, true, true, true, true, true, true},
+      {true, true, true, true, true, true, true, true, true, true},
+      {false, false, false, true, true, true, true, true, true, true},
+      {true, true, true, false, true, true, true, true, true, true},
+      {true, true, true, true, false, false, true, true, true, true},
+      {true, true, true, false, true, true, false, false, true, true},
+      {false, false, true, true, true, true, true, true, true, false},
+      {true, false, true, true, true, true, true, true, true, false},
+      {true, true, true, false, true, true, true, true, false, false},
   }};
-  const std::array<std::array<std::size_t, 8>, 7> commands{{
-      {0, 0, 0, 0, 0, 0, 0, 0},
-      {0, 0, 0, 0, 0, 0, 0, 0},
-      {0, 0, 0, 0, 0, 0, 0, 0},
-      {0, 1, 0, 0, 0, 0, 0, 0},
-      {0, 0, 0, 0, 0, 0, 0, 0},
-      {0, 0, 0, 0, 0, 0, 0, 0},
-      {0, 0, 0, 0, 0, 0, 1, 1},
+  const std::array<std::array<std::size_t, 10>, 10> commands{{
+      {0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+      {0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+      {0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+      {0, 1, 0, 0, 0, 0, 0, 0, 0, 0},
+      {0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+      {0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+      {0, 0, 0, 0, 0, 0, 1, 1, 0, 0},
+      {0, 0, 0, 0, 0, 0, 0, 0, 0, 1},
+      {0, 0, 0, 0, 0, 0, 0, 0, 0, 1},
+      {0, 0, 0, 0, 0, 0, 0, 0, 1, 1},
   }};
   static_assert(events.size() == std::variant_size_v<RenderEvent>);
   std::array<bool, std::variant_size_v<RenderPhase>> covered{};
@@ -136,6 +172,30 @@ void EveryEventHasItsNextPhase() {
       }
     }
   }
+}
+
+void ARestageSwapsToItsStagedLevel() {
+  const PhaseChange swapped =
+      OnEvent(kActor, RestageDrawingPhase(), RestageSwapped{}, kAtFrame30);
+  Check(Is<Shown>(swapped.phase) && AppliedLevel(swapped.phase) == kHalf &&
+            FirstCommandIs<SetAppliedLevel>(swapped),
+        "a swapped restage shows its staged level");
+  const PhaseChange staged = OnEvent(kActor, RestagePlanningPhase(),
+                                     Installed{kHalf, 5, {}, 120}, kAtFrame30);
+  const RestageDrawing *drawing = RestageDrawingOf(staged.phase);
+  Check(drawing && drawing->level == kHalf && drawing->draw.total == 5 &&
+            drawing->draw.beganFrame == 30 && drawing->chargedBytes == 120 &&
+            AppliedLevel(staged.phase) == kFull,
+        "a staged render draws beside the shown level and keeps its charge");
+  const PhaseChange abandoned =
+      OnEvent(kActor, RestageDrawingPhase(), RestageNotSwapped{}, kAtFrame30);
+  Check(abandoned.phase == RenderPhase{ShownWith(Held{})} &&
+            FirstCommandIs<AbandonRestage>(abandoned),
+        "an unswapped restage returns to the shown render and abandons");
+  const PhaseChange failed =
+      FailPlan(kActor, RestagePlanningPhase(), PlanJobFailed{kJob, "no"});
+  Check(Is<Shown>(failed.phase) && FirstCommandIs<AbandonRestage>(failed),
+        "a failed staged plan returns to the shown render");
 }
 
 void TheFirstEventCreatesThePhase() {
@@ -499,6 +559,7 @@ void QueriesFollowThePhase() {
 int main() {
   EveryEventHasItsNextPhase();
   TheFirstEventCreatesThePhase();
+  ARestageSwapsToItsStagedLevel();
   DrawsCountUnitsAndTicks();
   FailedResizesKeepTheAppliedLevel();
   ABudgetFailureIsNotRetriedEveryTick();

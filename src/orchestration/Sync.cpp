@@ -82,6 +82,7 @@ struct SyncDecision {
 
 struct ChangePlan {
   bool replaces = false;
+  bool restages = false;
   bool installs = false;
   std::uint64_t replacedBytes = 0;
   InstallBounds bounds;
@@ -148,10 +149,15 @@ FrameSyncs Change(TickOutput &a_output, SyncDecision a_decision,
                   const TickFacts &a_facts, FrameSyncs a_frame);
 ChangePlan PlanChange(const World &a_world, const SyncDecision &a_decision,
                       const TickFacts &a_facts);
+bool CanRestage(const TrackedActor &a_record, const SyncDecision &a_decision);
 void RetireForChange(TickOutput &a_output, ActorId a_actor,
                      const TickFacts &a_facts);
 void InstallForChange(TickOutput &a_output, const SyncDecision &a_decision,
                       const ChangePlan &a_plan);
+void RestageForChange(TickOutput &a_output, const SyncDecision &a_decision,
+                      const ChangePlan &a_plan, const TickFacts &a_facts);
+Restaging RestagingFrom(const RenderPhase &a_phase, std::uint64_t a_bytes);
+std::uint64_t SupersededStageBytes(const RenderPhase &a_phase) noexcept;
 void ObserveDue(TickOutput &a_output, const TickFacts &a_facts);
 DueChecks DueChecksAt(const Timers &a_timers, Millis a_now) noexcept;
 void ApplyTimers(TickOutput &a_output, DueChecks a_checks, Millis a_now);
@@ -218,8 +224,11 @@ void DropFailedInstall(World &a_world, const InstallFailed &a_failed) {
 
 void ForgetRetiredRender(World &a_world, const Retired &a_retired) {
   TrackedActor *record = FindActor(a_world, a_retired.actor);
-  if (!record) {
+  if (!record || !record->render) {
     return;
+  }
+  if (const Restaging *restaging = Get<Restaging>(record->render->phase)) {
+    a_world.budget = Released(a_world.budget, restaging->shownBytes);
   }
   DropRender(*record);
 }
@@ -531,11 +540,13 @@ FrameSyncs Change(TickOutput &a_output, SyncDecision a_decision,
   const ChangePlan plan = PlanChange(a_output.world, a_decision, a_facts);
 
   Issue(a_output, KeepModels{actor, InstalledPlanOf(a_decision.next.state)});
-  if (plan.replaces) {
+  if (plan.replaces && !plan.restages) {
     RetireForChange(a_output, actor, a_facts);
   }
   ApplySyncState(a_output, actor, std::move(a_decision.next.state));
-  if (plan.installs) {
+  if (plan.restages) {
+    RestageForChange(a_output, a_decision, plan, a_facts);
+  } else if (plan.installs) {
     InstallForChange(a_output, a_decision, plan);
   }
   Issue(a_output, SettleApplications{actor, false, true});
@@ -550,13 +561,30 @@ ChangePlan PlanChange(const World &a_world, const SyncDecision &a_decision,
   const TrackedActor *tracked = FindActor(a_world, actor);
   const TrackedActor &record = tracked ? *tracked : untracked;
   const std::uint64_t replaced = PlannedBytesOf(record);
+  const bool installs = WouldInstall(a_decision);
+  const bool restages = installs && CanRestage(record, a_decision);
+  const std::uint64_t credit = restages ? 0 : replaced;
   return {.replaces = record.render.has_value() ||
                       Actors::AnythingInstalled(a_decision.before),
-          .installs = WouldInstall(a_decision),
+          .restages = restages,
+          .installs = installs,
           .replacedBytes = replaced,
           .bounds =
               InstallBoundsOf(record, LatestSighting(a_world, a_facts, actor),
-                              a_world.budget, replaced, a_facts.settings)};
+                              a_world.budget, credit, a_facts.settings)};
+}
+
+bool CanRestage(const TrackedActor &a_record, const SyncDecision &a_decision) {
+  if (!a_record.render ||
+      !(Is<Shown>(a_record.render->phase) ||
+        Is<Restaging>(a_record.render->phase)) ||
+      a_decision.stale.reinstall != Actors::Reinstall::kAlways) {
+    return false;
+  }
+  const SyncState &before = a_decision.before;
+  const SyncState &next = a_decision.next.state;
+  return before && next &&
+         before->installed.geometries == next->installed.geometries;
 }
 
 void RetireForChange(TickOutput &a_output, ActorId a_actor,
@@ -575,6 +603,33 @@ void InstallForChange(TickOutput &a_output, const SyncDecision &a_decision,
                                           : InstallKind::kInstall,
                           a_plan.bounds, a_plan.replacedBytes});
   ApplyBudget(a_output, Released(a_output.world.budget, a_plan.replacedBytes));
+}
+
+void RestageForChange(TickOutput &a_output, const SyncDecision &a_decision,
+                      const ChangePlan &a_plan, const TickFacts &a_facts) {
+  const StaleActor &stale = a_decision.stale;
+  InstalledRender &render = *a_output.world.actors[stale.actor].render;
+  const std::optional<PlanJobId> superseded = AwaitedJob(render.phase);
+  const Restaging restaging = RestagingFrom(render.phase, a_plan.replacedBytes);
+  ApplyBudget(a_output, Released(a_output.world.budget,
+                                 SupersededStageBytes(render.phase)));
+  ApplyPhaseChange(a_output, stale.actor, render, {restaging, {}},
+                   "restage_requested");
+  CancelUnawaitedJob(a_output, superseded, a_facts);
+  Issue(a_output,
+        Restage{stale.actor, stale.facts, stale.planned, a_plan.bounds});
+}
+
+Restaging RestagingFrom(const RenderPhase &a_phase, std::uint64_t a_bytes) {
+  if (const Restaging *restaging = Get<Restaging>(a_phase)) {
+    return {restaging->shown, restaging->shownBytes, RestageRequested{}};
+  }
+  return {*Get<Shown>(a_phase), a_bytes, RestageRequested{}};
+}
+
+std::uint64_t SupersededStageBytes(const RenderPhase &a_phase) noexcept {
+  const Restaging *restaging = Get<Restaging>(a_phase);
+  return restaging ? StagedBytesOf(*restaging) : 0;
 }
 
 void ObserveDue(TickOutput &a_output, const TickFacts &a_facts) {

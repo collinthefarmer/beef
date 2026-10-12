@@ -661,6 +661,66 @@ void AFullPlanQueueDefersTheInstall() {
         "the install starts once a plan slot is free");
 }
 
+void AForcedReinstallWithTheSameGeometryRestages() {
+  TrackedActor record;
+  record.syncState = InstalledState(CircuitPlan());
+  record.render = ShownRender(ResolutionLevel::kHalf);
+  World world = WorldWith(kActor, std::move(record));
+  world.budget.allowance = 1000;
+  world.budget.planned = 600;
+  TickFacts facts = FactsAt(kNow);
+  StaleActor stale = StaleWith(kActor, FrostPlan());
+  stale.reinstall = Actors::Reinstall::kAlways;
+  facts.stale.push_back(stale);
+  facts.sightings[kActor] = Seen();
+  const TickOutput out = RunSync(std::move(world), facts);
+  Equal(CountOf<Retire>(out.commands), std::size_t{0},
+        "a restage retires nothing");
+  Equal(CountOf<Install>(out.commands), std::size_t{0},
+        "a restage installs nothing");
+  const Restage *restage = FirstOf<Restage>(out.commands);
+  Check(restage && restage->bounds.headroom == std::uint64_t{400},
+        "a restage stages within the headroom, with no credit for the shown "
+        "render");
+  const Restaging *restaging =
+      Get<Restaging>(out.world.actors.at(kActor).render->phase);
+  Check(restaging && restaging->shownBytes == 100 &&
+            Is<RestageRequested>(restaging->step) &&
+            restaging->shown.level == ResolutionLevel::kHalf,
+        "the shown render stays published while the restage starts");
+  Equal(out.world.budget.planned, std::uint64_t{600},
+        "a restage releases nothing until the swap");
+}
+
+void AnUnforcedReinstallStillRetires() {
+  TrackedActor record;
+  record.syncState = InstalledState(CircuitPlan());
+  record.render = ShownRender(ResolutionLevel::kHalf);
+  TickFacts facts = FactsAt(kNow);
+  facts.stale.push_back(StaleWith(kActor, FrostPlan()));
+  facts.sightings[kActor] = Seen();
+  const TickOutput out = RunSync(WorldWith(kActor, std::move(record)), facts);
+  Equal(CountOf<Restage>(out.commands), std::size_t{0},
+        "an equip-style change does not restage");
+  Equal(CountOf<Retire>(out.commands), std::size_t{1},
+        "an equip-style change retires and installs");
+}
+
+void ARetiredRestageReleasesTheShownBytes() {
+  TrackedActor record;
+  record.render = ShownRender(ResolutionLevel::kHalf);
+  record.render->phase = Restaging{
+      Shown{ResolutionLevel::kHalf, Held{}, {}, std::nullopt, std::nullopt},
+      100, RestageRequested{}};
+  World world = WorldWith(kActor, std::move(record));
+  world.budget.planned = 600;
+  TickFacts facts = FactsAt(kNow);
+  facts.results.push_back(Retired{kActor});
+  const TickOutput out = RecordSyncResults(std::move(world), facts);
+  Equal(out.world.budget.planned, std::uint64_t{500},
+        "a restage that fell back to a retire releases the shown bytes");
+}
+
 int main() {
   AnInstalledRenderChargesTheBudget();
   ARetiredRenderLeavesItsLevelAndReturnBytes();
@@ -691,5 +751,8 @@ int main() {
   AJobDoneThisTickIsNotCancelled();
   AForgottenActorCancelsItsJob();
   AFullPlanQueueDefersTheInstall();
+  AForcedReinstallWithTheSameGeometryRestages();
+  AnUnforcedReinstallStillRetires();
+  ARetiredRestageReleasesTheShownBytes();
   return test::Finish("orchestration_sync");
 }

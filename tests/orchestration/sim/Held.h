@@ -10,7 +10,7 @@
 namespace sim {
 [[nodiscard]] inline bool Holds(const EngineActor &a_actor) {
   return a_actor.render || a_actor.resize || a_actor.awaiting ||
-         a_actor.withoutRender;
+         a_actor.staged || a_actor.withoutRender;
 }
 
 [[nodiscard]] inline UnpublishedCount CountOf(const UnpublishedWork &a_work) {
@@ -30,6 +30,16 @@ namespace sim {
   }
   if (a_actor.awaiting) {
     held.awaited = a_actor.awaiting->job;
+  }
+  if (a_actor.staged) {
+    const EngineStage &staged = *a_actor.staged;
+    held.restage = HeldRestage{};
+    if (staged.awaiting) {
+      held.restage->awaited = staged.awaiting->job;
+    }
+    if (staged.render && staged.render->firstDraw) {
+      held.restage->draw = CountOf(*staged.render->firstDraw);
+    }
   }
   return held;
 }

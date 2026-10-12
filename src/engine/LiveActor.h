@@ -131,6 +131,7 @@ struct LiveActor {
   std::vector<LiveInstance> instances;
   std::vector<LivePlacement> placements;
   std::vector<ApplicationToken> applications;
+  std::unique_ptr<LiveActor> restage;
 };
 
 struct ResolvedPlacement {

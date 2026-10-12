@@ -69,11 +69,14 @@ struct ResizeStarted;
 struct ResizeNotStarted;
 struct ResizeSwapped;
 struct ResizeNotSwapped;
+struct RestageSwapped;
+struct RestageNotSwapped;
 
 using RenderEvent =
     std::variant<PlanAwaited, Installed, InstalledWithoutRender,
                  UnpublishedDrawn, ResizeStarted, ResizeNotStarted,
-                 ResizeSwapped, ResizeNotSwapped>;
+                 ResizeSwapped, ResizeNotSwapped, RestageSwapped,
+                 RestageNotSwapped>;
 
 struct PlanAwaited {
   PlanJobId job{};
@@ -105,6 +108,10 @@ struct ResizeNotStarted {
 struct ResizeSwapped {};
 
 struct ResizeNotSwapped {};
+
+struct RestageSwapped {};
+
+struct RestageNotSwapped {};
 
 struct ActorEvent;
 struct InstallFailed;

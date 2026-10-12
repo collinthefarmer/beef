@@ -1515,12 +1515,12 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
   recipe id, enchantment form id, and selected effect key. The enchantment id comes from the
   collected piece before engine lookup, so lookup failure does not merge it
   with an unenchanted instance. A piece put back on later starts fresh.
-  `CarriedTimes` retains only owned keys and finite nonnegative seconds;
+  `CarriedInstances` retains only owned keys and finite nonnegative seconds;
   consuming an entry removes it. The two-second window uses unsigned
   millisecond subtraction across clock wrap. The one-second manager heartbeat
   expires unused entries even when no actors are applied, and save-load
   clearing discards all entries.
-- `kMaxCarriedInstanceTimes` is 4096: a fixed ceiling for short-lived clock
+- `kMaxCarriedInstances` is 4096: a fixed ceiling for short-lived clock
   continuity records, not a limit on live actors, recipes, or GPU resources.
   At capacity, existing entries can update but new entries are omitted until
   consumption or the expiry sweep makes room. The affected instance starts
@@ -1824,6 +1824,52 @@ draw's progress in the phase `Drawing`; the engine holds the slot list.
   `install_wait_max_ms`, `hidden_stacks`, `hidden_stacks_tick_max`,
   `hidden_draw_us` and `hidden_draw_tick_max_us`. The `hidden_` names stay,
   because the regression tools read them.
+
+**Restage (2026-10-12).** A forced reinstall keeps the published render and
+builds the new one beside it, as a resize does.
+
+- The core restages (`CanRestage`, `orchestration/Sync.cpp`) when the stale
+  actor arrives with `Reinstall::kAlways` (a studio edit, Save, Revert, a view
+  change or a setting reapply), its phase is `Shown` or `Restaging`, and the
+  installed geometries, model tokens included, equal the new ones. An equip
+  or a 3D rebuild changes the geometries and still retires and installs.
+- The phase `Restaging` holds the published `Shown`, its planned bytes
+  (`shownBytes`) and a step: `RestageRequested`, `RestagePlanning{job}` or
+  `RestageDrawing{level, draw, chargedBytes}`. `TickActorFor` publishes it like
+  `Shown`, but does not finish the applications while the actor is in view,
+  so a studio gesture holds until the swap.
+- The staged render is charged when its `Installed` arrives and is admitted
+  without credit for the published render. The swap (`RestageSwapped`)
+  releases `shownBytes`; an abandon (`RestageNotSwapped`) releases the staged
+  `chargedBytes`. A restage while restaging keeps the published render,
+  releases the staged bytes and cancels the staged plan job before it issues
+  the new `Restage`, so the new restage cannot share the cancelled job.
+- The swap follows the resize rule (`SwapDue`): drawn, out of view, or 60
+  frames after the staged first draw began.
+- The engine (`Manager::Restaged`, `ManagerApply.cpp`) builds a staged
+  `LiveActor` in `LiveActor::restage` from copies of the published pieces and
+  geometries (`StagedActorOf`, `engine/ActorRestage.cpp`), with no bindings.
+  The copies keep the published `GeometryInputs`, which hold the material
+  textures read before the first binding, so a staged render never reads the
+  published render's written targets as its originals.
+- The staged instances start from the published instances' signal memory and
+  clock (`RememberInstances`, then `CarryInstanceState`).
+- Two bindings on one geometry are unsound: with `uniqueMaterial` the second
+  copies the first's written material, and the first then skips its restore.
+  The staged render therefore uses the published bindings' surfaces
+  (`BoundSurfacesOf(published)`), and the swap hands the material and shell
+  bindings over (`HandOverBindings`) after it writes every slot back to its
+  original (`ConcealStackSlots`), so no material points at a freed target.
+  The `TickActor` later in the same tick publishes the new stacks.
+- The engine reinstalls instead (`ReinstallFor`: retire, then install, both
+  results in one tick) when the staged binding plan differs from the
+  published one (`KeptBindingsOf`: material, shell and shell settings per
+  geometry), when the matched geometry count differs, or when the staged
+  render is not built. The log line is `reinstalled instead of restaged`.
+  The core releases `shownBytes` on the `Retired` of a restaging actor.
+- The swap places the lights of the new instances; the published instances'
+  lights go with them. The trace event is `restage` with `result` staged,
+  swapped, not_swapped, abandoned or reinstalled.
 
 ### The text log (`engine/LogOnce.h`, `ManagerApply.cpp`, `ManagerTick.cpp`)
 

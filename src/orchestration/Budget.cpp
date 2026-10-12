@@ -428,6 +428,9 @@ std::uint64_t PlannedBytesOf(const TrackedActor &a_record) noexcept {
     return 0;
   }
   const InstalledRender &render = *a_record.render;
+  if (const Restaging *restaging = Get<Restaging>(render.phase)) {
+    return Sum(restaging->shownBytes, StagedBytesOf(*restaging));
+  }
   const std::optional<ResolutionLevel> applied = AppliedLevel(render.phase);
   if (!applied) {
     return 0;

@@ -26,6 +26,7 @@ struct SightingFrom {
 struct StaleFrom {
   std::uint64_t tick = 0;
   Actors::PlannedActor planned;
+  Actors::Reinstall reinstall = Actors::Reinstall::kIfChanged;
 };
 
 struct Faults {
@@ -33,6 +34,8 @@ struct Faults {
   bool planFails = false;
   PerLevel<bool> resizeNotStarted;
   PerLevel<bool> swapMismatch;
+  bool restageRefused = false;
+  bool restageNotSwapped = false;
 };
 
 struct ActorScript {
@@ -83,10 +86,16 @@ struct AwaitedPlanJob {
   bool finished = false;
 };
 
+struct EngineStage {
+  std::optional<AwaitedPlanJob> awaiting;
+  std::optional<EngineRender> render;
+};
+
 struct EngineActor {
   std::optional<EngineRender> render;
   std::optional<EngineResize> resize;
   std::optional<AwaitedPlanJob> awaiting;
+  std::optional<EngineStage> staged;
   bool withoutRender = false;
 };
 
@@ -178,6 +187,20 @@ LatestPlan(const Script &a_script, ActorId a_actor, std::uint64_t a_tick) {
   return planned;
 }
 
+[[nodiscard]] inline Actors::Reinstall
+ReinstallAt(const Script &a_script, ActorId a_actor, std::uint64_t a_tick) {
+  const ActorScript *actor = ScriptOf(a_script, a_actor);
+  if (!actor) {
+    return Actors::Reinstall::kIfChanged;
+  }
+  for (const StaleFrom &stale : actor->stale) {
+    if (stale.tick == a_tick) {
+      return stale.reinstall;
+    }
+  }
+  return Actors::Reinstall::kIfChanged;
+}
+
 [[nodiscard]] inline std::uint64_t HeldBytes(const EngineActor &a_actor) {
   std::uint64_t bytes = 0;
   if (a_actor.render) {
@@ -240,6 +263,10 @@ inline void MarkFinished(Shell &a_shell,
       if (actor.awaiting && actor.awaiting->job == job) {
         actor.awaiting->finished = true;
       }
+      if (actor.staged && actor.staged->awaiting &&
+          actor.staged->awaiting->job == job) {
+        actor.staged->awaiting->finished = true;
+      }
     }
   }
 }
@@ -267,7 +294,8 @@ inline void MarkFinished(Shell &a_shell,
     const Sighting sighting = SightingAt(a_shell.script, id, tick);
     facts.stale.push_back(StaleActor{
         id, Actors::ActorFacts{id, sighting.loaded3D, sighting.distance, {}},
-        LatestPlan(a_shell.script, id, tick)});
+        LatestPlan(a_shell.script, id, tick),
+        ReinstallAt(a_shell.script, id, tick)});
     facts.sightings[id] = sighting;
   }
   for (const auto &[id, record] : a_world.actors) {
@@ -296,6 +324,36 @@ struct Executor {
   [[nodiscard]] ActorScript ScriptFor(ActorId a_actor) const {
     const ActorScript *script = ScriptOf(shell.script, a_actor);
     return script ? *script : ActorScript{};
+  }
+
+  [[nodiscard]] Installed BuiltRender(ActorId a_actor,
+                                      const InstallBounds &a_bounds) const {
+    const ActorScript script = ScriptFor(a_actor);
+    LevelBytes bytes;
+    for (const ResolutionLevel level : kResolutionLevels) {
+      const std::optional<LevelCost> &cost = script.levelCosts.At(level);
+      bytes.At(level) =
+          cost ? std::optional<std::uint64_t>{cost->withIntermediates}
+               : std::nullopt;
+    }
+    const ResolutionLevel level =
+        FittingLevel(a_bounds.finestLevel, bytes, a_bounds.headroom);
+    return Installed{level, script.slots, script.levelCosts,
+                     bytes.At(level).value_or(0)};
+  }
+
+  [[nodiscard]] static EngineRender RenderOf(const Installed &a_installed) {
+    return EngineRender{a_installed.level, IntermediateHolding::kHeld,
+                        a_installed.levelCosts,
+                        UnpublishedWork{a_installed.total, 0}};
+  }
+
+  void BuildStaged(ActorId a_actor, const InstallBounds &a_bounds) {
+    EngineStage &staged = *shell.actors[a_actor].staged;
+    const Installed installed = BuiltRender(a_actor, a_bounds);
+    staged.awaiting.reset();
+    staged.render = RenderOf(installed);
+    Report(a_actor, installed);
   }
 
   void Build(ActorId a_actor, const InstallBounds &a_bounds) {
@@ -408,6 +466,10 @@ struct Executor {
   }
 
   [[nodiscard]] UnpublishedWork *WorkOf(EngineActor &a_actor) {
+    if (a_actor.staged && a_actor.staged->render &&
+        a_actor.staged->render->firstDraw) {
+      return &*a_actor.staged->render->firstDraw;
+    }
     if (a_actor.resize) {
       return &a_actor.resize->draw;
     }
@@ -435,6 +497,13 @@ struct Executor {
 
   void operator()(const BuildAwaitedRender &a_command) {
     const EngineActor &actor = shell.actors[a_command.actor];
+    if (actor.staged && actor.staged->awaiting) {
+      if (!actor.staged->awaiting->finished) {
+        Disagree(a_command.actor, "staged build without a finished plan job");
+      }
+      BuildStaged(a_command.actor, a_command.bounds);
+      return;
+    }
     if (!actor.awaiting || !actor.awaiting->finished) {
       Disagree(a_command.actor, "build without a finished plan job");
     }
@@ -458,6 +527,52 @@ struct Executor {
     if (cancelled == 0) {
       Disagree(ActorId{}, "cancel of a plan job that is not pending");
     }
+  }
+
+  void operator()(const Restage &a_command) {
+    EngineActor &actor = shell.actors[a_command.actor];
+    const ActorScript script = ScriptFor(a_command.actor);
+    if (!actor.render || script.faults.restageRefused) {
+      (*this)(Install{a_command.actor, a_command.facts, a_command.planned,
+                      InstallKind::kReinstall, a_command.bounds, 0});
+      return;
+    }
+    actor.staged = EngineStage{};
+    if (!script.planTicks) {
+      BuildStaged(a_command.actor, a_command.bounds);
+      return;
+    }
+    const PlanJobId job{shell.nextJob++};
+    actor.staged->awaiting = AwaitedPlanJob{job, false};
+    shell.jobs.push_back(PendingJob{a_command.actor, job,
+                                    shell.tick + *script.planTicks,
+                                    script.faults.planFails});
+    Report(a_command.actor, PlanAwaited{job});
+  }
+
+  void operator()(const SwapRestage &a_command) {
+    EngineActor &actor = shell.actors[a_command.actor];
+    if (!actor.staged || !actor.staged->render) {
+      Disagree(a_command.actor, "swap without a staged render");
+      Report(a_command.actor, RestageNotSwapped{});
+      return;
+    }
+    if (ScriptFor(a_command.actor).faults.restageNotSwapped) {
+      Report(a_command.actor, RestageNotSwapped{});
+      return;
+    }
+    actor.render = *actor.staged->render;
+    actor.render->firstDraw.reset();
+    actor.staged.reset();
+    Report(a_command.actor, RestageSwapped{});
+  }
+
+  void operator()(const AbandonRestage &a_command) {
+    EngineActor &actor = shell.actors[a_command.actor];
+    if (!actor.staged) {
+      Disagree(a_command.actor, "abandon without a staged render");
+    }
+    actor.staged.reset();
   }
 
   void operator()(const Install &a_command) {

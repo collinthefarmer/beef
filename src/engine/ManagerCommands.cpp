@@ -70,6 +70,15 @@ void TraceRelease(RE::FormID a_actorID,
                      {"bytes", std::to_string(a_command.bytes)}});
 }
 
+void TraceRestage(RE::FormID a_actor, std::string_view a_result,
+                  std::string_view a_reason) {
+  Trace::EmitSafely(Trace::Event::kMetrics,
+                    {{"action", "restage"},
+                     {"actor", std::to_string(a_actor)},
+                     {"result", std::string{a_result}},
+                     {"reason", std::string{a_reason}}});
+}
+
 CommandResults Reported(Orchestration::ActorId a_actor,
                         Orchestration::RenderEvent a_event) {
   CommandResults results;
@@ -125,6 +134,15 @@ Manager::Execute(const std::vector<Orchestration::Command> &a_commands,
                },
                [&](const Orchestration::Install &a_command) {
                  return RunInstall(a_command, a_context);
+               },
+               [&](const Orchestration::Restage &a_command) {
+                 return RunRestage(a_command, a_context);
+               },
+               [&](const Orchestration::SwapRestage &a_command) {
+                 return RunSwapRestage(a_command);
+               },
+               [&](const Orchestration::AbandonRestage &a_command) {
+                 return RunAbandonRestage(a_command);
                },
                [&](const Orchestration::Retire &a_command) {
                  return RunRetire(a_command, a_context);
@@ -245,7 +263,10 @@ CommandResults Manager::RunBuildAwaitedRender(
                        "no resources await a plan");
     return Reported(a_command.actor, Orchestration::InstalledWithoutRender{});
   }
-  LiveActor &state = found->second;
+  LiveActor &published = found->second;
+  LiveActor &state = published.restage && published.restage->awaitedPlan
+                         ? *published.restage
+                         : published;
   if (!state.awaitedPlan) {
     ReportDisagreement(id, {"command", "build_awaited_render"},
                        "the actor awaits no plan job");
@@ -254,9 +275,9 @@ CommandResults Manager::RunBuildAwaitedRender(
     state.awaitedPlan.reset();
     return Reported(a_command.actor, Orchestration::InstalledWithoutRender{});
   }
-  return Reported(
-      a_command.actor,
-      BuildAwaitedRender(id, state, a_command.bounds, a_context.settings));
+  return Reported(a_command.actor,
+                  BuildAwaitedRender(id, state, published, a_command.bounds,
+                                     a_context.settings));
 }
 
 CommandResults Manager::RunFailAwaitedRender(
@@ -309,6 +330,72 @@ CommandResults Manager::RunInstall(const Orchestration::Install &a_command,
   }
   results.push_back(InstallLiveActor(*actor, a_command, a_context));
   return results;
+}
+
+CommandResults Manager::RunRestage(const Orchestration::Restage &a_command,
+                                   const TickContext &a_context) {
+  const RE::FormID id = FormOf(a_command.actor);
+  const auto found = live_.find(id);
+  const RE::NiPointer<RE::Actor> actor{RE::TESForm::LookupByID<RE::Actor>(id)};
+  if (found == live_.end() || !actor) {
+    return ReinstallFor(a_command, a_context, "no published render to keep");
+  }
+  std::expected<Orchestration::RenderEvent, std::string> staged =
+      Restaged(*actor, found->second, a_command, a_context);
+  if (!staged) {
+    return ReinstallFor(a_command, a_context, staged.error());
+  }
+  TraceRestage(id, "staged", "");
+  return Reported(a_command.actor, std::move(*staged));
+}
+
+CommandResults Manager::ReinstallFor(const Orchestration::Restage &a_command,
+                                     const TickContext &a_context,
+                                     std::string_view a_reason) {
+  TraceRestage(FormOf(a_command.actor), "reinstalled", a_reason);
+  logger::info("actor {:08X}: reinstalled instead of restaged ({})",
+               FormOf(a_command.actor), a_reason);
+  CommandResults results =
+      RunRetire(Orchestration::Retire{a_command.actor}, a_context);
+  Append(
+      results,
+      RunInstall({a_command.actor, a_command.facts, a_command.planned,
+                  Orchestration::InstallKind::kReinstall, a_command.bounds, 0},
+                 a_context));
+  return results;
+}
+
+CommandResults
+Manager::RunSwapRestage(const Orchestration::SwapRestage &a_command) {
+  const RE::FormID id = FormOf(a_command.actor);
+  const auto found = live_.find(id);
+  const RE::NiPointer<RE::Actor> actor{RE::TESForm::LookupByID<RE::Actor>(id)};
+  if (found == live_.end() || !actor) {
+    ReportDisagreement(id, {"command", "swap_restage"}, "no resources to swap");
+    return Reported(a_command.actor, Orchestration::RestageNotSwapped{});
+  }
+  if (const std::expected<void, std::string> swapped =
+          SwapRestaged(*actor, found->second);
+      !swapped) {
+    TraceRestage(id, "not_swapped", swapped.error());
+    return Reported(a_command.actor, Orchestration::RestageNotSwapped{});
+  }
+  TraceRestage(id, "swapped", "");
+  return Reported(a_command.actor, Orchestration::RestageSwapped{});
+}
+
+CommandResults
+Manager::RunAbandonRestage(const Orchestration::AbandonRestage &a_command) {
+  const RE::FormID id = FormOf(a_command.actor);
+  const auto found = live_.find(id);
+  if (found == live_.end() || !found->second.restage) {
+    ReportDisagreement(id, {"command", "abandon_restage"},
+                       "no staged render to abandon");
+    return {};
+  }
+  found->second.restage.reset();
+  TraceRestage(id, "abandoned", "");
+  return {};
 }
 
 CommandResults Manager::RunRetire(const Orchestration::Retire &a_command,

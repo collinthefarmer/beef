@@ -29,6 +29,9 @@ struct BuildAwaitedRender;
 struct FailAwaitedRender;
 struct CancelPlanJob;
 struct Install;
+struct Restage;
+struct SwapRestage;
+struct AbandonRestage;
 struct Retire;
 struct Forget;
 struct Observe;
@@ -39,7 +42,8 @@ using Command =
     std::variant<TickActor, StartResize, SwapResize, AbandonResize,
                  ReleaseIntermediates, SetAppliedLevel, DrawUnpublished,
                  BuildAwaitedRender, FailAwaitedRender, CancelPlanJob, Install,
-                 Retire, Forget, Observe, KeepModels, SettleApplications>;
+                 Restage, SwapRestage, AbandonRestage, Retire, Forget, Observe,
+                 KeepModels, SettleApplications>;
 
 struct TickActor {
   ActorId actor{};
@@ -100,6 +104,21 @@ struct Install {
   InstallKind kind = InstallKind::kInstall;
   InstallBounds bounds;
   std::uint64_t replacedBytes = 0;
+};
+
+struct Restage {
+  ActorId actor{};
+  Actors::ActorFacts facts;
+  Actors::PlannedActor planned;
+  InstallBounds bounds;
+};
+
+struct SwapRestage {
+  ActorId actor{};
+};
+
+struct AbandonRestage {
+  ActorId actor{};
 };
 
 struct Retire {

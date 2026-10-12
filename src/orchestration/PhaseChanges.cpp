@@ -126,6 +126,57 @@ PhaseChange NotSwapped(ActorId a_actor, const Running &a_running,
   return failed;
 }
 
+PhaseChange Staged(Restaging a_restaging, RestageStep a_step) {
+  a_restaging.step = a_step;
+  return {a_restaging, {}};
+}
+
+PhaseChange StagedPlan(const Restaging &a_restaging,
+                       const PlanAwaited &a_awaited) {
+  if (!Is<RestageRequested>(a_restaging.step)) {
+    return Ignored(a_restaging);
+  }
+
+  return Staged(a_restaging, RestagePlanning{a_awaited.job});
+}
+
+PhaseChange StagedRender(const Restaging &a_restaging,
+                         const Installed &a_installed, std::uint64_t a_frame) {
+  if (Is<RestageDrawing>(a_restaging.step)) {
+    return Ignored(a_restaging);
+  }
+
+  const UnpublishedDraw draw{a_installed.total, 0, a_frame, 0};
+  return Staged(a_restaging, RestageDrawing{a_installed.level, draw,
+                                            a_installed.chargedBytes});
+}
+
+PhaseChange Drawn(const Restaging &a_restaging,
+                  const UnpublishedDrawn &a_drawn) {
+  const RestageDrawing *drawing = Get<RestageDrawing>(a_restaging.step);
+  if (!drawing) {
+    return Ignored(a_restaging);
+  }
+
+  RestageDrawing next = *drawing;
+  next.draw = Counted(next.draw, a_drawn);
+  return Staged(a_restaging, next);
+}
+
+PhaseChange Swapped(ActorId a_actor, const Restaging &a_restaging) {
+  const RestageDrawing *drawing = Get<RestageDrawing>(a_restaging.step);
+  if (!drawing) {
+    return Ignored(a_restaging);
+  }
+
+  const Shown shown = ShownAt(drawing->level, Held{}, a_restaging.shown.failed);
+  return Applied(a_actor, shown, drawing->level);
+}
+
+PhaseChange Abandoned(ActorId a_actor, const Restaging &a_restaging) {
+  return {a_restaging.shown, {AbandonRestage{a_actor}}};
+}
+
 PhaseChange SeeShown(ActorId a_actor, Shown a_shown,
                      const SeenThisTick &a_seen) {
   a_shown.failed = StillFailed(a_shown.failed, a_seen.wanted);
@@ -202,6 +253,21 @@ PhaseChange OnEvent(ActorId a_actor, RenderPhase a_phase,
       [&](const Running &a_running, const ResizeNotSwapped &) {
         return NotSwapped(a_actor, a_running, a_context);
       },
+      [](const Restaging &a_restaging, const PlanAwaited &a_awaited) {
+        return StagedPlan(a_restaging, a_awaited);
+      },
+      [&](const Restaging &a_restaging, const Installed &a_installed) {
+        return StagedRender(a_restaging, a_installed, frame);
+      },
+      [](const Restaging &a_restaging, const UnpublishedDrawn &a_drawn) {
+        return Drawn(a_restaging, a_drawn);
+      },
+      [&](const Restaging &a_restaging, const RestageSwapped &) {
+        return Swapped(a_actor, a_restaging);
+      },
+      [&](const Restaging &a_restaging, const RestageNotSwapped &) {
+        return Abandoned(a_actor, a_restaging);
+      },
       [&](const auto &, const auto &) { return Ignored(a_phase); });
 }
 
@@ -218,6 +284,9 @@ PhaseChange FailPlan(ActorId a_actor, RenderPhase a_phase,
                      const PlanJobFailed &a_failed) {
   if (AwaitedJob(a_phase) != a_failed.job) {
     return Unchanged(a_phase);
+  }
+  if (const Restaging *restaging = Get<Restaging>(a_phase)) {
+    return Abandoned(a_actor, *restaging);
   }
 
   return {Empty{}, {FailAwaitedRender{a_actor, a_failed.problem}}};

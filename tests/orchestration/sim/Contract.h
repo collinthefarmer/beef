@@ -25,6 +25,9 @@ enum class CommandKind : std::uint8_t {
   kFailAwaitedRender,
   kCancelPlanJob,
   kInstall,
+  kRestage,
+  kSwapRestage,
+  kAbandonRestage,
   kRetire,
   kForget,
   kObserve,
@@ -85,6 +88,9 @@ struct StepsOutcome {
       [](const FailAwaitedRender &) { return CommandKind::kFailAwaitedRender; },
       [](const CancelPlanJob &) { return CommandKind::kCancelPlanJob; },
       [](const Install &) { return CommandKind::kInstall; },
+      [](const Restage &) { return CommandKind::kRestage; },
+      [](const SwapRestage &) { return CommandKind::kSwapRestage; },
+      [](const AbandonRestage &) { return CommandKind::kAbandonRestage; },
       [](const Retire &) { return CommandKind::kRetire; },
       [](const Forget &) { return CommandKind::kForget; },
       [](const Observe &) { return CommandKind::kObserve; },
@@ -118,6 +124,12 @@ struct StepsOutcome {
     return "CancelPlanJob";
   case CommandKind::kInstall:
     return "Install";
+  case CommandKind::kRestage:
+    return "Restage";
+  case CommandKind::kSwapRestage:
+    return "SwapRestage";
+  case CommandKind::kAbandonRestage:
+    return "AbandonRestage";
   case CommandKind::kRetire:
     return "Retire";
   case CommandKind::kForget:
@@ -177,9 +189,10 @@ struct StepsOutcome {
       {"RecordRenderResults",
        RecordRenderResults,
        {CommandKind::kSetAppliedLevel, CommandKind::kAbandonResize,
-        CommandKind::kBuildAwaitedRender, CommandKind::kFailAwaitedRender},
+        CommandKind::kBuildAwaitedRender, CommandKind::kFailAwaitedRender,
+        CommandKind::kAbandonRestage},
        {Field::kRenderCreated, Field::kLevelCosts, Field::kRenderedFrame,
-        Field::kSight}},
+        Field::kSight, Field::kBudget}},
       {"RunBudget",
        RunBudget,
        {CommandKind::kReleaseIntermediates, CommandKind::kAbandonResize,
@@ -187,18 +200,20 @@ struct StepsOutcome {
        {Field::kBudget, Field::kRadius}},
       {"RunSync",
        RunSync,
-       {CommandKind::kInstall, CommandKind::kRetire, CommandKind::kForget,
-        CommandKind::kCancelPlanJob, CommandKind::kObserve,
-        CommandKind::kKeepModels, CommandKind::kSettleApplications},
+       {CommandKind::kInstall, CommandKind::kRestage, CommandKind::kRetire,
+        CommandKind::kForget, CommandKind::kCancelPlanJob,
+        CommandKind::kObserve, CommandKind::kKeepModels,
+        CommandKind::kSettleApplications},
        {Field::kActorSet, Field::kSyncState, Field::kSyncLog,
         Field::kWaitingInstalls, Field::kTimers, Field::kBudget,
         Field::kReinstallLevel, Field::kReturnBytes, Field::kRenderErased}},
       {"RunLifecycle",
        RunLifecycle,
-       {CommandKind::kSwapResize, CommandKind::kStartResize,
-        CommandKind::kAbandonResize, CommandKind::kReleaseIntermediates,
-        CommandKind::kBuildAwaitedRender, CommandKind::kFailAwaitedRender,
-        CommandKind::kTickActor, CommandKind::kDrawUnpublished},
+       {CommandKind::kSwapResize, CommandKind::kSwapRestage,
+        CommandKind::kStartResize, CommandKind::kAbandonResize,
+        CommandKind::kReleaseIntermediates, CommandKind::kBuildAwaitedRender,
+        CommandKind::kFailAwaitedRender, CommandKind::kTickActor,
+        CommandKind::kDrawUnpublished},
        {Field::kBudget}},
   }};
   return rows;

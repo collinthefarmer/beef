@@ -21,44 +21,46 @@ std::optional<std::uint32_t> ClockOffsetMS(float a_seconds,
   return static_cast<std::uint32_t>(milliseconds);
 }
 
-void CarriedTimes::Remember(CarriedTimeKey a_key, float a_seconds,
-                            std::uint32_t a_nowMS) {
-  if (!std::isfinite(a_seconds) || a_seconds < 0.0f) {
+void CarriedInstances::Remember(CarriedInstanceKey a_key,
+                                CarriedInstance a_instance,
+                                std::uint32_t a_nowMS) {
+  if (!std::isfinite(a_instance.seconds) || a_instance.seconds < 0.0f) {
     entries_.erase(a_key);
     return;
   }
   if (const auto existing = entries_.find(a_key); existing != entries_.end()) {
-    existing->second = Entry{a_seconds, a_nowMS};
+    existing->second = Entry{std::move(a_instance), a_nowMS};
     return;
   }
-  if (entries_.size() >= kMaxCarriedInstanceTimes) {
+  if (entries_.size() >= kMaxCarriedInstances) {
     return;
   }
-  entries_.emplace(std::move(a_key), Entry{a_seconds, a_nowMS});
+  entries_.emplace(std::move(a_key), Entry{std::move(a_instance), a_nowMS});
 }
 
-std::optional<float> CarriedTimes::Take(const CarriedTimeKey &a_key,
-                                        std::uint32_t a_nowMS) {
+std::optional<CarriedInstance>
+CarriedInstances::Take(const CarriedInstanceKey &a_key, std::uint32_t a_nowMS) {
   const auto found = entries_.find(a_key);
   if (found == entries_.end()) {
     return std::nullopt;
   }
-  const Entry entry = found->second;
+  Entry entry = std::move(found->second);
   entries_.erase(found);
-  return a_nowMS - entry.retiredMS <= kCarryWindowMS
-             ? std::optional<float>{entry.seconds}
-             : std::nullopt;
+  if (a_nowMS - entry.retiredMS > kCarryWindowMS) {
+    return std::nullopt;
+  }
+  return std::move(entry.instance);
 }
 
-void CarriedTimes::Expire(std::uint32_t a_nowMS) {
+void CarriedInstances::Expire(std::uint32_t a_nowMS) {
   std::erase_if(
       entries_,
-      [a_nowMS](const std::pair<const CarriedTimeKey, Entry> &a_entry) {
+      [a_nowMS](const std::pair<const CarriedInstanceKey, Entry> &a_entry) {
         return a_nowMS - a_entry.second.retiredMS > kCarryWindowMS;
       });
 }
 
-void CarriedTimes::Clear() noexcept { entries_.clear(); }
+void CarriedInstances::Clear() noexcept { entries_.clear(); }
 
-std::size_t CarriedTimes::Size() const noexcept { return entries_.size(); }
+std::size_t CarriedInstances::Size() const noexcept { return entries_.size(); }
 }

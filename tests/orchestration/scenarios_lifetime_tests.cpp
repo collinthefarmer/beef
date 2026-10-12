@@ -235,7 +235,109 @@ void AReinstallTickSendsNothingForTheOldRender() {
 }
 }
 
+Simulation RestagedActor(ActorId a_actor, Faults a_faults) {
+  Script script;
+  ActorScript actor =
+      Arriving(InView(0.6f, 300.0f), 1, PlanNamed("first", 0xD00));
+  actor.planTicks = 5;
+  actor.faults = a_faults;
+  actor.stale.push_back(
+      {60, PlanNamed("second", 0xD00), Actors::Reinstall::kAlways});
+  script.actors[a_actor] = actor;
+  return Ran(Started(std::move(script)), 59);
+}
+
+bool PublishedFrom(const Simulation &a_sim, ActorId a_actor,
+                   std::uint64_t a_tick) {
+  for (const Issued<TickActor> &tick : IssuedFor<TickActor>(a_sim, a_actor)) {
+    if (tick.tick >= a_tick && tick.command.concealSlots) {
+      return false;
+    }
+  }
+  return true;
+}
+
+void ARestageKeepsTheShownRender() {
+  constexpr ActorId kActor{1000};
+  Simulation sim = RestagedActor(kActor, {});
+  const RenderPhase *phase = PhaseNow(sim, kActor);
+  Check(phase && Is<Shown>(*phase), "the actor is shown before the edit");
+
+  sim = Ran(std::move(sim), 200);
+  Check(sim.violations.empty(), Report(sim));
+  Equal(IssuedFor<Restage>(sim, kActor).size(), std::size_t{1},
+        "the forced reinstall restages once");
+  Check(IssuedFor<Retire>(sim, kActor).empty(),
+        "a restage never retires the shown render");
+  Equal(IssuedFor<SwapRestage>(sim, kActor).size(), std::size_t{1},
+        "the staged render swaps once");
+  Check(PublishedFrom(sim, kActor, 60),
+        "the actor stays published through the restage");
+  phase = PhaseNow(sim, kActor);
+  Check(phase && Is<Shown>(*phase), "the restaged actor ends shown");
+  const auto engine = sim.shell.actors.find(kActor);
+  Check(engine != sim.shell.actors.end() && !engine->second.staged,
+        "no staged render is left behind");
+}
+
+void ARefusedRestageReinstalls() {
+  constexpr ActorId kActor{1001};
+  Faults faults;
+  faults.restageRefused = true;
+  Simulation sim = Ran(RestagedActor(kActor, faults), 200);
+  Check(sim.violations.empty(), Report(sim));
+  Equal(ReportedOf<Installed>(sim, kActor).size(), std::size_t{2},
+        "the refused restage installs a new render");
+  Check(IssuedFor<SwapRestage>(sim, kActor).empty(),
+        "a refused restage swaps nothing");
+  const RenderPhase *phase = PhaseNow(sim, kActor);
+  Check(phase && Is<Shown>(*phase), "the reinstalled actor ends shown");
+}
+
+void AnUnswappedRestageKeepsTheShownRender() {
+  constexpr ActorId kActor{1002};
+  Faults faults;
+  faults.restageNotSwapped = true;
+  Simulation sim = Ran(RestagedActor(kActor, faults), 200);
+  Check(sim.violations.empty(), Report(sim));
+  Equal(IssuedFor<AbandonRestage>(sim, kActor).size(), std::size_t{1},
+        "an unswapped restage is abandoned once");
+  Check(PublishedFrom(sim, kActor, 60),
+        "the actor stays published when the swap fails");
+  const auto engine = sim.shell.actors.find(kActor);
+  Check(engine != sim.shell.actors.end() && !engine->second.staged,
+        "the abandoned staged render is dropped");
+}
+
+void ASecondEditRestagesAgain() {
+  constexpr ActorId kActor{1003};
+  Script script;
+  ActorScript actor =
+      Arriving(InView(0.6f, 300.0f), 1, PlanNamed("first", 0xD00));
+  actor.planTicks = 20;
+  actor.stale.push_back(
+      {60, PlanNamed("second", 0xD00), Actors::Reinstall::kAlways});
+  actor.stale.push_back(
+      {65, PlanNamed("third", 0xD00), Actors::Reinstall::kAlways});
+  script.actors[kActor] = actor;
+  const Simulation sim = Ran(Started(std::move(script)), 200);
+  Check(sim.violations.empty(), Report(sim));
+  Equal(IssuedFor<Restage>(sim, kActor).size(), std::size_t{2},
+        "a second edit while restaging restages again");
+  Equal(IssuedOf<CancelPlanJob>(sim).size(), std::size_t{1},
+        "the superseded staged plan is cancelled");
+  Check(IssuedFor<Retire>(sim, kActor).empty() &&
+            PublishedFrom(sim, kActor, 60),
+        "the actor stays published through both edits");
+  Equal(IssuedFor<SwapRestage>(sim, kActor).size(), std::size_t{1},
+        "only the last staged render swaps");
+}
+
 int main() {
+  ASecondEditRestagesAgain();
+  ARestageKeepsTheShownRender();
+  ARefusedRestageReinstalls();
+  AnUnswappedRestageKeepsTheShownRender();
   APlanJobThatFails();
   TheRadiusShrinksAndGrows();
   AReinstallDuringAResize();

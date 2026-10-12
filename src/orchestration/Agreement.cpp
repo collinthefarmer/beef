@@ -111,6 +111,38 @@ void AwaitedOf(Findings &a_findings, const HeldResources &a_held,
   }
 }
 
+void NoRestage(Findings &a_findings, const HeldResources &a_held) {
+  if (a_held.restage) {
+    a_findings.emplace_back("a restage the core does not expect");
+  }
+}
+
+HeldRestage ExpectedRestage(const RestageStep &a_step) {
+  return Match(
+      a_step, [](const RestageRequested &) { return HeldRestage{}; },
+      [](const RestagePlanning &a_planning) {
+        return HeldRestage{a_planning.job, std::nullopt};
+      },
+      [](const RestageDrawing &a_drawing) {
+        return HeldRestage{std::nullopt, CountOf(a_drawing.draw)};
+      });
+}
+
+void RestageOf(Findings &a_findings, const HeldResources &a_held,
+               const RestageStep &a_step) {
+  if (Is<RestageRequested>(a_step)) {
+    a_findings.emplace_back("a restage the engine has not started");
+    return;
+  }
+  if (!a_held.restage) {
+    a_findings.emplace_back("no restage where the core expects one");
+    return;
+  }
+  if (*a_held.restage != ExpectedRestage(a_step)) {
+    a_findings.emplace_back("a restage in another step than the core expects");
+  }
+}
+
 Findings FindingsFor(const RenderPhase &a_phase, const HeldResources &a_held) {
   Findings findings;
   Match(
@@ -154,7 +186,18 @@ Findings FindingsFor(const RenderPhase &a_phase, const HeldResources &a_held) {
         ResizeOf(findings, a_held,
                  HeldResize{resize.to, CountOf(a_running.draw)});
         NoAwaited(findings, a_held);
+      },
+      [&](const Restaging &a_restaging) {
+        const Shown &shown = a_restaging.shown;
+        RenderAt(findings, a_held, shown.level, HoldingOf(shown.intermediates));
+        NoFirstDraw(findings, a_held);
+        NoResize(findings, a_held);
+        NoAwaited(findings, a_held);
+        RestageOf(findings, a_held, a_restaging.step);
       });
+  if (!Is<Restaging>(a_phase)) {
+    NoRestage(findings, a_held);
+  }
   return findings;
 }
 
@@ -168,7 +211,8 @@ const InstalledRender *RenderOf(const World &a_world, ActorId a_actor) {
 
 bool AbandonsItsResize(const CommandResult &a_result) {
   const ActorEvent *event = Get<ActorEvent>(a_result);
-  return event && Is<ResizeNotSwapped>(event->event);
+  return event && (Is<ResizeNotSwapped>(event->event) ||
+                   Is<RestageNotSwapped>(event->event));
 }
 
 void Append(std::vector<Disagreement> &a_into, ActorId a_actor,

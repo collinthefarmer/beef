@@ -32,11 +32,18 @@ struct HeldResize {
   [[nodiscard]] bool operator==(const HeldResize &) const = default;
 };
 
+struct HeldRestage {
+  std::optional<PlanJobId> awaited;
+  std::optional<UnpublishedCount> draw;
+  [[nodiscard]] bool operator==(const HeldRestage &) const = default;
+};
+
 struct HeldResources {
   std::optional<HeldRender> render;
   std::optional<UnpublishedCount> firstDraw;
   std::optional<HeldResize> resize;
   std::optional<PlanJobId> awaited;
+  std::optional<HeldRestage> restage;
   [[nodiscard]] bool operator==(const HeldResources &) const = default;
 };
 

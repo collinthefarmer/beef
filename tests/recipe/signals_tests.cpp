@@ -908,5 +908,58 @@ int main() {
     }
   }
 
+  {
+    const Signal rate{"rate", ActorValueSignal{"Rate", Measure::kCurrent},
+                      std::nullopt};
+    const auto wave = [](std::string a_name) {
+      return Signal{std::move(a_name),
+                    WaveSignal{0.0f, 1.0f, Ref{"rate"}, 0.0f, Waveform::kSaw},
+                    std::nullopt};
+    };
+    const Signal hit{"hit", TriggerSignal{EventOrigin{"hit", {}}, 10.0f, 4},
+                     std::nullopt};
+    const Signal count{"count",
+                       CounterSignal{Ref{"hit"}, std::nullopt, std::nullopt},
+                       std::nullopt};
+    FakeEnvironment environment;
+    environment.actorValues["Rate"] = 1.0f;
+
+    const std::vector<Signal> before{rate, wave("p"), wave("gone"), hit, count};
+    const auto oldGraph = CompileSignals(before);
+    SignalState old{oldGraph};
+    EventRecord event;
+    event.id = "hit";
+    old.Fire(event, 0.0f);
+    old.Fire(event, 0.0f);
+    old.Tick(environment, TickInputs{0.0f, 0.4f});
+    const std::vector<SignalMemoryEntry> memory = old.Remembered();
+    Check(std::ranges::count(memory, std::string{"p"},
+                             &SignalMemoryEntry::name) == 1 &&
+              std::ranges::count(memory, std::string{"hit"},
+                                 &SignalMemoryEntry::name) == 1,
+          "the memory names each stateful row once");
+
+    const std::vector<Signal> after{rate, wave("p"), wave("renamed"), hit,
+                                    count};
+    const auto newGraph = CompileSignals(after);
+    SignalState adopted{newGraph};
+    adopted.Adopt(memory);
+    adopted.Tick(environment, TickInputs{0.4f, 0.1f});
+    Check(Near(adopted.Scalar("p"), 0.5f),
+          "a kept wave continues from its phase");
+    Check(Near(adopted.Scalar("renamed"), 0.1f), "a renamed wave starts fresh");
+    Check(adopted.Firings("hit").size() == 2,
+          "a kept trigger keeps its live firings");
+    Check(Near(adopted.Scalar("count"), 2.0f),
+          "a kept counter keeps its count");
+
+    SignalState mismatched{newGraph};
+    mismatched.Adopt(std::vector<SignalMemoryEntry>{
+        {"p", SignalState::CounterState{5, 0, 5.0f}}});
+    mismatched.Tick(environment, TickInputs{0.0f, 0.1f});
+    Check(Near(mismatched.Scalar("p"), 0.1f),
+          "a memory entry of another kind is ignored");
+  }
+
   return test::Finish("signals");
 }

@@ -251,6 +251,16 @@ private:
   [[nodiscard]] CommandResults
   RunInstall(const Orchestration::Install &a_command,
              const TickContext &a_context);
+  [[nodiscard]] CommandResults
+  RunRestage(const Orchestration::Restage &a_command,
+             const TickContext &a_context);
+  [[nodiscard]] CommandResults
+  RunSwapRestage(const Orchestration::SwapRestage &a_command);
+  [[nodiscard]] CommandResults
+  RunAbandonRestage(const Orchestration::AbandonRestage &a_command);
+  [[nodiscard]] CommandResults
+  ReinstallFor(const Orchestration::Restage &a_command,
+               const TickContext &a_context, std::string_view a_reason);
   [[nodiscard]] CommandResults RunRetire(const Orchestration::Retire &a_command,
                                          const TickContext &a_context);
   [[nodiscard]] CommandResults
@@ -268,7 +278,15 @@ private:
                    const TickContext &a_context);
   [[nodiscard]] Orchestration::RenderEvent
   BuildAwaitedRender(RE::FormID a_actorID, LiveActor &a_state,
-                     const InstallBounds &a_bounds, const Settings &a_settings);
+                     LiveActor &a_bindings, const InstallBounds &a_bounds,
+                     const Settings &a_settings);
+  [[nodiscard]] std::expected<Orchestration::RenderEvent, std::string>
+  Restaged(RE::Actor &a_actor, LiveActor &a_published,
+           const Orchestration::Restage &a_command,
+           const TickContext &a_context);
+  [[nodiscard]] std::expected<void, std::string>
+  SwapRestaged(RE::Actor &a_actor, LiveActor &a_published);
+  void RememberInstances(RE::FormID a_actorID, const LiveActor &a_state);
   [[nodiscard]] std::size_t RetireActorResources(RE::FormID a_actorID);
   void ForgetActorResources(RE::FormID a_actorID);
   struct CatalogMatches {
@@ -304,8 +322,8 @@ private:
   void SweepAnimationEvents();
   void BuildInstances(LiveActor &a_state, const Settings &a_settings);
   void FireEquip(RE::FormID a_actorID);
-  void CarryInstanceTime(LiveInstance &a_instance, RE::FormID a_actor,
-                         const Recipe &a_recipe, const Settings &a_settings);
+  void CarryInstanceState(LiveInstance &a_instance, RE::FormID a_actor,
+                          const Recipe &a_recipe, const Settings &a_settings);
   [[nodiscard]] std::optional<std::size_t>
   InstanceFor(LiveActor &a_state, InstanceId a_matchedInstance,
               RE::FormID a_enchantment, const Settings &a_settings);
@@ -351,7 +369,7 @@ private:
   std::unordered_set<RE::FormID> loggedNonPBRArmor_;
   WarningHistory warningHistory_;
 
-  CarriedTimes carriedTimes_;
+  CarriedInstances carriedInstances_;
   RenderPlanCache renderPlans_;
   PlanJobBook planJobs_;
   PlanQueue planQueue_{BuildPlanFrom, kPlanJobCapacity};

@@ -97,8 +97,37 @@ struct Running {
   [[nodiscard]] bool operator==(const Running &) const = default;
 };
 
+struct RestageRequested {
+  [[nodiscard]] bool operator==(const RestageRequested &) const = default;
+};
+
+struct RestagePlanning {
+  PlanJobId job{};
+
+  [[nodiscard]] bool operator==(const RestagePlanning &) const = default;
+};
+
+struct RestageDrawing {
+  Level level = Level::kFull;
+  UnpublishedDraw draw;
+  std::uint64_t chargedBytes = 0;
+
+  [[nodiscard]] bool operator==(const RestageDrawing &) const = default;
+};
+
+using RestageStep =
+    std::variant<RestageRequested, RestagePlanning, RestageDrawing>;
+
+struct Restaging {
+  Shown shown;
+  std::uint64_t shownBytes = 0;
+  RestageStep step;
+
+  [[nodiscard]] bool operator==(const Restaging &) const = default;
+};
+
 using RenderPhase =
-    std::variant<Empty, Shown, Planning, Drawing, Queued, Running>;
+    std::variant<Empty, Shown, Planning, Drawing, Queued, Running, Restaging>;
 
 static_assert(std::is_trivially_copyable_v<RenderPhase>);
 
@@ -129,6 +158,10 @@ UnpublishedDrawOf(const RenderPhase &a_phase) noexcept;
 ResizeProgressOf(const RenderPhase &a_phase) noexcept;
 [[nodiscard]] std::optional<PlanJobId>
 AwaitedJob(const RenderPhase &a_phase) noexcept;
+[[nodiscard]] const RestageDrawing *
+RestageDrawingOf(const RenderPhase &a_phase) noexcept;
+[[nodiscard]] std::uint64_t
+StagedBytesOf(const Restaging &a_restaging) noexcept;
 
 [[nodiscard]] std::string_view PhaseName(const RenderPhase &a_phase) noexcept;
 }

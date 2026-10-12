@@ -27,6 +27,9 @@ IntermediateHolding HoldingOf(const RenderPhase &a_phase) noexcept {
   if (const Shown *shown = Get<Shown>(a_phase)) {
     return HoldingOf(shown->intermediates);
   }
+  if (const Restaging *restaging = Get<Restaging>(a_phase)) {
+    return HoldingOf(restaging->shown.intermediates);
+  }
   const Resize *resize = FindResize(a_phase);
   return resize ? resize->holding : IntermediateHolding::kHeld;
 }
@@ -41,7 +44,11 @@ std::optional<Level> TargetLevel(const RenderPhase &a_phase) noexcept {
         return a_drawing.next.value_or(a_drawing.level);
       },
       [](const Queued &a_queued) -> Target { return a_queued.resize.to; },
-      [](const Running &a_running) -> Target { return a_running.resize.to; });
+      [](const Running &a_running) -> Target { return a_running.resize.to; },
+      [](const Restaging &a_restaging) -> Target {
+        const RestageDrawing *drawing = Get<RestageDrawing>(a_restaging.step);
+        return drawing ? drawing->level : a_restaging.shown.level;
+      });
 }
 
 std::optional<Level> AppliedLevel(const RenderPhase &a_phase) noexcept {
@@ -52,8 +59,9 @@ std::optional<Level> AppliedLevel(const RenderPhase &a_phase) noexcept {
       [](const Planning &) -> Applied { return std::nullopt; },
       [](const Drawing &a_drawing) -> Applied { return a_drawing.level; },
       [](const Queued &a_queued) -> Applied { return a_queued.resize.from; },
-      [](const Running &a_running) -> Applied {
-        return a_running.resize.from;
+      [](const Running &a_running) -> Applied { return a_running.resize.from; },
+      [](const Restaging &a_restaging) -> Applied {
+        return a_restaging.shown.level;
       });
 }
 
@@ -74,6 +82,9 @@ const UnpublishedDraw *UnpublishedDrawOf(const RenderPhase &a_phase) noexcept {
   if (const Drawing *drawing = Get<Drawing>(a_phase)) {
     return &drawing->draw;
   }
+  if (const RestageDrawing *restage = RestageDrawingOf(a_phase)) {
+    return &restage->draw;
+  }
   const Running *running = Get<Running>(a_phase);
   return running ? &running->draw : nullptr;
 }
@@ -90,13 +101,32 @@ ResizeProgressOf(const RenderPhase &a_phase) noexcept {
 }
 
 std::optional<PlanJobId> AwaitedJob(const RenderPhase &a_phase) noexcept {
-  const Planning *planning = Get<Planning>(a_phase);
-  return planning ? std::optional<PlanJobId>{planning->job} : std::nullopt;
+  if (const Planning *planning = Get<Planning>(a_phase)) {
+    return planning->job;
+  }
+  const Restaging *restaging = Get<Restaging>(a_phase);
+  const RestagePlanning *staged =
+      restaging ? Get<RestagePlanning>(restaging->step) : nullptr;
+  return staged ? std::optional<PlanJobId>{staged->job} : std::nullopt;
+}
+
+const RestageDrawing *RestageDrawingOf(const RenderPhase &a_phase) noexcept {
+  const Restaging *restaging = Get<Restaging>(a_phase);
+  return restaging ? Get<RestageDrawing>(restaging->step) : nullptr;
+}
+
+std::uint64_t StagedBytesOf(const Restaging &a_restaging) noexcept {
+  const RestageDrawing *drawing = Get<RestageDrawing>(a_restaging.step);
+  return drawing ? drawing->chargedBytes : 0;
 }
 
 std::optional<Level> FailedLevelOf(const RenderPhase &a_phase) noexcept {
   if (const Shown *shown = Get<Shown>(a_phase); shown && shown->failed) {
     return shown->failed->level;
+  }
+  if (const Restaging *restaging = Get<Restaging>(a_phase);
+      restaging && restaging->shown.failed) {
+    return restaging->shown.failed->level;
   }
 
   const Resize *resize = FindResize(a_phase);
@@ -121,6 +151,7 @@ std::string_view PhaseName(const RenderPhase &a_phase) noexcept {
       [](const Planning &) { return Name{"planning"}; },
       [](const Drawing &) { return Name{"drawing"}; },
       [](const Queued &) { return Name{"resize_queued"}; },
-      [](const Running &) { return Name{"resize_running"}; });
+      [](const Running &) { return Name{"resize_running"}; },
+      [](const Restaging &) { return Name{"restaging"}; });
 }
 }

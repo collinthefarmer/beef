@@ -140,6 +140,9 @@ template <class T>
 
 [[nodiscard]] inline std::uint64_t HeldCost(const InstalledRender &a_render,
                                             bool a_starting) {
+  if (const Restaging *restaging = Get<Restaging>(a_render.phase)) {
+    return Sum(restaging->shownBytes, StagedBytesOf(*restaging));
+  }
   const std::optional<ResolutionLevel> applied = AppliedLevel(a_render.phase);
   if (!applied) {
     return 0;
@@ -265,7 +268,7 @@ struct Checker {
         },
         [&](const DrawUnpublished &a_draw) { CheckDraw(a_draw); },
         [&](const BuildAwaitedRender &) {
-          if (!after || !Is<Planning>(*after)) {
+          if (!after || !AwaitedJob(*after)) {
             disagree("awaited render built outside awaiting plan");
           }
         },
@@ -275,6 +278,21 @@ struct Checker {
           }
         },
         [&](const CancelPlanJob &a_cancel) { CheckCancel(a_cancel); },
+        [&](const Restage &) {
+          if (!after || !Is<Restaging>(*after)) {
+            disagree("restage outside a restaging phase");
+          }
+        },
+        [&](const SwapRestage &) {
+          if (!after || !RestageDrawingOf(*after)) {
+            disagree("restage swap outside a staged render");
+          }
+        },
+        [&](const AbandonRestage &) {
+          if (!after || !Is<Shown>(*after)) {
+            disagree("abandoned restage did not return to shown");
+          }
+        },
         [&](const Install &a_install) {
           if (a_install.kind == InstallKind::kInstall &&
               Before(a_install.actor)) {
@@ -381,7 +399,7 @@ struct Checker {
       }
       const RenderPhase *before =
           RetiredThisTick(event->actor) ? nullptr : Before(event->actor);
-      if (before && !Is<Planning>(*before)) {
+      if (before && !Is<Planning>(*before) && !Is<Restaging>(*before)) {
         Flag(Rule::kCreatingEventIgnored, event->actor,
              "creating event for a phase that cannot take it");
       }

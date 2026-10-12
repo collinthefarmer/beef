@@ -43,6 +43,7 @@ DrawnStacks(const ResizeInFlight &a_inFlight) noexcept;
 ResizingInstance(const LiveActor &a_state) noexcept;
 void StartFirstDraw(LiveActor &a_state, std::span<const GeometrySlot> a_slots);
 [[nodiscard]] std::size_t DrawnSlots(const FirstDraw &a_draw) noexcept;
+void ConcealStackSlots(LiveActor &a_state);
 [[nodiscard]] LiveGeometry *GeometryOf(LiveActor &a_state,
                                        const HiddenSlot &a_slot) noexcept;
 }

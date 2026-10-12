@@ -126,7 +126,7 @@ void Manager::Clear() {
   editor_.CancelPaintForLoad();
   loggedNonPBRArmor_.clear();
   warningHistory_.Clear();
-  carriedTimes_.Clear();
+  carriedInstances_.Clear();
   Compositor::GetSingleton()->ClearStepOutputs();
   Compositor::GetSingleton()->ClearMeshes();
   Compositor::GetSingleton()->ClearMaterials();

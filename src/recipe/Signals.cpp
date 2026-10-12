@@ -636,6 +636,36 @@ SignalState::SignalState(const RecipeGraph &a_graph)
   }
 }
 
+std::vector<SignalMemoryEntry> SignalState::Remembered() const {
+  std::vector<SignalMemoryEntry> memory;
+  for (NodeId id = 0; id < stateSlots_.size(); ++id) {
+    const std::string_view name = graph_.NameOf(id);
+    if (!stateSlots_[id] || name.empty() ||
+        *stateSlots_[id] >= states_.size()) {
+      continue;
+    }
+    memory.push_back({std::string{name}, states_[*stateSlots_[id]]});
+  }
+  return memory;
+}
+
+void SignalState::Adopt(std::span<const SignalMemoryEntry> a_memory) {
+  for (NodeId id = 0; id < stateSlots_.size(); ++id) {
+    const std::string_view name = graph_.NameOf(id);
+    if (!stateSlots_[id] || name.empty() ||
+        *stateSlots_[id] >= states_.size()) {
+      continue;
+    }
+    OperationState &state = states_[*stateSlots_[id]];
+    const auto kept =
+        std::ranges::find(a_memory, name, &SignalMemoryEntry::name);
+    if (kept == a_memory.end() || kept->state.index() != state.index()) {
+      continue;
+    }
+    state = kept->state;
+  }
+}
+
 Value SignalState::DefaultValue(NodeId a_node) const noexcept {
   const auto type = graph_.OutputType({a_node, 0});
   const auto *numeric = type ? Get<ValueType>(*type) : nullptr;

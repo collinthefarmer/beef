@@ -32,6 +32,8 @@ namespace {
 using Orchestration::ActorOf;
 using Orchestration::FormOf;
 
+Orchestration::HeldRestage HeldRestageOf(const LiveActor &a_staged);
+
 bool TakenByAnotherSystem(const LiveGeometry &a_bound) {
   if (a_bound.lost) {
     return false;
@@ -111,6 +113,21 @@ Orchestration::HeldResources HeldOf(const LiveActor &a_state) {
   }
   if (a_state.awaitedPlan) {
     held.awaited = PlanJobIdOf(*a_state.awaitedPlan);
+  }
+  if (a_state.restage) {
+    held.restage = HeldRestageOf(*a_state.restage);
+  }
+  return held;
+}
+
+Orchestration::HeldRestage HeldRestageOf(const LiveActor &a_staged) {
+  Orchestration::HeldRestage held;
+  if (a_staged.awaitedPlan) {
+    held.awaited = PlanJobIdOf(*a_staged.awaitedPlan);
+  }
+  if (a_staged.firstDraw) {
+    held.draw = Orchestration::UnpublishedCount{
+        a_staged.firstDraw->slots.size(), DrawnSlots(*a_staged.firstDraw)};
   }
   return held;
 }

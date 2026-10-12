@@ -10,6 +10,7 @@
 #include "engine/ActorBudget.h"
 #include "engine/ActorObservation.h"
 #include "engine/ActorResize.h"
+#include "engine/ActorRestage.h"
 #include "engine/Clock.h"
 #include "engine/EngineForms.h"
 #include "engine/GameObjectService.h"
@@ -73,6 +74,12 @@ std::shared_ptr<const RecipeGraph> InstanceGraph(const Recipe &a_recipe,
   }
   const Recipe varied = ApplyVariant(a_recipe, *a_variant);
   return std::make_shared<const RecipeGraph>(RecipeGraph::Compile(varied));
+}
+
+CarriedInstance CarriedInstanceOf(const LiveInstance &a_instance) {
+  return {a_instance.lastTime, a_instance.signals
+                                   ? a_instance.signals->Remembered()
+                                   : std::vector<SignalMemoryEntry>{}};
 }
 
 RE::FormID EnchantmentForInstance(LiveActor &a_state, std::size_t a_instance) {
@@ -1158,26 +1165,29 @@ std::optional<std::size_t> Manager::InstanceFor(LiveActor &a_state,
       actor.get(), RE::TESForm::LookupByID<RE::MagicItem>(a_enchantment),
       planned->effectKey);
   instance.startMS = NowMS();
-  CarryInstanceTime(instance, actor->GetFormID(), *recipe, a_settings);
+  CarryInstanceState(instance, actor->GetFormID(), *recipe, a_settings);
   a_state.instances[instanceIndex] = std::move(instance);
   return instanceIndex;
 }
 
-void Manager::CarryInstanceTime(LiveInstance &a_instance, RE::FormID a_actor,
-                                const Recipe &a_recipe,
-                                const Settings &a_settings) {
-  const auto carried = carriedTimes_.Take(
+void Manager::CarryInstanceState(LiveInstance &a_instance, RE::FormID a_actor,
+                                 const Recipe &a_recipe,
+                                 const Settings &a_settings) {
+  const std::optional<CarriedInstance> carried = carriedInstances_.Take(
       {a_actor, a_recipe.id, a_instance.enchantment, a_instance.effectScope},
       a_instance.startMS);
   if (!carried) {
     return;
   }
+  if (a_instance.signals) {
+    a_instance.signals->Adopt(carried->signals);
+  }
   const float speed =
       InstanceSpeed(a_settings.animationSpeed, editor_.CurrentView().speed,
                     a_recipe.clock.speed);
-  if (const auto offset = ClockOffsetMS(*carried, speed)) {
+  if (const auto offset = ClockOffsetMS(carried->seconds, speed)) {
     a_instance.startMS -= *offset;
-    a_instance.lastTime = *carried;
+    a_instance.lastTime = carried->seconds;
   }
 }
 
@@ -1241,14 +1251,7 @@ std::size_t Manager::RetireActorResources(RE::FormID a_actorID) {
   }
   applications_.Retire(a_actorID, it->second.applications);
   const std::size_t recipes = LiveInstanceCount(it->second);
-  const std::uint32_t now = NowMS();
-  for (const LiveInstance &instance : it->second.instances) {
-    if (instance.recipe) {
-      carriedTimes_.Remember({a_actorID, instance.recipe->id,
-                              instance.enchantment, instance.effectScope},
-                             instance.lastTime, now);
-    }
-  }
+  RememberInstances(a_actorID, it->second);
   Trace::EmitSafely(Trace::Event::kRetire,
                     {{"action", "begin"},
                      {"actor", std::to_string(a_actorID)},
@@ -1335,13 +1338,12 @@ Manager::InstallLiveActor(RE::Actor &a_actor,
   return event;
 }
 
-Orchestration::RenderEvent
-Manager::BuildAwaitedRender(RE::FormID a_actorID, LiveActor &a_state,
-                            const InstallBounds &a_bounds,
-                            const Settings &a_settings) {
+Orchestration::RenderEvent Manager::BuildAwaitedRender(
+    RE::FormID a_actorID, LiveActor &a_state, LiveActor &a_bindings,
+    const InstallBounds &a_bounds, const Settings &a_settings) {
   const std::optional<JobId> arrived =
       std::exchange(a_state.awaitedPlan, std::nullopt);
-  const std::vector<BoundSurfaces> bound = BoundSurfacesOf(a_state);
+  const std::vector<BoundSurfaces> bound = BoundSurfacesOf(a_bindings);
   const std::expected<ActorRenderRequest, std::string> request =
       RenderRequestOf(a_state, a_actorID, SurfacePlanOf(a_state), bound,
                       a_settings);
@@ -1359,6 +1361,94 @@ Manager::BuildAwaitedRender(RE::FormID a_actorID, LiveActor &a_state,
                 {"finest_level", std::string{LevelName(a_bounds.finestLevel)}},
                 {"admitted_bytes", std::to_string(ChargedBytesOf(built))}});
   return RenderEventOf(built, unpublished.size());
+}
+
+std::expected<Orchestration::RenderEvent, std::string>
+Manager::Restaged(RE::Actor &a_actor, LiveActor &a_published,
+                  const Orchestration::Restage &a_command,
+                  const TickContext &a_context) {
+  const RE::FormID actorID = a_actor.GetFormID();
+  const Settings &settings = a_context.settings;
+  a_published.restage.reset();
+  LiveActor staged = StagedActorOf(a_published, a_context.inputs.catalog,
+                                   a_command.planned.matches);
+  if (GeometryCount(staged) != staged.matches.geometries.size()) {
+    return std::unexpected(std::string{"the matched geometries changed"});
+  }
+  RememberInstances(actorID, a_published);
+  BuildInstances(staged, settings);
+  for (LiveInstance &instance : staged.instances) {
+    if (instance.signals && instance.environment) {
+      instance.signals->Tick(*instance.environment, {0.0f, 0.0f});
+    }
+  }
+
+  SurfacePlan plan =
+      PlanSurfaces(staged.matches, RecipesOf(staged), ShownOutputs());
+  if (KeptBindingsOf(plan, staged) != KeptBindingsOf(a_published)) {
+    return std::unexpected(
+        std::string{"the edit changes a material or shell binding"});
+  }
+  KeepSurfacePlan(staged, plan);
+  KeepShellOwners(staged, plan);
+
+  const std::vector<BoundSurfaces> bound = BoundSurfacesOf(a_published);
+  const std::expected<ActorRenderRequest, std::string> request =
+      RenderRequestOf(staged, actorID, std::move(plan), bound, settings);
+  const RenderOutcome built = BuildRequestedRender(
+      staged, request, settings,
+      {renderPlans_, warningHistory_, planQueue_, planJobs_}, a_command.bounds);
+  const std::vector<GeometrySlot> unpublished = UnpublishedSlotsOf(request);
+  KeepRender(staged, built, unpublished);
+  Orchestration::RenderEvent event = RenderEventOf(built, unpublished.size());
+  if (!Is<Orchestration::Installed>(event) &&
+      !Is<Orchestration::PlanAwaited>(event)) {
+    return std::unexpected(std::string{"the staged render was not built"});
+  }
+
+  a_published.restage = std::make_unique<LiveActor>(std::move(staged));
+  if (TextureLab *lab = TextureLab::GetSingleton()) {
+    lab->InvalidatePreviews();
+  }
+  return event;
+}
+
+std::expected<void, std::string> Manager::SwapRestaged(RE::Actor &a_actor,
+                                                       LiveActor &a_published) {
+  if (!a_published.restage || !AttachedRender(*a_published.restage)) {
+    return std::unexpected(std::string{"no staged render to swap"});
+  }
+  if (const std::expected<void, std::string> handed =
+          HandOverBindings(a_published, *a_published.restage);
+      !handed) {
+    return handed;
+  }
+
+  std::unique_ptr<LiveActor> staged = std::move(a_published.restage);
+  staged->applications = std::move(a_published.applications);
+  LiveActor retired = std::move(a_published);
+  a_published = std::move(*staged);
+  RetireActorEffects(retired);
+  PlaceLights(
+      a_published,
+      PlanLightsOf(a_published.matches, RecipesOf(a_published), ShownOutputs()),
+      a_actor.Get3D(false), warningHistory_);
+  if (TextureLab *lab = TextureLab::GetSingleton()) {
+    lab->InvalidatePreviews();
+  }
+  return {};
+}
+
+void Manager::RememberInstances(RE::FormID a_actorID,
+                                const LiveActor &a_state) {
+  const std::uint32_t now = NowMS();
+  for (const LiveInstance &instance : a_state.instances) {
+    if (instance.recipe) {
+      carriedInstances_.Remember({a_actorID, instance.recipe->id,
+                                  instance.enchantment, instance.effectScope},
+                                 CarriedInstanceOf(instance), now);
+    }
+  }
 }
 
 std::vector<Orchestration::PlanJobDone> Manager::DrainPlanJobs() {

@@ -55,6 +55,10 @@ void CreateRender(TickOutput &a_out, const ActorEvent &a_event,
 PerLevel<std::optional<LevelCost>> CostsOf(const RenderEvent &a_event);
 void KeepInstalledCosts(InstalledRender &a_render, const PhaseChange &a_change,
                         const RenderEvent &a_event);
+std::uint64_t RestagedBytes(const RenderPhase &a_phase,
+                            const RenderEvent &a_event) noexcept;
+void ReleaseRestaged(TickOutput &a_out, const PhaseChange &a_change,
+                     std::uint64_t a_bytes);
 void RecordJob(TickOutput &a_out, const PlanJobDone &a_done,
                const TickSettings &a_settings);
 bool AwaitsJob(const TrackedActor &a_record, PlanJobId a_job) noexcept;
@@ -62,7 +66,9 @@ void ApplyJob(TickOutput &a_out, ActorId a_actor, TrackedActor &a_record,
               const PlanJobDone &a_done, const TickSettings &a_settings);
 void RecordRenderedFrames(World &a_world, std::uint64_t a_frame);
 ScheduledResizes ScheduleResizes(TickOutput &a_out, std::uint64_t a_frame);
+Command SwapCommandFor(ActorId a_actor, const World &a_world);
 bool SwapDueFor(const TrackedActor &a_record, std::uint64_t a_frame);
+std::optional<ResizeProgress> SwapProgressOf(const RenderPhase &a_phase);
 ActorSet SwapsDue(const World &a_world, std::uint64_t a_frame);
 std::size_t RunningResizes(const World &a_world, const ActorSet &a_swapping);
 std::optional<ResizeCandidate> ResizeCandidateOf(ActorId a_actor,
@@ -162,8 +168,10 @@ void RecordEvent(TickOutput &a_out, const ActorEvent &a_event,
   const EventContext context{a_frame, LevelFor(VisibilityOf(record->sight))};
   PhaseChange change =
       OnEvent(a_event.actor, render.phase, a_event.event, context);
+  const std::uint64_t restaged = RestagedBytes(render.phase, a_event.event);
 
   KeepInstalledCosts(render, change, a_event.event);
+  ReleaseRestaged(a_out, change, restaged);
   ApplyPhaseChange(a_out, a_event.actor, render, std::move(change),
                    EventName(a_event.event));
 }
@@ -200,6 +208,26 @@ void KeepInstalledCosts(InstalledRender &a_render, const PhaseChange &a_change,
     return;
   }
   a_render.levelCosts = installed->levelCosts;
+}
+
+std::uint64_t RestagedBytes(const RenderPhase &a_phase,
+                            const RenderEvent &a_event) noexcept {
+  const Restaging *restaging = Get<Restaging>(a_phase);
+  if (!restaging) {
+    return 0;
+  }
+  if (Is<RestageSwapped>(a_event)) {
+    return restaging->shownBytes;
+  }
+  return Is<RestageNotSwapped>(a_event) ? StagedBytesOf(*restaging) : 0;
+}
+
+void ReleaseRestaged(TickOutput &a_out, const PhaseChange &a_change,
+                     std::uint64_t a_bytes) {
+  if (a_change.ignored || a_bytes == 0) {
+    return;
+  }
+  ApplyBudget(a_out, Released(a_out.world.budget, a_bytes));
 }
 
 void RecordJob(TickOutput &a_out, const PlanJobDone &a_done,
@@ -260,7 +288,7 @@ namespace {
 ScheduledResizes ScheduleResizes(TickOutput &a_out, std::uint64_t a_frame) {
   const ActorSet swapping = SwapsDue(a_out.world, a_frame);
   for (const ActorId actor : swapping) {
-    Issue(a_out, SwapResize{actor});
+    Issue(a_out, SwapCommandFor(actor, a_out.world));
   }
 
   const MaybeActor starting =
@@ -268,12 +296,20 @@ ScheduledResizes ScheduleResizes(TickOutput &a_out, std::uint64_t a_frame) {
   return {swapping, starting};
 }
 
+Command SwapCommandFor(ActorId a_actor, const World &a_world) {
+  const TrackedActor *record = FindActor(a_world, a_actor);
+  if (record && record->render && Is<Restaging>(record->render->phase)) {
+    return SwapRestage{a_actor};
+  }
+  return SwapResize{a_actor};
+}
+
 bool SwapDueFor(const TrackedActor &a_record, std::uint64_t a_frame) {
   if (!a_record.render || !a_record.sight.loaded3D) {
     return false;
   }
   const RenderPhase &phase = a_record.render->phase;
-  const std::optional<ResizeProgress> progress = ResizeProgressOf(phase);
+  const std::optional<ResizeProgress> progress = SwapProgressOf(phase);
   const UnpublishedDraw *draw = UnpublishedDrawOf(phase);
   if (!progress || !draw) {
     return false;
@@ -281,6 +317,16 @@ bool SwapDueFor(const TrackedActor &a_record, std::uint64_t a_frame) {
   const ResizeDraw seen =
       DrawOf({a_record.sight.shown, draw->drawn, draw->total});
   return SwapDue(*progress, seen, a_frame);
+}
+
+std::optional<ResizeProgress> SwapProgressOf(const RenderPhase &a_phase) {
+  const RestageDrawing *staged = RestageDrawingOf(a_phase);
+  if (!staged) {
+    return ResizeProgressOf(a_phase);
+  }
+  const Restaging &restaging = *Get<Restaging>(a_phase);
+  return ResizeProgress{restaging.shown.level, staged->level,
+                        staged->draw.beganFrame};
 }
 
 ActorSet SwapsDue(const World &a_world, std::uint64_t a_frame) {
@@ -377,6 +423,9 @@ std::uint64_t ReleasableBytes(const InstalledRender &a_render) noexcept {
 void StepLevel(TickOutput &a_out, ActorId a_actor, TrackedActor &a_record,
                const TickFacts &a_facts) {
   InstalledRender &render = *a_record.render;
+  if (Is<Restaging>(render.phase)) {
+    return;
+  }
   const ActorVisibility visibility = VisibilityOf(a_record.sight);
   const std::optional<ScreenStep> step =
       ScreenStepOf(render, visibility, a_facts);
@@ -558,12 +607,13 @@ TickActor TickActorFor(ActorId a_actor, const RenderPhase &a_phase,
                        const TickSettings &a_settings) noexcept {
   const bool firstDrawing = Is<Drawing>(a_phase);
   const bool unpublished = firstDrawing || Is<Planning>(a_phase);
+  const bool settled = !unpublished && !Is<Restaging>(a_phase);
   return {.actor = a_actor,
           .drawStacks = a_sight.shown,
           .concealSlots = unpublished,
           .hideShells = !a_settings.publishEffects || unpublished,
           .hideLights = firstDrawing,
-          .finishApplications = !unpublished || !a_sight.shown};
+          .finishApplications = settled || !a_sight.shown};
 }
 
 std::string_view EventName(const RenderEvent &a_event) noexcept {
@@ -584,6 +634,12 @@ std::string_view EventName(const RenderEvent &a_event) noexcept {
       [](const ResizeSwapped &) { return std::string_view{"resize_swapped"}; },
       [](const ResizeNotSwapped &) {
         return std::string_view{"resize_not_swapped"};
+      },
+      [](const RestageSwapped &) {
+        return std::string_view{"restage_swapped"};
+      },
+      [](const RestageNotSwapped &) {
+        return std::string_view{"restage_not_swapped"};
       });
 }
 }

@@ -203,7 +203,7 @@ starts the texture lab on the first frame. It returns at once while
 `ApplicationService::Loading` is true. It advances the regression run and
 marks the heartbeat due once a second. `Manager::RunFrame` fires the due
 equip finalizes, ticks the studio gesture and counts the frame. Once a second
-it expires `CarriedTimes` and sweeps animation observation. At the tick
+it expires `CarriedInstances` and sweeps animation observation. At the tick
 interval (`Settings::TickIntervalMS`) it calls `Manager::RunTick`, then
 `SweepBoundMeshes`, `PublishSnapshot` and `ObserveRegression`. `RunTick` runs
 also when no actor is installed, because installs happen only inside the
@@ -505,9 +505,9 @@ the time of a retired instance and gives it to the matching new instance.
 
 | Member | Description | Declared in |
 |---|---|---|
-| `CarriedTimes` | A bounded store keyed by `CarriedTimeKey`. It holds a phase and a retirement time per entry. `Take` consumes an entry; `Expire` drops old entries. | `InstanceTime.h` |
-| `CarriedTimeKey` | Actor id, recipe id, enchantment form id and effect scope. | `InstanceTime.h` |
-| `kCarryWindowMS`, `kMaxCarriedInstanceTimes` | The carry window (2000 ms) and the entry cap (4096). | `InstanceTime.h` |
+| `CarriedInstances` | A bounded store keyed by `CarriedInstanceKey`. It holds a phase and a retirement time per entry. `Take` consumes an entry; `Expire` drops old entries. | `InstanceTime.h` |
+| `CarriedInstanceKey` | Actor id, recipe id, enchantment form id and effect scope. | `InstanceTime.h` |
+| `kCarryWindowMS`, `kMaxCarriedInstances` | The carry window (2000 ms) and the entry cap (4096). | `InstanceTime.h` |
 | `ClockOffsetMS` | Converts carried seconds at a speed into a checked millisecond offset. | `InstanceTime.h` |
 | `InstanceSpeed` | Multiplies the animation, view and recipe clock speeds. | `Clock.h` |
 
@@ -568,7 +568,7 @@ PlayerCharacter::Update hook (every frame)                      Hooks.cpp
   │
   ▼
 Manager::OnFrame ──▶ RunFrame                                   ManagerTick.cpp
-  │   once a second: CarriedTimes::Expire, SweepAnimationEvents
+  │   once a second: CarriedInstances::Expire, SweepAnimationEvents
   │   at the tick interval:
   ▼
 Manager::RunTick                                                ManagerTick.cpp
@@ -635,7 +635,7 @@ actor, and PlanActor reads the edited Recipe from the new RecipeCatalog
 | Event sinks and hooks | `Events.h`/`.cpp` (equip, object-loaded, hit and node-update sinks), `PluginEvents.h`/`.cpp` (the inter-plugin message contract and parser), `Hooks.h`/`.cpp` (the `PlayerCharacter::Update` hook), `AnimationSubscriptions.h`/`.cpp` (animation-graph observation) |
 | The manager | `Manager.h`, `Manager.cpp` (construction, queue calls, `Clear`, load, the menu's idle-camera hold), `PhaseTrace.h` (`PhaseTrace`: times named phases with `Measure` and emits one metrics or application trace event), `ManagerTick.cpp` (`OnFrame`, `RunFrame`, `RunTick`, the `TickActor` and `DrawUnpublished` executors, `RenderGeometry`, slot writes, `UpdateLights`), `ManagerFacts.cpp` (`NoteStale`, `GatherFacts`, `SightingOf`, `StaleActorOf`, `ClaimsOf`, `ForgetRequests`, `CheckAgreement`, `EmitCoreRecords`), `ManagerCommands.cpp` (`Execute` and the other command executors), `ManagerHeartbeat.cpp` (`EmitHeartbeat`, `FlushMetricsHeartbeat`, `SampleBudget`, `PlannedTargets`, `ReportRenderMemory`), `ManagerApply.cpp` (`InstallLiveActor`, `BuildAwaitedRender`, `FailAwaitedRender`, `RetireActorResources`, `ForgetActorResources`, live pieces from observation, `PlaceInstances`, `BuildActorRender`, `DrainPlanJobs`, lights), `InstallStages.h`/`.cpp` (the install program's adapters over a `LiveActor`), `ManagerApplication.cpp` (`ChangeAndRebuildActors`, application bookkeeping), `ActorResize.h`/`.cpp` (the resolution resize and the first-draw list of one actor), `ActorBudget.h`/`.cpp` (the held targets and the release of one actor), `TargetCensus.h`/`.cpp` (the `target_holders` census), `JobQueue.h` (the generic worker queue), `PlanJobs.h`/`.cpp` (the plan job book and the job facts), `ManagerAnimation.cpp` (animation events, `RetireAll`), `ManagerEvents.cpp` (`Fire`, `FireAt`, `QueueEvent`, `QueueBroadcast`), `ManagerInspection.cpp` (`RequestMesh`), `ManagerSnapshot.cpp` (`GetStatus`, `BuildSnapshot`, `PublishSnapshot`, `Watch`), `LogOnce.h`/`.cpp` (`LogOnce`: a fault line once per text, through a `WarningHistory`) |
 | Application and session bookkeeping | `ApplicationService.h`/`.cpp` (token tracking, rejection handling, history pruning), `SessionQueue.h`/`.cpp` (per-actor task serialisation) |
-| Actor and worn-piece state | `ActorObservation.h`/`.cpp` (`ObserveActor`, `ModelTable`, `ModelOf`, `MaterialLayout`), `LiveActor.h`/`.cpp` (live records, `RetireGeometry`, `SetAppliedResolution`, `ResolvePlacement`), `Environment.h`/`.cpp` (`ActorEnvironment`), `WornKeys.h`/`.cpp` (`WornKeysOf`), `EnchantmentEffects.h`/`.cpp` (`EnchantmentValueFor`), `InstanceTime.h`/`.cpp` (`CarriedTimes`) |
+| Actor and worn-piece state | `ActorObservation.h`/`.cpp` (`ObserveActor`, `ModelTable`, `ModelOf`, `MaterialLayout`), `LiveActor.h`/`.cpp` (live records, `RetireGeometry`, `SetAppliedResolution`, `ResolvePlacement`), `Environment.h`/`.cpp` (`ActorEnvironment`), `WornKeys.h`/`.cpp` (`WornKeysOf`), `EnchantmentEffects.h`/`.cpp` (`EnchantmentValueFor`), `InstanceTime.h`/`.cpp` (`CarriedInstances`) |
 | Recipe CRUD | `RecipeStore.h`/`.cpp` (load, publish, mutate, save, `RefreshRecipeDerivedState`), `RecipeFiles.h`/`.cpp` (checked read, write, rename and delete), `RecipeOperations.h` (the operation journal and task guards), `RecipeEditor.h`/`.cpp` (gestures, edits, undo, paint, view) |
 | Form and game-object lookups | `EngineForms.h`/`.cpp` (`FormKeyFor`, `LookupForm`, `ShaderFor`, `RecordFrom`), `GameObjectService.h`/`.cpp` (game-object and animation-event catalogs), `InputCatalog.h`/`.cpp` (`BuildActorValueSamples`), `Tweaks.h`/`.cpp` (`EditorIdOf`, `TweaksEditorIdsAvailable`) |
 | Regression fixture | `RegressionRequests.h`/`.cpp` (the request store and the manager's regression calls), `RegressionRequest.h` (`RegressionRequest`), `ManagerRegression.cpp` (the manager's regression observations and studio work), `RegressionRun.h`/`.cpp` (the unattended run's file, load and result lines over `regression/Run.h`), `RegressionWorld.h`/`.cpp` (its observations and commands) |
