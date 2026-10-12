@@ -87,5 +87,21 @@ int main() {
         "layer Solo preserves explicit recipe isolation without retaining an "
         "output it introduced");
 
+  View shown;
+  shown.isolation = Isolation::ForOutput("glow", 0);
+  View muted = shown;
+  muted.muted.insert(LayerKey{"glow", 0, 2});
+  muted.isolation.layer = 1;
+  muted.soloPiece = PieceRef{0x14, 0x800};
+  Check(!shown.ChangesInstalls(muted),
+        "muting, layer isolation and a solo piece leave the installs alone");
+  View other = shown;
+  other.isolation.output = 1;
+  Check(shown.ChangesInstalls(other),
+        "isolating another output changes what is installed");
+  View pinned = shown;
+  pinned.pin = Pin{PieceRef{0x14, 0x800}, "glow"};
+  Check(shown.ChangesInstalls(pinned), "a pin changes what is installed");
+
   return test::Finish("studio_isolation");
 }

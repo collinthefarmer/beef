@@ -72,8 +72,7 @@ std::shared_ptr<const RecipeGraph> InstanceGraph(const Recipe &a_recipe,
   if (!a_variant) {
     return GraphFor(a_recipe);
   }
-  const Recipe varied = ApplyVariant(a_recipe, *a_variant);
-  return std::make_shared<const RecipeGraph>(RecipeGraph::Compile(varied));
+  return VariantGraphFor(a_recipe, *a_variant);
 }
 
 CarriedInstance CarriedInstanceOf(const LiveInstance &a_instance) {

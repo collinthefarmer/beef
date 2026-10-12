@@ -179,12 +179,7 @@ void Manager::ChangeAndRebuildActors(std::string a_reportRecipe,
   const RebuildScope rebuild =
       ScopeOf(matchingBefore, MatchFactsOf(LoadedRecipes()), a_reportRecipe);
   std::vector<RE::FormID> scope = Match(
-      rebuild,
-      [&](const RebuildAll &) {
-        renderPlans_.Clear();
-        planJobs_ = {};
-        return ApplicationActors();
-      },
+      rebuild, [&](const RebuildAll &) { return ApplicationActors(); },
       [&](const RebuildApplying &a_applying) {
         return ActorsApplying(a_applying.recipe);
       });

@@ -91,4 +91,5 @@ struct SettingDesc {
 [[nodiscard]] Settings NormalizeSettings(Settings a_settings);
 
 [[nodiscard]] bool SettingsDiffer(const Settings &a_lhs, const Settings &a_rhs);
+[[nodiscard]] bool ReapplyDiffers(const Settings &a_lhs, const Settings &a_rhs);
 }

@@ -118,7 +118,6 @@ void Manager::Clear() {
   pendingSample_.reset();
   heartbeatDue_ = false;
   disagreements_.clear();
-  renderPlans_.Clear();
   planJobs_ = {};
   (void)planQueue_.DropQueued();
   editor_.CancelFileOperationsForLoad();

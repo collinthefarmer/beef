@@ -97,6 +97,12 @@ struct View {
            InRecipeSet(a_recipe);
   }
 
+  [[nodiscard]] bool ChangesInstalls(const View &a_next) const {
+    return isolation.recipeID != a_next.isolation.recipeID ||
+           isolation.output != a_next.isolation.output ||
+           recipeSet != a_next.recipeSet || pin != a_next.pin;
+  }
+
   [[nodiscard]] bool OutputShown(const std::string &a_recipe,
                                  std::size_t a_output) const noexcept {
     return RecipeShown(a_recipe) &&

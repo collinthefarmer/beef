@@ -188,11 +188,14 @@ void DrawSaveBar(Settings &a_settings) {
   }
   table.Cell();
   if (ImGui::Button("Reload INI")) {
+    const Settings before = GetSettings();
     SetSettings(LoadSettingsFromDisk());
     a_settings = GetSettings();
     g_savedSettings = a_settings;
     g_needsReapply = false;
-    manager->ReapplyAll();
+    if (ReapplyDiffers(before, a_settings)) {
+      manager->ReapplyAll();
+    }
   }
   table.Cell();
   if (ImGui::Button("Re-apply")) {

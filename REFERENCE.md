@@ -1087,11 +1087,15 @@ identity is the geometry and root pointers) or when a mesh has no hash yet (the
 identity would be a pointer nothing holds). `SameStructure` compares only
 whether a step has a content key, because legitimate keys differ between
 actors. An entry holds the `RecipeGraph`s its key names (`GraphsNamedBy`), so
-a graph cannot be freed or its address reused while the plan lives. A rebuild
-that changes matching or has no recipe (`ChangeAndRebuildActors`) and a load
-clear the cache; a scoped rebuild leaves it, because the edited recipe's new
-graph gives its plans new keys and the old entries age out; it holds 64
-entries and evicts the least recently used. `VerifyRenderPlanCache`, or a run
+a graph cannot be freed or its address reused while the plan lives. No rebuild
+and no load clears the cache since 2026-10-12: an edited recipe's new graph
+gives its plans new keys and the old entries age out; it holds 64 entries and
+evicts the least recently used. A load keeps it because every key part
+survives a load: a texture identity is its address, generation and file name,
+so an address reused for another texture only matches with the same name, which
+is the same file; a mesh identity is its content hash; and a graph that reads
+node positions is never cached. On 2026-10-12 the five loads of trace
+`...-1791770642202300.jsonl` gave 16 misses, all right after a load. `VerifyRenderPlanCache`, or a run
 file's `verifyRenderPlans`, builds every reused plan again and logs, traces
 and replaces one that differs. On 2026-10-03 (runs 20261003T175431 and
 20261003T180945) verification found no mismatch in 12 stacked mannequins, six
@@ -1249,6 +1253,18 @@ layout, and so its out-of-view share, did not exist.
   world-space direction conversion (for a facing vector) would need a
   rotation-only method and is deferred with the `facing` selector.
 
+- A view change rebuilds only when it changes what is installed
+  (`View::ChangesInstalls`): the isolated recipe or output, the recipe set or
+  the pin. Mute, layer isolation and the solo piece apply per tick
+  (`WriteSlots` renders every slot through `RenderSlotChain` with the view's
+  `LayerFilter`, a render input, and `PieceShown`), so they rebuild nothing.
+- A recipe keeps its compiled graph, and its variant graphs
+  (`VariantGraphFor`, at most 16), while its content equals the recipe they
+  were compiled from (`DropStaleGraph`, `RecipeStore.cpp`). A Save or Revert
+  that changes nothing therefore reuses the graph and the cached plans, and an
+  install of a recipe with a variant no longer compiles a new graph.
+- "Reload INI" reapplies only when a setting read at apply time changed
+  (`ReapplyDiffers`).
 - A studio gesture (a slider drag) applies its edit and rebuilds in one
   step (`ChangeAndRebuildActors`), at most once per
   `kGestureApplyInterval` (100 ms). A drag update that arrives sooner
@@ -1641,8 +1657,8 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
   hang the game's exit. A worker that misses the stop notice stays blocked on
   state it owns, which frees nothing it reads.
 - A game load (`Manager::Clear`) empties the job book and drops the queued
-  jobs. A rebuild that clears the plan cache (`RebuildAll`) empties the job
-  book.
+  jobs. A rebuild keeps the book, so a reinstall shares a job that is still
+  open for its key; the core cancels the jobs no actor awaits.
 - A job result is **stale** when the book no longer holds its job. A stale
   result is not stored, and `render_plan_job` traces it as `dropped`.
 - `PlanJobDoneOf` turns a finished job into the tick core's fact. A stale job

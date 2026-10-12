@@ -280,11 +280,14 @@ Settings NormalizeSettings(Settings a_settings) {
 }
 
 bool SettingsDiffer(const Settings &a_lhs, const Settings &a_rhs) {
-  for (const auto &desc : kTable) {
-    if (Format(a_lhs, desc) != Format(a_rhs, desc)) {
-      return true;
-    }
-  }
-  return false;
+  return std::ranges::any_of(kTable, [&](const SettingDesc &a_desc) {
+    return Format(a_lhs, a_desc) != Format(a_rhs, a_desc);
+  });
+}
+
+bool ReapplyDiffers(const Settings &a_lhs, const Settings &a_rhs) {
+  return std::ranges::any_of(kTable, [&](const SettingDesc &a_desc) {
+    return a_desc.reapply && Format(a_lhs, a_desc) != Format(a_rhs, a_desc);
+  });
 }
 }

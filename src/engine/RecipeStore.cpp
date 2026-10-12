@@ -29,6 +29,9 @@ struct LoadedRecipe {
   RecipeClass recipeClass = RecipeClass::kRegular;
   std::vector<Diagnostic> diagnostics;
   std::shared_ptr<const RecipeGraph> graph;
+  std::optional<Recipe> compiledFrom;
+  std::vector<std::pair<Variant, std::shared_ptr<const RecipeGraph>>>
+      variantGraphs;
   bool dirty = false;
   bool transient = false;
   Studio::ReferenceCounts references{};
@@ -39,12 +42,23 @@ struct LoadedRecipe {
 static_assert(std::is_nothrow_move_constructible_v<Studio::ReferenceCounts> ||
               !std::is_nothrow_move_constructible_v<LoadedRecipe>);
 
+constexpr std::size_t kMaxVariantGraphs = 16;
+
 std::vector<LoadedRecipe> g_loaded;
 std::shared_ptr<const RecipeCatalog> g_applied =
     std::make_shared<const RecipeCatalog>(RecipeCatalog::Of({}));
 std::shared_ptr<const RecipeCatalog> g_appliedWithoutDebug = g_applied;
 RecipeStoreStatus g_status;
 Studio::MaskPresets g_presets;
+
+void DropStaleGraph(LoadedRecipe &a_loaded) {
+  if (a_loaded.compiledFrom == a_loaded.recipe) {
+    return;
+  }
+  a_loaded.graph.reset();
+  a_loaded.variantGraphs.clear();
+  a_loaded.compiledFrom.reset();
+}
 
 Diagnostic Refusal(std::string_view a_id, std::string a_message) {
   return MakeDiagnostic(Severity::kError, std::format("recipe {}", a_id),
@@ -493,11 +507,38 @@ std::shared_ptr<const RecipeGraph> GraphFor(const Recipe &a_recipe) {
       if (!l.graph) {
         l.graph =
             std::make_shared<const RecipeGraph>(RecipeGraph::Compile(a_recipe));
+        l.compiledFrom = a_recipe;
       }
       return l.graph;
     }
   }
   return nullptr;
+}
+
+std::shared_ptr<const RecipeGraph> VariantGraphFor(const Recipe &a_recipe,
+                                                   const Variant &a_variant) {
+  const auto compile = [&] {
+    return std::make_shared<const RecipeGraph>(
+        RecipeGraph::Compile(ApplyVariant(a_recipe, a_variant)));
+  };
+  const auto loaded =
+      std::ranges::find(g_loaded, a_recipe.id, [](const LoadedRecipe &a_entry) {
+        return a_entry.recipe.id;
+      });
+  if (loaded == g_loaded.end()) {
+    return compile();
+  }
+  for (const auto &[variant, graph] : loaded->variantGraphs) {
+    if (variant == a_variant) {
+      return graph;
+    }
+  }
+  std::shared_ptr<const RecipeGraph> graph = compile();
+  if (loaded->variantGraphs.size() < kMaxVariantGraphs) {
+    loaded->variantGraphs.emplace_back(a_variant, graph);
+    loaded->compiledFrom = a_recipe;
+  }
+  return graph;
 }
 
 namespace {
@@ -556,7 +597,7 @@ std::span<const Diagnostic> RefreshRecipeDerivedState(std::string_view a_id) {
   LoadedRecipe &loaded = g_loaded[*index];
   loaded.diagnostics = Validate(loaded.recipe, loaded.inputDiagnostics);
   ResolveForms(loaded.recipe, loaded.diagnostics);
-  loaded.graph.reset();
+  DropStaleGraph(loaded);
   loaded.dirty = !loaded.transient && !(loaded.recipe == loaded.saved);
   Republish(*index);
   return loaded.diagnostics;
@@ -814,7 +855,7 @@ std::optional<Diagnostic> RevertRecipe(std::string_view a_id) {
   loaded.recipe = std::move(*result.recipe);
   loaded.diagnostics = std::move(result.diagnostics);
   loaded.inputDiagnostics = std::move(result.inputDiagnostics);
-  loaded.graph.reset();
+  DropStaleGraph(loaded);
   loaded.saved = loaded.recipe;
   loaded.dirty = false;
   Republish(*index);

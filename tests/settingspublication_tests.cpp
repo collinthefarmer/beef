@@ -96,6 +96,14 @@ int main() {
         "publication bounds an excessive unpublished draw budget");
   Check(!SettingsDiffer(parsed, Settings::Parse(parsed.Serialize())),
         "checked settings round trip through INI");
+  Settings speedOnly = parsed;
+  speedOnly.animationSpeed = parsed.animationSpeed * 0.5f + 0.25f;
+  Check(SettingsDiffer(parsed, speedOnly) && !ReapplyDiffers(parsed, speedOnly),
+        "a setting read per tick needs no reapply");
+  Settings playerOnly = parsed;
+  playerOnly.playerOnly = !parsed.playerOnly;
+  Check(ReapplyDiffers(parsed, playerOnly),
+        "a setting read at apply time needs a reapply");
   Check(ReadText("BetterEnchantmentEffects.ini").value_or("") ==
             Settings{}.Serialize(),
         "the shipped INI is the serialized defaults, every row read");

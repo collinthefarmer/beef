@@ -44,6 +44,8 @@ OriginOf(const Recipe &a_recipe) noexcept;
 
 [[nodiscard]] std::shared_ptr<const RecipeGraph>
 GraphFor(const Recipe &a_recipe);
+[[nodiscard]] std::shared_ptr<const RecipeGraph>
+VariantGraphFor(const Recipe &a_recipe, const Variant &a_variant);
 [[nodiscard]] const Studio::ReferenceCounts *
 ReferencesOf(std::string_view a_id) noexcept;
 
