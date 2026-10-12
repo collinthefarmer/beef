@@ -1058,15 +1058,31 @@ enum class InspectorFooter { kNone, kRelationships, kKeys };
   if (a_footer == InspectorFooter::kNone) {
     return 0.0f;
   }
+  if (a_footer == InspectorFooter::kKeys) {
+    return RuleHeight() + ImGui::GetFrameHeightWithSpacing() * 4.0f;
+  }
   return (std::min)(ImGui::GetContentRegionAvail().y * 0.35f,
                     ImGui::GetFrameHeightWithSpacing() * 6.0f);
 }
 
+bool BeginInspectorBody(InspectorFooter a_footer) {
+  const float footer = InspectorFooterHeight(a_footer);
+  if (a_footer != InspectorFooter::kKeys) {
+    return ImGui::BeginChild(
+        "inspector-body", ImVec2{0.0f, footer > 0.0f ? -footer : 0.0f}, 0, 0);
+  }
+  const ImVec2 avail = ImGui::GetContentRegionAvail();
+  const float tallest =
+      (std::max)(ImGui::GetFrameHeightWithSpacing(), avail.y - footer);
+  ImGui::SetNextWindowSizeConstraints(ImVec2{0.0f, 0.0f},
+                                      ImVec2{avail.x, tallest});
+  return ImGui::BeginChild("inspector-body", ImVec2{0.0f, 0.0f},
+                           ImGuiMCP::ImGuiChildFlags_AutoResizeY, 0);
+}
+
 void DrawInspectorBody(const Frame &a_frame, const InspectorPass &a_pass,
-                       float a_footer) {
-  if (ImGui::BeginChild("inspector-body",
-                        ImVec2{0.0f, a_footer > 0.0f ? -a_footer : 0.0f}, 0,
-                        0)) {
+                       InspectorFooter a_footer) {
+  if (BeginInspectorBody(a_footer)) {
     if (a_pass.before != SelectionOf(a_frame).subject) {
       ImGui::SetScrollY(a_frame.state->navigation.scroll);
     }
@@ -1114,7 +1130,7 @@ void DrawInspectorFooter(const Frame &a_frame, InspectorFooter a_footer,
 void DrawInspectorPane(const Frame &a_frame, const InspectorPass &a_pass) {
   if (ImGui::BeginChild("inspector", ImVec2{0.0f, 0.0f}, 0, 0)) {
     const InspectorFooter footer = FooterOf(a_frame);
-    DrawInspectorBody(a_frame, a_pass, InspectorFooterHeight(footer));
+    DrawInspectorBody(a_frame, a_pass, footer);
     DrawInspectorFooter(a_frame, footer, a_pass.editPending);
   }
   ImGui::EndChild();
