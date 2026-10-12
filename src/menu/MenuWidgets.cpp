@@ -685,6 +685,16 @@ void Badge(Studio::FieldKind a_kind) {
   ImGui::SameLine(0.0f, 0.0f);
 }
 
+bool TypedLink(const TypedLinkSpec &a_spec) {
+  const float badge = ImGui::GetFrameHeight();
+  Badge(a_spec.kind);
+  const float width =
+      a_spec.width > 0.0f ? (std::max)(1.0f, a_spec.width - badge) : 0.0f;
+  const std::string label{a_spec.label};
+  return ImGui::Selectable(label.c_str(), a_spec.selected, 0,
+                           ImVec2{width, 0.0f});
+}
+
 void ModeBadge(Studio::FieldKind a_kind, bool &a_combo, Studio::FieldKey a_key,
                const EntryModeTips &a_tips) {
   ClickableBadge(StyleOf(a_kind), a_combo, a_key, a_tips);

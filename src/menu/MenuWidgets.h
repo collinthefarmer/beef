@@ -136,6 +136,14 @@ DrawCandidateRows(const CandidateRowsSpec &a_spec, int &a_id,
 
 void Badge(Studio::FieldKind a_kind);
 
+struct TypedLinkSpec {
+  Studio::FieldKind kind = Studio::FieldKind::kText;
+  std::string_view label;
+  bool selected = false;
+  float width = 0.0f;
+};
+[[nodiscard]] bool TypedLink(const TypedLinkSpec &a_spec);
+
 struct EntryModeTips {
   std::string_view combo;
   std::string_view text;

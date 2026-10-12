@@ -78,30 +78,35 @@ void NavigateFromNavigator(const Frame &a_frame,
 
 void PickSubject(const char *a_label, Studio::InspectorSubject a_subject,
                  const Frame &a_frame, bool a_spanColumns = false,
-                 float a_width = 0.0f) {
+                 float a_width = 0.0f,
+                 std::optional<Studio::FieldKind> a_badge = std::nullopt) {
   const bool blocked =
       Studio::IndexedEditPendingFor(a_frame.state->pendingIndexedEdit,
                                     a_frame.recipe->id) &&
       (Is<Studio::OutputSubject>(a_subject) ||
        Is<Studio::LayerSubject>(a_subject));
+  const bool selected = SelectionOf(a_frame).subject == a_subject;
   const int flags =
       a_spanColumns ? ImGuiMCP::ImGuiSelectableFlags_SpanAllColumns : 0;
   ImGui::BeginDisabled(blocked);
-  if (ImGui::Selectable(a_label, SelectionOf(a_frame).subject == a_subject,
-                        flags, ImVec2{a_width, 0.0f})) {
+  const bool clicked =
+      a_badge
+          ? TypedLink({*a_badge, a_label, selected, a_width})
+          : ImGui::Selectable(a_label, selected, flags, ImVec2{a_width, 0.0f});
+  if (clicked) {
     NavigateFromNavigator(a_frame, std::move(a_subject));
   }
   ImGui::EndDisabled();
 }
 
-void PickSubjectWithRemove(const char *a_label,
-                           Studio::InspectorSubject a_subject,
-                           const Frame &a_frame,
-                           const std::function<void()> &a_remove) {
+void PickSubjectWithRemove(
+    const char *a_label, Studio::InspectorSubject a_subject,
+    const Frame &a_frame, const std::function<void()> &a_remove,
+    std::optional<Studio::FieldKind> a_badge = std::nullopt) {
   const float remove = RowButtonWidth();
   const float width = (std::max)(1.0f, ImGui::GetContentRegionAvail().x -
                                            remove - ItemSpacingX());
-  PickSubject(a_label, std::move(a_subject), a_frame, false, width);
+  PickSubject(a_label, std::move(a_subject), a_frame, false, width, a_badge);
   ImGui::SameLine();
   RightAligned(remove, [&] {
     if (RemoveButton(0)) {
@@ -178,9 +183,6 @@ void DrawOutputLayerRow(const Frame &a_frame, const Studio::OutputRow &a_output,
                  Studio::SetLayerBlend{a_output.index, a_layer, *blend});
   }
   ImGui::SameLine();
-  Badge(layer.source.starts_with('@') ? Studio::FieldKind::kReference
-                                      : Studio::FieldKind::kColor);
-  ImGui::SameLine();
   const std::string label =
       std::format("{}: {}", a_layer + 1,
                   layer.source.empty() ? "Choose a signal" : layer.source);
@@ -189,7 +191,9 @@ void DrawOutputLayerRow(const Frame &a_frame, const Studio::OutputRow &a_output,
       [&] {
         Studio::Post(*a_frame.intents, id,
                      Studio::RemoveLayer{a_output.index, a_layer});
-      });
+      },
+      layer.source.starts_with('@') ? Studio::FieldKind::kReference
+                                    : Studio::FieldKind::kColor);
   ImGui::PopID();
 }
 
