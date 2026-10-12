@@ -2822,6 +2822,30 @@ cancel by the user instead of the load.
   catalog adds the name to the list (`AppendName`) instead of replacing the
   text; a name already in the list is not added twice.
 
+### Cluster chart (`studio/ClusterReadout.h`, `menu/ClusterChart.cpp`)
+
+- The chart re-clusters the geometry's cached material sample with the
+  term's own settings. The offer list clusters with `ClusterSettings{}`, so
+  the chart and the offer list name different clusters once a setting
+  changes. `ClusterMemo` holds one result and recomputes it only when the
+  sample or the settings change.
+- The eight axes are the eight dimensions `ClusterMaterial` measures, in its
+  order. R, G and B share the `color` weight; the clustering divides it by 3
+  per channel, and the chart shows the undivided weight the user tunes.
+- A band spans the 10th to the 90th percentile of the cluster's texels on
+  that axis. Each histogram has 16 bins over 0..1.
+- **Separation** on an axis is the centre difference divided by the sum of
+  the two half-band widths plus 0.02. The 0.02 keeps a single-valued band
+  from dividing by zero.
+- The advice thresholds: a separation of 1.0 or more means the bands do not
+  overlap, so an axis at that separation with a weight under 0.5 is advised
+  higher. A separation under 0.3 means the bands mostly overlap, so an axis
+  there with a weight of 0.5 or more is advised lower. `CanSeparate` is true
+  when any axis reaches 1.0.
+- With no chosen comparison, the chart compares the picked cluster with its
+  nearest cluster by weighted centre distance, the one it is most easily
+  confused with. A new clustering clears the chosen comparison.
+
 ## Build and tools
 
 - Project targets bypass the compiler launcher; third-party targets still
