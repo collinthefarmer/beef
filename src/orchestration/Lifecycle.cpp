@@ -103,6 +103,7 @@ void ReportFirstDraw(TickOutput &a_out, ActorId a_actor,
                      const UnpublishedDraw &a_draw, FirstDrawEnd a_end,
                      std::uint64_t a_frame);
 void IssueTickActors(TickOutput &a_out, const TickSettings &a_settings);
+bool IsRestageUnanswered(const RenderPhase &a_phase) noexcept;
 std::optional<DrawUnpublished> UnpublishedDraws(const World &a_world,
                                                 const ActorSet &a_swapping,
                                                 const TickSettings &a_settings);
@@ -563,11 +564,16 @@ void ReportFirstDraw(TickOutput &a_out, ActorId a_actor,
 
 void IssueTickActors(TickOutput &a_out, const TickSettings &a_settings) {
   for (const auto &[actor, record] : a_out.world.actors) {
-    if (RenderLoaded(record)) {
+    if (RenderLoaded(record) && !IsRestageUnanswered(record.render->phase)) {
       Issue(a_out, TickActorFor(actor, record.render->phase, record.sight,
                                 a_settings));
     }
   }
+}
+
+bool IsRestageUnanswered(const RenderPhase &a_phase) noexcept {
+  const Restaging *restaging = Get<Restaging>(a_phase);
+  return restaging && Is<RestageRequested>(restaging->step);
 }
 
 std::optional<DrawUnpublished>

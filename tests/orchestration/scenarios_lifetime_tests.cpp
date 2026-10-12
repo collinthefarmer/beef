@@ -294,6 +294,22 @@ void ARefusedRestageReinstalls() {
   Check(phase && Is<Shown>(*phase), "the reinstalled actor ends shown");
 }
 
+void ARefusedRestageThatInstallsAtOnceDraws() {
+  constexpr ActorId kActor{1004};
+  Script script;
+  ActorScript actor =
+      Arriving(InView(0.6f, 300.0f), 1, PlanNamed("first", 0xD00));
+  actor.faults.restageRefused = true;
+  actor.stale.push_back(
+      {60, PlanNamed("second", 0xD00), Actors::Reinstall::kAlways});
+  script.actors[kActor] = actor;
+  const Simulation sim = Ran(Started(std::move(script)), 200);
+  Check(sim.violations.empty(), Report(sim));
+  const RenderPhase *phase = PhaseNow(sim, kActor);
+  Check(phase && Is<Shown>(*phase),
+        "a refused restage that installs at once finishes its first draw");
+}
+
 void AnUnswappedRestageKeepsTheShownRender() {
   constexpr ActorId kActor{1002};
   Faults faults;
@@ -337,6 +353,7 @@ int main() {
   ASecondEditRestagesAgain();
   ARestageKeepsTheShownRender();
   ARefusedRestageReinstalls();
+  ARefusedRestageThatInstallsAtOnceDraws();
   AnUnswappedRestageKeepsTheShownRender();
   APlanJobThatFails();
   TheRadiusShrinksAndGrows();
