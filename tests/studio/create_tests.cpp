@@ -122,5 +122,27 @@ int main() {
               !ResourceName(RecipeSubject{}),
           "ResourceName is empty for index-keyed and recipe subjects");
   }
+  {
+    const std::optional<RecipeEdit> signal =
+        ResourceRename(SignalSubject{"s"}, "t");
+    const std::optional<RecipeEdit> source =
+        ResourceRename(SourceSubject{"r"}, "t");
+    const std::optional<RecipeEdit> mask =
+        ResourceRename(MaskSubject{"m"}, "t");
+    const std::optional<RecipeEdit> curve =
+        ResourceRename(CurveSubject{"c"}, "t");
+    const auto *renameSignal = signal ? Get<RenameSignal>(*signal) : nullptr;
+    const auto *renameSource = source ? Get<RenameSource>(*source) : nullptr;
+    const auto *renameMask = mask ? Get<RenameMask>(*mask) : nullptr;
+    const auto *renameCurve = curve ? Get<RenameCurve>(*curve) : nullptr;
+    Check(
+        renameSignal && renameSignal->from == "s" && renameSignal->to == "t" &&
+            renameSource && renameSource->from == "r" && renameMask &&
+            renameMask->from == "m" && renameCurve && renameCurve->from == "c",
+        "ResourceRename builds the rename edit of a name-keyed subject");
+    Check(!ResourceRename(OutputSubject{2}, "t") &&
+              !ResourceRename(RecipeSubject{}, "t"),
+          "ResourceRename is empty for index-keyed and recipe subjects");
+  }
   return test::Finish("studio_create");
 }

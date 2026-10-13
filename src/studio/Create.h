@@ -37,8 +37,11 @@ struct NewMask {
 struct NewCurve {
   std::string stem = "curve";
 };
+struct NewCopy {
+  InspectorSubject of;
+};
 using Creation = std::variant<NewOutput, NewLight, NewLayer, NewSignal,
-                              NewSource, NewMask, NewCurve>;
+                              NewSource, NewMask, NewCurve, NewCopy>;
 
 struct Created {
   std::vector<RecipeEdit> edits;
@@ -49,4 +52,6 @@ struct Created {
                              const RecipeRow &a_recipe);
 [[nodiscard]] std::optional<std::string>
 ResourceName(const InspectorSubject &a_subject);
+[[nodiscard]] std::optional<RecipeEdit>
+ResourceRename(const InspectorSubject &a_subject, std::string a_to);
 }

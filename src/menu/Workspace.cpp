@@ -270,7 +270,13 @@ void ResourceRow(Table &a_table, const ResourceRowSpec &a_row,
     PinSubjectButton(a_frame, *a_row.preview);
     ImGui::SameLine();
   }
-  PickSubject(a_row.name.c_str(), a_row.subject, a_frame, true);
+  const std::optional<std::string> renamed =
+      NameLabel(ResourceLabel(a_frame, "resource-row", a_row.name), [&] {
+        PickSubject(a_row.name.c_str(), a_row.subject, a_frame, true);
+      });
+  if (renamed) {
+    PostResourceRename(a_frame, a_row.subject, *renamed);
+  }
   a_table.Cell();
   if (!a_row.type.empty()) {
     ImGui::AlignTextToFramePadding();
@@ -725,8 +731,23 @@ void DrawLayerInspector(const Studio::LayerSubject &a_layer,
   DrawInspectorFields(*inspector, a_frame);
 }
 
+[[nodiscard]] float ResourceActionsWidth() {
+  return ButtonWidth("Clone") + ItemSpacingX() + ButtonWidth("Rename") +
+         ItemSpacingX() + RowButtonWidth();
+}
+
+void DrawResourceRemoveButton(std::string_view a_name, std::size_t a_references,
+                              const std::function<void(bool)> &a_post);
+
 void DrawResourceRemove(std::string_view a_name, std::size_t a_references,
                         const std::function<void(bool)> &a_post) {
+  ImGui::PushID("remove");
+  DrawResourceRemoveButton(a_name, a_references, a_post);
+  ImGui::PopID();
+}
+
+void DrawResourceRemoveButton(std::string_view a_name, std::size_t a_references,
+                              const std::function<void(bool)> &a_post) {
   if (a_references == 0) {
     if (RemoveButton(0)) {
       a_post(false);
@@ -763,8 +784,9 @@ void DrawSourceInspector(const Studio::SourceSubject &a_source,
     return;
   }
   static_cast<void>(Rule(
-      Studio::RuleSpec{.text = "Inspector"},
-      RowButtonWidth() + ItemSpacingX() + ButtonWidth("Rename"), [&]() {
+      Studio::RuleSpec{.text = "Inspector"}, ResourceActionsWidth(), [&]() {
+        DrawResourceClone(a_frame, a_source);
+        ImGui::SameLine();
         DrawResourceRename(a_frame, row->name, [&](std::string a_name) {
           return Studio::RenameSource{row->name, std::move(a_name)};
         });
@@ -776,8 +798,15 @@ void DrawSourceInspector(const Studio::SourceSubject &a_source,
       }));
   const std::string type = DescribeSource(
       Studio::SourceKindOf(*row).value_or(SourceKind{MaterialSource{}}));
-  const ResourceCells cells{.name = row->name, .type = type};
-  ResourceTable("source-header", {&cells, 1});
+  const ResourceCells cells{
+      .name = row->name,
+      .type = type,
+      .value = std::nullopt,
+      .label = ResourceLabel(a_frame, "resource-header", row->name)};
+  if (std::optional<std::string> renamed =
+          ResourceTable("source-header", {&cells, 1})) {
+    PostResourceRename(a_frame, a_source, std::move(*renamed));
+  }
   const std::vector<std::string> geometries = Studio::GeometryNamesOf(recipe);
   const std::vector<Studio::FormField> form = Studio::SourceForm(
       *row, Studio::SignalNamesOf(recipe),
@@ -837,10 +866,12 @@ void DrawSignalInspector(const Studio::SignalSubject &a_signal,
   }
   const bool canFire = !row->event.empty();
   const float actionsWidth =
-      RowButtonWidth() + ItemSpacingX() + ButtonWidth("Rename") +
+      ResourceActionsWidth() +
       (canFire ? ItemSpacingX() + ButtonWidth("Fire") : 0.0f);
   static_cast<void>(
       Rule(Studio::RuleSpec{.text = "Inspector"}, actionsWidth, [&]() {
+        DrawResourceClone(a_frame, a_signal);
+        ImGui::SameLine();
         DrawResourceRename(a_frame, row->name, [&](std::string a_name) {
           return Studio::RenameSignal{row->name, std::move(a_name)};
         });
@@ -857,8 +888,12 @@ void DrawSignalInspector(const Studio::SignalSubject &a_signal,
   const ResourceCells cells{
       .name = row->name,
       .type = SignalKindName(row->kind),
-      .value = row->live ? std::optional<Value>{row->value} : std::nullopt};
-  ResourceTable("signal-header", {&cells, 1});
+      .value = row->live ? std::optional<Value>{row->value} : std::nullopt,
+      .label = ResourceLabel(a_frame, "resource-header", row->name)};
+  if (std::optional<std::string> renamed =
+          ResourceTable("signal-header", {&cells, 1})) {
+    PostResourceRename(a_frame, a_signal, std::move(*renamed));
+  }
   if (!row->problem.empty()) {
     Problem(row->problem);
   }
@@ -878,8 +913,7 @@ void DrawMaskInspector(const Studio::MaskSubject &a_mask,
   const bool otherDraft = a_frame.state->paint.has_value();
   static_cast<void>(Rule(
       Studio::RuleSpec{.text = "Inspector"},
-      ButtonWidth("Advanced Edit") + 2.0f * ItemSpacingX() + RowButtonWidth() +
-          ButtonWidth("Rename"),
+      ButtonWidth("Advanced Edit") + ItemSpacingX() + ResourceActionsWidth(),
       [&]() {
         Disabled(otherDraft || !a_frame.piece, [&] {
           if (ImGui::Button("Advanced Edit")) {
@@ -889,6 +923,8 @@ void DrawMaskInspector(const Studio::MaskSubject &a_mask,
         Tooltip(otherDraft       ? "Finish the current mask draft first."
                 : !a_frame.piece ? "Select a piece to edit terms."
                                  : "Open the terms editor for this mask.");
+        ImGui::SameLine();
+        DrawResourceClone(a_frame, a_mask);
         ImGui::SameLine();
         DrawResourceRename(a_frame, row->name, [&](std::string a_name) {
           return Studio::RenameMask{row->name, std::move(a_name)};
@@ -900,7 +936,14 @@ void DrawMaskInspector(const Studio::MaskSubject &a_mask,
               Studio::RemoveMask{.name = row->name, .cascade = a_cascade});
         });
       },
-      [&]() { Dim(row->name); }));
+      [&]() {
+        const std::optional<std::string> renamed =
+            NameLabel(ResourceLabel(a_frame, "resource-header", row->name),
+                      [&] { Dim(row->name); });
+        if (renamed) {
+          PostResourceRename(a_frame, a_mask, *renamed);
+        }
+      }));
 
   if (a_frame.state->paint && a_frame.state->mask.editing == row->name) {
     DrawMaskTask(a_frame);
@@ -918,8 +961,9 @@ void DrawCurveInspector(const Studio::CurveSubject &a_curve,
     return;
   }
   static_cast<void>(Rule(
-      Studio::RuleSpec{.text = "Inspector"},
-      RowButtonWidth() + ItemSpacingX() + ButtonWidth("Rename"), [&]() {
+      Studio::RuleSpec{.text = "Inspector"}, ResourceActionsWidth(), [&]() {
+        DrawResourceClone(a_frame, a_curve);
+        ImGui::SameLine();
         DrawResourceRename(a_frame, row->name, [&](std::string a_name) {
           return Studio::RenameCurve{row->name, std::move(a_name)};
         });
@@ -929,8 +973,15 @@ void DrawCurveInspector(const Studio::CurveSubject &a_curve,
                        Studio::RemoveCurve{row->name, a_cascade});
         });
       }));
-  const ResourceCells cells{.name = row->name};
-  ResourceTable("curve-header", {&cells, 1});
+  const ResourceCells cells{
+      .name = row->name,
+      .type = {},
+      .value = std::nullopt,
+      .label = ResourceLabel(a_frame, "resource-header", row->name)};
+  if (std::optional<std::string> renamed =
+          ResourceTable("curve-header", {&cells, 1})) {
+    PostResourceRename(a_frame, a_curve, std::move(*renamed));
+  }
   Dim("x is the input value.");
   DrawRowField("expression", Studio::CurveTextField(row->name, row->text),
                a_frame);

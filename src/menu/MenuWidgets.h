@@ -19,6 +19,7 @@
 #include <string>
 #include <string_view>
 #include <variant>
+#include <vector>
 
 namespace BetterEnchantmentEffects::Menu {
 using TextCheck =
@@ -97,6 +98,16 @@ TextField(const char *a_key, const std::string &a_model,
                                              const Studio::Width &a_width,
                                              float a_scale);
 
+struct NameLabelSpec {
+  const char *key = nullptr;
+  std::string_view name;
+  std::function<std::vector<std::string>()> taken;
+  bool editable = true;
+  WidgetSize size = {Studio::Width::Px(240.0f), 1.0f};
+};
+[[nodiscard]] std::optional<std::string>
+NameLabel(const NameLabelSpec &a_spec, const std::function<void()> &a_label);
+
 void Thumbnail(const Studio::ThumbnailSpec &a_spec);
 [[nodiscard]] bool ThumbnailButton(const char *a_key,
                                    const Studio::ThumbnailSpec &a_spec);
@@ -169,8 +180,10 @@ struct ResourceCells {
   std::string_view name;
   std::string_view type;
   std::optional<Value> value;
+  std::optional<NameLabelSpec> label;
 };
-void ResourceTable(const char *a_id, std::span<const ResourceCells> a_rows);
+[[nodiscard]] std::optional<std::string>
+ResourceTable(const char *a_id, std::span<const ResourceCells> a_rows);
 
 [[nodiscard]] std::optional<std::uint32_t>
 PresetSlider(const char *a_key, std::uint32_t a_value,

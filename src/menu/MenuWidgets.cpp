@@ -6,6 +6,7 @@
 #include "studio/Forms.h"
 #include "studio/InputConnections.h"
 #include "studio/MenuState.h"
+#include "studio/NameEdit.h"
 #include "studio/Names.h"
 #include "studio/Rows.h"
 #include "studio/View.h"
@@ -554,6 +555,83 @@ std::string_view LiveTextField(const char *a_key, const char *a_hint,
   return std::string_view{buffer.data()};
 }
 
+namespace {
+[[nodiscard]] Studio::NameEvent NameEventOf(bool a_enter, bool a_hovered) {
+  if (a_enter) {
+    return Studio::NameEvent::kEnter;
+  }
+  if (ImGui::IsItemDeactivated()) {
+    return Studio::NameEvent::kDeactivated;
+  }
+  if (ImGui::IsMouseClicked(0) && !a_hovered) {
+    return Studio::NameEvent::kClickedAway;
+  }
+  return Studio::NameEvent::kNone;
+}
+
+[[nodiscard]] std::optional<std::string>
+DrawNameDraft(const NameLabelSpec &a_spec, Studio::MenuState &a_state) {
+  Studio::TextBuffer buffer{};
+  const std::string &draft = a_state.nameDraft->text;
+  const std::size_t n = (std::min)(draft.size(), buffer.size() - 1);
+  std::memcpy(buffer.data(), draft.data(), n);
+  if (a_state.nameDraft->awaitingFocus) {
+    ImGui::SetKeyboardFocusHere(0);
+  }
+  NextItemWidth(a_spec.size.width, a_spec.size.scale);
+  const bool enter =
+      ImGui::InputText("##name", buffer.data(), buffer.size(),
+                       ImGuiMCP::ImGuiInputTextFlags_EnterReturnsTrue);
+  const Studio::NameInput input{.text = std::string{buffer.data()},
+                                .active = ImGui::IsItemActive(),
+                                .event =
+                                    NameEventOf(enter, ImGui::IsItemHovered())};
+  const std::vector<std::string> taken =
+      a_spec.taken ? a_spec.taken() : std::vector<std::string>{};
+  const Studio::NameStep step = Studio::StepNameDraft(
+      *a_state.nameDraft, input, {.current = a_spec.name, .taken = taken});
+  return Match(
+      step,
+      [&](const Studio::KeepNaming &a_keep) -> std::optional<std::string> {
+        a_state.nameDraft = a_keep.draft;
+        if (a_keep.problem) {
+          ProblemLabel(*a_keep.problem);
+        }
+        return std::nullopt;
+      },
+      [&](const Studio::CommitName &a_commit) -> std::optional<std::string> {
+        a_state.nameDraft.reset();
+        return a_commit.to;
+      },
+      [&](const Studio::CancelNaming &) -> std::optional<std::string> {
+        a_state.nameDraft.reset();
+        return std::nullopt;
+      });
+}
+}
+
+std::optional<std::string> NameLabel(const NameLabelSpec &a_spec,
+                                     const std::function<void()> &a_label) {
+  auto &state = Studio::State();
+  const Studio::FieldKey key =
+      Studio::HashFieldKey(state.fieldScope, NonNull(a_spec.key), a_spec.name);
+  ImGui::PushID(NonNull(a_spec.key));
+  ImGui::PushID(a_spec.name.data(), a_spec.name.data() + a_spec.name.size());
+  std::optional<std::string> committed;
+  if (Studio::IsNaming(state.nameDraft, key)) {
+    committed = DrawNameDraft(a_spec, state);
+  } else {
+    a_label();
+    if (a_spec.editable && ImGui::IsItemHovered() &&
+        ImGui::IsMouseDoubleClicked(0)) {
+      state.nameDraft = Studio::BeginNameDraft(key, a_spec.name);
+    }
+  }
+  ImGui::PopID();
+  ImGui::PopID();
+  return committed;
+}
+
 const Studio::GameObjectCandidate *
 DrawCandidateRows(const CandidateRowsSpec &a_spec, int &a_id,
                   std::size_t &a_shown) {
@@ -943,19 +1021,35 @@ void DimFitted(std::string_view a_text) {
   Dim(ExpressionSummary(a_text, cap));
 }
 
-void ResourceTable(const char *a_id, std::span<const ResourceCells> a_rows) {
+std::optional<std::string>
+ResourceTable(const char *a_id, std::span<const ResourceCells> a_rows) {
+  std::optional<std::string> renamed;
   Table table = Table::Begin(a_id,
                              {{"name", Studio::Width::Fill()},
                               {"type", Studio::Width::Fit()},
                               {"value", Studio::Width::Fit()}},
                              Studio::kColumnsTable);
   if (!table.Open()) {
-    return;
+    return renamed;
   }
-  for (const ResourceCells &row : a_rows) {
+  for (std::size_t i = 0; i < a_rows.size(); ++i) {
+    const ResourceCells &row = a_rows[i];
+    const FieldScope scope{std::to_string(i)};
     table.Cell();
-    ImGui::AlignTextToFramePadding();
-    ImGui::TextUnformatted(row.name.data(), row.name.data() + row.name.size());
+    const std::function<void()> name = [&] {
+      ImGui::AlignTextToFramePadding();
+      ImGui::TextUnformatted(row.name.data(),
+                             row.name.data() + row.name.size());
+    };
+    if (row.label) {
+      ImGui::PushID(static_cast<int>(i));
+      if (std::optional<std::string> to = NameLabel(*row.label, name)) {
+        renamed = std::move(to);
+      }
+      ImGui::PopID();
+    } else {
+      name();
+    }
     table.Cell();
     if (!row.type.empty()) {
       ImGui::AlignTextToFramePadding();
@@ -967,6 +1061,7 @@ void ResourceTable(const char *a_id, std::span<const ResourceCells> a_rows) {
     }
   }
   table.End();
+  return renamed;
 }
 
 std::optional<std::uint32_t>

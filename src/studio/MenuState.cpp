@@ -1043,6 +1043,12 @@ bool MaskTaskActive(const MenuState &a_state) {
   return a_state.paint.has_value() && a_state.mode == Mode::kPaint;
 }
 
+bool IsRenameBlocked(const MenuState &a_state) {
+  return a_state.paint.has_value() || a_state.pendingEditorChange.has_value() ||
+         a_state.pendingIndexedEdit.has_value() ||
+         a_state.pendingRecipeFile.has_value();
+}
+
 bool CanKeepMask(const MenuState &a_state) {
   const auto expression = CheckedBuildMask(a_state.mask.terms);
   return a_state.paint && a_state.paint->ready &&

@@ -121,6 +121,10 @@ know what it edits. Per-field UI state lives on `MenuState`, keyed by
 | `FieldKey` | A field's identity, a `std::uint32_t`, the same type as ImGui's `ImGuiID`. `HashFieldKey` derives it from the field scope and leaf name. | `MenuState.h` |
 | `TuningGesture` | The drag in progress: its id, `FieldKey`, recipe id, subject, current value, and bind closure. | `MenuState.h` |
 | `ExpressionDraft` | The draft text of an expression field and the revision it was read at. | `MenuState.h` |
+| `NameDraft` | The **name label** in rename: its `FieldKey`, the draft text, and whether the text field waits for keyboard focus. `MenuState` holds at most one. | `MenuState.h` |
+| `NameInput`, `NameEvent`, `NameRules` | One frame of a name draft: the text, whether the field is active, and the event (Enter, deactivation, a click away). `NameRules` holds the current name and the taken names. | `NameEdit.h` |
+| `NameStep` | The result of `StepNameDraft`: `KeepNaming` (the next draft and an optional problem), `CommitName`, or `CancelNaming`. Enter commits a valid changed name. Enter on a problem keeps the draft. Escape, focus loss and a click away cancel. | `NameEdit.h` |
+| `NameProblem` | The problem with a draft name: not a name (`IsName`), or taken. The current name has no problem. | `NameEdit.h` |
 
 ### Menu state and editor acknowledgements
 
@@ -131,7 +135,7 @@ finish pending work.
 
 | Type or function | Description | Declared in |
 |---|---|---|
-| `MenuState` | Mode, `Layout`, `Selection`, `Navigation`, the pinned `PreviewWindows`, pending edits, `TuningGesture`, the `FieldKey`-keyed buffers (`textBuffers`, `numberBuffers`, `comboMode`, `tuningRanges`, `expressionDrafts`), the `MaskStack`, the `PaintSession`, and the mask history. | `MenuState.h` |
+| `MenuState` | Mode, `Layout`, `Selection`, `Navigation`, the pinned `PreviewWindows`, pending edits, `TuningGesture`, the `FieldKey`-keyed buffers (`textBuffers`, `numberBuffers`, `comboMode`, `tuningRanges`, `expressionDrafts`), the `NameDraft`, the `MaskStack`, the `PaintSession`, and the mask history. | `MenuState.h` |
 | `PendingEditorChange` | A recipe rename or delete, or a rename of the selected resource, with its request id and the selection when it was sent. | `MenuState.h` |
 | `PendingIndexedEdit` | A request id and recipe id that wait for their `RecipeEditResult`. | `EditResult.h` |
 | `RecipeEditResult` | The engine's answer to one `EditRecipe`: request id, recipe id, and an optional error. | `EditResult.h` |
@@ -204,7 +208,9 @@ each request carries only its parameters.
 | `NewSource` | A new source: a name stem and a `SourceKind` (default `MaterialSource`). |
 | `NewMask`, `NewCurve` | A new mask or curve: a name stem. |
 | `NewLight` | A new light. It carries no parameters. |
+| `NewCopy` | A copy of a signal, source, mask or curve under a unique name made from the original name. The copy keeps the kind, settings, expression and signal curve. A missing row or another subject gives no edits. |
 | `Created` | The result: the `RecipeEdit`s to post and the `InspectorSubject` to select. |
+| `ResourceRename` | The rename edit for a signal, source, mask or curve subject. |
 
 ### Widget vocabulary
 

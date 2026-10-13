@@ -83,6 +83,7 @@ The functions group by what they draw.
 |---|---|
 | `ResolveWidth`, `NextItemWidth`, `FitWidth`, `WidestOf`, `ButtonWidth`, `TextWidth`, `ItemSpacingX`, `RowButtonWidth`, `RuleHeight` | Size helpers. They turn a `Studio::Width` or a text into pixels. |
 | `TextField`, `LiveTextField`, `ChoiceCombo`, `ReferenceCombo`, `ValueWidget` | The **field** widgets. `TextField`, `ChoiceCombo`, `ReferenceCombo`, and `ValueWidget` return the committed text, or `nullopt` when the user made no edit. `LiveTextField` returns the current text on every frame. |
+| `NameLabel` | A **name label**. A click acts as the label that the caller draws. A double-click opens a text field with the name. Enter returns a valid new name. Escape or focus loss cancels. A problem shows under the field. `ResourceTable` draws a name cell with it when the row has a `NameLabelSpec`. |
 | `SearchCombo`, `DrawCandidateRows` | The searchable combo and the filtered game-object candidate list. |
 | `Badge`, `ModeBadge`, `BlendGlyph`, `BlendBadge` | The **badge** glyphs. `Badge` draws a `Studio::FieldKind` glyph. `ModeBadge` toggles a **field** between combo entry and typed entry. `BlendBadge` draws a `Blend` glyph and returns a new `Blend` on a click. |
 | `ValueText`, `ValueSwatch`, `SourceValueText`, `ResourceValueText`, `RecipeLabel`, `HeldLabel` | Value and label text. `RecipeLabel` marks a pinned **recipe** as `(pinned here)`. |
@@ -157,7 +158,7 @@ Each panel is one free function over the **frame**. A panel reads the
 | `DrawBoard`, `DrawBoardPage` | The **board**. `DrawBoard` draws one `Studio::Board`. `DrawBoardPage` draws the Recipes page section around it. | `BoardPage.h` |
 | `HasRelationships`, `DrawRelationships` | The relationships panel: what drives the subject and what uses it. | `RelationshipPanel.h` |
 | `DefaultKeyOf`, `DrawRecipeSettings`, `DrawStudioContext`, `DrawOutputHeader` | The context rows. `DefaultKeyOf` returns a piece's armor key, or its first key. The others draw the **recipe** settings, the studio context line, and one output's header with its scalar **fields**. | `ContextRows.h` |
-| `PostResourceAdd`, `DrawResourceRename` | Resource actions. `PostResourceAdd` posts the add intent for one `Studio::ResourceTab`. `DrawResourceRename` checks the new name and posts the rename edit. | `ResourcePanels.h` |
+| `PostResourceAdd`, `DrawResourceRename`, `DrawResourceClone`, `ResourceLabel`, `PostResourceRename` | Resource actions. `PostResourceAdd` posts the add intent for one `Studio::ResourceTab`. `DrawResourceRename` checks the new name and posts the rename edit. `DrawResourceClone` posts a `Studio::NewCopy` and selects the copy. `ResourceLabel` makes the `NameLabelSpec` of a resource name, and `PostResourceRename` posts its rename. | `ResourcePanels.h` |
 | `DrawResponse` | Draws one `Studio::SignalRow`'s response graph. | `ResponsePanel.h` |
 | `RecipeFilePending`, `DrawRecipeRuleStatus`, `DrawRecipeSaveRevert`, `DrawMaskDraftHints`, `DrawRecipeFileActions` | The **recipe** file controls. `RecipeFilePending` is true while a file operation on the recipe runs. | `RecipeActions.h` |
 

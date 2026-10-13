@@ -50,6 +50,12 @@ struct ExpressionDraft {
   std::uint64_t revision = 0;
 };
 
+struct NameDraft {
+  FieldKey label = kNoField;
+  std::string text;
+  bool awaitingFocus = true;
+};
+
 struct TuningGesture {
   std::uint64_t id = 0;
   FieldKey field = kNoField;
@@ -83,6 +89,7 @@ struct MenuState {
   std::optional<TuningGesture> tuning;
   std::unordered_map<FieldKey, std::pair<float, float>> tuningRanges;
   std::unordered_map<FieldKey, ExpressionDraft> expressionDrafts;
+  std::optional<NameDraft> nameDraft;
   bool settings = false;
   MaskStack mask;
   std::optional<PaintSession> paint;
@@ -121,6 +128,7 @@ PaintDependencies(const MenuState &a_state);
 void Reduce(MenuState &a_state, const Intent &a_intent);
 void ObservePaintRecipe(MenuState &a_state, const RecipeRow *a_recipe);
 [[nodiscard]] bool MaskTaskActive(const MenuState &a_state);
+[[nodiscard]] bool IsRenameBlocked(const MenuState &a_state);
 [[nodiscard]] bool CanKeepMask(const MenuState &a_state);
 [[nodiscard]] std::array<RuleButton, 4>
 MaskRuleButtonsOf(const MenuState &a_state);

@@ -10,6 +10,7 @@
 #include "studio/Forms.h"
 #include "studio/GameObjects.h"
 #include "studio/Intent.h"
+#include "studio/MenuState.h"
 #include "studio/Names.h"
 #include "studio/RecipeSections.h"
 #include "studio/Selection.h"
@@ -476,6 +477,24 @@ void RenameRecipeButton(const Frame &a_frame) {
   Tooltip("rename the recipe; its file follows when it is the user's");
 }
 
+void RecipeNameLabel(const Frame &a_frame) {
+  const Studio::Snapshot *snapshot = a_frame.snapshot;
+  const std::string &id = a_frame.recipe->id;
+  const std::optional<std::string> renamed = NameLabel(
+      {.key = "recipe-name",
+       .name = id,
+       .taken =
+           [snapshot]() {
+             return snapshot ? snapshot->loaded : std::vector<std::string>{};
+           },
+       .editable = !Studio::IsRenameBlocked(*a_frame.state),
+       .size = {Studio::Width::Px(240.0f), a_frame.scale}},
+      [&] { Dim(id); });
+  if (renamed) {
+    Studio::Post(*a_frame.intents, Studio::RenameRecipe{id, *renamed});
+  }
+}
+
 void SoloRecipeButton(const Studio::RecipeRow &a_recipe,
                       const Studio::View &a_view, Studio::Intents &a_out) {
   const bool isolating = a_view.Isolating();
@@ -542,7 +561,8 @@ void DrawRecipeSettings(const Frame &a_frame) {
   const Studio::RecipeRow &recipe = *a_frame.recipe;
   static_cast<void>(Rule(
       Studio::RuleSpec{.text = "Recipe"}, ButtonWidth("Rename"),
-      [&]() { RenameRecipeButton(a_frame); }, [&]() { Dim(recipe.id); }));
+      [&]() { RenameRecipeButton(a_frame); },
+      [&]() { RecipeNameLabel(a_frame); }));
   [[maybe_unused]] const std::optional<std::size_t> detail =
       DrawForm("recipe-header", Studio::RecipeHeaderForm(recipe), a_frame);
   DrawDiagnostics(recipe.problems, recipe.heldBack);
