@@ -300,17 +300,22 @@ public:
     REX::W32::ComPtr<REX::W32::ID3D11Texture2D> diffuse;
     bool pending = false;
   };
+  struct MaterialMaps {
+    RE::NiSourceTexture *rmaos = nullptr;
+    RE::NiSourceTexture *diffuse = nullptr;
+    RE::NiSourceTexture *normal = nullptr;
+  };
   using MaterialSampleResult = std::expected<MaterialSample, std::string>;
-  [[nodiscard]] bool SubmitMaterialSample(RE::NiSourceTexture *a_rmaos,
-                                          RE::NiSourceTexture *a_diffuse,
+  [[nodiscard]] bool SubmitMaterialSample(const MaterialMaps &a_maps,
                                           MaterialReadback &a_readback);
   [[nodiscard]] std::optional<MaterialSampleResult>
   CollectMaterialSample(MaterialReadback &a_readback);
   [[nodiscard]] std::optional<MaterialSample>
-  SampleMaterial(RE::NiSourceTexture *a_rmaos, RE::NiSourceTexture *a_diffuse);
+  SampleMaterial(const MaterialMaps &a_maps);
+  bool DrawDiffuseDetail(RenderTarget &a_target, const MaterialMaps &a_maps,
+                         float a_diffuseMip);
 
-  bool RenderClusters(RenderTarget &a_target, RE::NiSourceTexture *a_rmaos,
-                      RE::NiSourceTexture *a_diffuse,
+  bool RenderClusters(RenderTarget &a_target, const MaterialMaps &a_maps,
                       const MaterialAnalysis &a_analysis,
                       std::optional<std::uint8_t> a_picked, bool a_palette);
   [[nodiscard]] bool ClustersAvailable() const noexcept;
@@ -418,6 +423,7 @@ private:
     std::optional<PixelPipeline> program;
     std::optional<PixelPipeline> ripple;
     std::optional<PixelPipeline> clusters;
+    std::optional<PixelPipeline> diffuseDetail;
     std::optional<PixelPipeline> dilate;
     std::optional<PixelPipeline> reduce;
     std::optional<PixelPipeline> stack;

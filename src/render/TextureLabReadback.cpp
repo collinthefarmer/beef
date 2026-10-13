@@ -399,6 +399,7 @@ TextureLab::ReadMaterialSample(MaterialReadback &a_readback, bool a_wait) {
       texel.reflectance = m[3] * scale;
       texel.luma = (0.2126f * d[0] + 0.7152f * d[1] + 0.0722f * d[2]) * scale;
       texel.diffuse = Vec3{d[0] * scale, d[1] * scale, d[2] * scale};
+      texel.detail = d[3] * scale;
       sample.texels.push_back(texel);
     }
   }

@@ -95,7 +95,8 @@ bool TextureLab::RippleAvailable() const noexcept {
 }
 
 bool TextureLab::ClustersAvailable() const noexcept {
-  return Available() && gpu_->clusters.has_value();
+  return Available() && gpu_->clusters.has_value() &&
+         gpu_->diffuseDetail.has_value();
 }
 
 bool TextureLab::BakingAvailable() const noexcept {
@@ -174,6 +175,8 @@ bool TextureLab::CompileShaders(GpuResources &a_resources) {
   a_resources.ripple = CreatePixelPipeline("PSRipple", sizeof(RippleConstants));
   a_resources.clusters =
       CreatePixelPipeline("PSClusters", sizeof(ClusterConstants));
+  a_resources.diffuseDetail =
+      CreatePixelPipeline("PSDiffuseDetail", sizeof(DiffuseDetailConstants));
   a_resources.dilate = CreatePixelPipeline("DilatePS", 0);
   a_resources.reduce =
       CreatePixelPipeline("PSReduce", sizeof(ReductionConstants));

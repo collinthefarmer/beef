@@ -2924,6 +2924,24 @@ cancel by the user instead of the load.
   catalog adds the name to the list (`AppendName`) instead of replacing the
   text; a name already in the list is not added twice.
 
+### Material detail axis (`planners/MipLevel.h`, `render/ShaderSource.cpp` `NormalDetailAt`)
+
+- **Detail** is how strongly a material's normal map varies at a fixed scale:
+  the mean distance, in tangent-space XY decoded to -1..1, between 16 reads of
+  the normal map at the mip that fits 256 px and one read two mips coarser,
+  over a footprint of 1/64 of the texture, doubled and clamped to 0..1.
+  Leather grain, smooth bone and hammered metal differ here where their
+  colour and roughness may not.
+- Only XY is read, so BC5 maps (XY only) and three-channel maps give the same
+  measure. A raw normal direction would split one material by slope; the
+  variation does not.
+- The 64-px material sample and the cluster shader call the same
+  `NormalDetailAt` with the same levels (`NormalDetailScaleOf`), so a
+  centroid's detail and a texel's detail are on one scale at any target size.
+  The sample writes detail into the alpha of its diffuse copy
+  (`PSDiffuseDetail`), so the readback needs no third staging texture.
+- A material without a normal map reads detail 0 everywhere.
+
 ### Cluster chart (`studio/ClusterReadout.h`, `menu/ClusterChart.cpp`)
 
 - The chart re-clusters the geometry's cached material sample with the

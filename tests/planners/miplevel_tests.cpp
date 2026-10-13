@@ -89,5 +89,16 @@ int main() {
   TheRecipeMipIsAFloor();
   GarbageReadsMipZero();
   MipThatFitsKeepsTheSideAtLeastTheTarget();
+  const NormalDetailScale twoK = NormalDetailScaleOf({2048, 2048, 12});
+  Check(twoK.fineMip == 3.0f && twoK.coarseMip == 5.0f &&
+            twoK.footprint == 1.0f / 64.0f,
+        "a 2048 normal map is read for detail at 256 px against 64 px");
+  const NormalDetailScale small = NormalDetailScaleOf({256, 256, 2});
+  Check(small.fineMip == 0.0f && small.coarseMip == 1.0f,
+        "the coarse level stops at the map's last mip");
+  const NormalDetailScale flat = NormalDetailScaleOf({256, 256, 1});
+  Check(flat.fineMip == 0.0f && flat.coarseMip == 0.0f,
+        "a map without mips compares its only level with itself");
+
   return test::Finish("planners_miplevel");
 }

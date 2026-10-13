@@ -14,6 +14,11 @@
 
 namespace BetterEnchantmentEffects {
 namespace {
+TextureLab::MaterialMaps MapsOf(const MaterialInputs &a_material) {
+  return {a_material.rmaos.get(), a_material.diffuse.get(),
+          a_material.normal.get()};
+}
+
 struct Arguments {
   std::span<const ResolvedRenderInput<RenderValue>> values;
   template <class T> [[nodiscard]] const T *Find(RenderValueRef ref) const {
@@ -484,8 +489,7 @@ StepResult ExecuteSubmitMaterialSampleStep(const SubmitMaterialSampleStep &step,
       execution.arguments.Find<MaterialInputs>(step.material);
   if (!material)
     return std::unexpected("material is unavailable");
-  if (!execution.lab.SubmitMaterialSample(material->rmaos.get(),
-                                          material->diffuse.get(),
+  if (!execution.lab.SubmitMaterialSample(MapsOf(*material),
                                           execution.scratch.material))
     return std::unexpected("material sampling failed");
   return RenderValue{Value{0.0f}};
@@ -529,9 +533,9 @@ StepResult ExecuteDrawClustersStep(const DrawClustersStep &step,
   const auto target =
       AcquireStepTarget(execution, step.requirements,
                         TextureLab::MipsFor(step.requirements.mipPolicy));
-  if (!target || !execution.lab.RenderClusters(
-                     *target, material->rmaos.get(), material->diffuse.get(),
-                     **analysis, picked, step.palette))
+  if (!target ||
+      !execution.lab.RenderClusters(*target, MapsOf(*material), **analysis,
+                                    picked, step.palette))
     return std::unexpected("cluster draw failed");
   auto view = View(target);
   view.sampling.nearest = true;

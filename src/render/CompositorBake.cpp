@@ -71,7 +71,8 @@ Compositor::AnalyseMaterial(const MaterialInputs &a_material) {
     return record;
   }
   auto sample =
-      lab->SampleMaterial(a_material.rmaos.get(), a_material.diffuse.get());
+      lab->SampleMaterial({a_material.rmaos.get(), a_material.diffuse.get(),
+                           a_material.normal.get()});
   if (!sample) {
     record.problem = "the maps could not be read back";
     return record;

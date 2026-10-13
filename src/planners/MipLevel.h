@@ -22,4 +22,16 @@ struct Tiling {
                               float a_floorMip) noexcept;
 [[nodiscard]] float MipThatFits(const TextureExtent &a_source,
                                 std::uint32_t a_side) noexcept;
+
+inline constexpr std::uint32_t kNormalDetailSide = 256;
+inline constexpr std::uint32_t kNormalDetailCoarseSteps = 2;
+inline constexpr std::uint32_t kNormalDetailFootprintSide = 64;
+
+struct NormalDetailScale {
+  float fineMip = 0.0f;
+  float coarseMip = 0.0f;
+  float footprint = 0.0f;
+};
+[[nodiscard]] NormalDetailScale
+NormalDetailScaleOf(const TextureExtent &a_normal) noexcept;
 }

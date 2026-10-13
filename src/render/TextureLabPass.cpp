@@ -69,6 +69,22 @@ float WholeReadMip(RE::NiSourceTexture *a_texture, std::uint32_t a_targetSide) {
   return FootprintMip(ExtentOrEmpty(a_texture), {}, a_targetSide);
 }
 
+std::array<float, 4> NormalDetailLevels(RE::NiSourceTexture *a_normal) {
+  const TextureExtent extent = ExtentOrEmpty(a_normal);
+  if (extent.width == 0 || extent.height == 0 || extent.mips == 0) {
+    return {-1.0f, 0.0f, 0.0f, 0.0f};
+  }
+  const NormalDetailScale scale = NormalDetailScaleOf(extent);
+  return {scale.fineMip, scale.coarseMip, scale.footprint, 0.0f};
+}
+
+REX::W32::ID3D11ShaderResourceView *NormalView(RE::NiSourceTexture *a_normal) {
+  const auto *data = DataOf(a_normal);
+  return data ? reinterpret_cast<REX::W32::ID3D11ShaderResourceView *>(
+                    data->resourceView)
+              : nullptr;
+}
+
 constexpr std::size_t kStackBaseSlot = 12;
 static_assert(kStackBaseSlot == TextureLab::kPassSrvs);
 constexpr std::size_t kStackSourceSlot = kStackBaseSlot + 1;
@@ -1147,9 +1163,10 @@ bool TextureLab::RenderRipple(RenderTarget &a_target,
   return true;
 }
 
-bool TextureLab::SubmitMaterialSample(RE::NiSourceTexture *a_rmaos,
-                                      RE::NiSourceTexture *a_diffuse,
+bool TextureLab::SubmitMaterialSample(const MaterialMaps &a_maps,
                                       MaterialReadback &a_readback) {
+  RE::NiSourceTexture *a_rmaos = a_maps.rmaos;
+  RE::NiSourceTexture *a_diffuse = a_maps.diffuse;
   static_assert(static_cast<std::size_t>(kSampleSide) * kSampleSide <=
                 kMaxSampleTexels);
   const auto fail = [&](RE::NiSourceTexture *a_texture,
@@ -1189,7 +1206,9 @@ bool TextureLab::SubmitMaterialSample(RE::NiSourceTexture *a_rmaos,
   if (!copy(a_rmaos, *rmaosExtent, *a_readback.rmaos.Get())) {
     return fail(a_rmaos, "the RMAOS map could not be copied");
   }
-  if (!copy(a_diffuse, *diffuseExtent, *a_readback.diffuse.Get())) {
+  if (!DrawDiffuseDetail(*target, a_maps,
+                         MipThatFits(*diffuseExtent, kSampleSide)) ||
+      !CopyToStaging(*target, *a_readback.diffuse.Get())) {
     return fail(a_diffuse, "the diffuse map could not be copied");
   }
   a_readback.pending = true;
@@ -1201,11 +1220,43 @@ TextureLab::CollectMaterialSample(MaterialReadback &a_readback) {
   return ReadMaterialSample(a_readback, false);
 }
 
+bool TextureLab::DrawDiffuseDetail(RenderTarget &a_target,
+                                   const MaterialMaps &a_maps,
+                                   float a_diffuseMip) {
+  auto *renderer = RE::BSGraphics::Renderer::GetSingleton();
+  const auto *diffuseData = DataOf(a_maps.diffuse);
+  if (!available_ || !renderer || !borrowedContext_ || !a_target.rtv.Get() ||
+      !gpu_->diffuseDetail.has_value() || !diffuseData ||
+      !diffuseData->resourceView) {
+    return false;
+  }
+  const PixelPipeline &pipeline = *gpu_->diffuseDetail;
+  const RenderPass pass{*renderer, *borrowedContext_, CaptureBatch()};
+  DiffuseDetailConstants constants{};
+  constants.levels[0] = a_diffuseMip;
+  const std::array<float, 4> detail = NormalDetailLevels(a_maps.normal);
+  std::ranges::copy(detail, constants.normal);
+  pass.Context().UpdateSubresource(pipeline.constants.Get(), 0, nullptr,
+                                   &constants, 0, 0);
+  REX::W32::ID3D11ShaderResourceView *srvs[kPassSrvs]{
+      reinterpret_cast<REX::W32::ID3D11ShaderResourceView *>(
+          diffuseData->resourceView),
+      nullptr, NormalView(a_maps.normal)};
+  REX::W32::ID3D11Buffer *cbs[7]{nullptr,
+                                 nullptr,
+                                 nullptr,
+                                 nullptr,
+                                 nullptr,
+                                 nullptr,
+                                 pipeline.constants.Get()};
+  DrawFullScreen(pass, a_target, {pipeline.shader.Get(), srvs, cbs});
+  return true;
+}
+
 std::optional<MaterialSample>
-TextureLab::SampleMaterial(RE::NiSourceTexture *a_rmaos,
-                           RE::NiSourceTexture *a_diffuse) {
+TextureLab::SampleMaterial(const MaterialMaps &a_maps) {
   MaterialReadback readback;
-  if (!SubmitMaterialSample(a_rmaos, a_diffuse, readback)) {
+  if (!SubmitMaterialSample(a_maps, readback)) {
     return std::nullopt;
   }
   auto sample = ReadMaterialSample(readback, true);
@@ -1218,8 +1269,7 @@ TextureLab::SampleMaterial(RE::NiSourceTexture *a_rmaos,
 }
 
 bool TextureLab::RenderClusters(RenderTarget &a_target,
-                                RE::NiSourceTexture *a_rmaos,
-                                RE::NiSourceTexture *a_diffuse,
+                                const MaterialMaps &a_maps,
                                 const MaterialAnalysis &a_analysis,
                                 std::optional<std::uint8_t> a_picked,
                                 bool a_palette) {
@@ -1230,6 +1280,8 @@ bool TextureLab::RenderClusters(RenderTarget &a_target,
   }
   const PixelPipeline &pipeline = *gpu_->clusters;
   const RenderPass pass{*renderer, *borrowedContext_, CaptureBatch()};
+  RE::NiSourceTexture *a_rmaos = a_maps.rmaos;
+  RE::NiSourceTexture *a_diffuse = a_maps.diffuse;
   const auto *rmaosData = DataOf(a_rmaos);
   const auto *diffuseData = DataOf(a_diffuse);
   if (!rmaosData || !rmaosData->resourceView || !diffuseData ||
@@ -1252,6 +1304,7 @@ bool TextureLab::RenderClusters(RenderTarget &a_target,
     constants.centroidChroma[k][1] = chroma.greenMagenta;
     constants.centroidLuma[k][0] = cluster.centroid.luma;
     constants.centroidLuma[k][1] = static_cast<float>(cluster.id);
+    constants.centroidLuma[k][2] = cluster.centroid.detail;
   }
   const auto &w = a_analysis.settings.weights;
   constants.weights[0] = scale(w.roughness);
@@ -1271,6 +1324,9 @@ bool TextureLab::RenderClusters(RenderTarget &a_target,
   }
   constants.levels[0] = WholeReadMip(a_rmaos, a_target.size);
   constants.levels[1] = WholeReadMip(a_diffuse, a_target.size);
+  const std::array<float, 4> detail = NormalDetailLevels(a_maps.normal);
+  std::ranges::copy(detail, constants.detail);
+  constants.detail[3] = scale(w.detail);
 
   pass.Context().UpdateSubresource(pipeline.constants.Get(), 0, nullptr,
                                    &constants, 0, 0);
@@ -1278,7 +1334,8 @@ bool TextureLab::RenderClusters(RenderTarget &a_target,
       reinterpret_cast<REX::W32::ID3D11ShaderResourceView *>(
           diffuseData->resourceView),
       reinterpret_cast<REX::W32::ID3D11ShaderResourceView *>(
-          rmaosData->resourceView)};
+          rmaosData->resourceView),
+      NormalView(a_maps.normal)};
   REX::W32::ID3D11Buffer *cbs[4]{nullptr, nullptr, nullptr,
                                  pipeline.constants.Get()};
   DrawFullScreen(pass, a_target, {pipeline.shader.Get(), srvs, cbs});

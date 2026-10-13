@@ -568,7 +568,36 @@ cbuffer ClusterParams : register(b3)
 	float4 clusterPalette[8];
 	float4 clusterMode;
 	float4 clusterLevels;
+	float4 clusterDetail;
 };
+
+float NormalDetailAt(float2 uv, float4 detail)
+{
+	if (detail.x < 0)
+		return 0;
+	float2 coarse = prev.SampleLevel(samp, uv, detail.y).xy * 2 - 1;
+	float total = 0;
+	[unroll] for (int y = 0; y < 4; ++y) {
+		[unroll] for (int x = 0; x < 4; ++x) {
+			float2 offset = (float2(x, y) - 1.5) * (detail.z * 0.25);
+			float2 fine = prev.SampleLevel(samp, uv + offset, detail.x).xy * 2 - 1;
+			total += length(fine - coarse);
+		}
+	}
+	return saturate(total * (2.0 / 16.0));
+}
+
+cbuffer DiffuseDetailParams : register(b6)
+{
+	float4 diffuseDetailLevels;
+	float4 diffuseDetailNormal;
+};
+
+float4 PSDiffuseDetail(VSOut i) : SV_Target
+{
+	float3 d = src.SampleLevel(samp, i.uv, diffuseDetailLevels.x).rgb;
+	return float4(d, NormalDetailAt(i.uv, diffuseDetailNormal));
+}
 
 float4 PSClusters(VSOut i) : SV_Target
 {
@@ -576,6 +605,7 @@ float4 PSClusters(VSOut i) : SV_Target
 	float3 d = saturate(src.SampleLevel(samp, i.uv, clusterLevels.y).rgb);
 	float  luma = saturate(dot(d, float3(0.2126, 0.7152, 0.0722)));
 	float2 chroma = saturate(float2(0.5 + d.r - d.b, 0.5 + d.g - 0.5 * (d.r + d.b)));
+	float  detail = NormalDetailAt(i.uv, clusterDetail);
 	int    n = clamp((int)clusterMisc.y, 0, 8);
 	float  id = 0;
 	float  best = 0;
@@ -583,8 +613,9 @@ float4 PSClusters(VSOut i) : SV_Target
 		float4 dm = m - centroidRmaos[k];
 		float  dl = luma - centroidLuma[k].x;
 		float2 dc = chroma - centroidChroma[k].xy;
+		float  dd = detail - centroidLuma[k].z;
 		float  dist = dot(clusterWeights, dm * dm) + clusterMisc.x * dl * dl
-		              + clusterMisc.z * dot(dc, dc);
+		              + clusterMisc.z * dot(dc, dc) + clusterDetail.w * dd * dd;
 		if (k == 0 || dist < best) {
 			best = dist;
 			id = centroidLuma[k].y;

@@ -46,4 +46,13 @@ float MipThatFits(const TextureExtent &a_source,
     ++mip;
   return static_cast<float>(mip);
 }
+NormalDetailScale NormalDetailScaleOf(const TextureExtent &a_normal) noexcept {
+  const float fine = MipThatFits(a_normal, kNormalDetailSide);
+  const float last =
+      static_cast<float>(a_normal.mips > 0 ? a_normal.mips - 1 : 0);
+  const float coarse =
+      std::min(fine + static_cast<float>(kNormalDetailCoarseSteps), last);
+  return {std::min(fine, last), coarse,
+          1.0f / static_cast<float>(kNormalDetailFootprintSide)};
+}
 }
