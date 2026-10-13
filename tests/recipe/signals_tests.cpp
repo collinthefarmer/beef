@@ -499,6 +499,20 @@ int main() {
   }
 
   {
+    Check(!SlotTakesLayers(Slot::kGlint) && SlotTakesLayers(Slot::kEmissive),
+          "glint takes no layers and emissive does");
+    Recipe recipe;
+    const auto graph = RecipeGraph::Compile(recipe);
+    const RowTypes rows{recipe, graph};
+    SurfaceOutput glint;
+    glint.slot = Slot::kGlint;
+    glint.stack.push_back(Layer{});
+    Check(HasMessage(CheckOutput(rows, Output{glint}, "output 0"),
+                     "draw nothing"),
+          "layers on a glint output are reported as drawing nothing");
+  }
+
+  {
     Recipe recipe;
     recipe.sources = {
         Source{"albedo", MaterialSource{MaterialChannel::kDiffuseRgb}},

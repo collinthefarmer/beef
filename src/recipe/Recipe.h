@@ -615,6 +615,7 @@ inline constexpr std::size_t kResolutionCount = 3;
 [[nodiscard]] std::optional<Resolution>
 ParseResolution(std::string_view a_name) noexcept;
 [[nodiscard]] Resolution DefaultSlotResolution(Slot a_slot) noexcept;
+[[nodiscard]] bool SlotTakesLayers(Slot a_slot) noexcept;
 [[nodiscard]] std::uint32_t ResolutionDivisor(Resolution a_resolution) noexcept;
 
 [[nodiscard]] ValueType SourceType(const Source &a_source) noexcept;

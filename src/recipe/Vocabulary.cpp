@@ -251,6 +251,11 @@ std::optional<Resolution> ParseResolution(std::string_view a_name) noexcept {
   return FromName(kResolutions, a_name);
 }
 
+bool SlotTakesLayers(Slot a_slot) noexcept {
+  const SlotSpec *row = RowOf(kSlots, a_slot);
+  return row && row->channels != SlotColumns::kNoMap;
+}
+
 Resolution DefaultSlotResolution([[maybe_unused]] Slot a_slot) noexcept {
   return Resolution::kFull;
 }

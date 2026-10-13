@@ -26,6 +26,27 @@ namespace {
 }
 
 constexpr std::pair<float, float> kUnitRange{0.0f, 1.0f};
+
+struct ScalarRange {
+  ScalarField field;
+  std::pair<float, float> working;
+  std::string_view units;
+};
+constexpr ScalarRange kScalarRanges[]{
+    {ScalarField::kWeight, kUnitRange, "fraction"},
+    {ScalarField::kRoughness, kUnitRange, "fraction"},
+    {ScalarField::kLevel, kUnitRange, "fraction"},
+    {ScalarField::kMicrofacetRoughness, kUnitRange, "fraction"},
+    {ScalarField::kScreenSpaceScale, {0.0f, 3.0f}, ""},
+    {ScalarField::kLogMicrofacetDensity, {0.0f, 40.0f}, ""},
+    {ScalarField::kDensityRandomization, {0.0f, 5.0f}, ""},
+};
+
+const ScalarRange *RangeOfScalar(ScalarField a_field) noexcept {
+  const auto found =
+      std::ranges::find(kScalarRanges, a_field, &ScalarRange::field);
+  return found == std::end(kScalarRanges) ? nullptr : &*found;
+}
 constexpr std::pair<float, float> kLightIntensityRange{0.0f, 16.0f};
 constexpr std::pair<float, float> kLightSizeRange{0.0f, 8.0f};
 constexpr std::pair<float, float> kLightCutoffRange{0.01f, 1.0f};
@@ -760,12 +781,9 @@ std::vector<FormField> ScalarForm(const LayerStack &a_stack) {
                     .bind = BindScalar(a_stack.output, field),
                     .detail = signal ? std::optional{FieldDetail::kSignal}
                                      : std::nullopt});
-    if (field == ScalarField::kWeight || field == ScalarField::kRoughness ||
-        field == ScalarField::kMicrofacetRoughness ||
-        field == ScalarField::kDensityRandomization ||
-        field == ScalarField::kLevel) {
-      row.workingRange = kUnitRange;
-      row.units = "fraction";
+    if (const ScalarRange *range = field ? RangeOfScalar(*field) : nullptr) {
+      row.workingRange = range->working;
+      row.units = range->units;
     }
     row.creators = Creators(kValueCreators);
     row.create = [name = scalar.name, current = scalar.text, colour,

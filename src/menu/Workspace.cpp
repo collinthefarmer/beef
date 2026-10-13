@@ -230,7 +230,7 @@ void DrawOutputNode(const Frame &a_frame, const Studio::OutputRow &a_output,
     }
     DrawOutputLayerRow(a_frame, a_output, i);
   }
-  if (a_output.target != Target::kLight) {
+  if (a_output.target != Target::kLight && SlotTakesLayers(a_output.slot)) {
     ImGui::PushID("add");
     if (ImGui::Button("+ layer")) {
       Studio::Created made =

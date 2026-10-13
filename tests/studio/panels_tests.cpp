@@ -389,6 +389,21 @@ void TestScalarForm() {
         "ScalarForm builds a field per slot scalar");
   Check(!form.front().value.has_value(),
         "ScalarForm omits the value so its rows match other field rows");
+
+  LayerStack glint;
+  for (const char *name :
+       {"screenSpaceScale", "logMicrofacetDensity", "densityRandomization"}) {
+    ScalarRow row;
+    row.name = name;
+    row.text = "1";
+    glint.scalars.push_back(row);
+  }
+  const std::vector<FormField> glintForm = ScalarForm(glint);
+  Check(glintForm.size() == 3 &&
+            glintForm[0].workingRange == std::pair{0.0f, 3.0f} &&
+            glintForm[1].workingRange == std::pair{0.0f, 40.0f} &&
+            glintForm[2].workingRange == std::pair{0.0f, 5.0f},
+        "glint parameters slide over the ranges Community Shaders uses");
 }
 
 void TestStackAndInspectorViews() {

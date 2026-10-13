@@ -447,6 +447,11 @@ std::vector<Diagnostic> CheckSurfaceOutput(const RowTypes &a_rows,
         "a vanilla shell has only the emissive slot; '{}' is not one",
         NameOf(kSlots, a_m.slot)));
   }
+  if (!SlotTakesLayers(a_m.slot) && !a_m.stack.empty()) {
+    report.Warn(std::format("'{}' has no map, only its parameters; its {} "
+                            "layer(s) draw nothing",
+                            NameOf(kSlots, a_m.slot), a_m.stack.size()));
+  }
   std::size_t li = 0;
   for (const auto &l : a_m.stack) {
     const auto layerWhere = std::format("{} layer {}", a_where, li++);
