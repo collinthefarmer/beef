@@ -95,6 +95,7 @@ struct PictureRow {
   TextureHandle texture{};
   ShaderChannel channel = ShaderChannel::kRgb;
   bool animated = false;
+  bool ids = false;
   std::string problem;
 };
 

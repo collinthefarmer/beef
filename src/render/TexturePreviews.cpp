@@ -9,6 +9,9 @@
 
 namespace BetterEnchantmentEffects {
 namespace {
+constexpr std::string_view kIdsContext = "ids";
+}
+namespace {
 constexpr std::uint32_t kSampledPreviewSide = 128;
 
 [[nodiscard]] float MipFittingPreview(RE::NiSourceTexture *a_source,
@@ -40,7 +43,7 @@ TexturePreviews::FindOrAdd(const PreviewKey &a_key) {
 
 std::shared_ptr<TextureLab::RenderTarget>
 TexturePreviews::Preview(RE::NiSourceTexture *a_source, ShaderChannel a_channel,
-                         bool a_dynamic, TextureSize a_side) {
+                         bool a_dynamic, bool a_ids, TextureSize a_side) {
   if (!a_source || !renderer_.Available()) {
     return nullptr;
   }
@@ -49,7 +52,9 @@ TexturePreviews::Preview(RE::NiSourceTexture *a_source, ShaderChannel a_channel,
     return nullptr;
   }
   std::scoped_lock lock{previewLock_};
-  PreviewEntry *found = FindOrAdd({a_source, a_channel, {}, a_side.Pixels()});
+  PreviewEntry *found =
+      FindOrAdd({a_source, a_channel, a_ids ? std::string{kIdsContext} : "",
+                 a_side.Pixels()});
   if (!found) {
     return nullptr;
   }
@@ -184,7 +189,8 @@ TexturePreviews::PreviewParamsFor(const PreviewWork &a_work) {
     return p;
   }
   p.mode = TextureLab::Mode::kChannel;
-  p.channel.mapMip = mip;
+  p.channel.ids = std::get<2>(a_work.key) == kIdsContext;
+  p.channel.mapMip = p.channel.ids ? 0.0f : mip;
   p.map = {a_work.source.get(), TextureLab::MapReading::kRmaos};
   p.channel.channel = a_work.channel;
   return p;

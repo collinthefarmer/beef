@@ -151,6 +151,7 @@ struct ThumbnailSpec {
   bool dynamic = false;
   float size = 0.0f;
   std::uint32_t pixels = kThumbnailPixels;
+  bool ids = false;
 };
 
 struct Preset {

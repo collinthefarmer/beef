@@ -76,6 +76,7 @@ public:
     ShaderChannel channel = ShaderChannel::kRgb;
     bool slope = false;
     float mapMip = 0.0f;
+    bool ids = false;
   };
 
   struct LayerInput {
@@ -347,7 +348,7 @@ public:
 
   std::shared_ptr<RenderTarget> Preview(RE::NiSourceTexture *a_source,
                                         ShaderChannel a_channel, bool a_dynamic,
-                                        TextureSize a_side);
+                                        bool a_ids, TextureSize a_side);
   struct PreviewSampling {
     LayerInput input;
     float normalize = 1.0f;

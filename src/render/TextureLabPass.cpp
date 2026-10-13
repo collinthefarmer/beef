@@ -745,6 +745,7 @@ void FillChannelConstants(LayerConstants &a_constants,
       static_cast<float>(std::to_underlying(a_channel.channel));
   a_constants.extra[3] = a_channel.slope ? 1.0f : 0.0f;
   a_constants.extra2[1] = a_channel.mapMip;
+  a_constants.extra2[2] = a_channel.ids ? 1.0f : 0.0f;
 }
 
 LayerConstants LayerConstantsFor(const TextureLab::LayerParams &a_params,

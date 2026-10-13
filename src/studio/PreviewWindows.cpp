@@ -62,15 +62,25 @@ using IndexShift = std::variant<NoShift, LayerShift, OutputShift>;
 }
 
 [[nodiscard]] PreviewPicture PictureOf(const PictureRow &a_row) {
-  return {a_row.texture, a_row.channel, a_row.animated, a_row.problem};
+  return {.texture = a_row.texture,
+          .channel = a_row.channel,
+          .animated = a_row.animated,
+          .ids = a_row.ids,
+          .problem = a_row.problem};
 }
 
 [[nodiscard]] PreviewPicture PictureOf(const OutputRow &a_row) {
-  return {a_row.texture, ShaderChannel::kRgb, a_row.animated, a_row.problem};
+  return {.texture = a_row.texture,
+          .channel = ShaderChannel::kRgb,
+          .animated = a_row.animated,
+          .problem = a_row.problem};
 }
 
 [[nodiscard]] PreviewPicture PictureOf(const LayerRow &a_row, bool a_animated) {
-  return {a_row.texture, ShaderChannel::kRgb, a_animated, a_row.problem};
+  return {.texture = a_row.texture,
+          .channel = ShaderChannel::kRgb,
+          .animated = a_animated,
+          .problem = a_row.problem};
 }
 
 [[nodiscard]] std::optional<PreviewPicture>

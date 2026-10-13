@@ -120,7 +120,8 @@ void DrawPicture(Studio::PreviewWindow &a_window,
              .channel = shown,
              .dynamic = a_picture.animated,
              .size = static_cast<float>(pixels) * a_scale,
-             .pixels = pixels});
+             .pixels = pixels,
+             .ids = a_picture.ids});
   if (!a_picture.problem.empty()) {
     Problem(a_picture.problem);
   }

@@ -92,7 +92,7 @@ struct PreviewImage {
   if (!lab)
     return {};
   const auto preview = lab->Preview(texture, a_spec.channel, a_spec.dynamic,
-                                    TextureSize(a_spec.pixels));
+                                    a_spec.ids, TextureSize(a_spec.pixels));
   if (!preview || !preview->View())
     return {};
   auto *draw = lab->RetainPreviewDraw(preview);

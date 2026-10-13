@@ -627,6 +627,7 @@ ParseResolution(std::string_view a_name) noexcept;
 [[nodiscard]] std::uint32_t ResolutionDivisor(Resolution a_resolution) noexcept;
 
 [[nodiscard]] ValueType SourceType(const Source &a_source) noexcept;
+[[nodiscard]] bool SourceHoldsIds(const SourceKind &a_kind) noexcept;
 
 [[nodiscard]] bool IsName(std::string_view a_text) noexcept;
 

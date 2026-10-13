@@ -21,7 +21,7 @@ public:
   explicit TexturePreviews(TextureLab &a_renderer);
   [[nodiscard]] std::shared_ptr<RenderTarget>
   Preview(RE::NiSourceTexture *a_source, ShaderChannel a_channel,
-          bool a_dynamic, TextureSize a_side);
+          bool a_dynamic, bool a_ids, TextureSize a_side);
   [[nodiscard]] std::shared_ptr<RenderTarget>
   SampledPreview(std::string a_context, RE::NiSourceTexture *a_source,
                  const TextureLab::PreviewSampling &a_sampling, bool a_dynamic);

@@ -306,6 +306,16 @@ ValueType SourceType(const Source &a_source) noexcept {
       [](const PieceSource &) { return ValueType::kScalar; });
 }
 
+bool SourceHoldsIds(const SourceKind &a_kind) noexcept {
+  if (const auto *clusters = Get<MaterialClustersSource>(a_kind)) {
+    return !clusters->pick && !clusters->palette;
+  }
+  if (const auto *bake = Get<BakeSource>(a_kind)) {
+    return Is<ComponentIdBake>(bake->bake) || Is<ChartIdBake>(bake->bake);
+  }
+  return false;
+}
+
 bool IsName(std::string_view a_text) noexcept {
   if (a_text.empty() || (!std::isalpha(static_cast<unsigned char>(a_text[0])) &&
                          a_text[0] != '_')) {

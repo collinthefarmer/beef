@@ -204,6 +204,7 @@ struct GeometrySnapshotBuilder {
       picture.name = source.name;
       picture.description = DescribeSource(source.kind);
       picture.type = SourceType(source);
+      picture.ids = SourceHoldsIds(source.kind);
       if (const std::optional<PreparedSource> prepared =
               compositor->InspectSource(recipe, graph, source.name, inputs)) {
         picture.channel = prepared->sampling.channel;

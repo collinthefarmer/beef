@@ -390,6 +390,15 @@ int main() {
     Check(debugKind && debugKind->guess && debugKind->palette &&
               SourceType(*debugClusters) == ValueType::kVec3,
           "a guessing palette cluster source round-trips as a colour");
+    MaterialClustersSource picked;
+    picked.pick = Param{0.5f};
+    Check(SourceHoldsIds(SourceKind{MaterialClustersSource{}}) &&
+              SourceHoldsIds(SourceKind{BakeSource{ChartIdBake{}}}) &&
+              !SourceHoldsIds(SourceKind{picked}) &&
+              !SourceHoldsIds(debugClusters->kind) &&
+              !SourceHoldsIds(SourceKind{MaterialSource{}}),
+          "cluster, part and chart id sources hold ids; picked, palette and "
+          "material sources do not");
     const Source *legacy = r.FindSource("clusters");
     const auto *legacyKind =
         legacy ? Get<MaterialClustersSource>(legacy->kind) : nullptr;

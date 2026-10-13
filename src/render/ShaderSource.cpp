@@ -1,8 +1,10 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #include "render/TextureLab.h"
 
+#include "mesh/MaterialClusters.h"
 #include "planners/ProgramShader.h"
 
+#include <format>
 #include <string>
 
 namespace BetterEnchantmentEffects {
@@ -130,6 +132,13 @@ float4 PSMain(VSOut i) : SV_Target
 	if (mode == 7) return c;
 	if (mode == 4) {
 		if (extra.w > 0.5) { float r = NormalSlope(i.uv); return float4(r, r, r, 1); }
+		if (extra2.z > 0.5) {
+			uint width, height;
+			armor.GetDimensions(width, height);
+			int2 texel = int2(i.uv * float2(width, height));
+			float id = round(Pick(armor.Load(int3(texel, 0)), (int)extra.z).x * 255);
+			return float4(kIdPalette[(uint)id % 8], 1);
+		}
 		float4 a = armor.SampleLevel(samp, i.uv, extra2.y);
 		return float4(Pick(a, (int)extra.z), 1);
 	}
@@ -630,10 +639,21 @@ float4 PSClusters(VSOut i) : SV_Target
 }
 )";
 
+std::string IdPaletteSource() {
+  std::string source = "static const float3 kIdPalette[8] = {";
+  for (std::size_t k = 0; k < kClusterPalette.size(); ++k) {
+    const Vec3 &colour = kClusterPalette[k];
+    source += std::format("{}float3({}, {}, {})", k == 0 ? "" : ", ", colour.x,
+                          colour.y, colour.z);
+  }
+  return source + "};\n";
+}
+
 const std::string kShaderSourceStorage =
-    std::string(kShaderSourceHead) + std::to_string(kProgramStack) +
-    kShaderSourceMid + InterpreterSwitch() + InterpreterZRule() +
-    kShaderSourceAfterZRule + std::to_string(kProgramStack) + kShaderSourceTail;
+    IdPaletteSource() + std::string(kShaderSourceHead) +
+    std::to_string(kProgramStack) + kShaderSourceMid + InterpreterSwitch() +
+    InterpreterZRule() + kShaderSourceAfterZRule +
+    std::to_string(kProgramStack) + kShaderSourceTail;
 }
 
 extern const char *const kShaderSource = kShaderSourceStorage.c_str();
