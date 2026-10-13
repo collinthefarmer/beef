@@ -200,15 +200,12 @@ int main() {
   Check(Recipe{} == Recipe{}, "two empty recipes compare equal");
 
   {
-    Check(DefaultSlotResolution(Slot::kNormal) == Resolution::kFull &&
-              DefaultSlotResolution(Slot::kHeight) == Resolution::kFull,
-          "normal and height default to full resolution");
-    Check(DefaultSlotResolution(Slot::kDiffuse) == Resolution::kHalf &&
-              DefaultSlotResolution(Slot::kRmaos) == Resolution::kHalf,
-          "diffuse and rmaos default to half resolution");
-    Check(DefaultSlotResolution(Slot::kEmissive) == Resolution::kQuarter &&
-              DefaultSlotResolution(Slot::kGlint) == Resolution::kQuarter,
-          "emissive and the response slots default to quarter resolution");
+    bool allFull = true;
+    for (std::size_t slot = 0; slot < kSlotCount; ++slot) {
+      allFull = allFull && DefaultSlotResolution(static_cast<Slot>(slot)) ==
+                               Resolution::kFull;
+    }
+    Check(allFull, "every slot defaults to full resolution");
     Check(ResolutionDivisor(Resolution::kFull) == 1 &&
               ResolutionDivisor(Resolution::kHalf) == 2 &&
               ResolutionDivisor(Resolution::kQuarter) == 4,

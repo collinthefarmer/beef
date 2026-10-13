@@ -2956,9 +2956,10 @@ cancel by the user instead of the load.
   NPC's plan by 1, 2, 4 or 8 from its screen fraction (render-performance 7c,
   2026-10-07). An actor of half the screen height or more is full
   (`kFullLevelFraction` 0.5); each halving of the fraction halves the side.
-  The threshold is 0.5 and not 1.0 because the slot defaults already draw
-  emissive, fuzz, glint, coat and subsurface at a quarter and diffuse and
-  rmaos at a half (`DefaultSlotResolution`). The player is always full, and
+  The threshold of 0.5 dates from slot defaults that drew emissive, fuzz,
+  glint, coat and subsurface at a quarter and diffuse and rmaos at a half.
+  Since 2026-10-13 every slot defaults to full (`DefaultSlotResolution`), and
+  the threshold has not been re-tuned. The player is always full, and
   the setting `ScreenResolution` off makes every actor full.
 - Each tick, the core's lifecycle step asks `LevelStepOf` for each actor with
   a target level (render-performance 7c-3, 2026-10-08; `StepLevel`,

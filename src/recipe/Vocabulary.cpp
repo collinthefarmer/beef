@@ -251,21 +251,7 @@ std::optional<Resolution> ParseResolution(std::string_view a_name) noexcept {
   return FromName(kResolutions, a_name);
 }
 
-Resolution DefaultSlotResolution(Slot a_slot) noexcept {
-  switch (a_slot) {
-  case Slot::kNormal:
-  case Slot::kHeight:
-    return Resolution::kFull;
-  case Slot::kDiffuse:
-  case Slot::kRmaos:
-    return Resolution::kHalf;
-  case Slot::kEmissive:
-  case Slot::kFuzz:
-  case Slot::kGlint:
-  case Slot::kCoat:
-  case Slot::kSubsurface:
-    return Resolution::kQuarter;
-  }
+Resolution DefaultSlotResolution([[maybe_unused]] Slot a_slot) noexcept {
   return Resolution::kFull;
 }
 

@@ -24,7 +24,7 @@ using test::Check;
 namespace {
 constexpr std::uint32_t kGuardedBaseSide = 2048;
 constexpr std::array<std::uint32_t, 3> kBaseSides{1024, 2048, 4096};
-constexpr std::uint64_t kFillTemplateHeldBytes = std::uint64_t{34} << 20;
+constexpr std::uint64_t kFillTemplateHeldBytes = std::uint64_t{93} << 20;
 
 bool ActorScoped(const ExternalSource &a_source) {
   return Is<EffectShaderInput>(a_source) || Is<EventInput>(a_source) ||
@@ -210,10 +210,12 @@ TargetCost CheckedCost(const Wearers &a_wearers, std::uint32_t a_base) {
             stacks.bytes <= held.bytes,
         std::format("at base {} a plan holds its stacks among its targets",
                     a_base));
-  Check(released.targets == stacks.targets + 2 &&
-            stacks.bytes < released.bytes && released.bytes < held.bytes,
-        std::format("at base {} a release keeps the stacks and the two bakes",
-                    a_base));
+  Check(
+      released.targets == stacks.targets + 2 * stacks.targetsBySize.size() &&
+          stacks.bytes < released.bytes && released.bytes < held.bytes,
+      std::format(
+          "at base {} a release keeps the stacks and two bakes per stack side",
+          a_base));
   Check(twoSame.bytes <= twoOther.bytes && twoOther.bytes <= 2 * held.bytes,
         std::format("at base {} a second wearer of one item shares at least "
                     "as much as a wearer of another item",
