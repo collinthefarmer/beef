@@ -717,15 +717,15 @@ bool TypedLink(const TypedLinkSpec &a_spec) {
   if (!draw) {
     return clicked;
   }
-  const ImVec2 far{corner.x + width, corner.y + side};
+  const ImVec2 opposite{corner.x + width, corner.y + side};
   if (ImGui::IsItemHovered()) {
     ImGui::ImDrawListManager::AddRectFilled(
-        draw, corner, far, ImGui::GetColorU32(ImGuiMCP::ImGuiCol_HeaderHovered),
-        0.0f, 0);
+        draw, corner, opposite,
+        ImGui::GetColorU32(ImGuiMCP::ImGuiCol_HeaderHovered), 0.0f, 0);
   } else if (a_spec.selected) {
     ImGui::ImDrawListManager::AddRectFilled(
-        draw, corner, far, ImGui::GetColorU32(ImGuiMCP::ImGuiCol_Header), 0.0f,
-        0);
+        draw, corner, opposite, ImGui::GetColorU32(ImGuiMCP::ImGuiCol_Header),
+        0.0f, 0);
   }
   ImGui::ImDrawListManager::AddText(
       draw, ImVec2{corner.x + padding.x, corner.y + padding.y},
