@@ -42,16 +42,17 @@ The prototype (`proto.py`, `hybrid.py`) compares three methods on nine dumps: to
 |---|---|
 | Bonemold cuirass | Regions and hybrid find bone against leather (k=2). Today splits by brightness into stripes. |
 | Chitin cuirass | Regions lose the straps and rings. The hybrid at radius 2–4 keeps them without today's speckle. Radius 16 breaks thin straps. |
-| Deathbrand | Regions and hybrid over-split the crystal (k=5). Today's two clusters are clean. |
-| Stalhrim | The hybrid finds leather, ice, metal frame and fur. A fifth group of dark edge texels speckles the fur. Today separates only ice. |
+| Deathbrand | The dump holds the same maps and mesh as the Stalhrim dump (`stahlrim_armor_light_male_body`); both armors resolve to armor addon 0403B3DB. |
+| Stalhrim | The hybrid finds leather, ice, metal frame and fur. A fifth group of dark edge texels speckles the fur. The merge folds it into leather (Fisher 0.89); some dark fur texels then go to leather. Today separates only ice. |
 | Temple Priest robes | The hybrid finds cloth, sash, gold trim lines and the fur ring. Regions scatter blocks. Today separates only the trim. |
 | Nordic Carved greaves | The hybrid draws seams and hem cleanly. Regions blotch them. |
 | Chitin Heavy greaves | Regions and hybrid give the same clean split. Today speckles. |
-| Blackguard | Mixed. The hybrid finds the buckles but merges raised straps into the vest leather, which today splits by brightness. Small leather pieces blotch. |
+| Blackguard | Mixed. The hybrid finds the buckles but merges raised straps into the vest leather, which today splits by brightness. The merge folds a blue group into the leather (Fisher 0.91), and the small leather pieces then blotch more. |
 | Ahzidal | 2% coverage; too little area to judge. |
 
 - About 930 superpixels instead of 300 make BIC pick k=4 on Bonemold instead of 2. The superpixel count therefore changes the grouping, not only the region size.
-- The over-split needs a merge step after the mixture fit. The same step can absorb a group made of edge texels (Stalhrim).
+- **Merge step** (`hybrid.py`, `merge_groups`). Each group gets the mean and covariance of its texels. The Fisher distance of a pair is the distance between the means, measured in the pair's pooled covariance. The pair with the smallest distance merges while that distance is under 1.1, and the larger group keeps its id. On the eight distinct dumps the merged pairs measure 0.89 and 0.91; the closest pairs judged real (Temple trim, Chitin straps) measure 1.34 to 1.55. The threshold rests on these eight dumps only.
+- Refitting the groups on texels with expectation maximisation, initialised from the region groups, makes every pair separable (minimum Fisher 1.9), so it removes the merge signal. It cleaned Stalhrim and Temple but added blotches on Blackguard and crack lines on Chitin. The prototype does not use it.
 - Parts that differ only by brightness inside one material (Blackguard straps) fall into one group. That split is an intent question for step 3.
 
 ## Decisions for the user
