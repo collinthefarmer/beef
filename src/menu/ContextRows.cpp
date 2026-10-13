@@ -338,7 +338,7 @@ void CreateForSelectedArmor(const Frame &a_frame, const std::string &a_name,
   Disabled(!a_nameValid, [&] {
     if (ImGui::Button("Create for selected armor")) {
       Studio::Post(*a_frame.intents,
-                   Studio::CreateRecipe{a_name, key->key, {}, key->piece});
+                   Studio::CreateRecipe{a_name, *key, {}, a_frame.piece->ref});
       ImGui::CloseCurrentPopup();
     }
   });
@@ -346,7 +346,7 @@ void CreateForSelectedArmor(const Frame &a_frame, const std::string &a_name,
 
 struct WornChoice {
   RecipeKey key;
-  PieceRef piece;
+  Studio::PieceRef piece;
 };
 
 std::optional<WornChoice> WornPieceCombo(const Frame &a_frame) {
@@ -375,8 +375,10 @@ std::optional<WornChoice> WornPieceCombo(const Frame &a_frame) {
 void CreateFromWornPiece(const Frame &a_frame, const std::string &a_name,
                          bool a_nameValid) {
   Disabled(!a_nameValid, [&] {
-    if (const std::optional<WornChoice> key = WornPieceCombo(a_frame)) {
-      Studio::Post(*a_frame.intents, Studio::CreateRecipe{a_name, *key, {}});
+    if (const std::optional<WornChoice> choice = WornPieceCombo(a_frame)) {
+      Studio::Post(
+          *a_frame.intents,
+          Studio::CreateRecipe{a_name, choice->key, {}, choice->piece});
       ImGui::CloseCurrentPopup();
     }
   });
