@@ -55,6 +55,15 @@ The prototype (`proto.py`, `hybrid.py`) compares three methods on nine dumps: to
 - The merge threshold is a setting; the bench offers 1.0 to 2.0. On Stalhrim the merged edge group also carried stitch lines that are worth keeping.
 - **Jump flood, rejected.** Seeds are texels with a group probability over a confidence setting and at least 5 of 8 agreeing neighbours; occlusion grooves can also be seeds. Every other texel takes the nearest seed's label within its UV chart. Confident speckle (Stalhrim fur) passes the seed rules and stays, and thin straps (Chitin) fragment unless grooves are kept.
 - **Guided filter, then jump flood, rejected.** Smoothing at radius 4 first, then flooding texels under 0.8 confidence, with grooves keeping their unsmoothed label, is worse than the guided filter alone on Stalhrim, Chitin, Blackguard and Temple: straps and trim lines break into dots, and fur and leather get blotches.
+- **Known methods.** Step 2b is cost-volume filtering (Rhemann et al. 2011): per-group probabilities filtered by a guided filter, then the largest wins. That is one pass of a fully connected CRF (Krähenbühl & Koltun 2011) without the unary term added back. The CRF solved by mean field (5 passes, each a guided filter of the probabilities plus the texel's own log-probability, weighted by a strength) is the prototype's `crf.py`; its guide is colour or colour plus normal map and occlusion.
+- **Merge criteria compared** on the eight distinct dumps:
+
+| Criterion | Junk pairs (Stalhrim edge group, Blackguard blue) | Closest real pair | Verdict |
+|---|---|---|---|
+| Fisher distance (mean term only) | 0.89, 0.91 | 1.34 (Temple trim) | Best margin; blind to spread differences. |
+| Bhattacharyya overlap | 0.41, 0.28 | 0.34 (Blackguard cloth/leather), 0.35 (Stalhrim ice/frame) | Ranks a real pair above a junk pair; rejected. |
+| Directly estimated misclassification (Hennig 2010) | 23%, 48% | 21% (Chitin straps/plates) | Readable as a percentage; thin margin on Stalhrim. |
+
 - Refitting the groups on texels with expectation maximisation, initialised from the region groups, makes every pair separable (minimum Fisher 1.9), so it removes the merge signal. It cleaned Stalhrim and Temple but added blotches on Blackguard and crack lines on Chitin. The prototype does not use it.
 - Parts that differ only by brightness inside one material (Blackguard straps) fall into one group. That split is an intent question for step 3.
 
