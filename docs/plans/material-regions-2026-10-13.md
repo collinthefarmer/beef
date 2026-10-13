@@ -67,6 +67,13 @@ The prototype (`proto.py`, `hybrid.py`) compares three methods on nine dumps: to
 - Refitting the groups on texels with expectation maximisation, initialised from the region groups, makes every pair separable (minimum Fisher 1.9), so it removes the merge signal. It cleaned Stalhrim and Temple but added blotches on Blackguard and crack lines on Chitin. The prototype does not use it.
 - Parts that differ only by brightness inside one material (Blackguard straps) fall into one group. That split is an intent question for step 3.
 
+- **Bands (one material split into parallel stripes along a gradient), three fixes rejected** on Temple, Stalhrim, Chitin, Blackguard, Bonemold, Nordic and Chitin Heavy at 256 px:
+  - Ridgeline ratio between group Gaussians (Ray & Lindsay 2005): 0.76–1.0 for nearly every pair, including Chitin straps against plates (1.0) and Bonemold bone against leather (0.76).
+  - Valley depth of the texels projected on the pair's discriminant (after Tantrum et al. 2003): Temple's robe, sash and ring groups all show no valley, because one group is five times larger than the other.
+  - Lower brightness weight in the group fit (0.5, 0.2): the Temple ring bands stay; Chitin loses its straps, Stalhrim its fur and Blackguard collapses to one or two groups.
+  - A band and a trim line look alike to every test tried; the "same" click of step 3 is the tool for bands.
+- **Chart-aware superpixels.** The tuning tool (`tune/` in the prototype) runs its own SLIC: grid seeds per UV chart (one at the centre of a chart too small for the grid), assignment only within a texel's chart, seeds moved to the lowest-gradient texel in 3×3. No patch crosses a chart border, and every chart has a patch of its own, on Blackguard, Temple, Ahzidal and Stalhrim at 256 and 512 px.
+
 ## Port of hybrid + merge
 
 | Stage | Where | What |
