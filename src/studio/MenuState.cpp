@@ -229,7 +229,6 @@ struct ReduceVisitor {
 
   void SelectRecipe(const std::string &a_id) {
     if (selection.recipeID != a_id) {
-      state.previewPin.reset();
       if (!state.paint) {
         mask = MaskStack{};
       } else {
@@ -245,7 +244,6 @@ struct ReduceVisitor {
   }
 
   void FocusRecipe(const std::string &a_id) {
-    state.previewPin.reset();
     if (state.paint) {
       operator()(SetMode{Mode::kCompose});
     }
@@ -280,7 +278,6 @@ struct ReduceVisitor {
 
   void operator()(const PickPiece &a_i) {
     state.pendingPiece.reset();
-    state.previewPin.reset();
     if (state.paint) {
       operator()(SetMode{Mode::kCompose});
     }
@@ -335,9 +332,7 @@ struct ReduceVisitor {
   }
 
   void operator()(const SetWorkspaceSplit &a_i) {
-    float &share = a_i.pane == WorkspacePane::kNavigator ? state.navigatorShare
-                                                         : state.inspectorShare;
-    share = std::clamp(a_i.ratio, 0.05f, 0.95f);
+    state.navigatorShare = std::clamp(a_i.ratio, 0.05f, 0.95f);
   }
 
   void operator()(const ShowSettings &a_i) { state.settings = a_i.on; }
@@ -572,7 +567,7 @@ struct ReduceVisitor {
     if (ShouldInvalidateIndexedSubjects(a_i.edits)) {
       InvalidateAssignment(a_i.recipeID);
       InvalidateIndexedSubjects(state.navigation, selection, a_i.recipeID);
-      InvalidatePreviewPin(state.previewPin, a_i.recipeID);
+      DropShiftedPreviews(state.previews, a_i.recipeID, a_i.edits);
     }
   }
 
@@ -599,7 +594,6 @@ struct ReduceVisitor {
       operator()(SetMode{Mode::kCompose});
     }
     if (selection.recipeID == a_i.recipeID) {
-      state.previewPin.reset();
       state.navigation = Navigation{};
       selection.subject = RecipeSubject{};
       selection.property.reset();
@@ -619,12 +613,12 @@ struct ReduceVisitor {
   void operator()(const Undo &a_i) {
     InvalidateAssignment(a_i.recipeID);
     InvalidateIndexedSubjects(state.navigation, selection, a_i.recipeID);
-    InvalidatePreviewPin(state.previewPin, a_i.recipeID);
+    DropIndexedPreviews(state.previews, a_i.recipeID);
   }
   void operator()(const Redo &a_i) {
     InvalidateAssignment(a_i.recipeID);
     InvalidateIndexedSubjects(state.navigation, selection, a_i.recipeID);
-    InvalidatePreviewPin(state.previewPin, a_i.recipeID);
+    DropIndexedPreviews(state.previews, a_i.recipeID);
   }
   void operator()(const FireTrigger &) {}
 };
@@ -867,9 +861,7 @@ void ResolveEditorSelection(MenuState &a_state, const Snapshot &a_snapshot) {
   } else if (previous.geometry != a_state.selection.geometry) {
     a_state.navigation = Navigation{};
   }
-  ResolvePreviewPin(a_state.previewPin, a_state.selection,
-                    SelectedRecipe(a_snapshot, a_state.selection),
-                    a_state.lastPaintReset);
+  DropVanishedPreviews(a_state.previews, a_snapshot);
 }
 
 namespace {
@@ -962,7 +954,7 @@ void AcknowledgeEditorOperations(MenuState &a_state,
         a_state.pendingRecipeFile->requestID == result.requestID &&
         a_state.pendingRecipeFile->recipeID == result.recipeID) {
       if (result.action == FileAction::kRevert) {
-        InvalidatePreviewPin(a_state.previewPin, result.recipeID);
+        DropIndexedPreviews(a_state.previews, result.recipeID);
       }
       a_state.pendingRecipeFile.reset();
     }
@@ -1129,7 +1121,7 @@ void AcknowledgePaintUpdate(MenuState &a_state,
   if (a_result.ended) {
     if (a_result.revision > a_state.lastPaintReset) {
       a_state.lastPaintReset = a_result.revision;
-      a_state.previewPin.reset();
+      DropAllIndexedPreviews(a_state.previews);
       a_state.navigation = Navigation{};
       a_state.selection.subject = RecipeSubject{};
       a_state.selection.property.reset();

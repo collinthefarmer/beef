@@ -263,8 +263,8 @@ TextureLab::TargetHoldings TextureLab::HeldTargets() const {
 
 std::shared_ptr<TextureLab::RenderTarget>
 TextureLab::Preview(RE::NiSourceTexture *a_source, ShaderChannel a_channel,
-                    bool a_dynamic) {
-  return previews_->Preview(a_source, a_channel, a_dynamic);
+                    bool a_dynamic, TextureSize a_side) {
+  return previews_->Preview(a_source, a_channel, a_dynamic, a_side);
 }
 
 std::shared_ptr<TextureLab::RenderTarget>

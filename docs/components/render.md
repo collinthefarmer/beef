@@ -209,7 +209,7 @@ the target again.
 | `RenderTargetPool` | Owns the idle targets (at most 16 and 64 MiB; the oldest go when a returned target does not fit, and any target idle 5 s goes at the next `ExpireIdle`), and `kPresenterCount` (512) presenter slots. `Acquire` takes a `TargetShape` (size, format, mips), creates it as `DXGI_FORMAT_R8_UNORM`, `R8G8B8A8_UNORM`, `R32_FLOAT` or `R32G32B32A32_FLOAT`, reuses an idle target only with the same chain, and returns a shared target, and `Recycle` returns a released target to the pool. | `RenderTargetPool.h` |
 | `TextureRef` | A generated target or a static engine texture. `get()` returns the presenter or the engine texture. `Valid()` and `Generation()` tell a live target from a stale one. | `TextureRef.h` |
 | `TextureIdentity` | The engine texture's address, generation and name as text. `CompositorDemand.cpp` uses it in material identities. It differs from `ImageCacheKey` (`planners/TextureIdentity.h`), which identifies a file by its path. | `TextureRef.h` |
-| `TexturePreviews` | The studio's live preview requests, keyed by source texture, channel and context. It re-renders the dynamic entries each generation and expires the unused ones. | `TexturePreviews.h` |
+| `TexturePreviews` | The studio's live preview requests, keyed by source texture, channel, context and side. It reads the source mip that fits the side. It re-renders the dynamic entries each generation and expires the unused ones. | `TexturePreviews.h` |
 | `TextureLab::PreviewSampling` | The sampling and normalization of one sampled preview. | `TextureLab.h` |
 
 ### Bindings and PBR writes

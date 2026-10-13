@@ -1,6 +1,7 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #include "menu/PaintPanel.h"
 #include "menu/PatternChooser.h"
+#include "menu/PreviewWindows.h"
 
 #include "PCH.h"
 #include "engine/RecipeStore.h"
@@ -666,6 +667,23 @@ void DrawPaintDraftBar(const Frame &a_frame) {
                "Discard", [&] { DiscardMaskDraft(a_frame); });
 }
 
+namespace {
+void DrawDraftPin(const Studio::PieceRow &a_piece,
+                  const Studio::GeometryRow &a_geometry,
+                  Studio::MenuState &a_state) {
+  const Studio::PreviewSubject draft =
+      Studio::MaskSubject{std::string{Studio::kScratchMask}};
+  PinPreviewButton(draft,
+                   Studio::PreviewTarget{a_piece.ref,
+                                         std::string{Studio::kPaintRecipe},
+                                         a_geometry.name, draft},
+                   a_state);
+  ImGui::SameLine();
+  ImGui::AlignTextToFramePadding();
+  Dim("draft preview");
+}
+}
+
 void DrawMaskTask(const Frame &a_frame) {
   Studio::MenuState &state = *a_frame.state;
   if (!state.paint) {
@@ -717,7 +735,11 @@ void DrawMaskTask(const Frame &a_frame) {
   preview.recipe = paint;
   preview.geometry = geometry;
   preview.names = &names;
+  DrawDraftPin(*piece, *geometry, state);
   DrawMaskStack(preview);
+  ImGui::PushID("term-tuning");
+  DrawTermTuningPane(a_frame);
+  ImGui::PopID();
 }
 
 namespace {

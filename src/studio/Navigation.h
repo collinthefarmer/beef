@@ -25,31 +25,12 @@ struct Navigation {
   float scroll = 0.0f;
 };
 
-struct PreviewPin {
-  Selection selection;
-  std::uint64_t resetID = 0;
-};
-
 struct PropertyTarget {
   InspectorSubject subject;
   PropertyLocation property;
 };
 
 enum class HistoryDirection : std::uint8_t { kBack, kForward };
-
-void ResolvePreviewPin(std::optional<PreviewPin> &a_pin,
-                       const Selection &a_selection, const RecipeRow *a_recipe,
-                       std::uint64_t a_resetID);
-[[nodiscard]] const OutputRow *PreviewOutputOf(const GeometryRow *a_geometry,
-                                               const Selection &a_selection);
-[[nodiscard]] std::optional<PreviewPin>
-PreviewPinFor(const Selection &a_selection, const GeometryRow *a_geometry,
-              std::uint64_t a_resetID);
-[[nodiscard]] Selection
-PreviewSelectionOf(const std::optional<PreviewPin> &a_pin,
-                   const Selection &a_current);
-void InvalidatePreviewPin(std::optional<PreviewPin> &a_pin,
-                          std::string_view a_recipeID);
 
 [[nodiscard]] bool InspectorSubjectExists(const InspectorSubject &a_subject,
                                           const RecipeRow &a_recipe);

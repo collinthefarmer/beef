@@ -341,8 +341,8 @@ public:
   float MeanChannel(RE::NiSourceTexture *a_source, ShaderChannel a_channel);
 
   std::shared_ptr<RenderTarget> Preview(RE::NiSourceTexture *a_source,
-                                        ShaderChannel a_channel,
-                                        bool a_dynamic);
+                                        ShaderChannel a_channel, bool a_dynamic,
+                                        TextureSize a_side);
   struct PreviewSampling {
     LayerInput input;
     float normalize = 1.0f;

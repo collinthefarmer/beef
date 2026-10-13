@@ -8,6 +8,7 @@
 #include "menu/Menu.h"
 #include "menu/MenuWidgets.h"
 #include "menu/PaintPanel.h"
+#include "menu/PreviewWindows.h"
 #include "menu/RecipeActions.h"
 #include "menu/ResourcePanels.h"
 #include "menu/StackPanel.h"
@@ -267,6 +268,10 @@ void DrawPieceBar(const Frame &a_frame) {
       sep();
       Warn(std::format("{} muted layer(s)", view.muted.size()));
     }
+    if (Studio::IsFull(a_frame.state->previews)) {
+      sep();
+      DrawPreviewLimit(*a_frame.state);
+    }
   };
   static_cast<void>(Rule(
       Studio::RuleSpec{.text = "Piece", .leadingSpace = false}, trailing,
@@ -484,6 +489,7 @@ void __stdcall RenderStudio() {
   };
 
   DrawStudioFrame(frame);
+  DrawPreviewWindows(snapshot, state, frame.scale);
   EndTuningFrame(state);
   Dispatch(intents, state, snapshot);
   RebuildScratch(frame);

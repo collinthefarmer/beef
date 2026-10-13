@@ -6,6 +6,7 @@
 #include "menu/BoardPage.h"
 #include "menu/Frame.h"
 #include "menu/MenuWidgets.h"
+#include "menu/PreviewWindows.h"
 #include "menu/RecipeActions.h"
 #include "recipe/Recipe.h"
 #include "studio/Intent.h"
@@ -235,5 +236,6 @@ void __stdcall RenderRecipes() {
   static_cast<void>(Rule(Studio::RuleSpec{.text = "Loaded"}));
   DrawLoadedTable(*held);
   DrawSelection(*held, state);
+  DrawPreviewWindows(*held, state, 1.0f);
 }
 }

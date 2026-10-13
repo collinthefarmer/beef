@@ -9,6 +9,7 @@
 #include "studio/Mask.h"
 #include "studio/Navigation.h"
 #include "studio/PaintSession.h"
+#include "studio/PreviewWindows.h"
 #include "studio/Selection.h"
 #include "studio/Snapshot.h"
 #include "studio/SourcePlan.h"
@@ -75,7 +76,7 @@ struct MenuState {
   std::optional<InspectorSubject> pendingSelection;
   std::optional<PropertyLocation> revealedProperty;
   std::string referencePopup;
-  std::optional<PreviewPin> previewPin;
+  PreviewWindows previews;
   std::optional<PendingIndexedEdit> pendingIndexedEdit;
   std::optional<PendingIndexedEdit> pendingRecipeFile;
   std::optional<PendingEditorChange> pendingEditorChange;
@@ -90,7 +91,6 @@ struct MenuState {
   std::uint64_t lastPaintReset = 0;
   ResourceTab resource = ResourceTab::kSignals;
   float navigatorShare = 0.34f;
-  float inspectorShare = 0.71f;
   float footerHeight = 0.0f;
   std::unordered_map<FieldKey, TextBuffer> textBuffers;
   std::unordered_map<FieldKey, NumberBuffer> numberBuffers;

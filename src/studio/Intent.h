@@ -62,9 +62,7 @@ struct ViewGeometry {
 struct SetStackSplit {
   float ratio = 0.5f;
 };
-enum class WorkspacePane { kNavigator, kInspector };
 struct SetWorkspaceSplit {
-  WorkspacePane pane = WorkspacePane::kNavigator;
   float ratio = 0.0f;
 };
 struct ShowSettings {

@@ -1,10 +1,24 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #include "render/TexturePreviews.h"
 
+#include "planners/MipLevel.h"
+
 #include "recipe/Recipe.h"
 #include <algorithm>
+#include <optional>
 
 namespace BetterEnchantmentEffects {
+namespace {
+constexpr std::uint32_t kSampledPreviewSide = 128;
+
+[[nodiscard]] float MipFittingPreview(RE::NiSourceTexture *a_source,
+                                      std::uint32_t a_side) {
+  const std::optional<TextureLab::Extent> extent =
+      TextureLab::ExtentOf(a_source);
+  return extent ? MipThatFits(*extent, a_side) : 0.0f;
+}
+}
+
 TexturePreviews::TexturePreviews(TextureLab &a_renderer)
     : renderer_(a_renderer) {}
 
@@ -26,7 +40,7 @@ TexturePreviews::FindOrAdd(const PreviewKey &a_key) {
 
 std::shared_ptr<TextureLab::RenderTarget>
 TexturePreviews::Preview(RE::NiSourceTexture *a_source, ShaderChannel a_channel,
-                         bool a_dynamic) {
+                         bool a_dynamic, TextureSize a_side) {
   if (!a_source || !renderer_.Available()) {
     return nullptr;
   }
@@ -35,7 +49,7 @@ TexturePreviews::Preview(RE::NiSourceTexture *a_source, ShaderChannel a_channel,
     return nullptr;
   }
   std::scoped_lock lock{previewLock_};
-  PreviewEntry *found = FindOrAdd({a_source, a_channel, {}});
+  PreviewEntry *found = FindOrAdd({a_source, a_channel, {}, a_side.Pixels()});
   if (!found) {
     return nullptr;
   }
@@ -57,8 +71,8 @@ std::shared_ptr<TextureLab::RenderTarget> TexturePreviews::SampledPreview(
     return nullptr;
   }
   std::scoped_lock lock{previewLock_};
-  PreviewEntry *found =
-      FindOrAdd({a_source, a_sampling.input.channel, std::move(a_context)});
+  PreviewEntry *found = FindOrAdd({a_source, a_sampling.input.channel,
+                                   std::move(a_context), kSampledPreviewSide});
   if (!found) {
     return nullptr;
   }
@@ -102,7 +116,8 @@ TexturePreviews::PrepareRequest(const PreviewKey &a_key, PreviewEntry &a_entry,
       !a_entry.dynamic && !a_entry.dirty && a_entry.ready)
     return std::nullopt;
   if (!a_entry.target)
-    a_entry.target = renderer_.Acquire(TextureSize(128), "preview");
+    a_entry.target =
+        renderer_.Acquire(TextureSize(std::get<3>(a_key)), "preview");
   if (!a_entry.target)
     return std::nullopt;
   if (a_entry.generation != a_generation) {
@@ -142,19 +157,8 @@ void TexturePreviews::RenderPreviews() {
     }
   }
   for (const auto &entry : work) {
-    TextureLab::LayerParams p;
-    if (entry.sampling) {
-      p.mode = TextureLab::Mode::kLayer;
-      p.layer.source = entry.source.get();
-      p.layer.input = entry.sampling->input;
-      p.layer.normalize = entry.sampling->normalize;
-      p.layer.blend = BlendShaderMode(Blend::kReplace);
-    } else {
-      p.mode = TextureLab::Mode::kChannel;
-      p.map = {entry.source.get(), TextureLab::MapReading::kRmaos};
-      p.channel.channel = entry.channel;
-    }
-    const bool rendered = renderer_.Render(*entry.target, nullptr, p);
+    const bool rendered =
+        renderer_.Render(*entry.target, nullptr, PreviewParamsFor(entry));
     std::scoped_lock lock{previewLock_};
     const auto found = previews_.find(entry.key);
     if (found != previews_.end() && found->second.target == entry.target) {
@@ -162,6 +166,28 @@ void TexturePreviews::RenderPreviews() {
       found->second.dirty = found->second.dirty || !rendered;
     }
   }
+}
+
+TextureLab::LayerParams
+TexturePreviews::PreviewParamsFor(const PreviewWork &a_work) {
+  const float mip =
+      MipFittingPreview(a_work.source.get(), std::get<3>(a_work.key));
+  TextureLab::LayerParams p;
+  if (a_work.sampling) {
+    p.mode = TextureLab::Mode::kLayer;
+    p.layer.source = a_work.source.get();
+    p.layer.input = a_work.sampling->input;
+    p.layer.input.transform.sourceMip =
+        (std::max)(p.layer.input.transform.sourceMip, mip);
+    p.layer.normalize = a_work.sampling->normalize;
+    p.layer.blend = BlendShaderMode(Blend::kReplace);
+    return p;
+  }
+  p.mode = TextureLab::Mode::kChannel;
+  p.channel.mapMip = mip;
+  p.map = {a_work.source.get(), TextureLab::MapReading::kRmaos};
+  p.channel.channel = a_work.channel;
+  return p;
 }
 
 void TexturePreviews::CollectTargets(HolderSet &a_set) {

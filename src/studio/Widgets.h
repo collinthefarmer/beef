@@ -143,11 +143,14 @@ struct RowMove {
   std::size_t to = 0;
 };
 
+inline constexpr std::uint32_t kThumbnailPixels = 128;
+
 struct ThumbnailSpec {
   TextureHandle texture{};
   ShaderChannel channel = ShaderChannel::kRgb;
   bool dynamic = false;
   float size = 0.0f;
+  std::uint32_t pixels = kThumbnailPixels;
 };
 
 struct Preset {

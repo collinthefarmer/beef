@@ -2,6 +2,7 @@
 #include "menu/BoardPage.h"
 
 #include "menu/MenuWidgets.h"
+#include "menu/PreviewWindows.h"
 #include "studio/Edits.h"
 #include "studio/Intent.h"
 #include "studio/Names.h"
@@ -115,6 +116,8 @@ void DrawWrittenCell(const Cell &a_cell, const Frame &a_frame) {
       Studio::Post(*a_frame.intents,
                    SoloOutput{a_frame.recipe->id, *a_cell.output, solo});
     }
+    ImGui::SameLine();
+    PinSubjectButton(a_frame, Studio::OutputSubject{*a_cell.output});
   }
   ImGui::EndGroup();
 }
@@ -221,6 +224,9 @@ void DrawBoardPage(const Frame &a_frame) {
   }
   if (recipe->geometries.size() > 1) {
     Dim("viewed on " + Studio::GeometryLabel(geometry->name, piece->armorName));
+  }
+  if (a_frame.state) {
+    DrawPreviewLimit(*a_frame.state);
   }
   const Board board = Studio::BuildBoard(*recipe, *geometry,
                                          SelectionOf(a_frame), ViewOf(a_frame));

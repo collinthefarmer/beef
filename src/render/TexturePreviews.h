@@ -21,7 +21,7 @@ public:
   explicit TexturePreviews(TextureLab &a_renderer);
   [[nodiscard]] std::shared_ptr<RenderTarget>
   Preview(RE::NiSourceTexture *a_source, ShaderChannel a_channel,
-          bool a_dynamic);
+          bool a_dynamic, TextureSize a_side);
   [[nodiscard]] std::shared_ptr<RenderTarget>
   SampledPreview(std::string a_context, RE::NiSourceTexture *a_source,
                  const TextureLab::PreviewSampling &a_sampling, bool a_dynamic);
@@ -35,8 +35,8 @@ public:
 
 private:
   TextureLab &renderer_;
-  using PreviewKey =
-      std::tuple<RE::NiSourceTexture *, ShaderChannel, std::string>;
+  using PreviewKey = std::tuple<RE::NiSourceTexture *, ShaderChannel,
+                                std::string, std::uint32_t>;
   struct PreviewEntry {
     TextureRef source;
     std::shared_ptr<RenderTarget> target;
@@ -56,6 +56,8 @@ private:
   };
   [[nodiscard]] PreviewEntry *FindOrAdd(const PreviewKey &a_key);
   void ExpireUnused(std::uint64_t a_generation);
+  [[nodiscard]] static TextureLab::LayerParams
+  PreviewParamsFor(const PreviewWork &a_work);
   [[nodiscard]] std::optional<PreviewWork>
   PrepareRequest(const PreviewKey &a_key, PreviewEntry &a_entry,
                  std::uint64_t a_generation);

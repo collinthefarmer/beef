@@ -222,39 +222,5 @@ int main() {
               !pending,
           "a pending subject is dropped when the document changes");
   }
-  {
-    RecipeRow live = recipe;
-    GeometryRow geometry;
-    geometry.name = "armor";
-    live.geometries.push_back(geometry);
-    Selection selected = Context();
-    selected.subject = SourceSubject{"pattern"};
-    std::optional<PreviewPin> pin = PreviewPin{selected, 4};
-    selected.subject = SignalSubject{"strength"};
-    live.documentRevision = 7;
-    ResolvePreviewPin(pin, selected, &live, 4);
-    Check(pin && Is<SourceSubject>(pin->selection.subject),
-          "a pinned source survives inspector navigation and value edits");
-    InvalidatePreviewPin(pin, "glow");
-    Check(pin.has_value(),
-          "structural output edits do not invalidate a named resource pin");
-    pin->selection.subject = OutputSubject{3};
-    InvalidatePreviewPin(pin, "other");
-    Check(pin.has_value(), "another recipe cannot invalidate this output pin");
-    InvalidatePreviewPin(pin, "glow");
-    Check(!pin, "an output pin is cleared before indices can be reassigned");
-    pin = PreviewPin{selected, 4};
-    ResolvePreviewPin(pin, selected, &live, 5);
-    Check(!pin, "load reset clears pins even when document names are reused");
-    pin = PreviewPin{selected, 5};
-    selected.piece.actorID = 99;
-    ResolvePreviewPin(pin, selected, &live, 5);
-    Check(!pin, "a preview pin never transfers to another wearer");
-    selected = Context();
-    selected.subject = SourceSubject{"gone"};
-    pin = PreviewPin{selected, 5};
-    ResolvePreviewPin(pin, selected, &live, 5);
-    Check(!pin, "removed resources do not leave stale preview pins");
-  }
   return test::Finish("studio_navigation");
 }

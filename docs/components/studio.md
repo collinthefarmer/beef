@@ -131,7 +131,7 @@ finish pending work.
 
 | Type or function | Description | Declared in |
 |---|---|---|
-| `MenuState` | Mode, `Layout`, `Selection`, `Navigation`, the preview pin, pending edits, `TuningGesture`, the `FieldKey`-keyed buffers (`textBuffers`, `numberBuffers`, `comboMode`, `tuningRanges`, `expressionDrafts`), the `MaskStack`, the `PaintSession`, and the mask history. | `MenuState.h` |
+| `MenuState` | Mode, `Layout`, `Selection`, `Navigation`, the pinned `PreviewWindows`, pending edits, `TuningGesture`, the `FieldKey`-keyed buffers (`textBuffers`, `numberBuffers`, `comboMode`, `tuningRanges`, `expressionDrafts`), the `MaskStack`, the `PaintSession`, and the mask history. | `MenuState.h` |
 | `PendingEditorChange` | A recipe rename or delete, or a rename of the selected resource, with its request id and the selection when it was sent. | `MenuState.h` |
 | `PendingIndexedEdit` | A request id and recipe id that wait for their `RecipeEditResult`. | `EditResult.h` |
 | `RecipeEditResult` | The engine's answer to one `EditRecipe`: request id, recipe id, and an optional error. | `EditResult.h` |
@@ -187,7 +187,7 @@ geometry's outputs. `Navigation` keeps the history of inspected subjects.
 | `Navigation`, `InspectorVisit` | The back and forward visit stacks with their scroll, capped at `kMaxInspectorHistory` (64). | `Navigation.h` |
 | `HistoryDirection` | `kBack` or `kForward`. `StepHistory` moves one step and skips each visit that `ReachableVisit` rejects. `GoBack` and `GoForward` call it. | `Navigation.h` |
 | `PropertyTarget` | A subject and property location for `NavigateProperty`. | `Navigation.h` |
-| `PreviewPin` | The pinned preview `Selection` and its reset id. `PreviewPinFor` pins the previewed output, or a source or mask. `PreviewSelectionOf` returns the pin or the current selection. | `Navigation.h` |
+| `PreviewWindows`, `PreviewWindow`, `PreviewTarget` | The pinned preview windows, at most `kMaxPreviewWindows` (8). Each window holds its **target** (piece, recipe, geometry, and a source, mask, output or layer), its `PreviewTier` (128, 256 or 512 pixels), an optional channel, and its session position. `TogglePin` pins or unpins and refuses a ninth pin. `ResolvePreview` finds the texture in a snapshot. `DropVanishedPreviews` and the `Drop*IndexedPreviews` functions close windows whose target is gone or whose index can shift. | `PreviewWindows.h` |
 | `SelectorView`, `SelectorClauseRow` | The structured selector editor: match-all flag and one row per clause. `SelectorWith*` functions return the changed `Selector`. | `SelectorEdit.h` |
 
 ### The creation path
@@ -312,7 +312,7 @@ path: `KeepPaint` reaches `RecipeEditor::KeepPaint`, which calls
 | Menu state | `MenuState.h/.cpp`, `EditResult.h/.cpp`, `FileOperation.h` |
 | Mask editor | `Mask.h/.cpp`, `TermTemplates.h/.cpp`, `Presets.h/.cpp`, `SourcePlan.h/.cpp` |
 | Paint mode | `PaintSession.h/.cpp`, `PaintCommit.h` |
-| Selection, board and navigation | `Selection.h/.cpp`, `Board.h/.cpp`, `Panels.h/.cpp`, `Navigation.h/.cpp`, `SelectorEdit.h/.cpp` |
+| Selection, board and navigation | `Selection.h/.cpp`, `Board.h/.cpp`, `Panels.h/.cpp`, `Navigation.h/.cpp`, `PreviewWindows.h/.cpp`, `SelectorEdit.h/.cpp` |
 | Engine-side editor records | `DocumentRevisions.h/.cpp`, `History.h`, `Gesture.h/.cpp`, `ApplicationRecord.h/.cpp`, `ResolveOutput.h/.cpp` |
 | Game catalogs and inputs | `GameObjects.h/.cpp`, `ActorCatalogs.h/.cpp`, `WornPieces.h/.cpp`, `InputCatalog.h/.cpp`, `InputConnections.h/.cpp`, `ResponseGraph.h/.cpp` |
 

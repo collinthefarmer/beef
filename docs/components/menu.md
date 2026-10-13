@@ -141,7 +141,7 @@ The draft previews on a reserved recipe, `Studio::kPaintRecipe`.
 | `EditMaskAsTerms` | Posts `LoadMask`, `SetMode`, and `BeginPaint` for one mask `Studio::TextRow`. It keys the draft with `DefaultKeyOf` (`ContextRows.h`). |
 | `DrawMaskTask` | Draws the draft: the head, the rule, and the term stack over the paint recipe's geometry. It posts `ReadMesh` for each geometry not yet read. |
 | `DrawPaintHead`, `DrawPaintDraftBar`, `DrawMaskRule` | The draft head, the banner with resume and discard, and the rule with the keep and discard buttons from `Studio::MaskRuleButtonsOf`. |
-| `DrawMaskStack`, `DrawTermTuningPane` | The term rows and the per-term **tuning** pane. The preview pane (`DrawPreview`, `Workspace.cpp`) draws `DrawTermTuningPane`. |
+| `DrawMaskStack`, `DrawTermTuningPane` | The term rows and the per-term **tuning** pane. `DrawMaskTask` draws the tuning pane under the term stack, after a pin button for the draft. |
 | `RebuildScratch` | Posts the `UpdatePaint` intent that `Studio::PendingPaintUpdate` returns. |
 
 ### Panels composed by the pages
@@ -151,7 +151,8 @@ Each panel is one free function over the **frame**. A panel reads the
 
 | Member | Description | Declared in |
 |---|---|---|
-| `DrawWorkspace` | The Studio page body. It draws a navigator, an inspector, and a preview pane side by side, or behind buttons on a narrow window. | `Workspace.h` |
+| `DrawWorkspace` | The Studio page body. It draws the geometry picker, then a navigator and an inspector side by side, or the navigator behind a button on a narrow window. | `Workspace.h` |
+| `PinPreviewButton`, `PinSubjectButton`, `DrawPreviewLimit`, `DrawPreviewWindows` | The pinned preview windows. A pin button opens or closes a floating window for one source, mask, output, layer or draft. Each window has a size, channel and geometry picker. The Studio and Recipes pages draw the windows. | `PreviewWindows.h` |
 | `DrawStack` | Draws a `Studio::LayerStack` problem and its `Studio::Inspector` fields. | `StackPanel.h` |
 | `DrawBoard`, `DrawBoardPage` | The **board**. `DrawBoard` draws one `Studio::Board`. `DrawBoardPage` draws the Recipes page section around it. | `BoardPage.h` |
 | `HasRelationships`, `DrawRelationships` | The relationships panel: what drives the subject and what uses it. | `RelationshipPanel.h` |
@@ -186,7 +187,7 @@ RenderStudio()                                                 StudioPage.cpp
 DrawStudioFrame ──▶ DrawBody ──▶ DrawWorkspace                 StudioPage.cpp
   ▼
 DrawWideWorkspace / DrawNarrowWorkspace                        Workspace.cpp
-  ├─ DrawNavigator, DrawPreview (DrawTermTuningPane)
+  ├─ DrawGeometryPicker, DrawNavigator
   └─ DrawInspectorPane ──▶ DrawInspectorBody ──▶ DrawSubject
        ├─ OutputSubject ──▶ DrawOutput
        │     Studio::BuildStackView, Studio::BuildInspector     (studio/, pure)

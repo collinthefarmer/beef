@@ -83,13 +83,15 @@ struct PreviewImage {
   return std::bit_cast<RE::NiSourceTexture *>(std::to_underlying(a_handle));
 }
 
-[[nodiscard]] PreviewImage PreviewOf(Studio::TextureHandle a_texture,
-                                     ShaderChannel a_channel, bool a_dynamic) {
-  RE::NiSourceTexture *texture = TextureOf(a_texture);
+[[nodiscard]] PreviewImage PreviewOf(const Studio::ThumbnailSpec &a_spec) {
+  RE::NiSourceTexture *texture = TextureOf(a_spec.texture);
   if (!texture)
     return {};
   auto *lab = TextureLab::GetSingleton();
-  const auto preview = lab->Preview(texture, a_channel, a_dynamic);
+  if (!lab)
+    return {};
+  const auto preview = lab->Preview(texture, a_spec.channel, a_spec.dynamic,
+                                    TextureSize(a_spec.pixels));
   if (!preview || !preview->View())
     return {};
   auto *draw = lab->RetainPreviewDraw(preview);
@@ -627,8 +629,7 @@ std::optional<SearchPick> SearchCombo(const SearchComboSpec &a_spec,
 
 void Thumbnail(const Studio::ThumbnailSpec &a_spec) {
   const ImVec2 size{a_spec.size, a_spec.size};
-  if (const auto view =
-          PreviewOf(a_spec.texture, a_spec.channel, a_spec.dynamic)) {
+  if (const auto view = PreviewOf(a_spec)) {
     ImGui::Image(view.texture, size);
     FinishPreviewDraw(view);
   } else {
@@ -640,8 +641,7 @@ bool ThumbnailButton(const char *a_key, const Studio::ThumbnailSpec &a_spec) {
   const ImVec2 size{a_spec.size, a_spec.size};
   ImGui::PushID(NonNull(a_key));
   bool clicked = false;
-  if (const auto view =
-          PreviewOf(a_spec.texture, a_spec.channel, a_spec.dynamic)) {
+  if (const auto view = PreviewOf(a_spec)) {
     clicked = ImGui::ImageButton("image", view.texture, size);
     FinishPreviewDraw(view);
   } else {

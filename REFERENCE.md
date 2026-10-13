@@ -2629,6 +2629,51 @@ them outside as separate passes.
   compile when a new `Intent` or `RecipeEdit` alternative is added without
   updating every dispatch site.
 
+### Pinned preview windows (`studio/PreviewWindows.h`, `menu/PreviewWindows.cpp`, `render/TexturePreviews.cpp`)
+
+- The studio has no preview column. A pin button on a source, mask, output,
+  layer, board cell or mask draft opens a floating ImGui window for that
+  texture. `ImGui::Begin` is legal inside the framework's section callback,
+  because ImGui keeps a window stack; the windows draw after the Studio or
+  Recipes page body, outside its disabled scopes.
+- The limit is 8 windows (`kMaxPreviewWindows`). A 512-pixel RGBA8 preview
+  target with its mip chain holds about 1.33 MiB, so 8 large windows hold
+  about 11 MiB. A ninth pin is refused, not swapped for the oldest window:
+  the pin buttons go disabled and the piece bar (Studio) or the board
+  (Recipes) says why.
+- Window positions live in `MenuState` for the session only.
+  `ImGuiWindowFlags_NoSavedSettings` keeps them out of the framework's ini
+  file, and `ImGuiCond_Appearing` puts a window back where it was when the
+  page is opened again.
+- `ManagerSnapshot` publishes geometry rows only for the watched piece. A
+  window whose piece is published without geometry (`PieceNotViewed`) waits
+  with a message; it closes only when its piece, recipe, geometry or subject
+  is gone from a snapshot.
+- Output and layer windows name their subject by index. A layer edit
+  (`AddLayer`, `RemoveLayer`, `MoveLayer`, `ClearLayers`, `ResetOutput`)
+  closes that output's layer windows; an output edit (`AddOutput`,
+  `RemoveOutput`, `ClearOutputs`, `ClearRecipe`, `AddLight`), an undo, a redo
+  or a file revert closes every output and layer window of the recipe; a
+  paint reset closes every indexed window. Source and mask windows are named
+  and survive all of these. A rename closes a source or mask window, because
+  the snapshot that still carries the old name arrives after the rename
+  intent.
+- Previews are keyed by side as well as texture, channel and context. A
+  preview reads the source at `TextureLab::MipThatFits` for its side (the
+  smallest mip whose larger side is still at least the preview side), so a
+  2048 map previewed at 256 reads mip 3 instead of aliasing at mip 0. The
+  channel mode of the lab shader reads its map at `extra.x`, which carries
+  that mip. An intermediate step target acquired with `TargetMips::kNone`
+  has one level; `SampleLevel` clamps to it, so such a preview still reads
+  LOD 0.
+- An image source's preview is a 128-pixel sampled render target that the
+  snapshot builder requests (`kSampledPreviewSide`); a 256 or 512 window
+  scales that image up.
+- A layer window shows the layer's own source texture, not the stack
+  composited up to that layer. A partial composite needs a stack draw over
+  the first N passes outside the render plan; `RenderOutput::LayerTexture`
+  has no such target.
+
 ### Recipe CRUD travels one pipeline (`studio/Intent.h`, `engine/RecipeEditor.*`, `engine/RecipeStore.*`)
 
 - Every recipe change is an `Intent`; `menu/` never writes a `Recipe`. Path:
