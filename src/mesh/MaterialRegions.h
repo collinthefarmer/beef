@@ -1,0 +1,94 @@
+// GPL-3.0-only with the additional permission in COPYING.md.
+#pragma once
+
+#include "mesh/GaussianMixture.h"
+#include "mesh/MaterialClusters.h"
+
+#include <array>
+#include <cstddef>
+#include <cstdint>
+#include <expected>
+#include <string>
+#include <vector>
+
+namespace BetterEnchantmentEffects {
+inline constexpr std::uint16_t kNoChart = 0xFFFF;
+inline constexpr std::uint32_t kMinRasterSide = 8;
+inline constexpr std::uint32_t kMaxRasterSide = 1024;
+inline constexpr std::int32_t kNoRegion = -1;
+inline constexpr std::int16_t kNoGroup = -1;
+inline constexpr std::size_t kTexelAxes = 8;
+inline constexpr std::size_t kMinCoveredTexels = 64;
+
+struct MaterialRaster {
+  std::uint32_t side = 0;
+  std::vector<MaterialTexel> texels;
+  std::vector<std::uint16_t> charts;
+};
+
+struct SegmentWeights {
+  float luma = 1.0f;
+  float chroma = 0.75f;
+  float roughness = 1.7f;
+  float metallic = 3.0f;
+  float occlusion = 1.4f;
+  float reflectance = 0.4f;
+  float detail = 0.1f;
+};
+
+struct SegmentSettings {
+  std::uint32_t segments = 650;
+  float compactness = 10.0f;
+  SegmentWeights weights;
+};
+
+struct Regions {
+  std::uint32_t side = 0;
+  std::vector<std::int32_t> ofTexel;
+  std::int32_t count = 0;
+};
+
+using TexelAxes = std::array<double, kTexelAxes>;
+
+struct Standardisation {
+  TexelAxes centre{};
+  TexelAxes spread{};
+};
+
+struct MaterialGroup {
+  std::int16_t id = kNoGroup;
+  Gaussian gaussian;
+  float share = 0.0f;
+};
+
+struct GroupMerge {
+  float misclassified = 0.0f;
+  std::int16_t kept = kNoGroup;
+  std::int16_t absorbed = kNoGroup;
+};
+
+struct GroupSettings {
+  float merge = 0.3f;
+  std::uint32_t seed = 1;
+};
+
+struct MaterialGroups {
+  Standardisation standardisation;
+  std::size_t fitted = 0;
+  std::vector<MaterialGroup> groups;
+  std::vector<GroupMerge> merges;
+  std::vector<std::int16_t> ofTexel;
+};
+
+[[nodiscard]] std::expected<MaterialRaster, std::string>
+RasterOf(std::uint32_t a_side, std::vector<MaterialTexel> a_texels,
+         std::vector<std::uint16_t> a_charts);
+[[nodiscard]] TexelAxes AxesOfTexel(const MaterialTexel &a_texel) noexcept;
+[[nodiscard]] Regions SegmentRaster(const MaterialRaster &a_raster,
+                                    const SegmentSettings &a_settings);
+[[nodiscard]] std::expected<MaterialGroups, std::string>
+GroupRegions(const MaterialRaster &a_raster, const Regions &a_regions,
+             const GroupSettings &a_settings);
+[[nodiscard]] std::vector<std::int16_t>
+LabelTexels(const MaterialRaster &a_raster, const MaterialGroups &a_groups);
+}

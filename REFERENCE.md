@@ -1988,7 +1988,7 @@ builds the new one beside it, as a resize does.
 - The side and facing UV split lines were removed on 2026-10-08. The
   debug recipe `inspect-bake-position` shows the same fact as colour.
 
-## Meshes, bakes and analysis (`mesh/Mesh.h`, `mesh/TextureSize.h`, `mesh/Islands.h`, `mesh/MaterialClusters.h`, `mesh/MeshFacts.h`)
+## Meshes, bakes and analysis (`mesh/Mesh.h`, `mesh/TextureSize.h`, `mesh/Islands.h`, `mesh/MaterialClusters.h`, `mesh/MaterialRegions.h`, `mesh/GaussianMixture.h`, `mesh/MeshFacts.h`)
 
 - A biped slot has two representations and they are not the same type.
   `BipedSlot` (`recipe/Recipe.h`) is the parsed recipe value: the boundary
@@ -2992,6 +2992,75 @@ cancel by the user instead of the load.
   Triangles past their partition's vertex count are dropped.
 - The caps of 500,000 triangles and 1,500,000 vertices keep `mesh.json`
   under about 60 MB. A worn armor geometry is far below them.
+
+### Material regions (`mesh/MaterialRegions.h`, `mesh/GaussianMixture.h`)
+
+The method and its prototype comparison are in
+`docs/plans/material-regions-2026-10-13.md`. The steps run in this order:
+
+| Step | Function | What it does |
+|---|---|---|
+| 1 | `RasterOf` | Checks the side (8..1024) and the array sizes, and clamps every channel to 0..1, with a non-finite value read as 0. |
+| 2 | `SegmentRaster` | Chart-aware SLIC: **regions** that never cross a UV chart border. |
+| 3 | `GroupRegions` | A Gaussian mixture over region descriptors, then the misclassification merge. |
+| 4 | `LabelTexels` | Each covered texel takes the group with the highest density. The GPU path adds the guided filter. |
+
+- **Seeds.** A seed sits at every grid point `step/2 + i * step` that lands
+  on a covered texel. `step` is `sqrt(covered / segments)`. A chart that no
+  grid point lands on gets one seed at its covered texel nearest the chart's
+  centre. Each seed then moves to the texel with the lowest gradient in its
+  3x3 neighbourhood within the same chart. The gradient is the Sobel
+  magnitude summed over the feature channels, with edge texels repeated.
+- **Features.** Luma and chroma are CIE L\*a\*b\* (D65) of the diffuse colour.
+  The diffuse colour is first stretched to 0..1 by the lowest and highest
+  channel value over the covered texels. Roughness, metallic, occlusion,
+  reflectance and detail are scaled by 100, so they share the Lab range.
+  Each channel is multiplied by its weight; a channel with weight 0 is left
+  out. With every weight at 0, luma and chroma count at weight 1.
+- **Assignment.** A texel joins the nearest centre of its own chart within
+  `ceil(step)` texels. The distance is colour² / compactness² + space² /
+  step². Ten rounds move each centre to the mean of its texels.
+- **Clean-up.** Unassigned texels take the label of the nearest labelled
+  texel in their chart (breadth-first). Each region keeps only its largest
+  4-connected piece, and the rest refill. A region smaller than half of
+  `step²` joins the neighbouring region of the same chart that borders it
+  most. A covered piece with no labelled texel in its chart becomes a new
+  region. Labels are then renumbered from 0.
+- **Descriptors.** A region is described by nine values: the mean of the
+  eight texel axes (`AxesOfTexel`) and the spread of its luma. Each value is
+  standardised over the regions. The prototype also repeated the detail
+  mean; the port drops the repeat because it doubled detail's weight by
+  accident, and the final groups on the eight dumps stayed the same.
+- **Group count.** `ChooseMixture` fits 2..8 components, five restarts each,
+  and keeps the restart with the highest likelihood. It picks the count with
+  the lowest **ICL** (integrated completed likelihood, Biernacki, Celeux and
+  Govaert 2000): BIC plus twice the entropy of the region posteriors. BIC
+  alone picked one more group on the Bonemold dump, which split the bone
+  plate into brightness stripes. With two restarts, BIC values for the same
+  count moved by up to 200 between runs.
+- **Mixture fit.** Each restart starts from k-means++ seeds and 20 k-means
+  rounds, then runs expectation maximisation for up to 100 rounds. It stops
+  when the mean log-likelihood changes by less than 0.001. Each covariance
+  gets 0.01 added to its diagonal. A component whose mass falls below 1e-8
+  fails that restart. On identical points the fit agrees with
+  scikit-learn's `GaussianMixture` to within 0.1% of the log-likelihood.
+- **Merge.** Texels are standardised over the covered texels. A pair's
+  **misclassification** is the larger of the two directions: the share of
+  one group's posterior mass on texels that score higher for the other group
+  (Hennig 2010, directly estimated misclassification probability). The most
+  confused pair merges while its value exceeds `GroupSettings::merge`. The
+  larger group keeps its id. The estimate uses at most 40,000 covered texels,
+  taken at an even stride. A group with fewer than 16 texels has no Gaussian
+  and takes no part.
+- **Defaults.** `SegmentSettings` holds the weights the user tuned on the
+  Blackguard dump on 2026-10-13: luma 1, chroma 0.75, roughness 1.7,
+  metallic 3, occlusion 1.4, reflectance 0.4, detail 0.1, 650 segments,
+  compactness 10. The merge default is 0.3: on the dumps it merges
+  Blackguard's and Bonemold's redundant groups (0.34 to 0.55) and keeps
+  Chitin's straps (0.27 in the prototype).
+- **Known gap.** On the Temple Priest robes dump the port settles on seven
+  groups and the prototype on four or five, because the ICL values for four
+  to seven groups lie close together.
 
 ## Build and tools
 
