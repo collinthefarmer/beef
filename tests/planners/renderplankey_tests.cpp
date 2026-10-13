@@ -118,6 +118,38 @@ void ItemHashSeparatesKeysOnlyWhenRead() {
         "a graph that does not read the item hash shares across items");
 }
 
+Recipe GeometryRecipe() {
+  Recipe recipe;
+  recipe.sources = {{"cuirass", BakeSource{GeometryBake{"Cuirass*"}}}};
+  recipe.masks = {{"onCuirass", "@cuirass"}};
+  return recipe;
+}
+
+std::optional<RenderPlanKey> NamedKeyOf(const RecipeGraph &a_graph,
+                                        std::string a_geometry) {
+  StackKeyRequest request = Request(a_graph, "item:1");
+  request.bindings.geometry = std::move(a_geometry);
+  return KeyOf(request);
+}
+
+void GeometryNameSeparatesKeysOnlyWhenBaked() {
+  const RecipeGraph baked = RecipeGraph::Compile(GeometryRecipe());
+  Check(baked.Diagnostics().empty(), "the geometry-bake recipe compiles");
+  const std::optional<RenderPlanKey> cuirass = NamedKeyOf(baked, "Cuirass_1");
+  const std::optional<RenderPlanKey> other = NamedKeyOf(baked, "Cuirass_2");
+  const std::optional<RenderPlanKey> belt = NamedKeyOf(baked, "Belt");
+  Check(cuirass && belt && *cuirass != *belt,
+        "a geometry bake keys a matching and a non-matching name apart");
+  Check(cuirass && other && *cuirass == *other,
+        "two names the geometry bake both matches share a key");
+  const RecipeGraph plain = RecipeGraph::Compile(MaterialRecipe());
+  const std::optional<RenderPlanKey> plainCuirass =
+      NamedKeyOf(plain, "Cuirass_1");
+  const std::optional<RenderPlanKey> plainBelt = NamedKeyOf(plain, "Belt");
+  Check(plainCuirass && plainBelt && *plainCuirass == *plainBelt,
+        "without a geometry bake the geometry name stays out of the key");
+}
+
 ValueBindings ShaderBindings(std::uint32_t a_actor, std::string a_form,
                              std::string a_fill) {
   IdentityFacts facts;
@@ -275,6 +307,7 @@ int main() {
   EachFieldSeparatesKeys();
   ItemHashSeparatesKeysOnlyWhenRead();
   MatchedShaderSeparatesKeys();
+  GeometryNameSeparatesKeysOnlyWhenBaked();
   UncacheableRequestsGiveNoKey();
   ChainsEnterTheKey();
   GraphsNamedByTheKeyAreKept();

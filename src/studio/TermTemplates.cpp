@@ -4,6 +4,7 @@
 #include "Core.h"
 #include "recipe/Expression.h"
 #include "recipe/Words.h"
+#include "studio/ActorCatalogs.h"
 #include "studio/Fields.h"
 #include "studio/Names.h"
 #include "studio/PaintSession.h"
@@ -233,10 +234,31 @@ namespace {
                                             std::string_view a_name) {
   return FindByName(a_presets.presets, a_name);
 }
+
+[[nodiscard]] std::string GuardStem(std::string_view a_geometry) {
+  std::string stem;
+  for (const char c : a_geometry) {
+    const bool kept = std::isalnum(static_cast<unsigned char>(c)) || c == '_';
+    stem.push_back(kept ? c : '_');
+  }
+  if (stem.empty() || std::isdigit(static_cast<unsigned char>(stem.front()))) {
+    stem.insert(0, "geometry");
+  }
+  return stem;
+}
+
+[[nodiscard]] std::string Guarded(const std::string &a_text,
+                                  const std::string &a_geometry,
+                                  SourcePlanBuilder &a_sources) {
+  const std::string guard = a_sources.ReuseOrAdd(
+      GuardStem(a_geometry), BakeSource{GeometryBake{a_geometry}});
+  return std::format("({}) * {}", a_text, ReferenceText(guard));
+}
 }
 
 BuiltTerm BuildTerm(const TermKind &a_kind, const MaskPresets &a_presets,
-                    const SourceCatalog &a_existing) {
+                    const SourceCatalog &a_existing,
+                    const std::optional<std::string> &a_guard) {
   SourcePlanBuilder sources(a_existing);
   std::string text = Match(
       a_kind, [](const RawTerm &) { return std::string{}; },
@@ -279,7 +301,29 @@ BuiltTerm BuildTerm(const TermKind &a_kind, const MaskPresets &a_presets,
             sources.ReuseOrAdd("clusters", MaterialClustersSource{t.settings});
         return IdMatchText(name, t.id);
       });
+  if (a_guard && !text.empty()) {
+    text = Guarded(text, *a_guard, sources);
+  }
   return BuiltTerm{std::move(sources).TakeEdits(), std::move(text)};
+}
+
+bool IsGeometrySpecific(const TermKind &a_kind) noexcept {
+  return Is<IslandTerm>(a_kind) || Is<ClusterTerm>(a_kind);
+}
+
+PlacedTerm PlaceTerm(const TermKind &a_kind,
+                     const std::optional<std::string> &a_guard,
+                     const MaskPresets &a_presets,
+                     const SourceCatalog &a_existing,
+                     const GeometryRow &a_geometry) {
+  BuiltTerm built = BuildTerm(a_kind, a_presets, a_existing, a_guard);
+  std::string label = TermLabelOf(a_kind, a_presets, a_geometry);
+  if (a_guard) {
+    label += " on " + *a_guard;
+  }
+  return PlacedTerm{Term{TermOp::kAnd, std::move(built.expression),
+                         std::move(label), a_kind, a_guard},
+                    std::move(built.edits)};
 }
 
 std::string TermLabelOf(const TermKind &a_kind, const MaskPresets &a_presets,
@@ -833,6 +877,54 @@ std::vector<TermOffer> OffersOfRecipe(const MaskPresets &a_presets,
     first = false;
   }
   return all;
+}
+
+const GeometryRow *ScopedGeometry(const RecipeRow &a_recipe,
+                                  const std::optional<std::string> &a_scope) {
+  return a_scope ? FindByName(a_recipe.geometries, *a_scope) : nullptr;
+}
+
+std::vector<TermOffer> OffersOfScope(const MaskPresets &a_presets,
+                                     const RecipeRow &a_recipe,
+                                     const std::optional<std::string> &a_scope,
+                                     std::string_view a_editing) {
+  if (const GeometryRow *geometry = ScopedGeometry(a_recipe, a_scope)) {
+    return OffersOf(a_presets, a_recipe, *geometry, a_editing);
+  }
+  std::vector<TermOffer> offers =
+      OffersOfRecipe(a_presets, a_recipe, a_editing);
+  std::erase_if(offers, [](const TermOffer &a_offer) {
+    return IsGeometrySpecific(a_offer.kind);
+  });
+  return offers;
+}
+
+std::optional<std::string> GuardOf(const TermOffer &a_offer) {
+  if (!IsGeometrySpecific(a_offer.kind) || a_offer.geometry.empty()) {
+    return std::nullopt;
+  }
+  return a_offer.geometry;
+}
+
+std::vector<std::string> ScopeChoices(const RecipeRow &a_recipe) {
+  std::vector<std::string> choices{std::string{kAllGeometries}};
+  for (std::string &name : GeometryNamesOf(a_recipe)) {
+    choices.push_back(std::move(name));
+  }
+  return choices;
+}
+
+std::string ScopeChoiceOf(const RecipeRow &a_recipe,
+                          const std::optional<std::string> &a_scope) {
+  const GeometryRow *geometry = ScopedGeometry(a_recipe, a_scope);
+  return geometry ? geometry->name : std::string{kAllGeometries};
+}
+
+std::optional<std::string> ScopeOfChoice(std::string_view a_choice) {
+  if (a_choice.empty() || a_choice == kAllGeometries) {
+    return std::nullopt;
+  }
+  return std::string{a_choice};
 }
 
 bool OfferMatches(const TermOffer &a_offer, std::string_view a_filter) {

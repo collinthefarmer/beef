@@ -177,4 +177,13 @@ std::vector<ExternalSource> StaticExternalSources(const RecipeGraph &a_graph) {
   }
   return sources;
 }
+std::vector<GeometryBake> GeometryBakesOf(const RecipeGraph &a_graph) {
+  std::vector<GeometryBake> bakes;
+  for (const RecipeNode &node : a_graph.Nodes()) {
+    const auto *bake = Get<BakeOperation>(node.kind);
+    if (const auto *geometry = bake ? Get<GeometryBake>(bake->bake) : nullptr)
+      bakes.push_back(*geometry);
+  }
+  return bakes;
+}
 }

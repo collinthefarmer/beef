@@ -35,18 +35,14 @@ OfferGeometry(const Studio::TermOffer &a_offer, const Frame &a_frame) {
                      a_offer.geometry);
 }
 
-void AddPattern(const Studio::TermKind &a_kind,
+void AddPattern(const Studio::TermOffer &a_offer,
                 const Studio::GeometryRow &a_geometry, const Frame &a_frame) {
-  Studio::BuiltTerm built = Studio::BuildTerm(
-      a_kind, LoadedPresets(),
-      Studio::PaintSources(*a_frame.state, *a_frame.recipe, *a_frame.intents));
-  Studio::Post(
-      *a_frame.intents,
-      Studio::AddTerm{
-          Studio::Term{Studio::TermOp::kAnd, std::move(built.expression),
-                       Studio::TermLabelOf(a_kind, LoadedPresets(), a_geometry),
-                       a_kind},
-          std::move(built.edits)});
+  Studio::PlacedTerm placed = Studio::PlaceTerm(
+      a_offer.kind, Studio::GuardOf(a_offer), LoadedPresets(),
+      Studio::PaintSources(*a_frame.state, *a_frame.recipe, *a_frame.intents),
+      a_geometry);
+  Studio::Post(*a_frame.intents, Studio::AddTerm{std::move(placed.term),
+                                                 std::move(placed.edits)});
 }
 
 void DrawOfferRow(Table &a_table, const Studio::TermOffer &a_offer, bool a_full,
@@ -82,7 +78,8 @@ void DrawOfferRow(Table &a_table, const Studio::TermOffer &a_offer, bool a_full,
         Studio::BuiltTerm built = Studio::BuildTerm(
             a_offer.kind, LoadedPresets(),
             Studio::PaintSources(*a_frame.state, *a_frame.recipe,
-                                 *a_frame.intents));
+                                 *a_frame.intents),
+            Studio::GuardOf(a_offer));
         Studio::Post(*a_frame.intents,
                      Studio::SetPeek{Studio::PaintPeek{
                          .offer = key,
@@ -94,7 +91,7 @@ void DrawOfferRow(Table &a_table, const Studio::TermOffer &a_offer, bool a_full,
   ImGui::SameLine();
   Disabled(a_full || a_offer.unavailable.has_value(), [&] {
     if (ImGui::Button("Add")) {
-      AddPattern(a_offer.kind, geometry, a_frame);
+      AddPattern(a_offer, geometry, a_frame);
       if (peeking) {
         Studio::Post(*a_frame.intents, Studio::SetPeek{std::nullopt});
       }

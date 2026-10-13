@@ -144,6 +144,7 @@ struct BakeSourceRow {
   std::string bake;
   std::string partition;
   std::string bones;
+  std::string geometry;
 };
 
 struct DistanceSourceRow {

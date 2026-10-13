@@ -228,7 +228,8 @@ std::array<float, 3> ValueOf(const MeshVertex &a_vertex,
         return std::array{sum, sum, sum};
       },
       [&](const ComponentIdBake &) { return std::array{1.0f, 1.0f, 1.0f}; },
-      [&](const ChartIdBake &) { return std::array{1.0f, 1.0f, 1.0f}; });
+      [&](const ChartIdBake &) { return std::array{1.0f, 1.0f, 1.0f}; },
+      [&](const GeometryBake &) { return std::array{1.0f, 1.0f, 1.0f}; });
 }
 
 std::string NeedsAnalysis(const BakeKind &a_kind) {
@@ -245,7 +246,8 @@ std::string NeedsAnalysis(const BakeKind &a_kind) {
       [](const NormalBake &) { return std::string{}; },
       [](const UvBake &) { return std::string{}; },
       [](const PartitionBake &) { return std::string{}; },
-      [](const BoneWeightBake &) { return std::string{}; });
+      [](const BoneWeightBake &) { return std::string{}; },
+      [](const GeometryBake &) { return std::string{}; });
 }
 
 }
@@ -402,7 +404,8 @@ std::string Definition(const BakeKind &a_kind) {
         return std::format("boneWeight [{}]", names);
       },
       [](const ComponentIdBake &) { return std::string{"componentId"}; },
-      [](const ChartIdBake &) { return std::string{"chartId"}; });
+      [](const ChartIdBake &) { return std::string{"chartId"}; },
+      [](const GeometryBake &) { return std::string{"geometry coverage"}; });
 }
 }
 

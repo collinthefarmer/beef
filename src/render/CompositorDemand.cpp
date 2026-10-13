@@ -21,7 +21,8 @@ IdentityFacts IdentityFactsOf(const RecipeGraph &graph,
           reinterpret_cast<std::uintptr_t>(inputs.root.get()),
           inputs.itemHash,
           inputs.enchantment.fields,
-          inputs.shader};
+          inputs.shader,
+          inputs.name};
 }
 
 ValueBindings TextureValueBindings(const RecipeGraph &graph,

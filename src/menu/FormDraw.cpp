@@ -427,7 +427,8 @@ bool IsCatalogField(const FormField &a_field, const Frame &a_frame) {
 
 void DrawFieldInput(const FormField &a_field, const Frame &a_frame,
                     const Studio::Width &a_width = Studio::Width::Fill()) {
-  if (a_field.catalog && IsCatalogField(a_field, a_frame)) {
+  const bool listed = a_field.catalog || a_field.kind == FieldKind::kText;
+  if (listed && IsCatalogField(a_field, a_frame)) {
     if (const auto text = CatalogInput(a_field, a_frame, a_width)) {
       CommitField(a_field, *text, a_frame);
     }

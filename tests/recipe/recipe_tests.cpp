@@ -371,6 +371,7 @@ int main() {
     "bakePos":  { "bake": "position" },
     "bakePart": { "bake": { "partition": "body" } },
     "bakeBone": { "bake": { "boneWeight": ["NPC Spine", "NPC Spine1"] } },
+    "bakeGeom": { "bake": { "geometry": "BonemoldCuirass_1" } },
     "uvSrc":    { "bake": "uv" },
     "itemSrc":  { "piece": "itemHash" },
     "chartsSrc": { "piece": "chartCount" },
@@ -411,6 +412,19 @@ int main() {
         charts ? Get<PieceSource>(charts->kind) : nullptr;
     Check(chartsPiece && chartsPiece->field == PieceField::kChartCount,
           "a piece chartCount source round-trips");
+    const Source *geometry = r.FindSource("bakeGeom");
+    const BakeSource *geometryBake =
+        geometry ? Get<BakeSource>(geometry->kind) : nullptr;
+    const GeometryBake *named =
+        geometryBake ? Get<GeometryBake>(geometryBake->bake) : nullptr;
+    Check(named && named->geometry == "BonemoldCuirass_1",
+          "a geometry bake round-trips with its geometry name");
+    ExpectError(R"({"format":1,"keys":["default"],"sources":{"g":)"
+                R"({"bake":{"geometry":""}}}})",
+                "a geometry bake with an empty name", "'geometry'");
+    ExpectError(R"({"format":1,"keys":["default"],"sources":{"g":)"
+                R"({"bake":"geometry"}}})",
+                "a geometry bake without a name", "geometry");
     const LoadResult oldWord = ParseRecipe(
         R"({"format": 1, "sources": {"item": {"bake": "itemHash"}}})", "old");
     Check(oldWord.HasErrors(), "the bake word itemHash is no longer read");

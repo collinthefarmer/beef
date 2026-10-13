@@ -11,6 +11,7 @@
 #include "menu/ResourcePanels.h"
 #include "menu/ResponsePanel.h"
 #include "menu/StackPanel.h"
+#include "studio/ActorCatalogs.h"
 #include "studio/Create.h"
 #include "studio/EditResult.h"
 #include "studio/FieldParsing.h"
@@ -762,9 +763,11 @@ void DrawSourceInspector(const Studio::SourceSubject &a_source,
       Studio::SourceKindOf(*row).value_or(SourceKind{MaterialSource{}}));
   const ResourceCells cells{.name = row->name, .type = type};
   ResourceTable("source-header", {&cells, 1});
+  const std::vector<std::string> geometries = Studio::GeometryNamesOf(recipe);
   const std::vector<Studio::FormField> form = Studio::SourceForm(
       *row, Studio::SignalNamesOf(recipe),
-      a_frame.geometry ? a_frame.geometry->clusterGuess : ClusterSettings{});
+      a_frame.geometry ? a_frame.geometry->clusterGuess : ClusterSettings{},
+      geometries);
   const std::optional<SourceKind> kind = Studio::SourceKindOf(*row);
   if (const auto *clusters =
           kind ? Get<MaterialClustersSource>(*kind) : nullptr) {

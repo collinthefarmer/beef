@@ -24,11 +24,23 @@ struct BuiltTerm {
   std::vector<RecipeEdit> edits;
   std::string expression;
 };
+struct PlacedTerm {
+  Term term;
+  std::vector<RecipeEdit> edits;
+};
+inline constexpr std::string_view kAllGeometries = "all geometries";
 [[nodiscard]] BuiltTerm MaterialiseTerm(const MaskPreset &a_preset,
                                         const SourceCatalog &a_existing);
-[[nodiscard]] BuiltTerm BuildTerm(const TermKind &a_kind,
-                                  const MaskPresets &a_presets,
-                                  const SourceCatalog &a_existing);
+[[nodiscard]] BuiltTerm
+BuildTerm(const TermKind &a_kind, const MaskPresets &a_presets,
+          const SourceCatalog &a_existing,
+          const std::optional<std::string> &a_guard = std::nullopt);
+[[nodiscard]] bool IsGeometrySpecific(const TermKind &a_kind) noexcept;
+[[nodiscard]] PlacedTerm PlaceTerm(const TermKind &a_kind,
+                                   const std::optional<std::string> &a_guard,
+                                   const MaskPresets &a_presets,
+                                   const SourceCatalog &a_existing,
+                                   const GeometryRow &a_geometry);
 
 [[nodiscard]] std::string TermLabel(std::string_view a_text,
                                     const MaskPresets &a_presets,
@@ -100,6 +112,20 @@ struct TermOffer {
 [[nodiscard]] std::vector<TermOffer>
 OffersOfRecipe(const MaskPresets &a_presets, const RecipeRow &a_recipe,
                std::string_view a_editing);
+[[nodiscard]] const GeometryRow *
+ScopedGeometry(const RecipeRow &a_recipe,
+               const std::optional<std::string> &a_scope);
+[[nodiscard]] std::vector<TermOffer>
+OffersOfScope(const MaskPresets &a_presets, const RecipeRow &a_recipe,
+              const std::optional<std::string> &a_scope,
+              std::string_view a_editing);
+[[nodiscard]] std::optional<std::string> GuardOf(const TermOffer &a_offer);
+[[nodiscard]] std::vector<std::string> ScopeChoices(const RecipeRow &a_recipe);
+[[nodiscard]] std::string
+ScopeChoiceOf(const RecipeRow &a_recipe,
+              const std::optional<std::string> &a_scope);
+[[nodiscard]] std::optional<std::string>
+ScopeOfChoice(std::string_view a_choice);
 [[nodiscard]] bool OfferMatches(const TermOffer &a_offer,
                                 std::string_view a_filter);
 [[nodiscard]] std::vector<const TermOffer *>

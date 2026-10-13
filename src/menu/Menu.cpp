@@ -199,6 +199,7 @@ struct IntentPerformer {
   void operator()(const SetPeek &) const {}
   void operator()(const LoadMask &) const {}
   void operator()(const ClearMask &) const {}
+  void operator()(const SetMaskScope &) const {}
   void operator()(const UndoMask &) const {}
   void operator()(const RedoMask &) const {}
   void operator()(const UpdatePaint &a_intent) const {

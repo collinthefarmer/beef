@@ -16,6 +16,7 @@ struct ValueBindings {
   std::function<std::expected<std::string, std::string>(const ExternalSource &)>
       external;
   std::function<std::string(NodeId)> state;
+  std::string geometry;
 };
 [[nodiscard]] ValueIdentity PositionBakeIdentity(const ValueIdentity &a_mesh);
 [[nodiscard]] std::expected<std::string, std::string>

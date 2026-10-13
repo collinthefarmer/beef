@@ -85,6 +85,30 @@ void MaskIntentsBuildAndUndo() {
   Check(state.mask.terms.size() == 2, "UndoMask restores the pre-clear mask");
 }
 
+void MaskScopeOutlivesUndoAndRawEdits() {
+  MenuState state;
+  Term guarded;
+  guarded.text = "(@chart) * @Belt";
+  guarded.kind = IslandTerm{IslandSource::kChart, 2};
+  guarded.geometry = "Belt";
+  Reduce(state, AddTerm{guarded});
+  Reduce(state, SetMaskScope{std::string{"Belt"}});
+  Check(state.mask.scope == std::optional<std::string>{"Belt"},
+        "SetMaskScope names the geometry the offers come from");
+  Reduce(state, ClearMask{});
+  Check(state.mask.scope == std::optional<std::string>{"Belt"},
+        "clearing the terms keeps the scope");
+  Reduce(state, SetMaskScope{std::nullopt});
+  Reduce(state, UndoMask{});
+  Check(state.mask.terms.size() == 1 && !state.mask.scope,
+        "undo restores the terms and keeps the current scope");
+  Check(state.mask.terms.front().geometry == std::optional<std::string>{"Belt"},
+        "a restored term keeps its geometry guard");
+  Reduce(state, SetTermText{0, "@other"});
+  Check(!state.mask.terms.front().geometry,
+        "typing a term's expression makes it raw and drops its guard");
+}
+
 void EditRecipeRemapsSelectedLayer() {
   MenuState state;
   Reduce(state, PickRecipe{"aurora"});
@@ -202,6 +226,7 @@ int main() {
   ModeSwitchSetsLayoutAndResource();
   SelectionIntentsResolve();
   MaskIntentsBuildAndUndo();
+  MaskScopeOutlivesUndoAndRawEdits();
   EditRecipeRemapsSelectedLayer();
   RenameRecipeFollowsSelection();
   DuplicateRecipeFocusesTheCopy();

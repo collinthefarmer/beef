@@ -77,6 +77,7 @@ struct Term {
   std::string text;
   std::string label;
   TermKind kind;
+  std::optional<std::string> geometry{};
   [[nodiscard]] bool operator==(const Term &) const = default;
 };
 
@@ -99,6 +100,7 @@ struct MaskStack {
   std::optional<std::size_t> solo;
   std::set<std::size_t> muted;
   std::string editing;
+  std::optional<std::string> scope;
   bool dirty = false;
 };
 }

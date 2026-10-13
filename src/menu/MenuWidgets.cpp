@@ -876,7 +876,8 @@ std::string SourceValueText(const SourceKind &a_kind) {
               return std::format("{} bone(s)", b.bones.size());
             },
             [](const ComponentIdBake &) { return std::string{"componentId"}; },
-            [](const ChartIdBake &) { return std::string{"chartId"}; });
+            [](const ChartIdBake &) { return std::string{"chartId"}; },
+            [](const GeometryBake &g) { return "geometry " + g.geometry; });
       },
       [](const DistanceSource &s) { return s.from; },
       [](const PieceSource &s) {

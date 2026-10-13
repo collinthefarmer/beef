@@ -549,6 +549,22 @@ BindImageMirror(std::string a_name, SourceKind a_record, std::size_t a_axis) {
   };
 }
 
+[[nodiscard]] FieldBinding BindBakeGeometry(std::string a_name,
+                                            SourceKind a_record) {
+  return [name = std::move(a_name), record = std::move(a_record)](
+             const std::string &a_text) -> std::optional<RecipeEdit> {
+    SourceKind kind = record;
+    BakeSource *bake = Get<BakeSource>(kind);
+    GeometryBake *geometry =
+        bake != nullptr ? Get<GeometryBake>(bake->bake) : nullptr;
+    if (geometry == nullptr || a_text.empty()) {
+      return std::nullopt;
+    }
+    geometry->geometry = a_text;
+    return SetSource{name, kind};
+  };
+}
+
 [[nodiscard]] FieldBinding BindClusterWeight(std::string a_name,
                                              SourceKind a_record,
                                              float ChannelWeights::*a_member) {
@@ -1316,6 +1332,7 @@ struct SourceContext {
   const std::string &name;
   const SourceKind &record;
   const SignalNames &names;
+  std::span<const std::string> geometries;
 };
 
 FormField ImageTextureField(const SourceContext &a_ctx,
@@ -1417,6 +1434,14 @@ void BakeFields(std::vector<FormField> &a_form, const SourceContext &a_ctx,
     bones.catalog = GameObjectKind::kNode;
     bones.catalogPick = CatalogPick::kAppend;
     a_form.push_back(std::move(bones));
+  } else if (a_source.bake == "geometry") {
+    FormField geometry =
+        TextEntryField({.name = "geometry",
+                        .kind = FieldKind::kText,
+                        .text = a_source.geometry,
+                        .bind = BindBakeGeometry(name, record)});
+    geometry.names.assign(a_ctx.geometries.begin(), a_ctx.geometries.end());
+    a_form.push_back(std::move(geometry));
   }
 }
 
@@ -1563,7 +1588,8 @@ void ClustersFields(std::vector<FormField> &a_form, const SourceContext &a_ctx,
 
 std::vector<FormField> SourceForm(const SourceRow &a_source,
                                   const SignalNames &a_names,
-                                  const ClusterSettings &a_clusterGuess) {
+                                  const ClusterSettings &a_clusterGuess,
+                                  std::span<const std::string> a_geometries) {
   std::vector<FormField> form;
   const std::string &name = a_source.name;
   form.push_back(ChoiceField(
@@ -1574,7 +1600,7 @@ std::vector<FormField> SourceForm(const SourceRow &a_source,
   if (!record) {
     return form;
   }
-  const SourceContext ctx{name, *record, a_names};
+  const SourceContext ctx{name, *record, a_names, a_geometries};
   Match(
       a_source.kind,
       [&](const ImageSourceRow &a_image) { ImageFields(form, ctx, a_image); },

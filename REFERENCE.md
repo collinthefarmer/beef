@@ -2031,6 +2031,20 @@ builds the new one beside it, as a resize does.
   is the summed weight of the named bones (sorted, so two orders of one set
   share a key); `componentId` and `chartId` carry island id / 255 in x with
   `kNoIsland` vertices at 1 and need the analysis, not the mesh alone.
+- `{"bake": {"geometry": glob}}` (`GeometryBake`) is the mesh coverage (1 on
+  every triangle, all partitions) when the rendered geometry's name matches
+  the glob (`IsNamedBy`, the selector clause's `GlobMatch`), else 0
+  everywhere. It uses the object form like `partition` and `boneWeight`
+  because a source row holds exactly one key besides `note`. The name
+  arrives as `GeometryInputs::name` → `IdentityFacts::geometryName` →
+  `ValueBindings::geometry`. A non-matching bake lowers to a constant 0 that
+  `Field` turns into a sampled field (the expression program reads the bake
+  as a texture, because the graph marks it sample-dependent). A matching
+  bake reuses the ordinary bake pass, keyed `bake geometry coverage`, so
+  every glob that matches one mesh shares one texture. The value identity
+  and the plan key's static inputs carry whether each geometry bake matches
+  this geometry's name, never the name itself, and only in graphs that hold
+  a geometry bake.
 - The `piece` source kind holds two per-piece facts, `itemHash` and
   `chartCount` (`PieceSource`). Before 2026-10-07 they were bake words; a
   recipe that still writes `{"bake": "itemHash"}` fails to load.
@@ -2673,6 +2687,17 @@ cancel by the user instead of the load.
   `abs(@name * 255 - ID) < 0.5`. A term's source reuses an existing twin's row
   (same definition under another name) or adds a new uniquely-named row, so a
   term never duplicates a row the recipe already has.
+- The mask editor's scope (`MaskStack::scope`) is all geometries or one
+  geometry name. A part, chart or material id names a different area on each
+  geometry (`IsGeometrySpecific`), so all geometries hides those offers and a
+  geometry scope offers that one geometry's `OffersOf`. A geometry-specific
+  term added under a scope keeps the name in `Term::geometry` and builds as
+  `(TEXT) * @GUARD`, where GUARD is a `geometry` bake for that name (reused
+  when the recipe has one, else a new row named after the geometry with
+  non-name characters as `_`). Retuning keeps the guard; typing the
+  expression makes the term raw and drops it. A kept mask reloads as one raw
+  term whose text still holds the guard; the guard field is not recovered.
+  Undo and redo restore terms but keep the current scope.
 - The mask editor names parts, charts, materials, bones and partitions from
   `mesh/` results (`MeshFacts`, `MeshAnalysis`, `MaterialAnalysis`,
   `PlainIslandSourceName`), not a studio-owned name table. The frozen tree

@@ -58,6 +58,9 @@ MaterialRowOf(const MaterialSource &a_material) {
       bake.bones += (bake.bones.empty() ? "" : ", ") + bone;
     }
   }
+  if (const GeometryBake *geometry = Get<GeometryBake>(a_bake.bake)) {
+    bake.geometry = geometry->geometry;
+  }
   return bake;
 }
 
@@ -202,6 +205,9 @@ MaterialKindOf(const MaterialSourceRow &a_row) {
   }
   if (BoneWeightBake *bones = Get<BoneWeightBake>(*bake)) {
     bones->bones = SplitNames(a_row.bones);
+  }
+  if (GeometryBake *geometry = Get<GeometryBake>(*bake)) {
+    geometry->geometry = a_row.geometry;
   }
   return SourceKind{BakeSource{*bake}};
 }

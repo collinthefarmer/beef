@@ -463,13 +463,19 @@ struct ComponentIdBake {
 struct ChartIdBake {
   [[nodiscard]] bool operator==(const ChartIdBake &) const = default;
 };
-using BakeKind =
-    std::variant<PositionBake, LocalPositionBake, NormalBake, UvBake,
-                 PartitionBake, BoneWeightBake, ComponentIdBake, ChartIdBake>;
+struct GeometryBake {
+  std::string geometry;
+  [[nodiscard]] bool operator==(const GeometryBake &) const = default;
+};
+using BakeKind = std::variant<PositionBake, LocalPositionBake, NormalBake,
+                              UvBake, PartitionBake, BoneWeightBake,
+                              ComponentIdBake, ChartIdBake, GeometryBake>;
 struct BakeSource {
   BakeKind bake = PositionBake{};
   [[nodiscard]] bool operator==(const BakeSource &) const = default;
 };
+[[nodiscard]] bool IsNamedBy(const GeometryBake &a_bake,
+                             std::string_view a_geometry) noexcept;
 struct DistanceSource {
   std::string from;
   [[nodiscard]] bool operator==(const DistanceSource &) const = default;

@@ -2,6 +2,7 @@
 #include "planners/RenderPlanKey.h"
 
 #include <algorithm>
+#include <format>
 #include <functional>
 #include <string_view>
 #include <utility>
@@ -30,6 +31,10 @@ StaticInputIdentities(const RecipeGraph &a_graph,
       return std::nullopt;
     }
     identities.push_back(std::move(*identity));
+  }
+  for (const GeometryBake &bake : GeometryBakesOf(a_graph)) {
+    identities.push_back(std::format("geometry {}:{}", bake.geometry,
+                                     IsNamedBy(bake, a_bindings.geometry)));
   }
   return identities;
 }

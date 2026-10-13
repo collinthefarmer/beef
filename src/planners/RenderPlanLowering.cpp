@@ -523,6 +523,10 @@ struct PlanBuilder {
                                     const LoweringRequest &request,
                                     std::size_t depth) {
     const std::string &label = site.node.displayName;
+    if (const auto *geometry = Get<GeometryBake>(operation.bake);
+        geometry && !IsNamedBy(*geometry, GeometryNameOf(request)))
+      return Field(Step(ConstantRenderStep{0.0f}, label + " elsewhere"),
+                   request.requirements, label);
     const RenderValueRef buffers = Step(
         BuildBakeBuffersStep{BuildOperand(operation.geometry, request, depth),
                              operation.bake},
@@ -531,6 +535,9 @@ struct PlanBuilder {
                              Is<ComponentIdBake>(operation.bake) ||
                                  Is<ChartIdBake>(operation.bake)},
                 label);
+  }
+  std::string GeometryNameOf(const LoweringRequest &request) const {
+    return bindings(request.value, request.geometry).geometry;
   }
   RenderValueRef LowerDistanceOperation(const DistanceOperation &operation,
                                         const LoweringSite &site,

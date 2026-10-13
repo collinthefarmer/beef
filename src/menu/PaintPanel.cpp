@@ -113,23 +113,36 @@ void CommitTermField(std::size_t a_index, const Studio::TermField &a_field,
   PostTermKind(a_index, *changed, a_frame);
 }
 
+[[nodiscard]] const Studio::GeometryRow &
+TermGeometry(const std::optional<std::string> &a_guard, const Frame &a_frame) {
+  const Studio::GeometryRow *guarded =
+      Studio::ScopedGeometry(*a_frame.recipe, a_guard);
+  return guarded ? *guarded : *a_frame.geometry;
+}
+
+[[nodiscard]] std::optional<std::string> TermGuard(std::size_t a_index,
+                                                   const Frame &a_frame) {
+  const std::vector<Studio::Term> &terms = a_frame.state->mask.terms;
+  return a_index < terms.size() ? terms[a_index].geometry : std::nullopt;
+}
+
 void PostTermKind(std::size_t a_index, const Studio::TermKind &a_kind,
                   const Frame &a_frame) {
-  const Studio::MaskPresets &presets = LoadedPresets();
-  Studio::BuiltTerm built = Studio::BuildTerm(
-      a_kind, presets,
-      Studio::PaintSources(*a_frame.state, *a_frame.recipe, *a_frame.intents));
+  const std::optional<std::string> guard = TermGuard(a_index, a_frame);
+  Studio::PlacedTerm placed = Studio::PlaceTerm(
+      a_kind, guard, LoadedPresets(),
+      Studio::PaintSources(*a_frame.state, *a_frame.recipe, *a_frame.intents),
+      TermGeometry(guard, a_frame));
   Studio::Post(*a_frame.intents,
-               Studio::SetTermKind{
-                   a_index, a_kind, std::move(built.expression),
-                   Studio::TermLabelOf(a_kind, presets, *a_frame.geometry),
-                   std::move(built.edits)});
+               Studio::SetTermKind{a_index, a_kind, std::move(placed.term.text),
+                                   std::move(placed.term.label),
+                                   std::move(placed.edits)});
 }
 
 void DrawTermSettings(std::size_t a_index, const Studio::Term &a_term,
                       const Frame &a_frame) {
-  const std::vector<Studio::TermField> form =
-      Studio::TermForm(a_term.kind, LoadedPresets(), *a_frame.geometry);
+  const std::vector<Studio::TermField> form = Studio::TermForm(
+      a_term.kind, LoadedPresets(), TermGeometry(a_term.geometry, a_frame));
   if (form.empty()) {
     return;
   }
@@ -516,6 +529,24 @@ void DrawMaskRule(std::string_view a_title, const Frame &a_frame) {
   KeepMaskPopup(a_frame);
 }
 
+namespace {
+void DrawMaskScope(const Studio::RecipeRow &a_recipe,
+                   const Studio::MaskStack &a_mask, const Frame &a_frame) {
+  const std::vector<std::string> choices = Studio::ScopeChoices(a_recipe);
+  ImGui::AlignTextToFramePadding();
+  Dim("terms for");
+  ImGui::SameLine();
+  if (const auto chosen = ChoiceCombo(
+          "scope", Studio::ScopeChoiceOf(a_recipe, a_mask.scope), choices,
+          {Studio::Width::Px(WidestOf(choices)), a_frame.scale})) {
+    Studio::Post(*a_frame.intents,
+                 Studio::SetMaskScope{Studio::ScopeOfChoice(*chosen)});
+  }
+  Tooltip("Parts, charts and materials belong to one geometry. Choose a "
+          "geometry to offer its terms; they then hold on that geometry only.");
+}
+}
+
 void DrawMaskStack(const Frame &a_frame) {
   if (!a_frame.piece || !a_frame.recipe || !a_frame.geometry) {
     return;
@@ -523,8 +554,9 @@ void DrawMaskStack(const Frame &a_frame) {
   const Studio::RecipeRow &recipe = *a_frame.recipe;
   const Studio::GeometryRow &geometry = *a_frame.geometry;
   const Studio::MaskStack &mask = a_frame.state->mask;
+  DrawMaskScope(recipe, mask, a_frame);
   const std::vector<Studio::TermOffer> offers =
-      Studio::OffersOfRecipe(LoadedPresets(), recipe, mask.editing);
+      Studio::OffersOfScope(LoadedPresets(), recipe, mask.scope, mask.editing);
 
   const ImGuiMCP::ImVec2 avail = ImGui::GetContentRegionAvail();
   const float termsCap =
@@ -768,12 +800,14 @@ void DrawTermTuningPane(const Frame &a_frame) {
   }
   const std::size_t index = *mask.selected;
   const Studio::Term &term = mask.terms[index];
+  Frame tuned = *preview;
+  tuned.geometry = &TermGeometry(term.geometry, *preview);
   const std::vector<Studio::TermField> form =
-      Studio::TermForm(term.kind, LoadedPresets(), *preview->geometry);
+      Studio::TermForm(term.kind, LoadedPresets(), *tuned.geometry);
   Dim(std::format("Tuning term {}: {}", index, term.label));
   if (const auto *cluster = Get<Studio::ClusterTerm>(term.kind)) {
-    DrawClusterGuess(index, *cluster, *preview);
-    DrawClusterReadout(index, *cluster, *preview, state.clusterMemo);
+    DrawClusterGuess(index, *cluster, tuned);
+    DrawClusterReadout(index, *cluster, tuned, state.clusterMemo);
   }
   if (form.empty()) {
     Dim("This term has no adjustable settings.");
@@ -789,7 +823,7 @@ void DrawTermTuningPane(const Frame &a_frame) {
     return;
   }
   for (const Studio::TermField &field : form) {
-    DrawTermParameter(index, field, *preview, table);
+    DrawTermParameter(index, field, tuned, table);
   }
   table.End();
 }

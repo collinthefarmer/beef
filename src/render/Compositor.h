@@ -78,6 +78,7 @@ struct GeometryInputs {
   float itemHash = 0.0f;
   EnchantmentValues enchantment;
   MatchedShaderFacts shader;
+  std::string name;
 };
 
 struct StackTextureRequest {

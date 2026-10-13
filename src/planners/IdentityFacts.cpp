@@ -106,6 +106,7 @@ ValueBindings IdentityBindings(std::shared_ptr<const IdentityFacts> a_facts) {
   bindings.external = [a_facts](const ExternalSource &a_source) -> Identity {
     return ExternalSourceIdentity(a_source, *a_facts);
   };
+  bindings.geometry = a_facts->geometryName;
   return bindings;
 }
 }

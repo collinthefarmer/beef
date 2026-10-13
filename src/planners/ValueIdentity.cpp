@@ -52,7 +52,8 @@ void EncodeBakeOperation(Encoding &out, const BakeOperation &operation) {
       },
       [](const PositionBake &) {}, [](const LocalPositionBake &) {},
       [](const NormalBake &) {}, [](const UvBake &) {},
-      [](const ComponentIdBake &) {}, [](const ChartIdBake &) {});
+      [](const ComponentIdBake &) {}, [](const ChartIdBake &) {},
+      [](const GeometryBake &) {});
 }
 void EncodeMaterialClustersOperation(
     Encoding &out, const MaterialClustersOperation &operation) {
@@ -179,6 +180,11 @@ struct IdentityBuilder {
         },
         [&](const CallOperation &k) -> std::expected<void, std::string> {
           return EncodeFunction(out, k.function, depth);
+        },
+        [&](const BakeOperation &k) -> std::expected<void, std::string> {
+          if (const auto *geometry = Get<GeometryBake>(k.bake))
+            out.Number(IsNamedBy(*geometry, bindings.geometry));
+          return {};
         },
         [](const auto &) -> std::expected<void, std::string> { return {}; });
   }

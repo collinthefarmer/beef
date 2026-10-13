@@ -384,6 +384,7 @@ struct ReduceVisitor {
       mask.terms[a_i.index].text = a_i.text;
       mask.terms[a_i.index].label = std::string{kExpressionLabel};
       mask.terms[a_i.index].kind = RawTerm{};
+      mask.terms[a_i.index].geometry.reset();
       mask.dirty = true;
     }
   }
@@ -496,23 +497,31 @@ struct ReduceVisitor {
   void operator()(const ClearMask &) {
     Remember();
     const std::string editing = mask.editing;
+    const std::optional<std::string> scope = mask.scope;
     mask = MaskStack{};
     mask.editing = editing;
+    mask.scope = scope;
     mask.dirty = true;
   }
 
+  void operator()(const SetMaskScope &a_i) { mask.scope = a_i.geometry; }
+
   void operator()(const UndoMask &) {
     if (std::optional<MaskStack> past = state.maskHistory.Undo(mask)) {
-      mask = std::move(*past);
-      mask.dirty = true;
+      RestoreKeepingScope(std::move(*past));
     }
   }
 
   void operator()(const RedoMask &) {
     if (std::optional<MaskStack> next = state.maskHistory.Redo(mask)) {
-      mask = std::move(*next);
-      mask.dirty = true;
+      RestoreKeepingScope(std::move(*next));
     }
+  }
+
+  void RestoreKeepingScope(MaskStack a_restored) {
+    a_restored.scope = mask.scope;
+    mask = std::move(a_restored);
+    mask.dirty = true;
   }
 
   void operator()(const BeginPaint &a_i) {
@@ -651,18 +660,18 @@ SourceCatalog PaintSources(const MenuState &a_state, const RecipeRow &a_recipe,
         [](const PickTerm &) {}, [](const SoloTerm &) {},
         [](const MuteTerm &) {}, [](const SetPeek &) {},
         [](const LoadMask &) {}, [](const ClearMask &) {},
-        [](const UndoMask &) {}, [](const RedoMask &) {},
-        [](const BeginPaint &) {}, [](const SetPaintSurface &) {},
-        [](const KeepPaint &) {}, [](const EndPaint &) {},
-        [](const UpdatePaint &) {}, [](const EditRecipe &) {},
-        [](const SoloRecipe &) {}, [](const SoloPiece &) {},
-        [](const SoloOutput &) {}, [](const SoloLayer &) {},
-        [](const MuteLayer &) {}, [](const SetFreeze &) {},
-        [](const SetScrub &) {}, [](const SetSpeed &) {},
-        [](const StepClock &) {}, [](const Undo &) {}, [](const Redo &) {},
-        [](const CreateRecipe &) {}, [](const RenameRecipe &) {},
-        [](const DeleteRecipe &) {}, [](const DuplicateRecipe &) {},
-        [](const FireTrigger &) {});
+        [](const SetMaskScope &) {}, [](const UndoMask &) {},
+        [](const RedoMask &) {}, [](const BeginPaint &) {},
+        [](const SetPaintSurface &) {}, [](const KeepPaint &) {},
+        [](const EndPaint &) {}, [](const UpdatePaint &) {},
+        [](const EditRecipe &) {}, [](const SoloRecipe &) {},
+        [](const SoloPiece &) {}, [](const SoloOutput &) {},
+        [](const SoloLayer &) {}, [](const MuteLayer &) {},
+        [](const SetFreeze &) {}, [](const SetScrub &) {},
+        [](const SetSpeed &) {}, [](const StepClock &) {}, [](const Undo &) {},
+        [](const Redo &) {}, [](const CreateRecipe &) {},
+        [](const RenameRecipe &) {}, [](const DeleteRecipe &) {},
+        [](const DuplicateRecipe &) {}, [](const FireTrigger &) {});
   }
   return catalog;
 }
@@ -681,6 +690,7 @@ namespace {
       [](const SetPeek &) { return true; },
       [](const LoadMask &) { return true; },
       [](const ClearMask &) { return true; },
+      [](const SetMaskScope &) { return false; },
       [](const UndoMask &) { return true; },
       [](const RedoMask &) { return true; },
       [](const SetPaintSurface &) { return true; },

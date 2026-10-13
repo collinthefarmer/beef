@@ -118,6 +118,9 @@ struct LoadMask {
   std::string editing;
 };
 struct ClearMask {};
+struct SetMaskScope {
+  std::optional<std::string> geometry;
+};
 struct UndoMask {};
 struct RedoMask {};
 struct BeginPaint {
@@ -221,11 +224,12 @@ using Intent = std::variant<
     PickLayer, ViewGeometry, SetStackSplit, SetWorkspaceSplit, ShowSettings,
     ShowResource, ReadMesh, AddTerm, SetTermOp, SetTermText, SetTermKind,
     RemoveTerm, MoveTerm, PickTerm, SoloTerm, MuteTerm, SetPeek, LoadMask,
-    ClearMask, UndoMask, RedoMask, BeginPaint, SetPaintSurface, KeepPaint,
-    EndPaint, UpdatePaint, EditRecipe, SoloRecipe, SoloPiece, SoloOutput,
-    SoloLayer, MuteLayer, SetFreeze, SetScrub, SetSpeed, StepClock, Undo, Redo,
-    CreateRecipe, RenameRecipe, DeleteRecipe, DuplicateRecipe, FireTrigger>;
-inline constexpr std::size_t kIntentCount = 50;
+    ClearMask, SetMaskScope, UndoMask, RedoMask, BeginPaint, SetPaintSurface,
+    KeepPaint, EndPaint, UpdatePaint, EditRecipe, SoloRecipe, SoloPiece,
+    SoloOutput, SoloLayer, MuteLayer, SetFreeze, SetScrub, SetSpeed, StepClock,
+    Undo, Redo, CreateRecipe, RenameRecipe, DeleteRecipe, DuplicateRecipe,
+    FireTrigger>;
+inline constexpr std::size_t kIntentCount = 51;
 static_assert(std::variant_size_v<Intent> == kIntentCount);
 
 using Intents = std::vector<Intent>;

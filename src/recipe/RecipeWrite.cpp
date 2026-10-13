@@ -40,6 +40,10 @@ std::string DescribeBakeSource(const BakeSource &a_source) {
       },
       [](const ChartIdBake &) {
         return std::string{"bake chartId (the mesh's UV charts, id / 255)"};
+      },
+      [](const GeometryBake &g) {
+        return std::format("bake geometry {} (1 on that geometry's mesh)",
+                           g.geometry);
       });
 }
 
@@ -326,6 +330,9 @@ json BakeToJson(const BakeSource &k) {
       },
       [&](const BoneWeightBake &b) {
         return json::object({{"boneWeight", b.bones}});
+      },
+      [&](const GeometryBake &g) {
+        return json::object({{"geometry", g.geometry}});
       },
       [&](const PositionBake &) { return json(BakeKindName(k.bake)); },
       [&](const LocalPositionBake &) { return json(BakeKindName(k.bake)); },

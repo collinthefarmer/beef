@@ -46,6 +46,99 @@ const TermField *FieldNamed(std::span<const TermField> a_form,
 }
 }
 
+namespace {
+RecipeRow TwoGeometries() {
+  RecipeRow recipe;
+  recipe.geometries = {SampleGeometry(), SampleGeometry()};
+  recipe.geometries.back().name = "Other";
+  return recipe;
+}
+
+std::size_t AddedSources(std::span<const RecipeEdit> a_edits) {
+  return static_cast<std::size_t>(
+      std::ranges::count_if(a_edits, [](const RecipeEdit &a_edit) {
+        return Get<AddSource>(a_edit) != nullptr;
+      }));
+}
+
+void ScopedOffersAndGuards(const MaskPresets &a_presets) {
+  const RecipeRow recipe = TwoGeometries();
+  const auto everywhere = OffersOfScope(a_presets, recipe, std::nullopt, "");
+  Check(!HasGroup(everywhere, OfferGroup::kParts) &&
+            !HasGroup(everywhere, OfferGroup::kCharts) &&
+            !HasGroup(everywhere, OfferGroup::kMaterials),
+        "all geometries hides parts, charts and materials");
+  Check(HasGroup(everywhere, OfferGroup::kBones) &&
+            HasGroup(everywhere, OfferGroup::kPartitions) &&
+            HasGroup(everywhere, OfferGroup::kChannels),
+        "all geometries keeps the terms that mean the same everywhere");
+  const auto onOther =
+      OffersOfScope(a_presets, recipe, std::string{"Other"}, "");
+  const auto parts =
+      std::ranges::count_if(onOther, [](const TermOffer &a_offer) {
+        return a_offer.group == OfferGroup::kParts;
+      });
+  Check(parts == 1 && std::ranges::all_of(onOther,
+                                          [](const TermOffer &a_offer) {
+                                            return a_offer.geometry.empty() ||
+                                                   a_offer.geometry == "Other";
+                                          }),
+        "a geometry scope offers that geometry's parts once");
+  Check(OffersOfScope(a_presets, recipe, std::string{"Missing"}, "").size() ==
+            everywhere.size(),
+        "an unknown scope offers what all geometries offers");
+
+  const auto part = std::ranges::find_if(onOther, [](const TermOffer &a_offer) {
+    return a_offer.group == OfferGroup::kParts;
+  });
+  const auto bone = std::ranges::find_if(onOther, [](const TermOffer &a_offer) {
+    return a_offer.group == OfferGroup::kBones;
+  });
+  if (part == onOther.end() || bone == onOther.end()) {
+    Check(false, "the scoped offers include a part and a bone");
+    return;
+  }
+  Check(GuardOf(*part) == std::optional<std::string>{"Other"} &&
+            !GuardOf(*bone),
+        "only a geometry-specific offer carries a guard");
+  const PlacedTerm placed =
+      PlaceTerm(part->kind, GuardOf(*part), a_presets, SourceCatalog{},
+                recipe.geometries.back());
+  Check(placed.term.geometry == std::optional<std::string>{"Other"} &&
+            placed.term.text == "(abs(@components * 255 - 0) < 0.5) * @Other",
+        "a guarded part is multiplied by its geometry's bake");
+  Check(AddedSources(placed.edits) == 2,
+        "a guarded part adds its id bake and one geometry bake");
+  Check(placed.term.label.ends_with(" on Other"),
+        "a guarded term's label names its geometry");
+  Check(BuildMask(std::span{&placed.term, 1}).contains("@Other"),
+        "the built mask keeps the guard");
+
+  SourceCatalog guarded;
+  guarded.sources = {Source{"otherOnly", BakeSource{GeometryBake{"Other"}}}};
+  guarded.reservedNames = {"otherOnly"};
+  const BuiltTerm reused =
+      BuildTerm(part->kind, a_presets, guarded, std::string{"Other"});
+  Check(reused.expression.ends_with("* @otherOnly") &&
+            AddedSources(reused.edits) == 1,
+        "an existing geometry bake for the same name is reused");
+  const BuiltTerm odd = BuildTerm(part->kind, a_presets, SourceCatalog{},
+                                  std::string{"1st:Cuirass"});
+  Check(odd.expression.ends_with("* @geometry1st_Cuirass"),
+        "a geometry name becomes a valid source name");
+
+  Check(ScopeChoices(recipe) ==
+            std::vector<std::string>{std::string{kAllGeometries}, "Body",
+                                     "Other"},
+        "the scope choices are all geometries and each geometry name");
+  Check(!ScopeOfChoice(kAllGeometries) &&
+            ScopeOfChoice("Body") == std::optional<std::string>{"Body"},
+        "a scope choice reads back as a geometry or none");
+  Check(ScopeChoiceOf(recipe, std::string{"Missing"}) == kAllGeometries,
+        "an unknown scope shows as all geometries");
+}
+}
+
 int main() {
   Recipe recipe;
   recipe.sources.push_back(
@@ -217,5 +310,6 @@ int main() {
         "a shared cluster operation does not claim one geometry's material "
         "label");
 
+  ScopedOffersAndGuards(presets);
   return test::Finish("studio_termtemplates");
 }

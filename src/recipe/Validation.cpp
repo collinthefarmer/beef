@@ -164,6 +164,10 @@ struct SourceFields {
                       partition->bipedSlot > kLastBipedSlot)) {
       report.Error("'bipedSlot' must be 30..61");
     }
+    if (const auto *geometry = Get<GeometryBake>(s.bake);
+        geometry && geometry->geometry.empty()) {
+      report.Error("'geometry' names a geometry or a glob");
+    }
   }
   void operator()(const RippleSource &s) const {
     Scalar(report, s.speed, "speed");

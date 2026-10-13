@@ -38,6 +38,11 @@ bool GlobMatch(std::string_view a_glob, std::string_view a_text) noexcept {
   return globAt == a_glob.size();
 }
 
+bool IsNamedBy(const GeometryBake &a_bake,
+               std::string_view a_geometry) noexcept {
+  return !a_bake.geometry.empty() && GlobMatch(a_bake.geometry, a_geometry);
+}
+
 bool Matches(const Selector &a_selector, const GeometryIdentity &a_geometry) {
   if (a_selector.All()) {
     return true;

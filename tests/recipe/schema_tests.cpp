@@ -170,6 +170,7 @@ void SourceEnumsMatchTheTables(const json &a_schema) {
       Words(At(a_schema, "/$defs/source/oneOf/2/properties/bake/oneOf/0/enum"));
   bakes.emplace_back("partition");
   bakes.emplace_back("boneWeight");
+  bakes.emplace_back("geometry");
   Equal(Joined(Sorted(bakes)), Joined(Sorted(WordsOf(kBakeKindWords))),
         "bake kinds");
   Check(KindEntry(a_schema, "source", "ripple") ==

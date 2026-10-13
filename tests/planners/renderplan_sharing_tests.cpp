@@ -552,6 +552,88 @@ std::size_t Report(const char *label, const RenderPlan &plan) {
         plan.steps[duplicate.first].displayName.c_str());
   return duplicates.size();
 }
+
+Recipe LayerMaskedBy(BakeKind a_bake) {
+  Recipe recipe;
+  ImageSource image;
+  image.texture = ImageFile{"shared.dds"};
+  recipe.sources = {{"pattern", image}, {"region", BakeSource{a_bake}}};
+  recipe.masks = {{"onRegion", "@region"}};
+  SurfaceOutput surface;
+  Layer layer;
+  layer.source = Ref{"pattern"};
+  layer.mask = Ref{"onRegion"};
+  surface.stack = {layer};
+  recipe.outputs.push_back(surface);
+  return recipe;
+}
+
+RenderBindingResolver SharedMeshNamed(std::vector<std::string> a_names) {
+  return [names = std::move(a_names)](const TextureValue &value,
+                                      GeometryId geometry) {
+    ValueBindings bindings{
+        [instance = value.instance](const ExternalSource &source)
+            -> std::expected<std::string, std::string> {
+          if (Is<GeometryInput>(source))
+            return std::string{"one mesh"};
+          if (const auto *texture = Get<TextureInput>(source))
+            return texture->path;
+          return std::to_string(instance);
+        },
+        [instance = value.instance](NodeId node) {
+          return std::to_string(instance) + ":" + std::to_string(node);
+        }};
+    const std::size_t index = IndexOf(geometry);
+    bindings.geometry = index < names.size() ? names[index] : std::string{};
+    return bindings;
+  };
+}
+
+struct BakeCounts {
+  std::size_t bakes = 0;
+  std::size_t constants = 0;
+};
+
+std::optional<BakeCounts> LowerOntoNamed(const Recipe &a_recipe,
+                                         std::vector<std::string> a_names) {
+  const RecipeGraph graph = RecipeGraph::Compile(a_recipe);
+  const auto *surface = Get<SurfaceOutput>(a_recipe.outputs.front());
+  std::vector<RenderStackRequest> requests;
+  for (std::size_t g = 0; g < a_names.size(); ++g)
+    requests.push_back(
+        {&graph, surface, 1, PlacementId{0}, 0, {SideRef{0}}, GeometryId{g}});
+  const auto plan =
+      BuildRenderPlan({}, requests, SharedMeshNamed(std::move(a_names)));
+  if (!plan)
+    return std::nullopt;
+  BakeCounts counts;
+  for (const auto &step : plan->steps) {
+    counts.bakes += Is<BakeMeshStep>(step.kind);
+    const auto *constant = Get<ConstantRenderStep>(step.kind);
+    counts.constants += constant && *constant == ConstantRenderStep{0.0f};
+  }
+  return counts;
+}
+
+void GeometryBakesLowerByName() {
+  const Recipe guarded = LayerMaskedBy(GeometryBake{"Cuirass*"});
+  const auto matched = LowerOntoNamed(guarded, {"Cuirass_1"});
+  Check(matched && matched->bakes == 1 && matched->constants == 0,
+        "a geometry bake on a named geometry bakes the mesh coverage");
+  const auto elsewhere = LowerOntoNamed(guarded, {"Belt"});
+  Check(elsewhere && elsewhere->bakes == 0 && elsewhere->constants == 1,
+        "a geometry bake on another geometry lowers to a constant 0");
+  const auto mixed = LowerOntoNamed(guarded, {"Cuirass_1", "Belt"});
+  Check(mixed && mixed->bakes == 1 && mixed->constants == 1,
+        "one mesh under two names keys the bake apart by the name's match");
+  const auto both = LowerOntoNamed(guarded, {"Cuirass_1", "Cuirass_2"});
+  Check(both && both->bakes == 1,
+        "two names that both match share one coverage bake of one mesh");
+  const auto unguarded =
+      LowerOntoNamed(LayerMaskedBy(PartitionBake{}), {"Cuirass_1", "Belt"});
+  Check(unguarded && unguarded->bakes == 1 && unguarded->constants == 0,
+        "without a geometry bake the geometry name keys nothing apart");
+}
 }
 
 int main() {
@@ -568,6 +650,7 @@ int main() {
         RecipeGraph::Compile(*loaded.recipe));
     recipes.push_back({*loaded.recipe, std::move(graph)});
   }
+  GeometryBakesLowerByName();
   ContentKeysMarkOnlyStaticTextureSteps(recipes);
   TextureReadsAreSampledDirectly(recipes);
   ImagesReadOnlyBySamplingAreDirect();

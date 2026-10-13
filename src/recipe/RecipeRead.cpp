@@ -583,15 +583,30 @@ std::optional<BakeKind> BoneWeightBakeFrom(const json &a_v,
   return bw;
 }
 
+std::optional<BakeKind> GeometryBakeFrom(const json &a_v,
+                                         const Reporter &a_ctx) {
+  if (!a_v.is_string()) {
+    a_ctx.Error("'geometry' names a geometry or a glob");
+    return std::nullopt;
+  }
+  return GeometryBake{a_v.get<std::string>()};
+}
+
+bool IsParameterisedBake(const BakeKind &a_kind) {
+  return Is<PartitionBake>(a_kind) || Is<BoneWeightBake>(a_kind) ||
+         Is<GeometryBake>(a_kind);
+}
+
 template <>
 std::optional<BakeSource>
 ParseSourceAlternative<BakeSource>(const json &a_v, const Reporter &a_ctx) {
   BakeSource k;
   if (a_v.is_string()) {
     const auto bare = DefaultBakeKind(a_v.get<std::string>());
-    if (!bare || Is<PartitionBake>(*bare) || Is<BoneWeightBake>(*bare)) {
-      a_ctx.Error(std::format("'bake' is one of {}, or {{\"partition\": slot}} "
-                              "or {{\"boneWeight\": [bones]}}",
+    if (!bare || IsParameterisedBake(*bare)) {
+      a_ctx.Error(std::format("'bake' is one of {}, or {{\"partition\": "
+                              "slot}}, {{\"boneWeight\": [bones]}} or "
+                              "{{\"geometry\": name}}",
                               Choices(kBakeKindWords)));
       return std::nullopt;
     }
@@ -607,6 +622,8 @@ ParseSourceAlternative<BakeSource>(const json &a_v, const Reporter &a_ctx) {
     bake = PartitionBakeFrom(*inner->value, a_ctx);
   } else if (inner->key == "boneWeight") {
     bake = BoneWeightBakeFrom(*inner->value, a_ctx);
+  } else if (inner->key == "geometry") {
+    bake = GeometryBakeFrom(*inner->value, a_ctx);
   } else {
     a_ctx.Error(std::format("unknown bake '{}'", inner->key));
     return std::nullopt;

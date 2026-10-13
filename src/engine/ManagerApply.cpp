@@ -129,6 +129,7 @@ LiveGeometry MakeGeometry(RE::BSGeometry *a_geometry,
   bound.inputs.geometry = RE::NiPointer{a_geometry};
   bound.inputs.root = RE::NiPointer{a_root};
   bound.inputs.itemHash = a_itemHash;
+  bound.inputs.name = bound.name;
   return bound;
 }
 

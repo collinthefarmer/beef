@@ -192,6 +192,13 @@ class RecipeContractTests(unittest.TestCase):
             with self.subTest(depth=depth):
                 self.check_case(recipe(meta=nested), True, depth == 32)
 
+    def test_geometry_bake_names_a_geometry(self):
+        for bake, valid in (({'geometry': 'BonemoldCuirass_1'}, True), ({'geometry': '*Cuirass*'}, True),
+                            ({'geometry': ''}, False), ({'geometry': 3}, False),
+                            ('geometry', False), ({'geometry': 'a', 'partition': 32}, False)):
+            with self.subTest(bake=bake):
+                self.check_case(recipe(sources={'cuirass': {'bake': bake}}), valid, valid)
+
     def test_bone_names_are_nonempty(self):
         for bones, valid in (([], False), ([''], False), (['NPC Spine [Spn0]'], True)):
             with self.subTest(bones=bones):

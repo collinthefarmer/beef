@@ -27,6 +27,7 @@ struct IdentityFacts {
   float itemHash = 0.0f;
   std::array<float, kEnchantmentFieldCount> enchantment{};
   MatchedShaderFacts shader;
+  std::string geometryName;
 };
 
 [[nodiscard]] const std::string &
