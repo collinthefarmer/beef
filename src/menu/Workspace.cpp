@@ -115,8 +115,12 @@ void PickSubjectWithRemove(
   });
 }
 
+std::string SurfaceScope(Surface a_surface) {
+  return std::format("surface-{}", SurfaceName(a_surface));
+}
+
 void DrawSurfaceAdd(const Frame &a_frame, Surface a_surface) {
-  ImGui::PushID(static_cast<int>(a_surface));
+  ImGui::PushID(SurfaceScope(a_surface).c_str());
   if (AddButton()) {
     ImGui::OpenPopup("add-output");
   }
@@ -211,7 +215,7 @@ void DrawOutputNode(const Frame &a_frame, const Studio::OutputRow &a_output,
   if (!outputMatches && !layerMatches) {
     return;
   }
-  ImGui::PushID(static_cast<int>(a_output.index));
+  ImGui::PushID(std::format("output-{}", a_output.index).c_str());
   PickSubjectWithRemove(title.c_str(), Studio::OutputSubject{a_output.index},
                         a_frame, [&] {
                           Studio::Post(*a_frame.intents, a_frame.recipe->id,
@@ -465,7 +469,7 @@ void SurfaceLabel(std::string_view a_text, bool a_lit) {
 }
 
 void DrawSurfaceRemove(const Frame &a_frame, Surface a_surface) {
-  ImGui::PushID(static_cast<int>(a_surface));
+  ImGui::PushID(SurfaceScope(a_surface).c_str());
   const bool clicked = RemoveButton(0);
   ImGui::PopID();
   if (!clicked) {
