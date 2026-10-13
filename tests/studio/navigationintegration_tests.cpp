@@ -184,6 +184,25 @@ int main() {
           "load reset does not invent acknowledgments for pending operations");
   }
   {
+    MenuState state;
+    PieceRef worn{20, 0x0E0829, false};
+    Reduce(state, CreateRecipe{"cuirass", RecipeKey{}, {}, worn});
+    ResolveEditorSelection(state, Snapshot{});
+    Check(state.pendingPiece.has_value(),
+          "a recipe made from a worn piece waits for that piece to appear");
+    Snapshot snapshot;
+    PieceRow piece;
+    piece.ref = worn;
+    RecipeRow recipe;
+    recipe.id = "cuirass";
+    piece.recipes.push_back(recipe);
+    snapshot.pieces.push_back(piece);
+    ResolveEditorSelection(state, snapshot);
+    Check(!state.pendingPiece && state.selection.piece.SamePiece(worn) &&
+              state.selection.recipeID == "cuirass",
+          "the piece a recipe was made from is selected once it appears");
+  }
+  {
     MenuState state = EditingLayer();
     Snapshot snapshot;
     PieceRow piece;

@@ -172,6 +172,16 @@ void RecordRender(PlacedOutput &a_output, StackRender a_render) {
   }
 }
 
+void TraceStackFailure(const RenderOutput &a_stack, std::size_t a_output) {
+  const std::span<const Diagnostic> problems = a_stack.Diagnostics();
+  Trace::EmitSafely(
+      Trace::Event::kApplication,
+      {{"action", "stack_failed"},
+       {"output", std::to_string(a_output)},
+       {"problem", problems.empty() ? std::string{"the stack has no render"}
+                                    : problems.front().message}});
+}
+
 StackRender RenderStackOutput(PlacedOutput &a_output,
                               const LayerFilter &a_filter,
                               const StackBase &a_base) {
@@ -181,6 +191,9 @@ StackRender RenderStackOutput(PlacedOutput &a_output,
   const StackRender outcome =
       Compositor::GetSingleton()->Render(*a_output.stack, a_filter, a_base);
   RecordRender(a_output, outcome);
+  if (outcome == StackRender::kFailed) {
+    TraceStackFailure(*a_output.stack, a_output.index);
+  }
   return outcome;
 }
 

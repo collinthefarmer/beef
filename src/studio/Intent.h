@@ -194,6 +194,7 @@ struct CreateRecipe {
   std::string recipeID;
   RecipeKey key;
   std::string geometry;
+  std::optional<PieceRef> piece;
 };
 struct RenameRecipe {
   std::string from;

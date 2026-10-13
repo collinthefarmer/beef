@@ -289,6 +289,7 @@ struct PieceRow {
 };
 
 struct WornPieceRow {
+  PieceRef piece;
   FormKey armor;
   std::string armorName;
   std::optional<std::string> enchantment;

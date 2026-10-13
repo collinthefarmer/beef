@@ -279,6 +279,7 @@ struct ReduceVisitor {
   }
 
   void operator()(const PickPiece &a_i) {
+    state.pendingPiece.reset();
     state.previewPin.reset();
     if (state.paint) {
       operator()(SetMode{Mode::kCompose});
@@ -577,7 +578,10 @@ struct ReduceVisitor {
     }
   }
 
-  void operator()(const CreateRecipe &a_i) { FocusRecipe(a_i.recipeID); }
+  void operator()(const CreateRecipe &a_i) {
+    FocusRecipe(a_i.recipeID);
+    state.pendingPiece = a_i.piece;
+  }
 
   void operator()(const DuplicateRecipe &a_i) { FocusRecipe(a_i.to); }
 
@@ -818,11 +822,30 @@ bool AcceptIntent(const MenuState &a_state, const Intent &a_intent) {
   return true;
 }
 
+namespace {
+void AdoptPendingPiece(MenuState &a_state, const Snapshot &a_snapshot) {
+  if (!a_state.pendingPiece) {
+    return;
+  }
+  const auto found =
+      std::ranges::find_if(a_snapshot.pieces, [&](const PieceRow &a_piece) {
+        return a_piece.ref.SamePiece(*a_state.pendingPiece) &&
+               !a_piece.ref.firstPerson;
+      });
+  if (found == a_snapshot.pieces.end()) {
+    return;
+  }
+  a_state.selection.piece = found->ref;
+  a_state.pendingPiece.reset();
+}
+}
+
 void ResolveEditorSelection(MenuState &a_state, const Snapshot &a_snapshot) {
   if (!a_state.selection.property) {
     a_state.revealedProperty.reset();
   }
   const Selection previous = a_state.selection;
+  AdoptPendingPiece(a_state, a_snapshot);
   ResolveSelection(a_state.selection, a_snapshot);
   if (previous.piece != a_state.selection.piece ||
       previous.recipeID != a_state.selection.recipeID) {

@@ -76,8 +76,10 @@ std::string FormNameOf(const RE::TESForm &a_form) {
   return editorID.empty() ? FormKeyFor(a_form).ToString() : editorID;
 }
 
-Studio::WornPieceRow WornPieceRowOf(const WornItem &a_item) {
+Studio::WornPieceRow WornPieceRowOf(RE::FormID a_actor,
+                                    const WornItem &a_item) {
   Studio::WornPieceRow row;
+  row.piece = {a_actor, a_item.armor.GetFormID(), false};
   row.armor = FormKeyFor(a_item.armor);
   const char *name = a_item.armor.GetName();
   row.armorName = name ? name : "";
@@ -97,7 +99,7 @@ std::vector<Studio::WornPieceRow> WornPieceRowsOf(RE::FormID a_actorID) {
   }
   std::vector<Studio::WornPieceRow> rows;
   for (const WornItem &item : WornItemsOf(*actor)) {
-    rows.push_back(WornPieceRowOf(item));
+    rows.push_back(WornPieceRowOf(actor->GetFormID(), item));
   }
   return Studio::OrderedWornPieces(std::move(rows));
 }
