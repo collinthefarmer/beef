@@ -564,6 +564,30 @@ int main() {
 
   {
     Recipe recipe;
+    recipe.sources = {
+        Source{"albedo", MaterialSource{MaterialChannel::kDiffuseRgb}},
+        Source{"rough", MaterialSource{MaterialChannel::kRoughness}}};
+    const auto graph = RecipeGraph::Compile(recipe);
+    const RowTypes rows{recipe, graph};
+    Layer scalarMask;
+    scalarMask.source = Vec3{1.0f, 0.0f, 0.0f};
+    scalarMask.mask = Ref{"rough"};
+    Check(CheckLayer(rows, scalarMask, Slot::kDiffuse, "w").empty(),
+          "a single-channel source can mask a layer directly");
+    Layer colourMask = scalarMask;
+    colourMask.mask = Ref{"albedo"};
+    Check(HasMessage(CheckLayer(rows, colourMask, Slot::kDiffuse, "w"),
+                     "not a single channel"),
+          "a colour source cannot mask a layer");
+    Layer missingMask = scalarMask;
+    missingMask.mask = Ref{"nothing"};
+    Check(HasMessage(CheckLayer(rows, missingMask, Slot::kDiffuse, "w"),
+                     "unknown mask or source"),
+          "an unknown mask name is still refused");
+  }
+
+  {
+    Recipe recipe;
     const auto graph = RecipeGraph::Compile(recipe);
     const RowTypes rows{recipe, graph};
 

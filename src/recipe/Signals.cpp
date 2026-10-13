@@ -361,6 +361,27 @@ std::vector<Diagnostic> CheckMask(const RowTypes &a_rows, const Mask &a_mask) {
                               MaskWhere(a_mask.name));
 }
 
+namespace {
+void CheckLayerMask(const RowTypes &a_rows, const Reporter &a_report,
+                    const std::string &a_name) {
+  if (a_rows.recipe.FindMask(a_name)) {
+    return;
+  }
+  const Source *source = a_rows.recipe.FindSource(a_name);
+  if (!source) {
+    a_report.Error(
+        std::format("'mask' names unknown mask or source '@{}'", a_name));
+    return;
+  }
+  if (SourceType(*source) != ValueType::kScalar) {
+    a_report.Error(std::format(
+        "'mask' names source '@{}', which is not a single channel; pick one "
+        "channel of it or wrap it in a mask row",
+        a_name));
+  }
+}
+}
+
 std::vector<Diagnostic> CheckLayer(const RowTypes &a_rows, const Layer &a_layer,
                                    Slot a_slot, std::string_view a_where) {
   std::vector<Diagnostic> out = LayerDiagnostics(a_rows, a_layer, a_where);
@@ -378,9 +399,8 @@ std::vector<Diagnostic> CheckLayer(const RowTypes &a_rows, const Layer &a_layer,
   if (a_layer.color) {
     CheckColor(a_rows, report, *a_layer.color, "color");
   }
-  if (a_layer.mask && !a_rows.recipe.FindMask(a_layer.mask->name)) {
-    report.Error(
-        std::format("'mask' names unknown mask '@{}'", a_layer.mask->name));
+  if (a_layer.mask) {
+    CheckLayerMask(a_rows, report, a_layer.mask->name);
   }
   if (!BlendAllowed(a_slot, a_layer.blend)) {
     report.Error(std::format("blend '{}' is valid only on the normal stack",

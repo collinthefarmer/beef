@@ -184,6 +184,11 @@ std::optional<Inspector> InspectOutput(const RecipeRow &a_recipe,
   for (const auto &mask : a_recipe.maskRows) {
     inspector.masks.push_back(mask.name);
   }
+  for (const auto &source : a_recipe.sourceRows) {
+    if (source.type == ValueType::kScalar) {
+      inspector.masks.push_back(source.name);
+    }
+  }
   for (const auto &curve : a_recipe.curves) {
     inspector.curves.push_back(curve.name);
   }
