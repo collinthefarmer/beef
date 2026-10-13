@@ -51,6 +51,7 @@ holds `RecipeRow`s, and a `RecipeRow` holds its resource, **geometry** and
 |---|---|---|
 | `Snapshot` | The root: `Status`, `View`, the `PieceRow`s, the document `RecipeRow`s (`documents`), the `LoadedRecipeRow`s, the edit, file, paint and gesture results, the `ApplicationRecord`s, and the game-object catalogs. | `Snapshot.h` |
 | `PieceRow` | One worn **piece**: its `PieceRef`, actor and armor names, `KeyChoice` list, diffuse paths, `RecipeRow`s, the `RecipeSelection` outcomes, and `previewOverride`. | `Snapshot.h` |
+| `WornPieceRow` | One armor piece that the viewed actor wears, with or without an enchantment or a matching recipe: its armor form, armor name, optional enchantment name, and `KeyChoice` list. `Snapshot::worn` holds them in the order that `OrderedWornPieces` gives. | `Snapshot.h` |
 | `RecipeRow` | One **recipe**: id, keys, priority, merge mode, clock speed, the **signal**, **curve**, **mask** and **source** rows, geometries, outputs, light and shell rows, problems, undo and redo depths, `documentRevision`, and `relationships`. | `Snapshot.h` |
 | `GeometryRow` | One **geometry**: its mesh facts (partitions, bones, islands, clusters), material and shell `SlotRow`s, source and mask `PictureRow`s, and its `OutputRow`s. | `Snapshot.h` |
 | `OutputRow` | One **output**: target, surface, **slot**, replace and merge flags, selector, `ScalarRow`s, `LayerRow`s, and its composite `TextureHandle`. | `Snapshot.h` |
@@ -251,6 +252,7 @@ them, and `menu/InputBrowser.cpp` reads them.
 |---|---|---|
 | `GameObjectCatalog`, `GameObjectCandidate`, `GameObjectKind` | One catalog of candidates (actor values, anim events, keywords, nodes, textures, and five more kinds). `Snapshot::catalogs` holds one per kind. | `GameObjects.h` |
 | `WornTextures`, `MaterialTexture`, `EffectShaderTextures` | The texture paths the viewed actor's materials and matched effect shaders use. `TextureCatalogOf` turns them into the texture catalog; `NodeCatalogOf` builds the node catalog from skin bones and skeleton nodes. | `ActorCatalogs.h` |
+| `KeywordKeysToAdd`, `ArmorKeyOf` | `KeywordKeysToAdd` lists the keyword keys of a worn piece that a recipe does not have yet, in the piece's order and without duplicates. `ArmorKeyOf` gives the armor key that keys a new recipe to a worn piece. | `WornPieces.h` |
 | `ActorValueSample`, `InputMeasureInfo` | One actor value sampled under each `Measure`. `kInputMeasures` describes each measure. | `InputCatalog.h` |
 | `InputConnectionSpec`, `InputConnectionKind` | A request to connect a field to an actor value. `CreateInput` and `ConnectInput` turn it into an `EditBatch`. | `InputConnections.h` |
 | `ResponseGraph` | 65 sampled values of one signal over time, with the live value and a caption. `BuildResponseGraph` builds it. | `ResponseGraph.h` |
@@ -312,7 +314,7 @@ path: `KeepPaint` reaches `RecipeEditor::KeepPaint`, which calls
 | Paint mode | `PaintSession.h/.cpp`, `PaintCommit.h` |
 | Selection, board and navigation | `Selection.h/.cpp`, `Board.h/.cpp`, `Panels.h/.cpp`, `Navigation.h/.cpp`, `SelectorEdit.h/.cpp` |
 | Engine-side editor records | `DocumentRevisions.h/.cpp`, `History.h`, `Gesture.h/.cpp`, `ApplicationRecord.h/.cpp`, `ResolveOutput.h/.cpp` |
-| Game catalogs and inputs | `GameObjects.h/.cpp`, `ActorCatalogs.h/.cpp`, `InputCatalog.h/.cpp`, `InputConnections.h/.cpp`, `ResponseGraph.h/.cpp` |
+| Game catalogs and inputs | `GameObjects.h/.cpp`, `ActorCatalogs.h/.cpp`, `WornPieces.h/.cpp`, `InputCatalog.h/.cpp`, `InputConnections.h/.cpp`, `ResponseGraph.h/.cpp` |
 
 ## See also
 

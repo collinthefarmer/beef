@@ -15,6 +15,7 @@
 #include "studio/SelectorEdit.h"
 #include "studio/Snapshot.h"
 #include "studio/View.h"
+#include "studio/WornPieces.h"
 
 #include <algorithm>
 #include <cstddef>
@@ -23,6 +24,7 @@
 #include <optional>
 #include <span>
 #include <string>
+#include <utility>
 #include <vector>
 
 #pragma clang diagnostic push
@@ -206,6 +208,52 @@ void DrawKeyAdd(const Frame &a_frame, const Studio::PieceRow &a_piece,
   ImGui::EndCombo();
 }
 
+void PostKeywordKeys(const Studio::RecipeRow &a_recipe,
+                     std::span<const RecipeKey> a_keys,
+                     Studio::Intents &a_out) {
+  std::vector<Studio::RecipeEdit> edits;
+  for (const RecipeKey &key : a_keys) {
+    edits.push_back(Studio::AddKey{key});
+  }
+  Studio::Post(a_out, Studio::EditRecipe{a_recipe.id, std::move(edits)});
+}
+
+void DrawEquippedRow(const Studio::WornPieceRow &a_piece,
+                     const Studio::RecipeRow &a_recipe,
+                     Studio::Intents &a_out) {
+  const std::vector<RecipeKey> keys =
+      Studio::KeywordKeysToAdd(a_recipe.keys, a_piece.keys);
+  const std::string label = Studio::KeywordOfferLabel(a_piece, keys.size());
+  Disabled(keys.empty(), [&]() {
+    if (ImGui::Selectable(label.c_str(), false) && !keys.empty()) {
+      PostKeywordKeys(a_recipe, keys, a_out);
+      ImGui::CloseCurrentPopup();
+    }
+  });
+}
+
+void AddFromEquippedButton(const Frame &a_frame,
+                           const Studio::RecipeRow &a_recipe,
+                           Studio::Intents &a_out) {
+  if (ImGui::Button("Add from Equipped")) {
+    ImGui::OpenPopup("add-from-equipped");
+  }
+  Tooltip("add every keyword of a worn piece as a key");
+  if (!ImGui::BeginPopup("add-from-equipped")) {
+    return;
+  }
+  const std::vector<Studio::WornPieceRow> &worn = a_frame.snapshot->worn;
+  if (worn.empty()) {
+    Dim("the viewed actor wears no armor");
+  }
+  for (std::size_t i = 0; i < worn.size(); ++i) {
+    ImGui::PushID(static_cast<int>(i));
+    DrawEquippedRow(worn[i], a_recipe, a_out);
+    ImGui::PopID();
+  }
+  ImGui::EndPopup();
+}
+
 void DrawKeys(const Frame &a_frame, const Studio::PieceRow &a_piece,
               const Studio::RecipeRow &a_recipe, Studio::Intents &a_out) {
   auto table = Table::Begin("keys",
@@ -224,6 +272,7 @@ void DrawKeys(const Frame &a_frame, const Studio::PieceRow &a_piece,
   table.Cell();
   table.Cell();
   table.End();
+  AddFromEquippedButton(a_frame, a_recipe, a_out);
   Dim("Every keyword is required. If other keys are listed, at least one must "
       "also match.");
   Dim("magicEffect and effectShader keys consider every enchantment effect.");
@@ -289,6 +338,39 @@ void CreateForSelectedArmor(const Frame &a_frame, const std::string &a_name,
   });
 }
 
+std::optional<RecipeKey> WornPieceCombo(const Frame &a_frame) {
+  const std::vector<Studio::WornPieceRow> &worn = a_frame.snapshot->worn;
+  std::optional<RecipeKey> chosen;
+  NextItemWidth(Studio::Width::Px(320.0f));
+  if (!ImGui::BeginCombo("From a worn piece", "choose a worn piece")) {
+    return chosen;
+  }
+  if (worn.empty()) {
+    Dim("the viewed actor wears no armor");
+  }
+  for (std::size_t i = 0; i < worn.size(); ++i) {
+    const std::optional<RecipeKey> key = Studio::ArmorKeyOf(worn[i]);
+    ImGui::PushID(static_cast<int>(i));
+    if (key &&
+        ImGui::Selectable(Studio::WornPieceLabel(worn[i]).c_str(), false)) {
+      chosen = key;
+    }
+    ImGui::PopID();
+  }
+  ImGui::EndCombo();
+  return chosen;
+}
+
+void CreateFromWornPiece(const Frame &a_frame, const std::string &a_name,
+                         bool a_nameValid) {
+  Disabled(!a_nameValid, [&] {
+    if (const std::optional<RecipeKey> key = WornPieceCombo(a_frame)) {
+      Studio::Post(*a_frame.intents, Studio::CreateRecipe{a_name, *key, {}});
+      ImGui::CloseCurrentPopup();
+    }
+  });
+}
+
 void NewRecipeButton(const Frame &a_frame) {
   if (ImGui::Button("New recipe")) {
     ImGui::OpenPopup("new-recipe");
@@ -338,6 +420,7 @@ void NewRecipeButton(const Frame &a_frame) {
     }
   });
   CreateForSelectedArmor(a_frame, name, nameValid);
+  CreateFromWornPiece(a_frame, name, nameValid);
   ImGui::EndPopup();
 }
 

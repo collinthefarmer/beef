@@ -15,14 +15,10 @@
 
 namespace BetterEnchantmentEffects {
 namespace {
-struct WornItem {
-  const RE::TESObjectARMO &armor;
-  RE::MagicItem *enchantment = nullptr;
-};
-
 bool WornList(const RE::ExtraDataList &a_list) {
   return a_list.HasType(RE::ExtraDataType::kWorn) ||
          a_list.HasType(RE::ExtraDataType::kWornLeft);
+}
 }
 
 std::vector<WornItem> WornItemsOf(RE::Actor &a_actor) {
@@ -32,7 +28,7 @@ std::vector<WornItem> WornItemsOf(RE::Actor &a_actor) {
   });
   for (auto &[object, pair] : inventory) {
     auto &[count, entry] = pair;
-    const auto *armor = object ? object->As<RE::TESObjectARMO>() : nullptr;
+    auto *armor = object ? object->As<RE::TESObjectARMO>() : nullptr;
     if (!armor || count <= 0 || !entry || !entry->extraLists) {
       continue;
     }
@@ -57,6 +53,7 @@ std::vector<WornItem> WornItemsOf(RE::Actor &a_actor) {
   return worn;
 }
 
+namespace {
 const WornItem *WornItemFor(std::span<const WornItem> a_worn,
                             const RE::TESObjectARMO &a_armor) {
   const auto found = std::ranges::find_if(a_worn, [&](const WornItem &a_item) {

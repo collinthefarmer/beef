@@ -8,6 +8,7 @@
 #include "engine/GameObjectService.h"
 #include "engine/RecipeStore.h"
 #include "engine/Tweaks.h"
+#include "engine/WornKeys.h"
 #include "render/Binding.h"
 #include "render/Compositor.h"
 #include "render/SourceSampling.h"
@@ -17,6 +18,7 @@
 #include "studio/Panels.h"
 #include "studio/RecipeSnapshot.h"
 #include "studio/Rows.h"
+#include "studio/WornPieces.h"
 
 #include <algorithm>
 #include <cstddef>
@@ -52,6 +54,52 @@ void PublishCatalogs(Studio::Snapshot &a_out, std::uint32_t a_actor,
       BuildActorValueSamples(*a_out.catalogs[static_cast<std::size_t>(
                                  Studio::GameObjectKind::kActorValue)],
                              a_actor);
+}
+
+std::vector<Studio::KeyChoice> KeyChoiceRowsOf(const WornPiece &a_keys) {
+  std::vector<Studio::KeyChoice> rows;
+  for (const PieceKey &source : KeyChoicesOf(a_keys)) {
+    const RE::TESForm *form = LookupForm(source.form);
+    const std::string editorID = form ? EditorIdOf(*form) : std::string{};
+    rows.push_back(
+        {source, editorID.empty() ? source.form.ToString() : editorID});
+  }
+  return rows;
+}
+
+std::string FormNameOf(const RE::TESForm &a_form) {
+  const char *name = a_form.GetName();
+  if (name && *name) {
+    return name;
+  }
+  const std::string editorID = EditorIdOf(a_form);
+  return editorID.empty() ? FormKeyFor(a_form).ToString() : editorID;
+}
+
+Studio::WornPieceRow WornPieceRowOf(const WornItem &a_item) {
+  Studio::WornPieceRow row;
+  row.armor = FormKeyFor(a_item.armor);
+  const char *name = a_item.armor.GetName();
+  row.armorName = name ? name : "";
+  if (a_item.enchantment) {
+    row.enchantment = FormNameOf(*a_item.enchantment);
+  }
+  row.keys = KeyChoiceRowsOf(WornKeysOf(&a_item.armor, a_item.enchantment));
+  return row;
+}
+
+std::vector<Studio::WornPieceRow> WornPieceRowsOf(RE::FormID a_actorID) {
+  RE::NiPointer<RE::Actor> actor{
+      a_actorID != 0 ? RE::TESForm::LookupByID<RE::Actor>(a_actorID)
+                     : RE::PlayerCharacter::GetSingleton()};
+  if (!actor || actor->IsDeleted()) {
+    return {};
+  }
+  std::vector<Studio::WornPieceRow> rows;
+  for (const WornItem &item : WornItemsOf(*actor)) {
+    rows.push_back(WornPieceRowOf(item));
+  }
+  return Studio::OrderedWornPieces(std::move(rows));
 }
 
 Studio::TextureHandle TextureHandleOf(RE::NiSourceTexture *a_texture) {
@@ -392,15 +440,7 @@ struct PieceSnapshotBuilder {
     row.actorName = actor && actor->GetName() ? actor->GetName() : "?";
     row.armorName = piece.armorName;
     if (flatStart < state.matches.geometries.size()) {
-      for (const PieceKey &source :
-           KeyChoicesOf(state.matches.geometries[flatStart].keys)) {
-        Studio::KeyChoice key;
-        key.key = source;
-        const RE::TESForm *form = LookupForm(source.form);
-        const std::string editorID = form ? EditorIdOf(*form) : std::string{};
-        key.text = editorID.empty() ? source.form.ToString() : editorID;
-        row.keys.push_back(std::move(key));
-      }
+      row.keys = KeyChoiceRowsOf(state.matches.geometries[flatStart].keys);
       if (full) {
         static_cast<void>(Resolve(state.matches.geometries[flatStart].keys,
                                   LoadedRecipes(), ref.actorID,
@@ -554,6 +594,7 @@ Manager::BuildSnapshot(const std::optional<Studio::PieceRef> &a_request,
   const RE::FormID actor = a_request ? a_request->actorID : 0;
   const auto live = live_.find(actor);
   PublishCatalogs(out, actor, live != live_.end() ? &live->second : nullptr);
+  out.worn = WornPieceRowsOf(actor);
   AppendLoadedRecipes(out);
   PublishDocument(out, a_document);
   return out;

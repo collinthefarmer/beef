@@ -32,6 +32,11 @@ struct ModelTable {
   std::uint64_t nextToken = 0;
 };
 
+struct WornItem {
+  RE::TESObjectARMO &armor;
+  RE::MagicItem *enchantment = nullptr;
+};
+
 struct ObserveRequest {
   RE::Actor &actor;
   const Settings &settings;
@@ -40,6 +45,7 @@ struct ObserveRequest {
   std::uint32_t nowMs = 0;
 };
 
+[[nodiscard]] std::vector<WornItem> WornItemsOf(RE::Actor &a_actor);
 [[nodiscard]] bool Loaded3D(const RE::Actor &a_actor) noexcept;
 [[nodiscard]] std::optional<float> DistanceToPlayer(const RE::Actor &a_actor);
 [[nodiscard]] std::optional<float> ScreenFraction(RE::Actor &a_actor);

@@ -286,6 +286,13 @@ struct PieceRow {
   bool previewOverride = false;
 };
 
+struct WornPieceRow {
+  FormKey armor;
+  std::string armorName;
+  std::optional<std::string> enchantment;
+  std::vector<KeyChoice> keys;
+};
+
 struct LoadedRecipeRow {
   std::string id;
   std::vector<RecipeKey> keys;
@@ -324,6 +331,7 @@ struct Snapshot {
   std::optional<PaintCommitResult> paintCommit;
   std::optional<PaintUpdateResult> paintUpdate;
   std::vector<PieceRow> pieces;
+  std::vector<WornPieceRow> worn;
   std::vector<std::string> loaded;
   std::vector<LoadedRecipeRow> loadedRecipes;
   std::vector<RecipeRow> documents;
