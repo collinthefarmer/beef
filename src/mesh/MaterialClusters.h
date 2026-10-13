@@ -17,8 +17,15 @@ struct MaterialTexel {
   float reflectance = 0.0f;
   float luma = 0.0f;
   Vec3 diffuse{};
+  float detail = 0.0f;
   [[nodiscard]] bool operator==(const MaterialTexel &) const = default;
 };
+
+struct Chroma {
+  float orangeBlue = 0.5f;
+  float greenMagenta = 0.5f;
+};
+[[nodiscard]] Chroma ChromaOf(const Vec3 &a_diffuse) noexcept;
 
 inline constexpr std::size_t kMaxSampleTexels = 64 * 64;
 struct MaterialSample {

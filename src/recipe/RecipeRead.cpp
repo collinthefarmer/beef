@@ -667,11 +667,20 @@ bool ClusterWeightsFrom(Reader &a_r, MaterialClustersSource &a_k,
   }
   if (!w->is_object()) {
     a_ctx.Error("'weights' is an object of roughness, metallic, occlusion, "
-                "reflectance, luma and color");
+                "reflectance, luma, chroma and detail");
     return false;
   }
   bool ok = true;
   Reader wr(*w, a_ctx);
+  if (auto legacy = wr.Number(kLegacyColorWeight)) {
+    if (*legacy < 0.0f || *legacy > kMaxChannelWeight) {
+      a_ctx.Error(std::format("'weights.{}' is 0..{}", kLegacyColorWeight,
+                              kMaxChannelWeight));
+      ok = false;
+    } else {
+      a_k.settings.weights.chroma = *legacy;
+    }
+  }
   for (const ClusterWeightField &field : kClusterWeightFields) {
     if (auto x = wr.Number(field.name)) {
       if (*x < 0.0f || *x > kMaxChannelWeight) {

@@ -168,7 +168,8 @@ struct MaterialClustersSourceRow {
   std::string weights;
   std::string seed;
   std::string iterations;
-  std::string colorWeight = "1";
+  std::string chromaWeight = "1";
+  std::string detailWeight = "1";
   std::string pick;
   std::string areaBias = "1";
 };

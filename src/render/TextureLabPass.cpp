@@ -1216,9 +1216,9 @@ bool TextureLab::RenderClusters(RenderTarget &a_target,
     constants.centroidRmaos[k][1] = cluster.centroid.metallic;
     constants.centroidRmaos[k][2] = cluster.centroid.occlusion;
     constants.centroidRmaos[k][3] = cluster.centroid.reflectance;
-    constants.centroidDiffuse[k][0] = cluster.centroid.diffuse.x;
-    constants.centroidDiffuse[k][1] = cluster.centroid.diffuse.y;
-    constants.centroidDiffuse[k][2] = cluster.centroid.diffuse.z;
+    const Chroma chroma = ChromaOf(cluster.centroid.diffuse);
+    constants.centroidChroma[k][0] = chroma.orangeBlue;
+    constants.centroidChroma[k][1] = chroma.greenMagenta;
     constants.centroidLuma[k][0] = cluster.centroid.luma;
     constants.centroidLuma[k][1] = static_cast<float>(cluster.id);
   }
@@ -1228,7 +1228,7 @@ bool TextureLab::RenderClusters(RenderTarget &a_target,
   constants.weights[2] = scale(w.occlusion);
   constants.weights[3] = scale(w.reflectance);
   constants.misc[0] = scale(w.luma);
-  constants.misc[2] = scale(w.color) / 3.0f;
+  constants.misc[2] = scale(w.chroma);
   constants.misc[1] = static_cast<float>(a_analysis.clusters.size());
   constants.misc[3] = a_picked ? static_cast<float>(*a_picked) + 1.0f : 0.0f;
 

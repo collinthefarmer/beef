@@ -65,7 +65,7 @@ struct alignas(16) RippleConstants {
 struct alignas(16) ClusterConstants {
   float centroidRmaos[kMaxMaterialClusters][4];
   float centroidLuma[kMaxMaterialClusters][4];
-  float centroidDiffuse[kMaxMaterialClusters][4];
+  float centroidChroma[kMaxMaterialClusters][4];
   float weights[4];
   float misc[4];
 };

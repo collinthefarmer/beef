@@ -62,15 +62,10 @@ constexpr std::size_t kAxes = 8;
 using Axes = std::array<float, kAxes>;
 
 [[nodiscard]] Axes AxesOf(const MaterialTexel &a_texel) noexcept {
+  const Chroma chroma = ChromaOf(a_texel.diffuse);
   return Axes{a_texel.roughness,   a_texel.metallic, a_texel.occlusion,
-              a_texel.reflectance, a_texel.luma,     a_texel.diffuse.x,
-              a_texel.diffuse.y,   a_texel.diffuse.z};
-}
-
-[[nodiscard]] MaterialTexel TexelOf(const Axes &a_axes) noexcept {
-  return MaterialTexel{a_axes[0], a_axes[1],
-                       a_axes[2], a_axes[3],
-                       a_axes[4], Vec3{a_axes[5], a_axes[6], a_axes[7]}};
+              a_texel.reflectance, a_texel.luma,     chroma.orangeBlue,
+              chroma.greenMagenta, a_texel.detail};
 }
 
 [[nodiscard]] float Finite01(float a_value) noexcept {
@@ -85,14 +80,14 @@ using Axes = std::array<float, kAxes>;
                        Finite01(a_texel.luma),
                        Vec3{Finite01(a_texel.diffuse.x),
                             Finite01(a_texel.diffuse.y),
-                            Finite01(a_texel.diffuse.z)}};
+                            Finite01(a_texel.diffuse.z)},
+                       Finite01(a_texel.detail)};
 }
 
 [[nodiscard]] Axes ScalesOf(const ChannelWeights &a_weights) noexcept {
-  const Axes raw{a_weights.roughness,    a_weights.metallic,
-                 a_weights.occlusion,    a_weights.reflectance,
-                 a_weights.luma,         a_weights.color / 3.0f,
-                 a_weights.color / 3.0f, a_weights.color / 3.0f};
+  const Axes raw{a_weights.roughness,   a_weights.metallic, a_weights.occlusion,
+                 a_weights.reflectance, a_weights.luma,     a_weights.chroma,
+                 a_weights.chroma,      a_weights.detail};
   Axes scales{};
   for (std::size_t i = 0; i < kAxes; ++i) {
     scales[i] = std::isfinite(raw[i]) && raw[i] > 0.0f ? raw[i] : 0.0f;
@@ -270,6 +265,48 @@ struct Clustering {
   return out;
 }
 
+[[nodiscard]] std::vector<MaterialTexel>
+MeanTexelsOf(const MaterialSample &a_sample, const Clustering &a_clustering) {
+  std::vector<MaterialTexel> sums(a_clustering.centroids.size());
+  std::vector<float> counts(a_clustering.centroids.size(), 0.0f);
+  const std::size_t texels = std::min(
+      {a_sample.texels.size(), a_clustering.owner.size(), kMaxSampleTexels});
+  for (std::size_t i = 0; i < texels; ++i) {
+    const std::size_t owner = a_clustering.owner[i];
+    if (owner >= sums.size()) {
+      continue;
+    }
+    const MaterialTexel texel = Sanitised(a_sample.texels[i]);
+    MaterialTexel &sum = sums[owner];
+    sum.roughness += texel.roughness;
+    sum.metallic += texel.metallic;
+    sum.occlusion += texel.occlusion;
+    sum.reflectance += texel.reflectance;
+    sum.luma += texel.luma;
+    sum.diffuse =
+        Vec3{sum.diffuse.x + texel.diffuse.x, sum.diffuse.y + texel.diffuse.y,
+             sum.diffuse.z + texel.diffuse.z};
+    sum.detail += texel.detail;
+    counts[owner] += 1.0f;
+  }
+  for (std::size_t c = 0; c < sums.size(); ++c) {
+    if (counts[c] <= 0.0f) {
+      continue;
+    }
+    const float n = counts[c];
+    MaterialTexel &mean = sums[c];
+    mean.roughness /= n;
+    mean.metallic /= n;
+    mean.occlusion /= n;
+    mean.reflectance /= n;
+    mean.luma /= n;
+    mean.diffuse =
+        Vec3{mean.diffuse.x / n, mean.diffuse.y / n, mean.diffuse.z / n};
+    mean.detail /= n;
+  }
+  return sums;
+}
+
 [[nodiscard]] std::vector<ClusterCount>
 RankedClusters(const Clustering &a_clustering) {
   std::vector<ClusterCount> counts(a_clustering.centroids.size());
@@ -289,6 +326,14 @@ RankedClusters(const Clustering &a_clustering) {
 }
 }
 
+Chroma ChromaOf(const Vec3 &a_diffuse) noexcept {
+  const float red = Finite01(a_diffuse.x);
+  const float green = Finite01(a_diffuse.y);
+  const float blue = Finite01(a_diffuse.z);
+  return Chroma{Clamp01(0.5f + red - blue),
+                Clamp01(0.5f + green - 0.5f * (red + blue))};
+}
+
 MaterialAnalysis ClusterMaterial(const MaterialSample &a_sample,
                                  const ClusterSettings &a_settings) {
   MaterialAnalysis out;
@@ -298,13 +343,14 @@ MaterialAnalysis ClusterMaterial(const MaterialSample &a_sample,
   }
   const std::vector<Axes> texels = TexelAxesOf(a_sample);
   const Clustering clustering = ClusterTexels(texels, a_settings);
+  const std::vector<MaterialTexel> centres = MeanTexelsOf(a_sample, clustering);
   for (const ClusterCount &count : RankedClusters(clustering)) {
-    if (count.members == 0 || count.centroid >= clustering.centroids.size()) {
+    if (count.members == 0 || count.centroid >= centres.size()) {
       continue;
     }
     MaterialCluster cluster;
     cluster.id = static_cast<std::uint8_t>(out.clusters.size());
-    cluster.centroid = TexelOf(clustering.centroids[count.centroid]);
+    cluster.centroid = centres[count.centroid];
     cluster.share =
         static_cast<float>(count.members) / static_cast<float>(texels.size());
     cluster.description = DescribeTexel(cluster.centroid);
@@ -440,10 +486,10 @@ ChannelWeights GuessedWeights(const std::vector<Axes> &a_texels) {
                           [](float a_weight) { return a_weight <= 0.0f; })) {
     return ChannelWeights{};
   }
-  const float colour =
-      std::min(weights[5] + weights[6] + weights[7], kMaxChannelWeight);
-  return ChannelWeights{weights[0], weights[1], weights[2],
-                        weights[3], weights[4], colour};
+  return ChannelWeights{weights[0], weights[1],
+                        weights[2], weights[3],
+                        weights[4], std::max(weights[5], weights[6]),
+                        weights[7]};
 }
 
 float Inertia(const std::vector<Axes> &a_texels, const Clustering &a_clustering,

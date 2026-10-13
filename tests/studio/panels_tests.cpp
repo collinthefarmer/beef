@@ -597,19 +597,19 @@ void TestOptionalFieldRefusals() {
 
 void TestClusterColor() {
   MaterialClustersSource clusters;
-  clusters.settings.weights.color = 2.5f;
+  clusters.settings.weights.chroma = 2.5f;
   const SourceRow row = SourceRowOf(Source{"clusters", clusters}, 0);
   const auto restored = SourceKindOf(row);
   Check(restored && *restored == SourceKind{clusters},
         "cluster source rows preserve diffuse color weight");
   const auto form = SourceForm(row, SignalNames{});
-  const auto *color = Field(form, "color");
+  const auto *color = Field(form, "chroma");
   Check(color && color->bind, "cluster sources expose color weighting");
   if (color && color->bind) {
     const auto edit = color->bind("0");
     const auto *set = edit ? Get<SetSource>(*edit) : nullptr;
     const auto *value = set ? Get<MaterialClustersSource>(set->kind) : nullptr;
-    Check(value && value->settings.weights.color == 0,
+    Check(value && value->settings.weights.chroma == 0,
           "color weighting can be disabled independently");
     Check(!color->bind("11"), "color weight refuses out-of-range values");
   }
@@ -622,7 +622,7 @@ void TestClusterColor() {
     const auto *set = edit ? Get<SetSource>(*edit) : nullptr;
     const auto *value = set ? Get<MaterialClustersSource>(set->kind) : nullptr;
     Check(value && value->settings.weights.metallic == 3.0f &&
-              value->settings.weights.color == 2.5f,
+              value->settings.weights.chroma == 2.5f,
           "editing one channel weight keeps the others");
   }
 }

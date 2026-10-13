@@ -66,7 +66,8 @@ void EncodeMaterialClustersOperation(
   out.Number(s.weights.occlusion);
   out.Number(s.weights.reflectance);
   out.Number(s.weights.luma);
-  out.Number(s.weights.color);
+  out.Number(s.weights.chroma);
+  out.Number(s.weights.detail);
 }
 void EncodeSettings(Encoding &out, const NodeKind &kind) {
   Match(

@@ -21,9 +21,9 @@ enum class ClusterAxis : std::uint8_t {
   kOcclusion,
   kReflectance,
   kLuma,
-  kRed,
-  kGreen,
-  kBlue,
+  kOrangeBlue,
+  kGreenMagenta,
+  kDetail,
 };
 inline constexpr std::size_t kClusterAxisCount = 8;
 
@@ -38,9 +38,9 @@ inline constexpr ClusterAxisSpec kClusterAxes[]{
     {ClusterAxis::kOcclusion, "occl", &ChannelWeights::occlusion},
     {ClusterAxis::kReflectance, "refl", &ChannelWeights::reflectance},
     {ClusterAxis::kLuma, "luma", &ChannelWeights::luma},
-    {ClusterAxis::kRed, "R", &ChannelWeights::color},
-    {ClusterAxis::kGreen, "G", &ChannelWeights::color},
-    {ClusterAxis::kBlue, "B", &ChannelWeights::color},
+    {ClusterAxis::kOrangeBlue, "warm", &ChannelWeights::chroma},
+    {ClusterAxis::kGreenMagenta, "green", &ChannelWeights::chroma},
+    {ClusterAxis::kDetail, "detail", &ChannelWeights::detail},
 };
 static_assert(std::size(kClusterAxes) == kClusterAxisCount);
 

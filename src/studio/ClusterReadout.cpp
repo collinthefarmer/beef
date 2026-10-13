@@ -159,10 +159,11 @@ std::string_view AdviceText(WeightAdvice a_advice) noexcept {
 
 namespace {
 AxisValues AxisValuesOf(const MaterialTexel &a_texel) noexcept {
+  const Chroma chroma = ChromaOf(a_texel.diffuse);
   return {Finite01(a_texel.roughness), Finite01(a_texel.metallic),
           Finite01(a_texel.occlusion), Finite01(a_texel.reflectance),
-          Finite01(a_texel.luma),      Finite01(a_texel.diffuse.x),
-          Finite01(a_texel.diffuse.y), Finite01(a_texel.diffuse.z)};
+          Finite01(a_texel.luma),      chroma.orangeBlue,
+          chroma.greenMagenta,         Finite01(a_texel.detail)};
 }
 
 float Finite01(float a_value) noexcept {

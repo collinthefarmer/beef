@@ -507,7 +507,8 @@ struct ChannelWeights {
   float occlusion = 0.5f;
   float reflectance = 0.5f;
   float luma = 1.0f;
-  float color = 1.0f;
+  float chroma = 1.0f;
+  float detail = 1.0f;
   [[nodiscard]] bool operator==(const ChannelWeights &) const = default;
 };
 struct ClusterSettings {
@@ -524,6 +525,8 @@ struct MaterialClustersSource {
   [[nodiscard]] bool operator==(const MaterialClustersSource &) const = default;
 };
 
+inline constexpr std::string_view kLegacyColorWeight = "color";
+
 struct ClusterWeightField {
   const char *name;
   float ChannelWeights::*member;
@@ -534,7 +537,8 @@ inline constexpr ClusterWeightField kClusterWeightFields[]{
     {"occlusion", &ChannelWeights::occlusion},
     {"reflectance", &ChannelWeights::reflectance},
     {"luma", &ChannelWeights::luma},
-    {"color", &ChannelWeights::color},
+    {"chroma", &ChannelWeights::chroma},
+    {"detail", &ChannelWeights::detail},
 };
 
 using SourceKind =

@@ -88,7 +88,8 @@ ClustersRowOf(const MaterialClustersSource &a_clusters) {
                   ParamText(s.weights.reflectance), ParamText(s.weights.luma));
   clusters.seed = std::to_string(s.seed);
   clusters.iterations = std::to_string(s.iterations);
-  clusters.colorWeight = ParamText(s.weights.color);
+  clusters.chromaWeight = ParamText(s.weights.chroma);
+  clusters.detailWeight = ParamText(s.weights.detail);
   clusters.pick = a_clusters.pick ? ParamText(*a_clusters.pick) : "";
   clusters.areaBias = ParamText(a_clusters.areaBias);
   return clusters;
@@ -233,25 +234,33 @@ RippleKindOf(const RippleSourceRow &a_row) {
   return SourceKind{ripple};
 }
 
+[[nodiscard]] std::optional<float> WeightOf(const std::string &a_text) {
+  const auto param = ParseParam(a_text);
+  const auto *value = param ? Get<float>(*param) : nullptr;
+  if (!value || !(*value >= 0.0f) || *value > kMaxChannelWeight) {
+    return std::nullopt;
+  }
+  return *value;
+}
+
 [[nodiscard]] std::optional<SourceKind>
 ClustersKindOf(const MaterialClustersSourceRow &a_row) {
   MaterialClustersSource clusters;
   const auto count = WholeNumber(a_row.clusters, kMaxMaterialClusters);
   const auto weights = FiveNumbers(a_row.weights);
-  const auto color = ParseParam(a_row.colorWeight);
-  const auto *colorValue = color ? Get<float>(*color) : nullptr;
+  const std::optional<float> chroma = WeightOf(a_row.chromaWeight);
+  const std::optional<float> detail = WeightOf(a_row.detailWeight);
   const auto seed =
       WholeNumber(a_row.seed, std::numeric_limits<std::uint32_t>::max());
   const auto iterations = WholeNumber(a_row.iterations, kMaxClusterIterations);
-  if (!count || *count < 1 || !weights || !colorValue || *colorValue < 0 ||
-      *colorValue > kMaxChannelWeight || !seed || !iterations ||
-      *iterations < 1) {
+  if (!count || *count < 1 || !weights || !chroma || !detail || !seed ||
+      !iterations || *iterations < 1) {
     return std::nullopt;
   }
   clusters.settings.clusters = static_cast<std::uint8_t>(*count);
   clusters.settings.weights =
-      ChannelWeights{(*weights)[0], (*weights)[1], (*weights)[2],
-                     (*weights)[3], (*weights)[4], *colorValue};
+      ChannelWeights{(*weights)[0], (*weights)[1], (*weights)[2], (*weights)[3],
+                     (*weights)[4], *chroma,       *detail};
   clusters.settings.seed = *seed;
   clusters.settings.iterations = *iterations;
   const auto bias = ParseParam(a_row.areaBias);

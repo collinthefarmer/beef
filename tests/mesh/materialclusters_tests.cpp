@@ -155,7 +155,7 @@ int main() {
         "equal-brightness diffuse colors separate in analysis and nearest "
         "lookup");
   ClusterSettings noColor = settings;
-  noColor.weights.color = 0;
+  noColor.weights.chroma = 0;
   Check(ClusterMaterial(colors, noColor).clusters.size() == 1,
         "zero color weight restores brightness-only clustering");
 
@@ -221,7 +221,7 @@ int main() {
   Check(guessed.clusters == 2,
         "the guess finds two clusters where two groups differ");
   Check(guessed.weights.metallic > 0.0f && guessed.weights.occlusion == 0.0f &&
-            guessed.weights.color == 0.0f &&
+            guessed.weights.chroma == 0.0f &&
             guessed.weights.metallic > guessed.weights.roughness,
         "the guess weights the axis that splits the groups and drops flat "
         "ones");
@@ -231,6 +231,22 @@ int main() {
         "the guessed settings separate the two groups");
   Check(GuessClusterSettings(MaterialSample{}) == ClusterSettings{},
         "an empty sample keeps the default settings");
+
+  MaterialTexel brightRed;
+  brightRed.diffuse = Vec3{0.9f, 0.2f, 0.2f};
+  MaterialTexel grey;
+  grey.diffuse = Vec3{0.5f, 0.5f, 0.5f};
+  const Chroma bright = ChromaOf(brightRed.diffuse);
+  const Chroma neutral = ChromaOf(grey.diffuse);
+  Check(neutral.orangeBlue == 0.5f && neutral.greenMagenta == 0.5f &&
+            bright.orangeBlue > 0.5f && bright.greenMagenta < 0.5f,
+        "grey has neutral chroma and red leans orange and magenta");
+  const Chroma darkGrey = ChromaOf(Vec3{0.1f, 0.1f, 0.1f});
+  const Chroma lightGrey = ChromaOf(Vec3{0.9f, 0.9f, 0.9f});
+  Check(darkGrey.orangeBlue == lightGrey.orangeBlue &&
+            darkGrey.greenMagenta == lightGrey.greenMagenta,
+        "greys of any brightness share one chroma, so brightness is counted "
+        "only by luma");
 
   return test::Finish("materialclusters");
 }

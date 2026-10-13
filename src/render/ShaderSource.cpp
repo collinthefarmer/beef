@@ -562,7 +562,7 @@ cbuffer ClusterParams : register(b3)
 {
 	float4 centroidRmaos[8];
 	float4 centroidLuma[8];
-	float4 centroidDiffuse[8];
+	float4 centroidChroma[8];
 	float4 clusterWeights;
 	float4 clusterMisc;
 };
@@ -572,13 +572,14 @@ float4 PSClusters(VSOut i) : SV_Target
 	float4 m = saturate(armor.SampleLevel(samp, i.uv, 0));
 	float3 d = saturate(src.SampleLevel(samp, i.uv, 0).rgb);
 	float  luma = saturate(dot(d, float3(0.2126, 0.7152, 0.0722)));
+	float2 chroma = saturate(float2(0.5 + d.r - d.b, 0.5 + d.g - 0.5 * (d.r + d.b)));
 	int    n = clamp((int)clusterMisc.y, 0, 8);
 	float  id = 0;
 	float  best = 0;
 	[loop] for (int k = 0; k < n; ++k) {
 		float4 dm = m - centroidRmaos[k];
 		float  dl = luma - centroidLuma[k].x;
-		float3 dc = d - centroidDiffuse[k].rgb;
+		float2 dc = chroma - centroidChroma[k].xy;
 		float  dist = dot(clusterWeights, dm * dm) + clusterMisc.x * dl * dl
 		              + clusterMisc.z * dot(dc, dc);
 		if (k == 0 || dist < best) {

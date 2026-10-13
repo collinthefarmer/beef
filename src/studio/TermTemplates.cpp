@@ -503,7 +503,8 @@ std::vector<TermField> ClusterForm(const ClusterTerm &a_term) {
   weight("occlusion", &ChannelWeights::occlusion);
   weight("reflectance", &ChannelWeights::reflectance);
   weight("luma", &ChannelWeights::luma);
-  weight("color", &ChannelWeights::color);
+  weight("chroma", &ChannelWeights::chroma);
+  weight("detail", &ChannelWeights::detail);
   form.push_back(Setting<ClusterTerm>(
       a_term,
       TextEntryField({.name = "seed",
