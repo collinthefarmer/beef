@@ -593,13 +593,17 @@ void TestClusterColor() {
           "color weighting can be disabled independently");
     Check(!color->bind("11"), "color weight refuses out-of-range values");
   }
-  const auto *weights = Field(form, "weights");
-  if (weights && weights->bind) {
-    const auto edit = weights->bind("1, 1, 1, 1, 1");
+  const auto *metallic = Field(form, "metallic");
+  Check(metallic && metallic->bind && metallic->workingRange &&
+            metallic->kind == FieldKind::kScalar,
+        "each channel weight is its own tunable field");
+  if (metallic && metallic->bind) {
+    const auto edit = metallic->bind("3");
     const auto *set = edit ? Get<SetSource>(*edit) : nullptr;
     const auto *value = set ? Get<MaterialClustersSource>(set->kind) : nullptr;
-    Check(value && value->settings.weights.color == 2.5f,
-          "editing existing channel weights preserves color weight");
+    Check(value && value->settings.weights.metallic == 3.0f &&
+              value->settings.weights.color == 2.5f,
+          "editing one channel weight keeps the others");
   }
 }
 

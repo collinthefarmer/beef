@@ -528,35 +528,20 @@ BindImageMirror(std::string a_name, SourceKind a_record, std::size_t a_axis) {
   };
 }
 
-[[nodiscard]] FieldBinding BindClusterWeights(std::string a_name,
-                                              SourceKind a_record) {
-  return [name = std::move(a_name), record = std::move(a_record)](
-             const std::string &a_text) -> std::optional<RecipeEdit> {
-    SourceKind kind = record;
-    MaterialClustersSource *clusters = Get<MaterialClustersSource>(kind);
-    const auto weights = FiveNumbers(a_text);
-    if (clusters == nullptr || !weights) {
-      return std::nullopt;
-    }
-    clusters->settings.weights = ChannelWeights{
-        (*weights)[0], (*weights)[1], (*weights)[2],
-        (*weights)[3], (*weights)[4], clusters->settings.weights.color};
-    return SetSource{name, kind};
-  };
-}
-
-[[nodiscard]] FieldBinding BindClusterColor(std::string a_name,
-                                            SourceKind a_record) {
-  return [name = std::move(a_name), record = std::move(a_record)](
-             const std::string &a_text) -> std::optional<RecipeEdit> {
+[[nodiscard]] FieldBinding BindClusterWeight(std::string a_name,
+                                             SourceKind a_record,
+                                             float ChannelWeights::*a_member) {
+  return [name = std::move(a_name), record = std::move(a_record),
+          a_member](const std::string &a_text) -> std::optional<RecipeEdit> {
     SourceKind kind = record;
     auto *clusters = Get<MaterialClustersSource>(kind);
     const auto param = ParseParam(a_text);
     const auto *value = param ? Get<float>(*param) : nullptr;
-    if (!clusters || !value || *value < 0 || *value > kMaxChannelWeight) {
+    if (!clusters || !value || !(*value >= 0.0f) ||
+        *value > kMaxChannelWeight) {
       return std::nullopt;
     }
-    clusters->settings.weights.color = *value;
+    clusters->settings.weights.*a_member = *value;
     return SetSource{name, kind};
   };
 }
@@ -1502,15 +1487,19 @@ void ClustersFields(std::vector<FormField> &a_form, const SourceContext &a_ctx,
   clusters.workingRange = clusters.range;
   clusters.integral = true;
   a_form.push_back(std::move(clusters));
-  a_form.push_back(TextEntryField({.name = "weights",
-                                   .kind = FieldKind::kText,
-                                   .text = source.weights,
-                                   .bind = BindClusterWeights(name, record)}));
-  a_form.push_back(ParamField({.name = "color",
-                               .kind = FieldKind::kScalar,
-                               .text = source.colorWeight,
-                               .names = {},
-                               .bind = BindClusterColor(name, record)}));
+  if (const auto *current = Get<MaterialClustersSource>(record)) {
+    for (const ClusterWeightField &weight : kClusterWeightFields) {
+      FormField field = ParamField(
+          {.name = weight.name,
+           .kind = FieldKind::kScalar,
+           .text = ParamText(current->settings.weights.*weight.member),
+           .names = {},
+           .bind = BindClusterWeight(name, record, weight.member)});
+      field.range = std::pair{0.0f, kMaxChannelWeight};
+      field.workingRange = field.range;
+      a_form.push_back(std::move(field));
+    }
+  }
   a_form.push_back(ParamField(
       {.name = "seed",
        .kind = FieldKind::kScalar,
