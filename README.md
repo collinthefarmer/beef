@@ -44,6 +44,7 @@ enchantment on the piece itself.
 | `docs/plans/actor-core-2026-10-03.md` | How does a pure actor core replace refresh-and-rebuild with a keyed plan that each actor converges to, and in which stages? |
 | `docs/plans/render-performance-2026-09-29.md` | What costs frame time and memory when effects render, how is it measured, and in which order is it reduced? |
 | `docs/plans/architecture-fit-2026-10-06.md` | Where do the actor core, the performance work and the recipe-language additions depart from the architecture, and which work items fix them? |
+| `docs/plans/material-regions-2026-10-13.md` | Why does material clustering keep needing tuned constants, and how do contiguous regions, a mixture model and two-click intent replace it? |
 | `docs/plans/ownership-model-2026-10-09.md` | Which owner keeps each render target and game object alive, and in which stages does one ownership model replace the local release rules? |
 | `docs/plans/pure-tick-2026-10-10.md` | How does a tick's orchestration run in an engine-free core that native tests reach, and in which steps does the engine become gather, decide and execute? |
 | `docs/plans/pure-tick-r4-2026-10-10.md` | How does the engine gather facts, run the tick core and execute its commands, and what does R4 delete? |
