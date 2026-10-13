@@ -98,6 +98,15 @@ Recipe RelationshipRecipe() {
   return recipe;
 }
 
+void CheckLinkKinds() {
+  Check(LinkKindOf(ResourceKind::kMask) == LinkKind::kMask &&
+            LinkKindOf(RelationshipOwner{ResourceRef{
+                ResourceKind::kCurve, "falloff"}}) == LinkKind::kCurve &&
+            LinkKindOf(RelationshipOwner{LayerOwner{}}) == LinkKind::kLayer &&
+            LinkKindOf(RelationshipOwner{OutputOwner{}}) == LinkKind::kOutput,
+        "a link's badge names the kind of row it leads to");
+}
+
 void CheckRelationships() {
   Recipe recipe = RelationshipRecipe();
   const Recipe before = recipe;
@@ -151,6 +160,7 @@ void CheckRelationships() {
 
 int main() {
   CheckRelationships();
+  CheckLinkKinds();
   const Recipe &base = Canonical();
   Check(!base.outputs.empty(), "canonical recipe has outputs");
 

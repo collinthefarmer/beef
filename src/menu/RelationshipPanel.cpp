@@ -48,18 +48,6 @@ Studio::InspectorSubject SubjectOf(const RelationshipOwner &a_owner) {
       });
 }
 
-std::string_view OwnerType(const RelationshipOwner &a_owner) {
-  return Match(
-      a_owner,
-      [](const ResourceRef &a_ref) -> std::string_view {
-        return kResourceKindNames[IndexOf(a_ref.kind)];
-      },
-      [](const OutputOwner &) -> std::string_view { return "output"; },
-      [](const LayerOwner &) -> std::string_view { return "layer"; },
-      [](const ShellOwner &) -> std::string_view { return "shell"; },
-      [](const VariantOwner &) -> std::string_view { return "variant"; });
-}
-
 std::string OutputLabel(const Studio::RecipeRow &a_recipe,
                         std::size_t a_output) {
   if (a_output >= a_recipe.outputs.size()) {
@@ -91,10 +79,10 @@ std::string OwnerName(const RelationshipOwner &a_owner,
       });
 }
 
-void Follow(const std::string &a_label, Studio::InspectorSubject a_subject,
-            const Frame &a_frame,
+void Follow(Studio::LinkKind a_kind, const std::string &a_label,
+            Studio::InspectorSubject a_subject, const Frame &a_frame,
             std::optional<PropertyLocation> a_property = std::nullopt) {
-  if (ImGui::SmallButton(a_label.c_str())) {
+  if (TypedLink({a_kind, a_label})) {
     NavigateFromInspector(a_frame, std::move(a_subject), std::move(a_property));
   }
 }
@@ -115,8 +103,7 @@ void DrawDrivenBy(const Frame &a_frame,
     return;
   }
   Table table = Table::Begin("driven-by",
-                             {{"Type", Studio::Width::Fit()},
-                              {"Driver", Studio::Width::Fit()},
+                             {{"Driver", Studio::Width::Fit()},
                               {"Property", Studio::Width::Fit()},
                               {"Value", Studio::Width::Fill()}},
                              Studio::kRelationTable);
@@ -130,9 +117,8 @@ void DrawDrivenBy(const Frame &a_frame,
     }
     ImGui::PushID(static_cast<int>(index++));
     table.Cell();
-    Dim(kResourceKindNames[IndexOf(link.driver.kind)]);
-    table.Cell();
-    Follow(link.driver.name, SubjectOf(link.driver), a_frame);
+    Follow(Studio::LinkKindOf(link.driver.kind), link.driver.name,
+           SubjectOf(link.driver), a_frame);
     table.Cell();
     Dim(link.consumer.property);
     table.Cell();
@@ -156,8 +142,7 @@ void DrawUsedBy(const Frame &a_frame,
     return;
   }
   Table table = Table::Begin("used-by",
-                             {{"Type", Studio::Width::Fit()},
-                              {"Consumer", Studio::Width::Fit()},
+                             {{"Consumer", Studio::Width::Fit()},
                               {"Property", Studio::Width::Fit()},
                               {"Component", Studio::Width::Fit()}},
                              Studio::kRelationTable);
@@ -171,9 +156,8 @@ void DrawUsedBy(const Frame &a_frame,
     }
     ImGui::PushID(static_cast<int>(index++));
     table.Cell();
-    Dim(OwnerType(link.consumer.owner));
-    table.Cell();
-    Follow(OwnerName(link.consumer.owner, *a_frame.recipe),
+    Follow(Studio::LinkKindOf(link.consumer.owner),
+           OwnerName(link.consumer.owner, *a_frame.recipe),
            SubjectOf(link.consumer.owner), a_frame, link.consumer);
     table.Cell();
     Dim(link.consumer.property);

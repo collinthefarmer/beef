@@ -6,6 +6,7 @@
 #include "recipe/Visit.h"
 #include "studio/Forms.h"
 #include "studio/MenuState.h"
+#include "studio/Relationships.h"
 #include "studio/Snapshot.h"
 #include "studio/View.h"
 #include "studio/Widgets.h"
@@ -137,7 +138,7 @@ DrawCandidateRows(const CandidateRowsSpec &a_spec, int &a_id,
 void Badge(Studio::FieldKind a_kind);
 
 struct TypedLinkSpec {
-  Studio::FieldKind kind = Studio::FieldKind::kText;
+  std::variant<Studio::FieldKind, Studio::LinkKind> kind;
   std::string_view label;
   bool selected = false;
   float width = 0.0f;

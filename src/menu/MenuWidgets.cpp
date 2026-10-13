@@ -218,6 +218,16 @@ struct BadgeStyle {
   Studio::Swatch swatch;
 };
 
+[[nodiscard]] BadgeStyle StyleOf(Studio::LinkKind a_kind) {
+  const auto *row = RowOf(Studio::kLinkKinds, a_kind);
+  if (!row) {
+    return {"?", false, kDim, "", Studio::Swatch::kNone};
+  }
+  const ImVec4 colour{row->colour[0], row->colour[1], row->colour[2], 1.0f};
+  return {row->glyph.data(), false, colour, std::string{row->help},
+          Studio::Swatch::kNone};
+}
+
 [[nodiscard]] BadgeStyle StyleOf(Studio::FieldKind a_kind) {
   const auto *row = RowOf(Studio::kFieldKinds, a_kind);
   if (!row) {
@@ -686,10 +696,15 @@ void Badge(Studio::FieldKind a_kind) {
 }
 
 bool TypedLink(const TypedLinkSpec &a_spec) {
-  const float badge = ImGui::GetFrameHeight();
-  Badge(a_spec.kind);
+  const float side = ImGui::GetFrameHeight();
+  const BadgeStyle style = Match(
+      a_spec.kind, [](Studio::FieldKind a_kind) { return StyleOf(a_kind); },
+      [](Studio::LinkKind a_kind) { return StyleOf(a_kind); });
+  BadgeFrame(style.glyph, style.colour, false, ImVec2{side, side});
+  Tooltip(style.help);
+  ImGui::SameLine(0.0f, 0.0f);
   const float width =
-      a_spec.width > 0.0f ? (std::max)(1.0f, a_spec.width - badge) : 0.0f;
+      a_spec.width > 0.0f ? (std::max)(1.0f, a_spec.width - side) : 0.0f;
   const std::string label{a_spec.label};
   return ImGui::Selectable(label.c_str(), a_spec.selected, 0,
                            ImVec2{width, 0.0f});
