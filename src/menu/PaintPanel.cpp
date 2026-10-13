@@ -769,6 +769,9 @@ void DrawTermTuningPane(const Frame &a_frame) {
   const std::vector<Studio::TermField> form =
       Studio::TermForm(term.kind, LoadedPresets(), *preview->geometry);
   Dim(std::format("Tuning term {}: {}", index, term.label));
+  if (const auto *cluster = Get<Studio::ClusterTerm>(term.kind)) {
+    DrawClusterReadout(index, *cluster, *preview, state.clusterMemo);
+  }
   if (form.empty()) {
     Dim("This term has no adjustable settings.");
     return;
@@ -786,9 +789,6 @@ void DrawTermTuningPane(const Frame &a_frame) {
     DrawTermParameter(index, field, *preview, table);
   }
   table.End();
-  if (const auto *cluster = Get<Studio::ClusterTerm>(term.kind)) {
-    DrawClusterReadout(index, *cluster, *preview, state.clusterMemo);
-  }
 }
 
 namespace {

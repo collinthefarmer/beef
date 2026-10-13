@@ -759,12 +759,12 @@ void DrawSourceInspector(const Studio::SourceSubject &a_source,
   ResourceTable("source-header", {&cells, 1});
   const std::vector<Studio::FormField> form =
       Studio::SourceForm(*row, Studio::SignalNamesOf(recipe));
-  DrawFormWithSignals("source", form, a_frame);
   const std::optional<SourceKind> kind = Studio::SourceKindOf(*row);
   if (const auto *clusters =
           kind ? Get<MaterialClustersSource>(*kind) : nullptr) {
     DrawSourceClusters(*clusters, form, a_frame);
   }
+  DrawFormWithSignals("source", form, a_frame);
 }
 
 void DrawSourceClusters(const MaterialClustersSource &a_source,
