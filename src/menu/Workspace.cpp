@@ -117,7 +117,7 @@ void PickSubjectWithRemove(
 
 void DrawSurfaceAdd(const Frame &a_frame, Surface a_surface) {
   ImGui::PushID(static_cast<int>(a_surface));
-  if (ImGui::Button("+")) {
+  if (AddButton()) {
     ImGui::OpenPopup("add-output");
   }
   if (ImGui::BeginPopup("add-output")) {
@@ -466,7 +466,7 @@ void SurfaceLabel(std::string_view a_text, bool a_lit) {
 
 void DrawSurfaceRemove(const Frame &a_frame, Surface a_surface) {
   ImGui::PushID(static_cast<int>(a_surface));
-  const bool clicked = ImGui::Button("X");
+  const bool clicked = RemoveButton(0);
   ImGui::PopID();
   if (!clicked) {
     return;
@@ -493,7 +493,7 @@ void DrawSurfaceRemove(const Frame &a_frame, Surface a_surface) {
 
 void DrawLightRemove(const Frame &a_frame) {
   ImGui::PushID("light-remove");
-  const bool clicked = ImGui::Button("X");
+  const bool clicked = RemoveButton(0);
   ImGui::PopID();
   if (!clicked || a_frame.recipe->lights.empty()) {
     return;
@@ -503,7 +503,7 @@ void DrawLightRemove(const Frame &a_frame) {
 }
 
 void DrawLightAdd(const Frame &a_frame) {
-  if (ImGui::Button("+")) {
+  if (AddButton()) {
     Studio::Created made = Studio::Create(Studio::NewLight{}, *a_frame.recipe);
     Studio::Post(*a_frame.intents,
                  Studio::EditRecipe{a_frame.recipe->id, std::move(made.edits)});
@@ -515,8 +515,8 @@ void DrawSurfaceControls(const std::function<void()> &a_settings,
                          const std::function<void()> &a_add,
                          const std::function<void()> &a_remove) {
   const float settingsW = ButtonWidth("settings");
-  const float addW = ButtonWidth("+");
-  const float removeW = ButtonWidth("X");
+  const float addW = RowButtonWidth();
+  const float removeW = RowButtonWidth();
   const auto slot = [](const std::function<void()> &a_draw, float a_width) {
     if (a_draw) {
       a_draw();

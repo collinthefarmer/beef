@@ -1154,6 +1154,11 @@ std::string RecipeLabel(const Studio::RecipeRow &a_recipe) {
                          : a_recipe.id;
 }
 
+bool AddButton() {
+  const float side = RowButtonWidth();
+  return ImGui::Button("+", ImVec2{side, side});
+}
+
 bool RemoveButton(std::size_t a_references) {
   const float side = RowButtonWidth();
   if (a_references > 0) {

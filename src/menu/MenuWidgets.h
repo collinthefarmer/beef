@@ -202,6 +202,7 @@ void HeldLabel(const char *a_text);
 [[nodiscard]] std::string RecipeLabel(const Studio::RecipeRow &a_recipe);
 
 [[nodiscard]] bool RemoveButton(std::size_t a_references);
+[[nodiscard]] bool AddButton();
 [[nodiscard]] bool CloseButton();
 bool SquareToggle(const char *a_label, bool &a_value,
                   std::string_view a_tooltip);
