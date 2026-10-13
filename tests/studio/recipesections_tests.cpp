@@ -33,12 +33,12 @@ int main() {
       Row("a", R"(recipes\user\a.json)"),
       Row("y", R"(recipes\imported\y.json)"), Row("draft", "")};
   const std::vector<RecipeSection> sections = RecipeSectionsOf(rows);
-  Check(sections.size() == 3 && sections[0].folder == "Imported" &&
-            sections[1].folder == kUnsavedSection &&
-            sections[2].folder == "user",
-        "sections are ordered by folder name, ignoring case");
-  Check(sections[0].ids == std::vector<std::string>{"x", "y"} &&
-            sections[2].ids == std::vector<std::string>{"b", "a"},
+  Check(sections.size() == 3 && sections[0].folder == "user" &&
+            sections[1].folder == "Imported" &&
+            sections[2].folder == kUnsavedSection,
+        "user recipes come first, then folders by name, ignoring case");
+  Check(sections[1].ids == std::vector<std::string>{"x", "y"} &&
+            sections[0].ids == std::vector<std::string>{"b", "a"},
         "a section keeps its recipes in load order");
 
   return test::Finish("studio_recipesections");

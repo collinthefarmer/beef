@@ -51,6 +51,11 @@ RecipeSectionsOf(std::span<const LoadedRecipeRow> a_recipes) {
   }
   std::ranges::stable_sort(
       sections, [](const RecipeSection &a_left, const RecipeSection &a_right) {
+        const bool leftUser = Folded(a_left.folder) == kUserSection;
+        const bool rightUser = Folded(a_right.folder) == kUserSection;
+        if (leftUser != rightUser) {
+          return leftUser;
+        }
         return Folded(a_left.folder) < Folded(a_right.folder);
       });
   return sections;

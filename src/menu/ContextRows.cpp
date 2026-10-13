@@ -382,6 +382,24 @@ void CreateFromWornPiece(const Frame &a_frame, const std::string &a_name,
   });
 }
 
+void DeleteRecipeButton(const Studio::RecipeRow &a_recipe,
+                        Studio::Intents &a_out) {
+  const std::string title =
+      std::format("Delete recipe?###delete-recipe-{}", a_recipe.id);
+  const float side = RowButtonWidth();
+  if (ImGui::Button("X##delete-recipe", ImVec2{side, side})) {
+    ImGui::OpenPopup(title.c_str());
+  }
+  Tooltip("delete this recipe");
+  ConfirmModal(title.c_str(),
+               std::format("Delete '{}'? A recipe in the user folder loses its "
+                           "file; a recipe from another folder is unloaded "
+                           "and loads again at the next start.",
+                           a_recipe.id),
+               "Delete",
+               [&] { Studio::Post(a_out, Studio::DeleteRecipe{a_recipe.id}); });
+}
+
 void NewRecipeButton(const Frame &a_frame) {
   if (ImGui::Button("New recipe")) {
     ImGui::OpenPopup("new-recipe");
@@ -483,14 +501,16 @@ void DrawStudioContext(const Frame &a_frame) {
   if (!a_frame.snapshot || !a_frame.intents) {
     return;
   }
-  const float trailing = ButtonWidth("Undo") + ItemSpacingX() +
-                         ButtonWidth("Redo") + ItemSpacingX() +
-                         ButtonWidth("Save") + ItemSpacingX() +
-                         ButtonWidth("Revert");
+  const float trailing =
+      ButtonWidth("Undo") + ItemSpacingX() + ButtonWidth("Redo") +
+      ItemSpacingX() + ButtonWidth("Save") + ItemSpacingX() +
+      ButtonWidth("Revert") + ItemSpacingX() + RowButtonWidth();
   const std::function<void()> history = [&]() {
     UndoRedoButtons(*a_frame.recipe, *a_frame.intents);
     ImGui::SameLine();
     DrawRecipeSaveRevert(a_frame);
+    ImGui::SameLine();
+    DeleteRecipeButton(*a_frame.recipe, *a_frame.intents);
   };
   static_cast<void>(
       Rule(Studio::RuleSpec{.text = "Recipe", .leadingSpace = false},

@@ -10,6 +10,7 @@
 
 namespace BetterEnchantmentEffects::Studio {
 inline constexpr std::string_view kUnsavedSection = "unsaved";
+inline constexpr std::string_view kUserSection = "user";
 
 struct RecipeSection {
   std::string folder;
