@@ -36,7 +36,7 @@ float3 StackField1(float2 uv)
 float4 PSGeneratedStack(VSOut i) : SV_Target
 {
 	float2 rawUv = i.uv;
-	float4 below = stackBase.SampleLevel(samp, rawUv, 0);
+	float4 below = stackBase.SampleLevel(samp, rawUv, stackMisc.z);
 	{
 		float4 s = 0;
 		float4 m = 0;

@@ -11,6 +11,7 @@
 #include "planners/ConsumptionLeases.h"
 #include "planners/FieldProgram.h"
 #include "planners/GpuReduction.h"
+#include "planners/MipLevel.h"
 #include "planners/StackShader.h"
 #include "planners/TargetHolders.h"
 #include "planners/TextureDemand.h"
@@ -74,6 +75,7 @@ public:
   struct ChannelParams {
     ShaderChannel channel = ShaderChannel::kRgb;
     bool slope = false;
+    float mapMip = 0.0f;
   };
 
   struct LayerInput {
@@ -151,6 +153,7 @@ public:
 
   struct LayerPass {
     RE::NiSourceTexture *previous = nullptr;
+    float previousMip = 0.0f;
     RE::NiSourceTexture *source = nullptr;
     LayerInput input;
     float normalize = 1.0f;
@@ -318,10 +321,7 @@ public:
 
   std::shared_ptr<Lookup> CreateLookup(std::span<const float, 256> a_values);
 
-  struct Extent {
-    std::uint32_t width = 0;
-    std::uint32_t height = 0;
-  };
+  using Extent = TextureExtent;
   [[nodiscard]] static std::optional<Extent>
   ExtentOf(RE::NiSourceTexture *a_source);
 
@@ -476,7 +476,8 @@ private:
                      const BoundLayerFields &a_fields);
   [[nodiscard]] std::unique_ptr<ProgramConstants>
   StackProgramConstants(std::span<REX::W32::ID3D11ShaderResourceView *> a_srvs,
-                        const BoundLayerFields &a_fields);
+                        const BoundLayerFields &a_fields,
+                        std::uint32_t a_targetSide);
   [[nodiscard]] REX::W32::ID3D11PixelShader *
   StackShaderFor(const StackShape &a_shape);
   [[nodiscard]] bool CanRenderStack(const StackShape &a_shape,

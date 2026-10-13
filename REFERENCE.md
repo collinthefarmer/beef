@@ -438,7 +438,7 @@ the two D3D helpers every render file needs, `Failed` on an `HRESULT` and
 | `offsetScale` | xy uv offset, zw tile scale |
 | `flags` | x mirrorU, y mirrorV, z transpose, w mode |
 | `extra` | x source mip; y armor input (0 none, 1 displacement.r, 2 ao.b, 3 rmaos, 4 normal slope, 5 diffuse luminance); zw per mode: height = armor weight, noise weight; roughness = strength, contrast; masked glow = channel, threshold; channel = channel (as `Pick` reads it), slope-instead flag |
-| `extra2` | height: x relief mean, y relief contrast, z noise mean; masked glow: x softness, y invert, z strength |
+| `extra2` | height: x relief mean, y relief contrast, z noise mean; masked glow: x softness, y invert, z strength; layer: x mip of the previous texture; channel: y mip of the armor input |
 | `layer` | x source channel (as `Pick` reads it), y mesh space, z blend mode, w opacity |
 | `layerColor` | rgb colour, w normalise factor |
 | `layerMask` | x mask channel (-1 none), y channel bits, z has previous, w has source |
@@ -530,7 +530,8 @@ count, so the shader does not decode the pop count per instruction; `inputs[16]`
 value; `inputValues[16]` the value broadcast; `texParams[8]` x channel, y
 mesh space, z normalise, w mip; `texTransform[8]` xy uv offset, zw tile;
 `texFlags[8]` x mirror u, y mirror v, z transpose, w nearest; `misc` x
-time, y op count, z vector result. The shared sampler is linear; w
+time, y op count, z vector result. The stack's `stackMisc` is x layer count,
+y has base, z the base's mip; `stackFlags[k].w` is layer k's source mip. The shared sampler is linear; w
 nearest snaps the uv to the texel centre before the read, so a texel is
 read whole. The id maps (componentId, chartId, materialClusters) set it:
 their texels are identifiers scaled by 1/255, and a linear blend across
@@ -558,7 +559,8 @@ content, so a pass with no firings paints it black.
 Classify pass: `centroidRmaos[8]` per cluster in analysis order (roughness,
 metallic, occlusion, reflectance); `centroidLuma[8]` x luma, y id;
 `centroidDiffuse[8]` RGB diffuse color; `clusterWeights` the four RMAOS
-weights; `clusterMisc` x luma weight, y cluster count, z color weight / 3. The RMAOS and diffuse maps at the mesh UV go to the nearest
+weights; `clusterMisc` x luma weight, y cluster count, z color weight / 3;
+`clusterLevels` x the RMAOS mip, y the diffuse mip. The RMAOS and diffuse maps at the mesh UV go to the nearest
 centroid by the distance `NearestCluster` (`mesh/MaterialClusters.cpp`) uses, the sum over
 eight axes of weight x (texel - centroid)^2, the first of equals winning;
 the CPU function is the reference and the shader must agree with it on a
@@ -581,6 +583,25 @@ never repeats the k-means. The enchantment signal fields `idHash` and
 form key's text, top 24 bits) of the enchantment, and of the magic effect
 the instance was matched on. Form keys name the plugin and local id, so the
 values survive a load order change.
+
+Sample levels (`planners/MipLevel.h`): every read goes through one
+trilinear sampler with an explicit `SampleLevel` LOD, so the hardware never
+picks a mip from screen derivatives. Each texture read whose source is larger
+than the target, or tiled, has to name the mip itself; a read at mip 0 of a
+larger source skips texels, and the target's own mip chain then averages that
+aliasing. `SampleMip` sets a read's mip to log2 of the source's larger tiled
+side over the target side, clamped to the source's last mip, and never below
+the recipe `mip`, so an author can still blur. Mesh-space reads count as
+untiled. A `nearest` read keeps the recipe `mip`, because it snaps the uv to
+mip-0 texel centres and its texels are ids or positions that an average
+would corrupt. The stack base, the cluster draw's RMAOS and diffuse, and the
+one-by-one fallback's previous texture use `FootprintMip` with no floor.
+Only textures with a chain gain anything: game DDS maps and stack results.
+Intermediates have one level, so their mip is always 0. Mean readbacks draw
+the source into a 64-texel target at `MipThatFits`, the deepest mip whose
+side is still at least 64, and copy that target's 1x1 last mip; a target
+whose last mip is not one texel is refused with a log line, because D3D11
+does not allow a copy of a larger level into the 1x1 staging texture.
 
 Lab mechanics:
 

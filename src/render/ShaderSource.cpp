@@ -103,7 +103,7 @@ float4 ComposeLayer(float4 below, float3 value, float opacity, bool hasMask, flo
 
 float4 LayerPass(float2 rawUv, float2 placedUv)
 {
-	float4 below = layerMask.z > 0.5 ? prev.SampleLevel(samp, rawUv, 0) : float4(0, 0, 0, 0);
+	float4 below = layerMask.z > 0.5 ? prev.SampleLevel(samp, rawUv, extra2.x) : float4(0, 0, 0, 0);
 	float4 s = 0;
 	if (layerMask.w > 0.5) {
 		float2 uv = layer.y > 0.5 ? rawUv : placedUv;
@@ -130,7 +130,7 @@ float4 PSMain(VSOut i) : SV_Target
 	if (mode == 7) return c;
 	if (mode == 4) {
 		if (extra.w > 0.5) { float r = NormalSlope(i.uv); return float4(r, r, r, 1); }
-		float4 a = armor.SampleLevel(samp, i.uv, 0);
+		float4 a = armor.SampleLevel(samp, i.uv, extra2.y);
 		return float4(Pick(a, (int)extra.z), 1);
 	}
 	return float4(c.rgb, 1);
@@ -537,7 +537,7 @@ float4 Unorm8(float4 v)
 float4 PSStack(VSOut i) : SV_Target
 {
 	float2 rawUv = i.uv;
-	float4 below = stackMisc.y > 0.5 ? stackBase.SampleLevel(samp, rawUv, 0) : float4(0, 0, 0, 0);
+	float4 below = stackMisc.y > 0.5 ? stackBase.SampleLevel(samp, rawUv, stackMisc.z) : float4(0, 0, 0, 0);
 	int n = (int)stackMisc.x;
 	[loop] for (int k = 0; k < n && k < 8; ++k) {
 		bool hasSource = stackMask[k].w > 0.5;
@@ -567,12 +567,13 @@ cbuffer ClusterParams : register(b3)
 	float4 clusterMisc;
 	float4 clusterPalette[8];
 	float4 clusterMode;
+	float4 clusterLevels;
 };
 
 float4 PSClusters(VSOut i) : SV_Target
 {
-	float4 m = saturate(armor.SampleLevel(samp, i.uv, 0));
-	float3 d = saturate(src.SampleLevel(samp, i.uv, 0).rgb);
+	float4 m = saturate(armor.SampleLevel(samp, i.uv, clusterLevels.x));
+	float3 d = saturate(src.SampleLevel(samp, i.uv, clusterLevels.y).rgb);
 	float  luma = saturate(dot(d, float3(0.2126, 0.7152, 0.0722)));
 	float2 chroma = saturate(float2(0.5 + d.r - d.b, 0.5 + d.g - 0.5 * (d.r + d.b)));
 	int    n = clamp((int)clusterMisc.y, 0, 8);

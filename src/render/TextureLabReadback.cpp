@@ -6,6 +6,7 @@
 
 #include <REX/W32/COMPTR.h>
 
+#include <algorithm>
 #include <cstring>
 #include <utility>
 
@@ -13,6 +14,23 @@ namespace BetterEnchantmentEffects {
 using namespace REX::W32;
 
 namespace {
+constexpr std::uint32_t kMeanSide = 64;
+
+std::uint32_t MipSide(std::uint32_t a_side, std::uint32_t a_mip) {
+  return a_mip < 32 ? (std::max)(a_side >> a_mip, 1u) : 1u;
+}
+
+bool LastMipIsOneTexel(const D3D11_TEXTURE2D_DESC &a_desc) {
+  const std::uint32_t lastMip = a_desc.mipLevels - 1;
+  return MipSide(a_desc.width, lastMip) == 1 &&
+         MipSide(a_desc.height, lastMip) == 1;
+}
+
+float MeanSourceMip(RE::NiSourceTexture *a_source) {
+  return MipThatFits(TextureLab::ExtentOf(a_source).value_or(TextureExtent{}),
+                     kMeanSide);
+}
+
 class ReadbackMeter {
 public:
   explicit ReadbackMeter(std::string_view a_op) noexcept : op_(a_op) {}
@@ -267,6 +285,12 @@ std::optional<float> TextureLab::ReadBackMean(RenderTarget &a_target) {
   if (desc.mipLevels == 0 || desc.format != DXGI_FORMAT_R8G8B8A8_UNORM) {
     return result;
   }
+  if (!LastMipIsOneTexel(desc)) {
+    logger::warn("TextureLab: mean readback refused: the {}x{} target's last "
+                 "of {} mips is not one texel",
+                 desc.width, desc.height, desc.mipLevels);
+    return result;
+  }
   const auto lastMip = desc.mipLevels - 1;
   D3D11_TEXTURE2D_DESC stagingDesc{};
   stagingDesc.width = 1;
@@ -430,7 +454,7 @@ TextureLab::ExtentOf(RE::NiSourceTexture *a_source) {
   if (texture.Get()) {
     D3D11_TEXTURE2D_DESC desc{};
     texture->GetDesc(&desc);
-    extent = Extent{desc.width, desc.height};
+    extent = Extent{desc.width, desc.height, desc.mipLevels};
   }
   return extent;
 }
@@ -440,8 +464,10 @@ float TextureLab::MeanLuminance(RE::NiSourceTexture *a_source) {
     return it->second;
   }
   float result = 0.5f;
-  auto target = Acquire(TextureSize(64), "mean");
-  if (target && Render(*target, a_source, LayerParams{})) {
+  auto target = Acquire(TextureSize(kMeanSide), "mean");
+  LayerParams params;
+  params.scroll.sourceMip = MeanSourceMip(a_source);
+  if (target && Render(*target, a_source, params)) {
     result = ReadBackMean(*target).value_or(0.5f);
   } else {
     logger::warn("TextureLab: mean luminance render failed; using 0.5");
@@ -457,12 +483,13 @@ float TextureLab::MeanChannel(RE::NiSourceTexture *a_source,
     return it->second;
   }
   float result = 0.5f;
-  auto target = Acquire(TextureSize(64), "mean");
+  auto target = Acquire(TextureSize(kMeanSide), "mean");
   if (target) {
     LayerParams p;
     p.mode = Mode::kChannel;
     p.map = {a_source, MapReading::kRmaos};
     p.channel.channel = a_channel;
+    p.channel.mapMip = MeanSourceMip(a_source);
     if (Render(*target, nullptr, p)) {
       result = ReadBackMean(*target).value_or(0.5f);
     } else {

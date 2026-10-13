@@ -70,6 +70,7 @@ struct alignas(16) ClusterConstants {
   float misc[4];
   float palette[kMaxMaterialClusters][4];
   float mode[4];
+  float levels[4];
 };
 static_assert(kMaxMaterialClusters == 8 && sizeof(ClusterConstants) % 16 == 0);
 

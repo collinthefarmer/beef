@@ -35,9 +35,13 @@ struct LoweringSite {
   GraphValueType type;
   TextureKey key;
 };
+TextureRequirements WithoutMips(TextureRequirements requirements) {
+  requirements.mipPolicy = MipPolicy::kNone;
+  return requirements;
+}
 LoweringRequest WithoutMips(const LoweringRequest &request) {
   LoweringRequest stripped = request;
-  stripped.requirements.mipPolicy = MipPolicy::kNone;
+  stripped.requirements = WithoutMips(request.requirements);
   return stripped;
 }
 LoweringRequest OperandRequest(const LoweringRequest &request,
@@ -662,7 +666,8 @@ struct PlanBuilder {
         if (property == " mask" ||
             (property == " source" &&
              type == std::optional<RenderValueType>{ValueType::kScalar}))
-          value = Field(value, request.requirements, location + property);
+          value = Field(value, WithoutMips(request.requirements),
+                        location + property);
         return value;
       };
       PlannedLayer planned{get(" source"), get(" opacity"), {}, {},
