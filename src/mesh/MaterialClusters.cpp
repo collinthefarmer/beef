@@ -362,8 +362,11 @@ MaterialAnalysis ClusterMaterial(const MaterialSample &a_sample,
 namespace {
 constexpr std::size_t kSplitBins = 64;
 constexpr float kFlatSpread = 0.0004f;
-constexpr float kUnimodalSplit = 0.8f;
-constexpr float kMinimumGap = 0.1f;
+constexpr float kSingleGroupSplit = 0.75f;
+constexpr float kSingleGroupWeight = 0.1f;
+constexpr float kReferenceGap = 0.5f;
+constexpr float kMaxGapBoost = 4.0f;
+constexpr float kGapFloor = 1e-6f;
 constexpr std::uint8_t kFewestGuessed = 2;
 constexpr std::uint32_t kGuessSeeds = 3;
 constexpr float kFitTolerance = 0.02f;
@@ -371,6 +374,7 @@ constexpr float kFitTolerance = 0.02f;
 struct AxisSplit {
   float explained = 0.0f;
   float gap = 0.0f;
+  float spread = 0.0f;
 };
 
 AxisSplit BestSplit(const std::vector<Axes> &a_texels, std::size_t a_axis);
@@ -442,9 +446,9 @@ AxisSplit BestSplit(const std::vector<Axes> &a_texels, std::size_t a_axis) {
   }
   spread /= total;
   if (spread < kFlatSpread) {
-    return {};
+    return AxisSplit{0.0f, 0.0f, spread};
   }
-  AxisSplit best;
+  AxisSplit best{0.0f, 0.0f, spread};
   float lowCount = 0.0f;
   float lowSum = 0.0f;
   for (std::size_t bin = 0; bin + 1 < kSplitBins; ++bin) {
@@ -460,21 +464,24 @@ AxisSplit BestSplit(const std::vector<Axes> &a_texels, std::size_t a_axis) {
                           (lowMean - highMean) / (total * total);
     const float explained = between / spread;
     if (explained > best.explained) {
-      best = {explained, highMean - lowMean};
+      best = {explained, highMean - lowMean, spread};
     }
   }
   return best;
 }
 
 float SplitWeight(const AxisSplit &a_split) noexcept {
-  const float bimodal =
-      std::clamp((a_split.explained - kUnimodalSplit) / (1.0f - kUnimodalSplit),
-                 0.0f, 1.0f);
-  if (a_split.gap < kMinimumGap) {
+  if (a_split.spread < kFlatSpread) {
     return 0.0f;
   }
-  return std::clamp(bimodal / (a_split.gap * a_split.gap), 0.0f,
-                    kMaxChannelWeight);
+  const float grouped = std::clamp((a_split.explained - kSingleGroupSplit) /
+                                       (1.0f - kSingleGroupSplit),
+                                   0.0f, 1.0f);
+  const float kept = kSingleGroupWeight + (1.0f - kSingleGroupWeight) * grouped;
+  const float gap = std::max(a_split.gap * a_split.gap, kGapFloor);
+  const float boost =
+      std::clamp(kReferenceGap * kReferenceGap / gap, 1.0f, kMaxGapBoost);
+  return std::min(kept * boost, kMaxChannelWeight);
 }
 
 ChannelWeights GuessedWeights(const std::vector<Axes> &a_texels) {

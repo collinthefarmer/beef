@@ -248,5 +248,31 @@ int main() {
         "greys of any brightness share one chroma, so brightness is counted "
         "only by luma");
 
+  MaterialSample boneAndLeather;
+  boneAndLeather.width = 32;
+  boneAndLeather.height = 32;
+  std::uint32_t noise = 12345;
+  const auto jitter = [&noise]() {
+    noise = noise * 1664525u + 1013904223u;
+    return (static_cast<float>(noise >> 8) / 16777216.0f - 0.5f) * 0.12f;
+  };
+  for (std::size_t i = 0; i < 1024; ++i) {
+    const bool bone = i % 3 != 0;
+    MaterialTexel texel = Texel(0.6f + jitter(), 0.02f, 0.7f + jitter(),
+                                0.3f + jitter(), bone ? 0.62f : 0.38f);
+    texel.diffuse =
+        bone ? Vec3{0.72f + jitter(), 0.66f + jitter(), 0.55f + jitter()}
+             : Vec3{0.42f + jitter(), 0.27f + jitter(), 0.16f + jitter()};
+    boneAndLeather.texels.push_back(texel);
+  }
+  const ClusterSettings realistic = GuessClusterSettings(boneAndLeather);
+  Check(realistic.weights != ChannelWeights{},
+        "a noisy two-material sample gets its own weights, not the defaults");
+  const ChannelWeights &w = realistic.weights;
+  Check(w.luma > w.roughness && w.luma > w.occlusion &&
+            w.luma > w.reflectance && w.luma > w.chroma,
+        "the axis that separates the materials outweighs the noisy ones");
+  Check(realistic.weights.metallic == 0.0f, "a flat metallic axis drops out");
+
   return test::Finish("materialclusters");
 }

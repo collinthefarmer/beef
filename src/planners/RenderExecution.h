@@ -4,6 +4,7 @@
 #include "planners/RenderPlan.h"
 
 #include <algorithm>
+#include <format>
 #include <limits>
 #include <optional>
 
@@ -25,6 +26,15 @@ struct StepInput {
   RenderValueRef input;
   ChangeVersion changeVersion = 0;
 };
+[[nodiscard]] inline std::string_view InputBindingName(
+    const std::variant<TextureValue, StackInputBinding, ReadbackBinding>
+        &a_binding) noexcept {
+  return Match(
+      a_binding, [](const TextureValue &) { return std::string_view{"value"}; },
+      [](const StackInputBinding &) { return std::string_view{"stack input"}; },
+      [](const ReadbackBinding &) { return std::string_view{"readback"}; });
+}
+
 template <class T> struct StepOutput {
   std::optional<T> value;
   ChangeVersion changeVersion = 0;
@@ -216,7 +226,9 @@ private:
           return std::unexpected(submitted.error());
       }
       if (!inputs_[input->input].value)
-        return std::unexpected("render input is unavailable");
+        return std::unexpected(
+            std::format("render input {} ({}) is unavailable", input->input,
+                        InputBindingName(plan_.inputs[input->input].binding)));
       return inputs_[input->input].changeVersion;
     }
     const auto *reference = Get<StepOutputRef>(ref);
