@@ -309,7 +309,7 @@ public:
   bool RenderClusters(RenderTarget &a_target, RE::NiSourceTexture *a_rmaos,
                       RE::NiSourceTexture *a_diffuse,
                       const MaterialAnalysis &a_analysis,
-                      std::optional<std::uint8_t> a_picked);
+                      std::optional<std::uint8_t> a_picked, bool a_palette);
   [[nodiscard]] bool ClustersAvailable() const noexcept;
   [[nodiscard]] bool BakingAvailable() const noexcept;
 

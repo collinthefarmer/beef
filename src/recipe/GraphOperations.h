@@ -187,6 +187,8 @@ struct MaterialClustersOperation {
   ClusterSettings settings;
   std::optional<OutputRef> pick;
   std::optional<OutputRef> areaBias;
+  bool guess = false;
+  bool palette = false;
 };
 struct ReductionOperation {
   ReductionKind kind = ReductionKind::kMean;

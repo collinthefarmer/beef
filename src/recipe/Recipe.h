@@ -528,6 +528,8 @@ struct MaterialClustersSource {
   ClusterSettings settings;
   std::optional<Param> pick;
   Param areaBias = 1.0f;
+  bool guess = false;
+  bool palette = false;
   [[nodiscard]] bool operator==(const MaterialClustersSource &) const = default;
 };
 

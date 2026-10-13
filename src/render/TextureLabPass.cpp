@@ -1191,7 +1191,8 @@ bool TextureLab::RenderClusters(RenderTarget &a_target,
                                 RE::NiSourceTexture *a_rmaos,
                                 RE::NiSourceTexture *a_diffuse,
                                 const MaterialAnalysis &a_analysis,
-                                std::optional<std::uint8_t> a_picked) {
+                                std::optional<std::uint8_t> a_picked,
+                                bool a_palette) {
   auto *renderer = RE::BSGraphics::Renderer::GetSingleton();
   if (!available_ || !renderer || !borrowedContext_ || !a_target.rtv.Get() ||
       !gpu_->clusters.has_value()) {
@@ -1231,6 +1232,13 @@ bool TextureLab::RenderClusters(RenderTarget &a_target,
   constants.misc[2] = scale(w.chroma);
   constants.misc[1] = static_cast<float>(a_analysis.clusters.size());
   constants.misc[3] = a_picked ? static_cast<float>(*a_picked) + 1.0f : 0.0f;
+  constants.mode[0] = a_palette ? 1.0f : 0.0f;
+  for (std::size_t k = 0; k < kClusterPalette.size(); ++k) {
+    constants.palette[k][0] = kClusterPalette[k].x;
+    constants.palette[k][1] = kClusterPalette[k].y;
+    constants.palette[k][2] = kClusterPalette[k].z;
+    constants.palette[k][3] = 1.0f;
+  }
 
   pass.Context().UpdateSubresource(pipeline.constants.Get(), 0, nullptr,
                                    &constants, 0, 0);

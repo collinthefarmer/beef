@@ -628,6 +628,18 @@ void TestClusterColor() {
           "color weighting can be disabled independently");
     Check(!color->bind("11"), "color weight refuses out-of-range values");
   }
+  const auto *palette = Field(form, "palette");
+  const auto *guess = Field(form, "guess");
+  Check(palette && guess && palette->kind == FieldKind::kToggle &&
+            guess->kind == FieldKind::kToggle,
+        "a cluster source offers guess and palette toggles");
+  if (palette && palette->bind) {
+    const auto edit = palette->bind("on");
+    const auto *set = edit ? Get<SetSource>(*edit) : nullptr;
+    const auto *value = set ? Get<MaterialClustersSource>(set->kind) : nullptr;
+    Check(value && value->palette && !value->guess,
+          "turning palette on leaves guess alone");
+  }
   const auto *metallic = Field(form, "metallic");
   Check(metallic && metallic->bind && metallic->workingRange &&
             metallic->kind == FieldKind::kScalar,

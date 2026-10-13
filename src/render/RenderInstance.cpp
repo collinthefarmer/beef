@@ -497,7 +497,9 @@ StepResult ExecuteClusterMaterialStep(const ClusterMaterialStep &step,
           step.sample);
   if (!sample || !*sample)
     return std::unexpected("material sample is unavailable");
-  auto analysis = ClusterMaterial(**sample, step.settings);
+  const ClusterSettings settings =
+      step.guess ? GuessClusterSettings(**sample) : step.settings;
+  auto analysis = ClusterMaterial(**sample, settings);
   if (analysis.clusters.empty())
     return std::unexpected("material analysis has no clusters");
   return std::make_shared<const MaterialAnalysis>(std::move(analysis));
@@ -527,9 +529,9 @@ StepResult ExecuteDrawClustersStep(const DrawClustersStep &step,
   const auto target =
       AcquireStepTarget(execution, step.requirements,
                         TextureLab::MipsFor(step.requirements.mipPolicy));
-  if (!target || !execution.lab.RenderClusters(*target, material->rmaos.get(),
-                                               material->diffuse.get(),
-                                               **analysis, picked))
+  if (!target || !execution.lab.RenderClusters(
+                     *target, material->rmaos.get(), material->diffuse.get(),
+                     **analysis, picked, step.palette))
     return std::unexpected("cluster draw failed");
   auto view = View(target);
   view.sampling.nearest = true;

@@ -171,6 +171,8 @@ struct MaterialClustersSourceRow {
   std::string iterations;
   std::string chromaWeight = "1";
   std::string detailWeight = "1";
+  bool guess = false;
+  bool palette = false;
   std::string pick;
   std::string areaBias = "1";
 };

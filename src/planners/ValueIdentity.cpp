@@ -59,6 +59,8 @@ void EncodeMaterialClustersOperation(
     Encoding &out, const MaterialClustersOperation &operation) {
   const ClusterSettings &s = operation.settings;
   out.Number(operation.pick.has_value());
+  out.Number(operation.guess);
+  out.Number(operation.palette);
   out.Number(s.clusters);
   out.Number(s.seed);
   out.Number(s.iterations);

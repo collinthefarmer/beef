@@ -3,6 +3,7 @@
 
 #include "recipe/Recipe.h"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -26,6 +27,12 @@ struct Chroma {
   float greenMagenta = 0.5f;
 };
 [[nodiscard]] Chroma ChromaOf(const Vec3 &a_diffuse) noexcept;
+
+inline constexpr std::array<Vec3, kMaxMaterialClusters> kClusterPalette{
+    Vec3{0.24f, 0.64f, 0.91f}, Vec3{0.91f, 0.79f, 0.24f},
+    Vec3{0.42f, 0.83f, 0.35f}, Vec3{0.83f, 0.37f, 0.83f},
+    Vec3{0.96f, 0.55f, 0.37f}, Vec3{0.37f, 0.88f, 0.96f},
+    Vec3{0.69f, 0.69f, 0.69f}, Vec3{0.91f, 0.31f, 0.31f}};
 
 inline constexpr std::size_t kMaxSampleTexels = 64 * 64;
 struct MaterialSample {

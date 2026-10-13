@@ -563,9 +563,11 @@ struct PlanBuilder {
       return submission;
     const RenderValueRef sample =
         Readback(*submitted, RenderResourceType::kMaterialSample);
-    const RenderValueRef analysis = Step(
-        ClusterMaterialStep{sample, operation.settings}, label + " analysis");
+    const RenderValueRef analysis =
+        Step(ClusterMaterialStep{sample, operation.settings, operation.guess},
+             label + " analysis");
     DrawClustersStep draw{material, analysis, request.requirements};
+    draw.palette = operation.palette;
     if (operation.pick) {
       draw.pick = BuildOperand(*operation.pick, request, depth);
     }

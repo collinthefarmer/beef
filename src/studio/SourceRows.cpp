@@ -95,6 +95,8 @@ ClustersRowOf(const MaterialClustersSource &a_clusters) {
   clusters.detailWeight = ParamText(s.weights.detail);
   clusters.pick = a_clusters.pick ? ParamText(*a_clusters.pick) : "";
   clusters.areaBias = ParamText(a_clusters.areaBias);
+  clusters.guess = a_clusters.guess;
+  clusters.palette = a_clusters.palette;
   return clusters;
 }
 
@@ -269,6 +271,8 @@ ClustersKindOf(const MaterialClustersSourceRow &a_row) {
                      (*weights)[4], *chroma,       *detail};
   clusters.settings.seed = *seed;
   clusters.settings.iterations = *iterations;
+  clusters.guess = a_row.guess;
+  clusters.palette = a_row.palette;
   const auto bias = ParseParam(a_row.areaBias);
   const auto *biasValue = bias ? Get<float>(*bias) : nullptr;
   if (!bias ||

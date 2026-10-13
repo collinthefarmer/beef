@@ -565,6 +565,8 @@ cbuffer ClusterParams : register(b3)
 	float4 centroidChroma[8];
 	float4 clusterWeights;
 	float4 clusterMisc;
+	float4 clusterPalette[8];
+	float4 clusterMode;
 };
 
 float4 PSClusters(VSOut i) : SV_Target
@@ -587,6 +589,8 @@ float4 PSClusters(VSOut i) : SV_Target
 			id = centroidLuma[k].y;
 		}
 	}
+	if (clusterMode.x > 0.5)
+		return float4(clusterPalette[(uint)id % 8].rgb, 1);
 	float v = clusterMisc.w > 0.5
 	              ? (abs(id - (clusterMisc.w - 1.0)) < 0.5 ? 1.0 : 0.0)
 	              : id / 255.0;

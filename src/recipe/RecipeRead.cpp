@@ -719,7 +719,8 @@ ParseSourceAlternative<MaterialClustersSource>(const json &a_v,
                                                const Reporter &a_ctx) {
   if (!a_v.is_object()) {
     a_ctx.Error("'materialClusters' takes an object with 'clusters', "
-                "'weights', 'seed', 'iterations', 'pick' and 'areaBias'");
+                "'weights', 'seed', 'iterations', 'pick', 'areaBias', "
+                "'guess' and 'palette'");
     return std::nullopt;
   }
   MaterialClustersSource k;
@@ -743,6 +744,8 @@ ParseSourceAlternative<MaterialClustersSource>(const json &a_v,
     k.pick = pick;
   }
   r.Read("areaBias", k.areaBias);
+  r.Read("guess", k.guess);
+  r.Read("palette", k.palette);
   r.Finish();
   if (!ok) {
     return std::nullopt;

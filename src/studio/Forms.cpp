@@ -27,6 +27,16 @@ namespace {
 
 constexpr std::pair<float, float> kUnitRange{0.0f, 1.0f};
 
+[[nodiscard]] std::optional<bool> OnOff(const std::string &a_text) {
+  if (a_text == "on") {
+    return true;
+  }
+  if (a_text == "off") {
+    return false;
+  }
+  return std::nullopt;
+}
+
 struct ScalarRange {
   ScalarField field;
   std::pair<float, float> working;
@@ -1519,6 +1529,12 @@ void ClustersFields(std::vector<FormField> &a_form, const SourceContext &a_ctx,
   const std::string &name = a_ctx.name;
   const SourceKind &record = a_ctx.record;
   const MaterialClustersSourceRow &source = a_source;
+  a_form.push_back(ToggleField(
+      "guess", source.guess,
+      BindSourceMember(name, record, &MaterialClustersSource::guess, OnOff)));
+  a_form.push_back(ToggleField(
+      "palette", source.palette,
+      BindSourceMember(name, record, &MaterialClustersSource::palette, OnOff)));
   FormField clusters = ParamField(
       {.name = "clusters",
        .kind = FieldKind::kScalar,

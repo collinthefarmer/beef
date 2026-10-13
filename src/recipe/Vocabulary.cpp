@@ -300,7 +300,9 @@ ValueType SourceType(const Source &a_source) noexcept {
       },
       [](const DistanceSource &) { return ValueType::kScalar; },
       [](const RippleSource &) { return ValueType::kScalar; },
-      [](const MaterialClustersSource &) { return ValueType::kScalar; },
+      [](const MaterialClustersSource &s) {
+        return s.palette ? ValueType::kVec3 : ValueType::kScalar;
+      },
       [](const PieceSource &) { return ValueType::kScalar; });
 }
 

@@ -547,6 +547,12 @@ int main() {
     Check(HasMessage(CheckSource(rows, bad), "clusters"),
           "CheckSource rejects a zero cluster count");
 
+    Source both{"k3", MaterialClustersSource{}};
+    Get<MaterialClustersSource>(both.kind)->palette = true;
+    Get<MaterialClustersSource>(both.kind)->pick = Param{0.5f};
+    Check(HasMessage(CheckSource(rows, both), "palette"),
+          "a palette cluster source refuses a pick");
+
     Source clean{"k2", MaterialClustersSource{}};
     Check(CheckSource(rows, clean).empty(),
           "CheckSource accepts a valid clusters source");

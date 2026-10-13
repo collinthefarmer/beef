@@ -26,9 +26,6 @@ constexpr float kHistogramReach = 0.42f;
 constexpr std::uint32_t kAxisInk = 0x80A0A0A0U;
 constexpr std::uint32_t kLabelInk = 0xFFD0D0D0U;
 constexpr std::uint32_t kWeightInk = 0xFF909090U;
-constexpr std::array<std::uint32_t, 8> kPalette{
-    0x00E8A33DU, 0x003DC9E8U, 0x0059D46BU, 0x00D45ED4U,
-    0x005E8CF5U, 0x00F5E05EU, 0x00B0B0B0U, 0x004F4FE8U};
 
 struct ChartArea {
   ImGui::ImVec2 origin;
@@ -65,7 +62,12 @@ ImGui::ImVec4 InkColour(std::uint32_t a_ink);
 
 std::uint32_t ClusterInk(std::uint8_t a_cluster,
                          std::uint8_t a_alpha) noexcept {
-  return kPalette[a_cluster % kPalette.size()] |
+  const Vec3 &colour = kClusterPalette[a_cluster % kClusterPalette.size()];
+  const auto byte = [](float a_channel) {
+    return static_cast<std::uint32_t>(std::clamp(a_channel, 0.0f, 1.0f) *
+                                      255.0f);
+  };
+  return byte(colour.x) | (byte(colour.y) << 8) | (byte(colour.z) << 16) |
          (static_cast<std::uint32_t>(a_alpha) << 24);
 }
 

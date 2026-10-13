@@ -79,6 +79,7 @@ struct SubmitMaterialSampleStep {
 struct ClusterMaterialStep {
   RenderValueRef sample;
   ClusterSettings settings;
+  bool guess = false;
   [[nodiscard]] bool operator==(const ClusterMaterialStep &) const = default;
 };
 struct DrawClustersStep {
@@ -86,6 +87,7 @@ struct DrawClustersStep {
   TextureRequirements requirements;
   std::optional<RenderValueRef> pick;
   std::optional<RenderValueRef> areaBias;
+  bool palette = false;
   [[nodiscard]] bool operator==(const DrawClustersStep &) const = default;
 };
 struct SampleFieldStep {

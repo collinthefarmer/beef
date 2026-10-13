@@ -363,6 +363,8 @@ json MaterialClustersToJson(const MaterialClustersSource &k) {
     w.Write("pick", *k.pick);
   }
   w.WriteIf("areaBias", k.areaBias, Param{1.0f});
+  w.WriteIf("guess", k.guess, false);
+  w.WriteIf("palette", k.palette, false);
   return o;
 }
 

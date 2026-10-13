@@ -333,6 +333,10 @@ std::vector<Diagnostic> CheckSourceInputs(const RowTypes &a_rows,
         if (s.pick) {
           CheckScalar(a_rows, report, *s.pick, "pick");
         }
+        if (s.palette && s.pick) {
+          report.Error("'palette' colours every cluster and 'pick' selects "
+                       "one; use one of them");
+        }
         CheckScalar(a_rows, report, s.areaBias, "areaBias");
         if (s.settings.clusters < 1 ||
             s.settings.clusters > kMaxMaterialClusters) {

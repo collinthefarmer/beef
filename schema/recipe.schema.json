@@ -205,7 +205,9 @@
               "seed": { "type": "integer", "minimum": 0, "maximum": 2147483647, "default": 1, "description": "The same seed and sample give the same clusters." },
               "iterations": { "type": "integer", "minimum": 1, "maximum": 256, "default": 32, "description": "The k-means cap." },
               "pick": { "oneOf": [{ "$ref": "#/$defs/number", "minimum": 0, "maximum": 1 }, { "$ref": "#/$defs/ref" }], "description": "Pick one cluster with this 0..1 value (for example @enchantment idHash): the source is then 1 on the picked cluster's texels and 0 elsewhere. Absent, the source is the id map." },
-              "areaBias": { "oneOf": [{ "$ref": "#/$defs/number", "minimum": 0, "maximum": 8 }, { "$ref": "#/$defs/ref" }], "default": 1, "description": "How a pick favours large clusters: each cluster weighs its share of the texels to this power, so 0 picks every cluster equally, 1 in proportion to area, and more favours the largest." } } } } },
+              "areaBias": { "oneOf": [{ "$ref": "#/$defs/number", "minimum": 0, "maximum": 8 }, { "$ref": "#/$defs/ref" }], "default": 1, "description": "How a pick favours large clusters: each cluster weighs its share of the texels to this power, so 0 picks every cluster equally, 1 in proportion to area, and more favours the largest." },
+              "guess": { "type": "boolean", "default": false, "description": "Use each material's best-guess cluster count, weights and seed instead of the settings above." },
+              "palette": { "type": "boolean", "default": false, "description": "Colour every cluster from a fixed palette; the source is then a colour. Excludes pick." } } } } },
         { "required": ["piece"], "properties": { "piece": { "enum": ["itemHash", "chartCount"], "description": "A per-piece fact, one value for the whole piece. itemHash is a stable 0..1 hash of the worn item's form, the same on every texel of that piece and for every copy of the item; two pieces sharing one enchantment still read their own values. chartCount is how many UV charts the piece's mesh has." } } }
       ]
     },
