@@ -43,9 +43,16 @@ The prototype (`proto.py`, `hybrid.py`) compares three methods on nine dumps: to
 | Bonemold cuirass | Regions and hybrid find bone against leather (k=2). Today splits by brightness into stripes. |
 | Chitin cuirass | Regions lose the straps and rings. The hybrid at radius 2–4 keeps them without today's speckle. Radius 16 breaks thin straps. |
 | Deathbrand | Regions and hybrid over-split the crystal (k=5). Today's two clusters are clean. |
+| Stalhrim | The hybrid finds leather, ice, metal frame and fur. A fifth group of dark edge texels speckles the fur. Today separates only ice. |
+| Temple Priest robes | The hybrid finds cloth, sash, gold trim lines and the fur ring. Regions scatter blocks. Today separates only the trim. |
+| Nordic Carved greaves | The hybrid draws seams and hem cleanly. Regions blotch them. |
+| Chitin Heavy greaves | Regions and hybrid give the same clean split. Today speckles. |
+| Blackguard | Mixed. The hybrid finds the buckles but merges raised straps into the vest leather, which today splits by brightness. Small leather pieces blotch. |
+| Ahzidal | 2% coverage; too little area to judge. |
 
 - About 930 superpixels instead of 300 make BIC pick k=4 on Bonemold instead of 2. The superpixel count therefore changes the grouping, not only the region size.
-- The over-split needs a merge step after the mixture fit.
+- The over-split needs a merge step after the mixture fit. The same step can absorb a group made of edge texels (Stalhrim).
+- Parts that differ only by brightness inside one material (Blackguard straps) fall into one group. That split is an intent question for step 3.
 
 ## Decisions for the user
 
