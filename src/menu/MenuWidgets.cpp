@@ -703,11 +703,34 @@ bool TypedLink(const TypedLinkSpec &a_spec) {
   BadgeFrame(style.glyph, style.colour, false, ImVec2{side, side});
   Tooltip(style.help);
   ImGui::SameLine(0.0f, 0.0f);
-  const float width =
-      a_spec.width > 0.0f ? (std::max)(1.0f, a_spec.width - side) : 0.0f;
   const std::string label{a_spec.label};
-  return ImGui::Selectable(label.c_str(), a_spec.selected, 0,
-                           ImVec2{width, 0.0f});
+  const auto *frame = ImGui::GetStyle();
+  const ImVec2 padding = frame ? frame->FramePadding : ImVec2{4.0f, 3.0f};
+  const float width =
+      a_spec.width > 0.0f
+          ? (std::max)(1.0f, a_spec.width - side)
+          : ImGui::CalcTextSize(label.c_str()).x + 2.0f * padding.x;
+  const ImVec2 corner = ImGui::GetCursorScreenPos();
+  const bool clicked =
+      ImGui::InvisibleButton(label.c_str(), ImVec2{width, side});
+  ImGui::ImDrawList *draw = ImGui::GetWindowDrawList();
+  if (!draw) {
+    return clicked;
+  }
+  const ImVec2 far{corner.x + width, corner.y + side};
+  if (ImGui::IsItemHovered()) {
+    ImGui::ImDrawListManager::AddRectFilled(
+        draw, corner, far, ImGui::GetColorU32(ImGuiMCP::ImGuiCol_HeaderHovered),
+        0.0f, 0);
+  } else if (a_spec.selected) {
+    ImGui::ImDrawListManager::AddRectFilled(
+        draw, corner, far, ImGui::GetColorU32(ImGuiMCP::ImGuiCol_Header), 0.0f,
+        0);
+  }
+  ImGui::ImDrawListManager::AddText(
+      draw, ImVec2{corner.x + padding.x, corner.y + padding.y},
+      ImGui::GetColorU32(ImGuiMCP::ImGuiCol_Text), label.c_str());
+  return clicked;
 }
 
 void ModeBadge(Studio::FieldKind a_kind, bool &a_combo, Studio::FieldKey a_key,
