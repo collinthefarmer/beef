@@ -1,9 +1,13 @@
 """Require the first-party permission, its per-file references, and its package and source entries."""
+import importlib.util
 from pathlib import Path
 import subprocess
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
+SPEC = importlib.util.spec_from_file_location('gate', ROOT / 'tools/gate.py')
+gate = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(gate)
 
 
 class LicenseTests(unittest.TestCase):
@@ -13,10 +17,8 @@ class LicenseTests(unittest.TestCase):
         self.assertIn('additional permission under section 7', notice)
         for directory in ('src', 'tests'):
             for path in (ROOT / directory).rglob('*'):
-                if path.suffix not in ('.h', '.cpp') or any(
-                        part in ('extern', 'cs') for part in path.relative_to(ROOT).parts):
-                    continue
-                self.assertIn('COPYING.md', path.read_text().splitlines()[0], str(path))
+                if path.is_file() and gate.first_party(path.relative_to(ROOT).as_posix()):
+                    self.assertIn('COPYING.md', path.read_text().splitlines()[0], str(path))
         derived = (ROOT / 'src/render/PBRMaterial.h').read_text()
         self.assertIn('Community Shaders-derived portions:', derived)
         self.assertIn('COPYING.md', (ROOT / 'cmake/Plugin.cpp.in').read_text().splitlines()[0])

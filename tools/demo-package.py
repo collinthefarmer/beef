@@ -5,6 +5,7 @@ import hashlib
 import importlib.util
 import json
 from pathlib import Path, PurePosixPath
+import sys
 import zipfile
 
 ARCHIVES_SPEC = importlib.util.spec_from_file_location(
@@ -13,34 +14,42 @@ archives = importlib.util.module_from_spec(ARCHIVES_SPEC)
 ARCHIVES_SPEC.loader.exec_module(archives)
 
 
+CONTENTS = 'CONTENTS.json'
+
+
+def checked_destination(destination: str, taken: set[str]) -> str:
+    name = PurePosixPath(destination)
+    if (not destination or str(name) != destination or name.is_absolute() or '..' in name.parts
+            or '.git' in name.parts or '\\' in destination or ':' in destination):
+        raise ValueError(f'Unsafe destination: {destination}')
+    if destination.casefold() in taken:
+        raise ValueError(f'Duplicate destination: {destination}')
+    taken.add(destination.casefold())
+    return destination
+
+
 def inputs(manifest, fixture, recipes, readme):
-    files = {}
+    pairs = []
     for entry in manifest['files'] + manifest['notices']:
         destination = entry['destination']
         if destination == 'README.md':
             destination = 'FRAMEWORK_README.md'
-        name = PurePosixPath(destination)
-        if name.is_absolute() or '..' in name.parts or '\\' in destination:
-            raise ValueError(f'Unsafe destination: {destination}')
-        if destination in files:
-            raise ValueError(f'Duplicate destination: {destination}')
-        files[destination] = Path(entry['source'])
+        pairs.append((destination, Path(entry['source'])))
     required = {'SKSE/Plugins/BetterEnchantmentEffects.dll',
                 'textures/BetterEnchantmentEffects/slots/slot_00.dds',
                 'SKSE/Plugins/BetterEnchantmentEffects/templates/fill.json',
                 'SKSE/Plugins/BetterEnchantmentEffects/templates/bare.json'}
-    if not required <= files.keys():
+    if not required <= {destination for destination, _ in pairs}:
         raise ValueError('Framework manifest is missing required rendering inputs')
-    files.update({
-        'BetterEnchantmentEffectsDemo.esp': fixture / 'BetterEnchantmentEffectsDemo.esp',
-        'records.json': fixture / 'records.json',
-        'README.md': readme,
-    })
+    pairs += [('BetterEnchantmentEffectsDemo.esp', fixture / 'BetterEnchantmentEffectsDemo.esp'),
+              ('records.json', fixture / 'records.json'),
+              ('README.md', readme)]
     for recipe in recipes:
-        destination = f'SKSE/Plugins/BetterEnchantmentEffects/recipes/examples/{recipe.name}'
-        if recipe.suffix != '.json' or destination in files:
-            raise ValueError(f'Invalid or duplicate recipe: {recipe.name}')
-        files[destination] = recipe
+        if recipe.suffix != '.json':
+            raise ValueError(f'Invalid recipe: {recipe.name}')
+        pairs.append((f'SKSE/Plugins/BetterEnchantmentEffects/recipes/examples/{recipe.name}', recipe))
+    taken = {CONTENTS.casefold()}
+    files = {checked_destination(destination, taken): source for destination, source in pairs}
     for destination, source in files.items():
         if not source.is_file():
             raise ValueError(f'Missing input for {destination}: {source}')
@@ -53,7 +62,7 @@ def package(files, output):
     hashes = {name: hashlib.sha256(path.read_bytes()).hexdigest()
               for name, path in files.items()}
     archives.write_zip(temporary, [(name, path.read_bytes()) for name, path in files.items()]
-              + [('CONTENTS.json', (json.dumps(hashes, indent=2) + '\n').encode())])
+              + [(CONTENTS, (json.dumps(hashes, indent=2) + '\n').encode())])
     with zipfile.ZipFile(temporary) as archive:
         if archive.testzip() is not None:
             raise ValueError('Archive integrity failure')
@@ -79,4 +88,7 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except (OSError, KeyError, ValueError) as error:
+        sys.exit(f'demo-package: {error}')

@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -138,6 +139,16 @@ class StageTests(unittest.TestCase):
         calls = self.gate('release')[1]
         self.assertIn(('cmake', '--build', '--preset', 'windows-release', '--target', 'all'), calls)
         self.assertEqual(calls[-1][1:], ('tools/tidy.py', '--check'))
+
+    def test_missing_formatter_is_one_line(self) -> None:
+        (self.root / 'tools').mkdir()
+        shutil.copy2(ROOT / 'tools/gate.py', self.root / 'tools/gate.py')
+        result = subprocess.run([sys.executable, 'tools/gate.py', 'push'], cwd=self.root, text=True,
+                                capture_output=True,
+                                env=dict(os.environ, BEEF_DEV_SHELL='1', CLANG_FORMAT='absent-clang-format'))
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(len(result.stderr.splitlines()), 1, result.stderr)
+        self.assertIn('absent-clang-format', result.stderr)
 
 
 class PushRecordTests(StageTests):

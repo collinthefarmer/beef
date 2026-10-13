@@ -1,7 +1,10 @@
 """Prevent a demo DLL-only bundle from omitting required runtime assets."""
 import importlib.util
 import json
+import os
 from pathlib import Path
+import subprocess
+import sys
 import tempfile
 import unittest
 import zipfile
@@ -69,13 +72,36 @@ class DemoPackageTests(unittest.TestCase):
             self.collect()
 
     def test_unsafe_and_duplicate_destinations_are_rejected(self):
-        original = self.manifest['files'][0]['destination']
-        for name in ['../escape', '/absolute', 'bad\\path', 'README.md']:
-            with self.subTest(name=name):
-                self.manifest['files'][0]['destination'] = name
-                with self.assertRaises(ValueError):
-                    self.collect()
-        self.manifest['files'][0]['destination'] = original
+        entry = next(e for e in self.manifest['files'] if e['destination'].endswith('.ini'))
+        unsafe = ['../escape', '/absolute', 'bad\\path', '', './a', 'a//b', 'C:/x', 'a/.git/config']
+        duplicate = ['README.md', 'CONTENTS.json', 'contents.JSON', 'records.json', 'Records.JSON',
+                     'skse/plugins/betterenchantmenteffects.dll']
+        for names, message in ((unsafe, 'Unsafe destination'), (duplicate, 'Duplicate destination')):
+            for name in names:
+                with self.subTest(name=name):
+                    entry['destination'] = name
+                    with self.assertRaisesRegex(ValueError, message):
+                        self.collect()
+
+    def test_identical_inputs_produce_identical_archives(self):
+        files = self.collect()
+        first, second = self.root / 'first.zip', self.root / 'second.zip'
+        TOOL.package(files, first)
+        for path in files.values():
+            os.utime(path, (1_000_000_000, 1_000_000_000))
+            path.chmod(0o755)
+        TOOL.package(files, second)
+        self.assertEqual(first.read_bytes(), second.read_bytes())
+
+    def test_expected_failure_is_one_line(self):
+        result = subprocess.run([sys.executable, str(ROOT / 'tools/demo-package.py'),
+                                 '--manifest', str(self.root / 'absent.json'), '--fixture', str(self.root),
+                                 '--recipe', str(self.root / 'recipe.json'),
+                                 '--readme', str(self.root / 'demo-readme.md'),
+                                 '--output', str(self.root / 'demo.zip')], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(len(result.stderr.splitlines()), 1, result.stderr)
+        self.assertIn('absent.json', result.stderr)
 
 
 if __name__ == '__main__':
