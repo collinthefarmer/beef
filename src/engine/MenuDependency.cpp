@@ -113,6 +113,7 @@ constexpr const char *kMenuExports[]{
     "igSelectable_Bool",
     "igSelectable_BoolPtr",
     "igSeparator",
+    "igSeparatorText",
     "igSetCursorPos",
     "igSetCursorPosX",
     "igSetDragDropPayload",

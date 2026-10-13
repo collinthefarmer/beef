@@ -11,6 +11,7 @@
 #include "studio/GameObjects.h"
 #include "studio/Intent.h"
 #include "studio/Names.h"
+#include "studio/RecipeSections.h"
 #include "studio/Selection.h"
 #include "studio/SelectorEdit.h"
 #include "studio/Snapshot.h"
@@ -45,10 +46,14 @@ void RecipeCombo(const Frame &a_frame, const char *a_label) {
                          preview.empty() ? "Choose recipe" : preview.c_str())) {
     return;
   }
-  for (const std::string &id : a_frame.snapshot->loaded) {
-    const bool selected = id == SelectionOf(a_frame).recipeID;
-    if (ImGui::Selectable(id.c_str(), selected)) {
-      Studio::Post(*a_frame.intents, Studio::PickRecipe{id, true});
+  for (const Studio::RecipeSection &section :
+       Studio::RecipeSectionsOf(a_frame.snapshot->loadedRecipes)) {
+    ImGui::SeparatorText(section.folder.c_str());
+    for (const std::string &id : section.ids) {
+      const bool selected = id == SelectionOf(a_frame).recipeID;
+      if (ImGui::Selectable(id.c_str(), selected)) {
+        Studio::Post(*a_frame.intents, Studio::PickRecipe{id, true});
+      }
     }
   }
   ImGui::EndCombo();
