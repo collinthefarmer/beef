@@ -175,6 +175,7 @@ OutputRow OutputRowOf(const Recipe &a_recipe, std::size_t a_index) {
   row.surface = material->surface;
   row.slot = material->slot;
   row.replace = material->replace;
+  row.resolution = material->resolution;
   row.selection = material->selector;
   row.scalars = ScalarRowsOf(a_recipe, *material);
   for (const Layer &layer : material->stack) {

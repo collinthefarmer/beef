@@ -531,8 +531,7 @@ void DrawRecipeKeys(const Frame &a_frame) {
 void DrawOutputHeader(const Studio::OutputRow &a_output,
                       std::span<const Studio::FormField> a_scalars,
                       const Frame &a_frame, std::string_view a_note) {
-  const Studio::OutputHeader header = Studio::OutputHeaderForm(
-      a_output.index, a_output.replace, a_output.selection);
+  const Studio::OutputHeader header = Studio::OutputHeaderForm(a_output);
   const std::string label = std::format(
       "{} / {}", SurfaceName(a_output.surface), SlotName(a_output.slot));
   static_cast<void>(Rule(

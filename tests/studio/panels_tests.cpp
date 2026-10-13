@@ -328,7 +328,27 @@ void TestOutputHeaderForm() {
   clause.operand = std::string{"Body*"};
   selector.anyOf.push_back(clause);
 
-  const OutputHeader header = OutputHeaderForm(2, true, selector);
+  OutputRow output;
+  output.index = 2;
+  output.replace = true;
+  output.selection = selector;
+  output.slot = Slot::kEmissive;
+  const OutputHeader header = OutputHeaderForm(output);
+  const FormField *resolution = Field(header.fields, "resolution");
+  Check(resolution != nullptr && resolution->text == "default" &&
+            resolution->bind,
+        "an output without a resolution shows the slot default");
+  const std::optional<RecipeEdit> half =
+      resolution ? resolution->bind("half") : std::nullopt;
+  const auto *setHalf = half ? Get<SetOutputResolution>(*half) : nullptr;
+  const std::optional<RecipeEdit> reset =
+      resolution ? resolution->bind("default") : std::nullopt;
+  const auto *setDefault = reset ? Get<SetOutputResolution>(*reset) : nullptr;
+  Check(setHalf && setHalf->output == 2 &&
+            setHalf->resolution == std::optional{Resolution::kHalf} &&
+            setDefault && !setDefault->resolution.has_value() &&
+            !resolution->bind("tiny"),
+        "the resolution choice sets, clears or refuses an output's resolution");
   const FormField *replace = Field(header.fields, "replace");
   Check(
       replace != nullptr && replace->kind == FieldKind::kToggle &&

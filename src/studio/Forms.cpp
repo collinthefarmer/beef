@@ -1599,14 +1599,27 @@ std::vector<FormField> RecipeHeaderForm(const RecipeRow &a_recipe) {
   return form;
 }
 
-OutputHeader OutputHeaderForm(std::size_t a_output, bool a_replace,
-                              const Selector &a_selector) {
+OutputHeader OutputHeaderForm(const OutputRow &a_output) {
   OutputHeader header;
-  header.fields.push_back(
-      ToggleField("replace", a_replace, BindOutputReplace(a_output)));
+  header.fields.push_back(ToggleField("replace", a_output.replace,
+                                      BindOutputReplace(a_output.index)));
   header.fields.back().help = "Clear earlier recipe groups on this target, "
                               "preserving sibling outputs from this recipe.";
-  header.selector = SelectorViewOf(a_selector);
+  std::vector<std::string> resolutions{std::string{kDefaultResolutionWord}};
+  for (const std::string &word : WordsOf(kResolutions)) {
+    resolutions.push_back(word);
+  }
+  header.fields.push_back(ChoiceField(
+      "resolution",
+      a_output.resolution ? std::string{ResolutionName(*a_output.resolution)}
+                          : std::string{kDefaultResolutionWord},
+      std::move(resolutions), BindOutputResolution(a_output.index)));
+  header.fields.back().help = std::format(
+      "The side of this output's map against the material's largest map. "
+      "{} follows the slot ({}).",
+      kDefaultResolutionWord,
+      ResolutionName(DefaultSlotResolution(a_output.slot)));
+  header.selector = SelectorViewOf(a_output.selection);
   return header;
 }
 

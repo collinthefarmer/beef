@@ -101,6 +101,10 @@ struct SetOutputReplace {
   std::size_t output = 0;
   bool replace = false;
 };
+struct SetOutputResolution {
+  std::size_t output = 0;
+  std::optional<Resolution> resolution;
+};
 struct SetOutputSelector {
   std::size_t output = 0;
   Selector selector;
@@ -286,12 +290,12 @@ using RecipeEdit = std::variant<
     SetLayerSource, SetLayerCurve, SetLayerBlend, SetLayerOpacity,
     SetLayerColor, SetLayerMask, SetLayerChannels, AddLayer, RemoveLayer,
     MoveLayer, ClearLayers, AddOutput, RemoveOutput, SetScalar, SetColorScalar,
-    SetOutputReplace, SetOutputSelector, ResetOutput, AddKey, RemoveKey,
-    ClearOutputs, ClearResources, ClearRecipe, SetPriority, SetOverride,
-    SetClockSpeed, SetConstant, SetExpression, SetSignal, SetSignalCurve,
-    SetCurve, SetMask, AddSignal, AddCurve, RenameSignal, RenameCurve,
-    RemoveSignal, RemoveCurve, AddMask, RenameMask, RemoveMask, AddSource,
-    SetSource, RenameSource, RemoveSource, AddLight, SetLightParam,
+    SetOutputReplace, SetOutputResolution, SetOutputSelector, ResetOutput,
+    AddKey, RemoveKey, ClearOutputs, ClearResources, ClearRecipe, SetPriority,
+    SetOverride, SetClockSpeed, SetConstant, SetExpression, SetSignal,
+    SetSignalCurve, SetCurve, SetMask, AddSignal, AddCurve, RenameSignal,
+    RenameCurve, RemoveSignal, RemoveCurve, AddMask, RenameMask, RemoveMask,
+    AddSource, SetSource, RenameSource, RemoveSource, AddLight, SetLightParam,
     SetLightVector, SetLightShadow, SetLightBones, SetLightReplace,
     SetLightSelector, ResetLight, SetShellParam, SetShellVector, SetShellPoint,
     SetShellMaterial, SetShellBlend, SetShellDepthBias, SetShellAlphaTest,

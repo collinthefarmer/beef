@@ -462,6 +462,14 @@ Refusal Edit(Recipe &a_recipe, const SetOutputReplace &a_edit) {
   return std::nullopt;
 }
 
+Refusal Edit(Recipe &a_recipe, const SetOutputResolution &a_edit) {
+  auto found = FindSurfaceOutput(a_recipe, a_edit.output);
+  if (found.problem)
+    return found.problem;
+  found.output->resolution = a_edit.resolution;
+  return std::nullopt;
+}
+
 Refusal Edit(Recipe &a_recipe, const SetOutputSelector &a_edit) {
   auto found = FindSurfaceOutput(a_recipe, a_edit.output);
   if (found.problem)
@@ -1273,6 +1281,11 @@ struct DescribeVisitor {
   std::string operator()(const SetOutputReplace &e) const {
     return std::format("{}: replace {}", OutputWhere(e.output),
                        e.replace ? "on" : "off");
+  }
+  std::string operator()(const SetOutputResolution &e) const {
+    return std::format("{}: resolution {}", OutputWhere(e.output),
+                       e.resolution ? ResolutionName(*e.resolution)
+                                    : std::string_view{"default"});
   }
   std::string operator()(const SetOutputSelector &e) const {
     return e.selector.All() ? std::format("{}: all", OutputWhere(e.output))

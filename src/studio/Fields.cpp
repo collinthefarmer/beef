@@ -304,6 +304,19 @@ FieldBinding BindOutputReplace(std::size_t a_output) {
   };
 }
 
+FieldBinding BindOutputResolution(std::size_t a_output) {
+  return [a_output](const std::string &a_text) -> std::optional<RecipeEdit> {
+    if (a_text == kDefaultResolutionWord) {
+      return SetOutputResolution{a_output, std::nullopt};
+    }
+    const std::optional<Resolution> resolution = ParseResolution(a_text);
+    if (!resolution) {
+      return std::nullopt;
+    }
+    return SetOutputResolution{a_output, resolution};
+  };
+}
+
 FieldBinding BindSignalKind(std::string a_signal) {
   return [signal = std::move(a_signal)](
              const std::string &a_text) -> std::optional<RecipeEdit> {

@@ -278,13 +278,13 @@ SourceForm(const SourceRow &a_source, const SignalNames &a_names,
 [[nodiscard]] std::vector<FormField>
 RecipeHeaderForm(const RecipeRow &a_recipe);
 
+inline constexpr std::string_view kDefaultResolutionWord = "default";
+
 struct OutputHeader {
   std::vector<FormField> fields;
   SelectorView selector;
 };
-[[nodiscard]] OutputHeader OutputHeaderForm(std::size_t a_output,
-                                            bool a_replace,
-                                            const Selector &a_selector);
+[[nodiscard]] OutputHeader OutputHeaderForm(const OutputRow &a_output);
 [[nodiscard]] FormField
 SelectorClauseField(const SelectorClauseRow &a_clause,
                     std::vector<std::string> a_geometries);

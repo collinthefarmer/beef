@@ -83,6 +83,7 @@ struct TextEntryFieldSpec {
 [[nodiscard]] FieldBinding BindMerge();
 [[nodiscard]] FieldBinding BindClockSpeed();
 [[nodiscard]] FieldBinding BindOutputReplace(std::size_t a_output);
+[[nodiscard]] FieldBinding BindOutputResolution(std::size_t a_output);
 
 [[nodiscard]] FieldBinding BindSignalKind(std::string a_signal);
 [[nodiscard]] FieldBinding BindCurveText(std::string a_curve);
