@@ -202,6 +202,20 @@ bool NamesTrigger(const RowTypes &a_rows, std::string_view a_name) noexcept {
 }
 
 namespace {
+void AppendNew(std::vector<Diagnostic> &a_out, std::vector<Diagnostic> a_more) {
+  for (Diagnostic &diagnostic : a_more) {
+    const bool present =
+        std::ranges::any_of(a_out, [&](const Diagnostic &a_prior) {
+          return a_prior.severity == diagnostic.severity &&
+                 a_prior.where == diagnostic.where &&
+                 a_prior.message == diagnostic.message;
+        });
+    if (!present) {
+      a_out.push_back(std::move(diagnostic));
+    }
+  }
+}
+
 std::vector<Diagnostic> RowDiagnostics(const RowTypes &a_rows,
                                        std::string_view a_where) {
   std::vector<Diagnostic> out;
@@ -279,7 +293,7 @@ std::vector<Diagnostic> CheckSource(const RowTypes &a_rows,
                                     const Source &a_source) {
   auto out = CandidateDiagnostics(a_rows, a_source, &Recipe::sources,
                                   SourceWhere(a_source.name));
-  for (auto &diagnostic : CheckSourceInputs(a_rows, a_source)) {
+  for (auto &diagnostic : CheckSourceRow(a_rows, a_source)) {
     const bool present = std::ranges::any_of(out, [&](const Diagnostic &prior) {
       return prior.severity == diagnostic.severity &&
              prior.where == diagnostic.where &&
@@ -288,6 +302,13 @@ std::vector<Diagnostic> CheckSource(const RowTypes &a_rows,
     if (!present)
       out.push_back(std::move(diagnostic));
   }
+  return out;
+}
+
+std::vector<Diagnostic> CheckSourceRow(const RowTypes &a_rows,
+                                       const Source &a_source) {
+  std::vector<Diagnostic> out = CheckSourceFields(a_source);
+  AppendNew(out, CheckSourceInputs(a_rows, a_source));
   return out;
 }
 
@@ -333,28 +354,7 @@ std::vector<Diagnostic> CheckSourceInputs(const RowTypes &a_rows,
         if (s.pick) {
           CheckScalar(a_rows, report, *s.pick, "pick");
         }
-        if (s.palette && s.pick) {
-          report.Error("'palette' colours every cluster and 'pick' selects "
-                       "one; use one of them");
-        }
         CheckScalar(a_rows, report, s.areaBias, "areaBias");
-        if (s.settings.clusters < 1 ||
-            s.settings.clusters > kMaxMaterialClusters) {
-          report.Error(
-              std::format("'clusters' is 1..{}", kMaxMaterialClusters));
-        }
-        if (s.settings.iterations < 1 ||
-            s.settings.iterations > kMaxClusterIterations) {
-          report.Error(
-              std::format("'iterations' is 1..{}", kMaxClusterIterations));
-        }
-        for (const ClusterWeightField &field : kClusterWeightFields) {
-          const float weight = s.settings.weights.*field.member;
-          if (weight < 0.0f || weight > kMaxChannelWeight) {
-            report.Error(std::format("'weights.{}' is 0..{}", field.name,
-                                     kMaxChannelWeight));
-          }
-        }
       },
       [](const MaterialSource &) {});
   return out;
@@ -491,14 +491,16 @@ std::vector<Diagnostic> CheckLightOutput(const RowTypes &a_rows,
 std::vector<Diagnostic> CheckOutput(const RowTypes &a_rows,
                                     const Output &a_output,
                                     std::string_view a_where) {
-  return Match(
-      a_output,
-      [&](const SurfaceOutput &m) {
-        return CheckSurfaceOutput(a_rows, m, a_where);
-      },
-      [&](const LightOutput &l) {
-        return CheckLightOutput(a_rows, l, a_where);
-      });
+  std::vector<Diagnostic> out = CheckOutputFields(a_output, a_where);
+  AppendNew(out, Match(
+                     a_output,
+                     [&](const SurfaceOutput &m) {
+                       return CheckSurfaceOutput(a_rows, m, a_where);
+                     },
+                     [&](const LightOutput &l) {
+                       return CheckLightOutput(a_rows, l, a_where);
+                     }));
+  return out;
 }
 
 namespace {
@@ -534,6 +536,7 @@ void CheckOutputs(const RowTypes &a_rows, std::vector<Diagnostic> &a_out) {
 
 void CheckShell(const RowTypes &a_rows, std::vector<Diagnostic> &a_out) {
   const ShellSettings &s = a_rows.recipe.shell;
+  AppendNew(a_out, CheckShellFields(s));
   const Reporter shell{a_out, "shell"};
   CheckScalar(a_rows, shell, s.opacity, "alpha");
   CheckScalar(a_rows, shell, s.rimPower, "rimPower");
@@ -549,8 +552,13 @@ void CheckShell(const RowTypes &a_rows, std::vector<Diagnostic> &a_out) {
 }
 
 void CheckVariants(const RowTypes &a_rows, std::vector<Diagnostic> &a_out) {
+  std::unordered_set<std::string> names;
   for (const auto &v : a_rows.recipe.variants) {
+    AppendNew(a_out, CheckVariantFields(v));
     const Reporter report{a_out, VariantWhere(v.name)};
+    if (!v.name.empty() && !names.insert(v.name).second) {
+      report.Error("duplicate name");
+    }
     for (const auto &[name, value] : v.overrides) {
       const auto type = SignalTypeOf(a_rows, name);
       if (!type) {
@@ -570,7 +578,7 @@ Validate(const Recipe &a_recipe,
   const RecipeGraph graph = RecipeGraph::Compile(a_recipe);
   const RowTypes rows{a_recipe, graph};
 
-  std::vector<Diagnostic> out = CheckRecipeFields(a_recipe);
+  std::vector<Diagnostic> out = CheckRecipeLevelFields(a_recipe);
   out.insert(out.begin(), a_inputDiagnostics.begin(), a_inputDiagnostics.end());
   if (!a_inputDiagnostics.empty()) {
     Reporter{out, "file"}.Warn(
@@ -591,14 +599,6 @@ Validate(const Recipe &a_recipe,
 
   for (const auto &d : graph.Diagnostics()) {
     out.push_back(d);
-  }
-  std::unordered_set<std::string> variants;
-  for (const auto &variant : a_recipe.variants) {
-    if (variant.name.empty()) {
-      Reporter{out, "variant"}.Error("has no name");
-    } else if (!variants.insert(variant.name).second) {
-      Reporter{out, VariantWhere(variant.name)}.Error("duplicate name");
-    }
   }
   for (const auto &c : a_recipe.curves) {
     append(CheckCurve(rows, c));

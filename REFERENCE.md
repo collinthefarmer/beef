@@ -150,7 +150,18 @@ to the logger alongside the file sink at plugin load.
   `TexelTypeOf`, `SignalTypeOf`, `NamesTrigger`, and the per-row `Check*`
   functions — as free functions. Validation and the studio's edit-time check
   both call them, so the three diverging copies the frozen tree carried
-  (`Validator`, `CheckSourceKind`, `EditCheck`) become one. A curve on a
+  (`Validator`, `CheckSourceKind`, `EditCheck`) become one.
+- Each row kind has one check. Its field rules (ranges, counts, one value
+  alone) are written once in `Validation.cpp` (`CheckSignalFields`,
+  `CheckSourceFields`, `CheckOutputFields`, `CheckShellFields`,
+  `CheckVariantFields`), and the graph-side row check calls them before its
+  reference and type rules (`CheckSourceRow`, `CheckOutput`, `CheckShell`,
+  `CheckVariants`; signals through `RecipeGraph`'s analysis). Graph
+  compilation, studio edits and `Validate` all reach a rule through that one
+  check, so a field error also makes its row inert. `CheckRecipeLevelFields`
+  holds the rules about the whole recipe; `CheckRecipeFields` (every field
+  rule, no graph) stays as the cheap check `PrepareEdits` runs after each edit
+  batch. A curve on a
   non-scalar signal is an error `RecipeGraph::Compile` reports as a
   diagnostic, closing the frozen code's empty `if (n.curve && n.type !=
   kScalar) {}`.

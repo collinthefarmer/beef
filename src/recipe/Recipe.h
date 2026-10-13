@@ -1028,6 +1028,16 @@ struct LoadResult {
 [[nodiscard]] std::vector<Diagnostic>
 Validate(const Recipe &a_recipe,
          std::span<const Diagnostic> a_inputDiagnostics = {});
+[[nodiscard]] std::vector<Diagnostic> CheckSignalFields(const Signal &a_signal);
+[[nodiscard]] std::vector<Diagnostic> CheckSourceFields(const Source &a_source);
+[[nodiscard]] std::vector<Diagnostic>
+CheckOutputFields(const Output &a_output, std::string_view a_where);
+[[nodiscard]] std::vector<Diagnostic>
+CheckShellFields(const ShellSettings &a_shell);
+[[nodiscard]] std::vector<Diagnostic>
+CheckVariantFields(const Variant &a_variant);
+[[nodiscard]] std::vector<Diagnostic>
+CheckRecipeLevelFields(const Recipe &a_recipe);
 [[nodiscard]] std::vector<Diagnostic> CheckRecipeFields(const Recipe &a_recipe);
 
 struct WornPiece {

@@ -646,7 +646,15 @@ struct RecipeGraphBuilder {
   void AnalyzeSource(RecipeDeclaration &node, const Source &source,
                      const Recipe &recipe) {
     for (const Diagnostic &diagnostic :
-         CheckSourceInputs(RowTypes{recipe, graph}, source)) {
+         CheckSourceRow(RowTypes{recipe, graph}, source)) {
+      if (diagnostic.severity == Severity::kError)
+        node.isDisabled = true;
+      ReportOnce(diagnostic);
+    }
+  }
+
+  void AnalyzeSignalFields(RecipeDeclaration &node, const Signal &signal) {
+    for (const Diagnostic &diagnostic : CheckSignalFields(signal)) {
       if (diagnostic.severity == Severity::kError)
         node.isDisabled = true;
       ReportOnce(diagnostic);
@@ -685,6 +693,8 @@ struct RecipeGraphBuilder {
       AnalyzeCurve(node);
       if (const auto *source = Get<Source>(node.definition))
         AnalyzeSource(node, *source, recipe);
+      if (const auto *signal = Get<Signal>(node.definition))
+        AnalyzeSignalFields(node, *signal);
       AnalyzeSpatial(node);
       InheritDependencyState(node);
     }

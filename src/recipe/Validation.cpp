@@ -3,8 +3,10 @@
 
 #include "recipe/Words.h"
 
+#include <algorithm>
 #include <cmath>
 #include <format>
+#include <iterator>
 #include <limits>
 
 namespace BetterEnchantmentEffects {
@@ -189,6 +191,10 @@ struct SourceFields {
         bias && (*bias < 0.0f || *bias > kMaxAreaBias)) {
       report.Error(std::format("'areaBias' is 0..{}", kMaxAreaBias));
     }
+    if (s.palette && s.pick) {
+      report.Error("'palette' colours every cluster and 'pick' selects one; "
+                   "use one of them");
+    }
     if (!s.pick && s.areaBias != Param{MaterialClustersSource{}.areaBias}) {
       report.Warn("'areaBias' has no effect without 'pick'");
     }
@@ -224,7 +230,7 @@ void CheckSkinnedBones(const Reporter &a_report, const SkinnedBones &a_bones) {
 
 struct OutputFields {
   Reporter report;
-  std::size_t index;
+  std::string_view where;
   void operator()(const SurfaceOutput &s) const {
     Select(report, s.selector);
     Count(report, s.stack.size(), "stack");
@@ -238,7 +244,7 @@ struct OutputFields {
       Vector(report, *s.scalars.color, "color");
     for (std::size_t j = 0; j < s.stack.size(); ++j) {
       const Layer &layer = s.stack[j];
-      const Reporter row = report.At(LayerWhere(index, j));
+      const Reporter row = report.At(std::format("{} layer {}", where, j));
       if (const auto *point = Get<Vec3>(layer.source))
         Point(row, *point, "source");
       Scalar(row, layer.opacity, "opacity");
@@ -259,7 +265,7 @@ struct OutputFields {
   }
 };
 
-void CheckShellFields(const Reporter &a_report, const ShellSettings &s) {
+void ShellFields(const Reporter &a_report, const ShellSettings &s) {
   Number(a_report, s.alphaTest, "alphaTest");
   if (s.alphaTest < 0.0f || s.alphaTest > 1.0f) {
     a_report.Error("'alphaTest' must be 0..1");
@@ -275,7 +281,7 @@ void CheckShellFields(const Reporter &a_report, const ShellSettings &s) {
   Point(a_report, s.pose.spinAxis, "spinAxis");
 }
 
-void CheckVariantFields(const Reporter &a_report, const Variant &a_variant) {
+void VariantFields(const Reporter &a_report, const Variant &a_variant) {
   if (a_variant.name.empty())
     a_report.Error("variant name must not be empty");
   Count(a_report, a_variant.overrides.size(), "overrides");
@@ -286,7 +292,38 @@ void CheckVariantFields(const Reporter &a_report, const Variant &a_variant) {
 }
 }
 
-std::vector<Diagnostic> CheckRecipeFields(const Recipe &a_recipe) {
+std::vector<Diagnostic> CheckSignalFields(const Signal &a_signal) {
+  std::vector<Diagnostic> out;
+  Match(a_signal.kind, SignalFields{Reporter{out, SignalWhere(a_signal.name)}});
+  return out;
+}
+
+std::vector<Diagnostic> CheckSourceFields(const Source &a_source) {
+  std::vector<Diagnostic> out;
+  Match(a_source.kind, SourceFields{Reporter{out, SourceWhere(a_source.name)}});
+  return out;
+}
+
+std::vector<Diagnostic> CheckOutputFields(const Output &a_output,
+                                          std::string_view a_where) {
+  std::vector<Diagnostic> out;
+  Match(a_output, OutputFields{Reporter{out, a_where}, a_where});
+  return out;
+}
+
+std::vector<Diagnostic> CheckShellFields(const ShellSettings &a_shell) {
+  std::vector<Diagnostic> out;
+  ShellFields(Reporter{out, "shell"}, a_shell);
+  return out;
+}
+
+std::vector<Diagnostic> CheckVariantFields(const Variant &a_variant) {
+  std::vector<Diagnostic> out;
+  VariantFields(Reporter{out, VariantWhere(a_variant.name)}, a_variant);
+  return out;
+}
+
+std::vector<Diagnostic> CheckRecipeLevelFields(const Recipe &a_recipe) {
   std::vector<Diagnostic> out;
   const Reporter recipe{out, "recipe"};
   Count(recipe, a_recipe.keys.size(), "keys");
@@ -297,18 +334,26 @@ std::vector<Diagnostic> CheckRecipeFields(const Recipe &a_recipe) {
   Count(recipe, a_recipe.outputs.size(), "outputs");
   Count(recipe, a_recipe.variants.size(), "variants");
   Number(Reporter{out, "recipe clock"}, a_recipe.clock.speed, "speed");
+  return out;
+}
+
+std::vector<Diagnostic> CheckRecipeFields(const Recipe &a_recipe) {
+  std::vector<Diagnostic> out = CheckRecipeLevelFields(a_recipe);
+  const auto append = [&](std::vector<Diagnostic> a_more) {
+    std::ranges::move(a_more, std::back_inserter(out));
+  };
   for (const Signal &signal : a_recipe.signals) {
-    Match(signal.kind, SignalFields{Reporter{out, SignalWhere(signal.name)}});
+    append(CheckSignalFields(signal));
   }
   for (const Source &source : a_recipe.sources) {
-    Match(source.kind, SourceFields{Reporter{out, SourceWhere(source.name)}});
+    append(CheckSourceFields(source));
   }
   for (std::size_t i = 0; i < a_recipe.outputs.size(); ++i) {
-    Match(a_recipe.outputs[i], OutputFields{Reporter{out, OutputWhere(i)}, i});
+    append(CheckOutputFields(a_recipe.outputs[i], OutputWhere(i)));
   }
-  CheckShellFields(Reporter{out, "shell"}, a_recipe.shell);
+  append(CheckShellFields(a_recipe.shell));
   for (const Variant &variant : a_recipe.variants) {
-    CheckVariantFields(Reporter{out, VariantWhere(variant.name)}, variant);
+    append(CheckVariantFields(variant));
   }
   return out;
 }

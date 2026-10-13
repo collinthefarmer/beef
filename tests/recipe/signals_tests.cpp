@@ -553,6 +553,30 @@ int main() {
     Check(HasMessage(CheckSource(rows, both), "palette"),
           "a palette cluster source refuses a pick");
 
+    Recipe broken;
+    Source zero{"zero", MaterialClustersSource{}};
+    Get<MaterialClustersSource>(zero.kind)->settings.clusters = 0;
+    broken.sources = {zero};
+    const auto diagnostics = Validate(broken, {});
+    Check(std::ranges::count_if(diagnostics,
+                                [](const Diagnostic &d) {
+                                  return d.message.find("'clusters'") !=
+                                         std::string::npos;
+                                }) == 1,
+          "a source's field error is reported once by validation");
+    const auto brokenGraph = RecipeGraph::Compile(broken);
+    const auto zeroIndex = brokenGraph.FindNodeIndex("zero");
+    Check(zeroIndex && brokenGraph.IsDisabled(*zeroIndex),
+          "a source with a field error is inert in the graph");
+
+    Recipe badSignal;
+    badSignal.signals = {Signal{"spin", TriggerSignal{}, std::nullopt}};
+    Get<TriggerSignal>(badSignal.signals.front().kind)->max = 0;
+    const auto signalGraph = RecipeGraph::Compile(badSignal);
+    const auto spinIndex = signalGraph.FindNodeIndex("spin");
+    Check(spinIndex && signalGraph.IsDisabled(*spinIndex),
+          "a signal with a field error is inert in the graph");
+
     Source clean{"k2", MaterialClustersSource{}};
     Check(CheckSource(rows, clean).empty(),
           "CheckSource accepts a valid clusters source");

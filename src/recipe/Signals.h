@@ -96,6 +96,8 @@ SignalTypeOf(const RowTypes &a_rows, std::string_view a_name) noexcept;
                                                  const Curve &a_curve);
 [[nodiscard]] std::vector<Diagnostic> CheckSourceInputs(const RowTypes &a_rows,
                                                         const Source &a_source);
+[[nodiscard]] std::vector<Diagnostic> CheckSourceRow(const RowTypes &a_rows,
+                                                     const Source &a_source);
 [[nodiscard]] std::vector<Diagnostic> CheckSource(const RowTypes &a_rows,
                                                   const Source &a_source);
 [[nodiscard]] std::vector<Diagnostic> CheckMask(const RowTypes &a_rows,
