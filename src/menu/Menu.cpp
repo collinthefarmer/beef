@@ -164,6 +164,9 @@ struct IntentPerformer {
   void operator()(const Studio::ReadMesh &a_intent) const {
     manager->RequestMesh(a_intent.actorID, a_intent.geometry);
   }
+  void operator()(const Studio::DumpMaterial &a_intent) const {
+    manager->DumpMaterial(a_intent.actorID, a_intent.geometry);
+  }
   void operator()(const FireTrigger &a_intent) const {
     manager->FireAt(a_intent);
   }

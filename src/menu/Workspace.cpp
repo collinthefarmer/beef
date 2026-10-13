@@ -836,6 +836,8 @@ void DrawSourceClusters(const std::string &a_name,
                  Studio::EditRecipe{a_frame.recipe->id,
                                     {Studio::SetSource{a_name, guessed}}});
   }
+  ImGui::SameLine();
+  DrawMaterialDump(a_frame);
   Studio::ClusterMemo &memo = a_frame.state->sourceClusterMemo;
   const Studio::ClusterView *view = Studio::ClustersOf(
       memo, a_frame.geometry->materialSample, a_source.settings);

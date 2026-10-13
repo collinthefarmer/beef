@@ -6,6 +6,7 @@
 #include "diagnostics/GpuTiming.h"
 #include "diagnostics/Trace.h"
 #include "mesh/MaterialClusters.h"
+#include "mesh/MaterialDump.h"
 #include "mesh/Mesh.h"
 #include "mesh/TextureSize.h"
 #include "planners/ConsumptionLeases.h"
@@ -316,6 +317,15 @@ public:
   bool DrawDiffuseDetail(RenderTarget &a_target, const MaterialMaps &a_maps,
                          float a_diffuseMip);
 
+  struct MapPixels {
+    RgbaImage image;
+    float mip = 0.0f;
+    TextureExtent source;
+  };
+  using MapPixelsResult = std::expected<MapPixels, std::string>;
+  [[nodiscard]] MapPixelsResult CopyMapPixels(RE::NiSourceTexture *a_map,
+                                              std::uint32_t a_maxSide);
+
   bool RenderClusters(RenderTarget &a_target, const MaterialMaps &a_maps,
                       const MaterialAnalysis &a_analysis,
                       std::optional<std::uint8_t> a_picked, bool a_palette);
@@ -455,6 +465,12 @@ private:
   ReductionLevel *ReductionLevelFor(ReductionExtent a_extent);
   bool EnsureReductionStaging(ReductionReadback &a_readback);
   bool EnsureSampleStaging(MaterialReadback &a_readback);
+  bool EnsureStaging(REX::W32::ComPtr<REX::W32::ID3D11Texture2D> &a_staging,
+                     std::uint32_t a_side);
+  [[nodiscard]] bool CopyMap(RenderTarget &a_target, RE::NiSourceTexture *a_map,
+                             float a_mip, REX::W32::ID3D11Texture2D &a_staging);
+  [[nodiscard]] std::optional<std::vector<std::uint8_t>>
+  ReadStagingRgba(REX::W32::ID3D11Texture2D &a_staging, std::uint32_t a_side);
   [[nodiscard]] bool CopyToStaging(RenderTarget &a_target,
                                    REX::W32::ID3D11Texture2D &a_staging);
   [[nodiscard]] std::optional<MaterialSampleResult>

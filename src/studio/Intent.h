@@ -144,6 +144,10 @@ struct ReadMesh {
   FormID actorID = 0;
   std::string geometry;
 };
+struct DumpMaterial {
+  FormID actorID = 0;
+  std::string geometry;
+};
 struct EditRecipe {
   std::string recipeID;
   std::vector<RecipeEdit> edits;
@@ -220,14 +224,14 @@ struct FireTrigger {
 using Intent = std::variant<
     SetMode, PickPiece, PickRecipe, PinRecipe, PickTarget, PickSlot, PickCell,
     PickLayer, ViewGeometry, SetStackSplit, SetWorkspaceSplit, ShowSettings,
-    ShowResource, ReadMesh, AddTerm, SetTermOp, SetTermText, SetTermKind,
-    RemoveTerm, MoveTerm, PickTerm, SoloTerm, MuteTerm, SetPeek, LoadMask,
-    ClearMask, SetMaskScope, UndoMask, RedoMask, BeginPaint, SetPaintSurface,
-    KeepPaint, EndPaint, UpdatePaint, EditRecipe, SoloRecipe, SoloPiece,
-    SoloOutput, SoloLayer, MuteLayer, SetFreeze, SetScrub, SetSpeed, StepClock,
-    Undo, Redo, CreateRecipe, RenameRecipe, DeleteRecipe, DuplicateRecipe,
-    FireTrigger>;
-inline constexpr std::size_t kIntentCount = 51;
+    ShowResource, ReadMesh, DumpMaterial, AddTerm, SetTermOp, SetTermText,
+    SetTermKind, RemoveTerm, MoveTerm, PickTerm, SoloTerm, MuteTerm, SetPeek,
+    LoadMask, ClearMask, SetMaskScope, UndoMask, RedoMask, BeginPaint,
+    SetPaintSurface, KeepPaint, EndPaint, UpdatePaint, EditRecipe, SoloRecipe,
+    SoloPiece, SoloOutput, SoloLayer, MuteLayer, SetFreeze, SetScrub, SetSpeed,
+    StepClock, Undo, Redo, CreateRecipe, RenameRecipe, DeleteRecipe,
+    DuplicateRecipe, FireTrigger>;
+inline constexpr std::size_t kIntentCount = 52;
 static_assert(std::variant_size_v<Intent> == kIntentCount);
 
 using Intents = std::vector<Intent>;

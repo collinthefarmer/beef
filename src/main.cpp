@@ -123,6 +123,7 @@ void OnDataLoaded(BetterEnchantmentEffects::Manager &a_manager) {
   initialized = true;
   logger::info("kDataLoaded");
   SetSettings(LoadSettingsFromDisk());
+  a_manager.SetBuild(BuildIdentity::build);
   LoadRecipes();
   TraceLoadedRecipes();
   Menu::RegisterMenu();

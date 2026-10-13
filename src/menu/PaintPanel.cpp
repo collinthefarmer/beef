@@ -861,6 +861,8 @@ void DrawClusterGuess(std::size_t a_index, const Studio::ClusterTerm &a_term,
         a_term.id, static_cast<std::uint8_t>(guess.clusters - 1));
     PostTermKind(a_index, Studio::TermKind{changed}, a_preview);
   }
+  ImGui::SameLine();
+  DrawMaterialDump(a_preview);
 }
 
 void DrawClusterReadout(std::size_t a_index, const Studio::ClusterTerm &a_term,

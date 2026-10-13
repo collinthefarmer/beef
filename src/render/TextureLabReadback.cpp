@@ -170,6 +170,12 @@ private:
   D3D11_MAPPED_SUBRESOURCE mapped_{};
   bool active_ = false;
 };
+
+[[nodiscard]] std::optional<std::vector<std::uint8_t>>
+PackedRgba(const ReadMapping &a_mapping, std::uint32_t a_side);
+[[nodiscard]] MaterialSample
+SampleOf(const std::vector<std::uint8_t> &a_rmaos,
+         const std::vector<std::uint8_t> &a_diffuse);
 }
 
 std::vector<std::uint8_t>
@@ -322,20 +328,30 @@ std::optional<float> TextureLab::ReadBackMean(RenderTarget &a_target) {
 }
 
 bool TextureLab::EnsureSampleStaging(MaterialReadback &a_readback) {
+  return EnsureStaging(a_readback.rmaos, kSampleSide) &&
+         EnsureStaging(a_readback.diffuse, kSampleSide);
+}
+
+bool TextureLab::EnsureStaging(
+    REX::W32::ComPtr<REX::W32::ID3D11Texture2D> &a_staging,
+    std::uint32_t a_side) {
+  if (a_staging.Get()) {
+    return true;
+  }
+  if (!borrowedDevice_ || a_side == 0) {
+    return false;
+  }
   D3D11_TEXTURE2D_DESC desc{};
-  desc.width = kSampleSide;
-  desc.height = kSampleSide;
+  desc.width = a_side;
+  desc.height = a_side;
   desc.mipLevels = 1;
   desc.arraySize = 1;
   desc.format = DXGI_FORMAT_R8G8B8A8_UNORM;
   desc.sampleDesc.count = 1;
   desc.usage = D3D11_USAGE_STAGING;
   desc.cpuAccessFlags = D3D11_CPU_ACCESS_READ;
-  for (auto *staging : {&a_readback.rmaos, &a_readback.diffuse})
-    if (!staging->Get() && Failed(borrowedDevice_->CreateTexture2D(
-                               &desc, nullptr, staging->GetAddressOf())))
-      return false;
-  return true;
+  return !Failed(borrowedDevice_->CreateTexture2D(&desc, nullptr,
+                                                  a_staging.GetAddressOf()));
 }
 
 bool TextureLab::CopyToStaging(RenderTarget &a_target,
@@ -363,49 +379,90 @@ TextureLab::ReadMaterialSample(MaterialReadback &a_readback, bool a_wait) {
   }
   const std::uint32_t flags =
       a_wait ? 0u : static_cast<std::uint32_t>(D3D11_MAP_FLAG_DO_NOT_WAIT);
-  const ReadMapping rmaos{
-      borrowedContext_,
-      reinterpret_cast<ID3D11Resource *>(a_readback.rmaos.Get()), meter, flags};
-  const ReadMapping diffuse{
-      borrowedContext_,
-      reinterpret_cast<ID3D11Resource *>(a_readback.diffuse.Get()), meter,
-      flags};
-  const std::size_t rowBytes = static_cast<std::size_t>(kSampleSide) * 4;
-  if (!rmaos.Data() || !diffuse.Data() || rmaos.RowPitch() < rowBytes ||
-      diffuse.RowPitch() < rowBytes) {
+  const std::optional<std::vector<std::uint8_t>> rmaos = PackedRgba(
+      ReadMapping{borrowedContext_,
+                  reinterpret_cast<ID3D11Resource *>(a_readback.rmaos.Get()),
+                  meter, flags},
+      kSampleSide);
+  const std::optional<std::vector<std::uint8_t>> diffuse =
+      rmaos ? PackedRgba(ReadMapping{borrowedContext_,
+                                     reinterpret_cast<ID3D11Resource *>(
+                                         a_readback.diffuse.Get()),
+                                     meter, flags},
+                         kSampleSide)
+            : std::nullopt;
+  if (!rmaos || !diffuse) {
     if (!a_wait)
       return std::nullopt;
     a_readback.pending = false;
     return MaterialSampleResult{
         std::unexpected("the material maps could not be read back")};
   }
-  MaterialSample sample;
-  sample.width = kSampleSide;
-  sample.height = kSampleSide;
-  sample.texels.reserve(static_cast<std::size_t>(kSampleSide) * kSampleSide);
-  constexpr float scale = 1.0f / 255.0f;
-  for (std::uint32_t y = 0; y < kSampleSide; ++y) {
-    const std::uint8_t *mrow =
-        rmaos.Data() + static_cast<std::size_t>(y) * rmaos.RowPitch();
-    const std::uint8_t *drow =
-        diffuse.Data() + static_cast<std::size_t>(y) * diffuse.RowPitch();
-    for (std::uint32_t x = 0; x < kSampleSide; ++x) {
-      const std::uint8_t *m = mrow + std::size_t{x} * 4;
-      const std::uint8_t *d = drow + std::size_t{x} * 4;
-      MaterialTexel texel;
-      texel.roughness = m[0] * scale;
-      texel.metallic = m[1] * scale;
-      texel.occlusion = m[2] * scale;
-      texel.reflectance = m[3] * scale;
-      texel.luma = (0.2126f * d[0] + 0.7152f * d[1] + 0.0722f * d[2]) * scale;
-      texel.diffuse = Vec3{d[0] * scale, d[1] * scale, d[2] * scale};
-      texel.detail = d[3] * scale;
-      sample.texels.push_back(texel);
-    }
-  }
-  meter.Succeeded(rowBytes * kSampleSide * 2);
+  meter.Succeeded(rmaos->size() + diffuse->size());
   a_readback.pending = false;
-  return MaterialSampleResult{std::move(sample)};
+  return MaterialSampleResult{SampleOf(*rmaos, *diffuse)};
+}
+
+std::optional<std::vector<std::uint8_t>>
+TextureLab::ReadStagingRgba(REX::W32::ID3D11Texture2D &a_staging,
+                            std::uint32_t a_side) {
+  ReadbackMeter meter{"map"};
+  const RendererLock rendererLock{&meter};
+  if (!available_ || !borrowedContext_) {
+    return std::nullopt;
+  }
+  std::optional<std::vector<std::uint8_t>> pixels = PackedRgba(
+      ReadMapping{borrowedContext_,
+                  reinterpret_cast<ID3D11Resource *>(&a_staging), meter},
+      a_side);
+  if (pixels) {
+    meter.Succeeded(pixels->size());
+  }
+  return pixels;
+}
+
+namespace {
+std::optional<std::vector<std::uint8_t>>
+PackedRgba(const ReadMapping &a_mapping, std::uint32_t a_side) {
+  const std::size_t rowBytes = static_cast<std::size_t>(a_side) * 4;
+  if (!a_mapping.Data() || a_mapping.RowPitch() < rowBytes) {
+    return std::nullopt;
+  }
+  std::vector<std::uint8_t> packed(rowBytes * a_side);
+  for (std::uint32_t y = 0; y < a_side; ++y) {
+    const std::uint8_t *row =
+        a_mapping.Data() + static_cast<std::size_t>(y) * a_mapping.RowPitch();
+    std::memcpy(packed.data() + y * rowBytes, row, rowBytes);
+  }
+  return packed;
+}
+
+MaterialSample SampleOf(const std::vector<std::uint8_t> &a_rmaos,
+                        const std::vector<std::uint8_t> &a_diffuse) {
+  MaterialSample sample;
+  sample.width = TextureLab::kSampleSide;
+  sample.height = TextureLab::kSampleSide;
+  const std::size_t texels =
+      std::min({static_cast<std::size_t>(TextureLab::kSampleSide) *
+                    TextureLab::kSampleSide,
+                a_rmaos.size() / 4, a_diffuse.size() / 4});
+  sample.texels.reserve(texels);
+  constexpr float scale = 1.0f / 255.0f;
+  for (std::size_t i = 0; i < texels; ++i) {
+    const std::uint8_t *m = a_rmaos.data() + i * 4;
+    const std::uint8_t *d = a_diffuse.data() + i * 4;
+    MaterialTexel texel;
+    texel.roughness = m[0] * scale;
+    texel.metallic = m[1] * scale;
+    texel.occlusion = m[2] * scale;
+    texel.reflectance = m[3] * scale;
+    texel.luma = (0.2126f * d[0] + 0.7152f * d[1] + 0.0722f * d[2]) * scale;
+    texel.diffuse = Vec3{d[0] * scale, d[1] * scale, d[2] * scale};
+    texel.detail = d[3] * scale;
+    sample.texels.push_back(texel);
+  }
+  return sample;
+}
 }
 
 std::shared_ptr<TextureLab::Lookup>

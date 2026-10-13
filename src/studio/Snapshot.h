@@ -17,7 +17,9 @@
 #include "studio/View.h"
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
+#include <expected>
 #include <memory>
 #include <optional>
 #include <string>
@@ -328,6 +330,16 @@ struct Status {
   std::size_t withErrors = 0;
 };
 
+struct MaterialDumpWritten {
+  std::string folder;
+  std::size_t skipped = 0;
+};
+
+struct MaterialDumpResult {
+  std::string geometry;
+  std::expected<MaterialDumpWritten, std::string> outcome;
+};
+
 struct Snapshot {
   std::vector<ApplicationRecord> applications;
   std::vector<FileOperationResult> fileOperations;
@@ -338,6 +350,7 @@ struct Snapshot {
   View view;
   std::optional<PaintCommitResult> paintCommit;
   std::optional<PaintUpdateResult> paintUpdate;
+  std::optional<MaterialDumpResult> materialDump;
   std::vector<PieceRow> pieces;
   std::vector<WornPieceRow> worn;
   std::vector<std::string> loaded;

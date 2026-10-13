@@ -58,6 +58,7 @@ void DrawClusterTable(const MaterialAnalysis &a_analysis,
 void DrawClusterRow(const MaterialCluster &a_cluster, bool a_picked,
                     Table &a_table);
 ImGui::ImVec4 InkColour(std::uint32_t a_ink);
+std::string DumpWrittenText(const Studio::MaterialDumpWritten &a_written);
 }
 
 std::uint32_t ClusterInk(std::uint8_t a_cluster,
@@ -78,6 +79,30 @@ bool GuessButton(bool a_matchesGuess) {
                          : "Set the cluster count, weights and seed from this "
                            "material's sample.");
   return clicked;
+}
+
+void DrawMaterialDump(const Frame &a_frame) {
+  if (!a_frame.piece || !a_frame.geometry || !a_frame.intents ||
+      !a_frame.snapshot) {
+    return;
+  }
+  ImGui::PushID("material-dump");
+  if (ImGui::Button("Dump material")) {
+    Studio::Post(*a_frame.intents,
+                 Studio::DumpMaterial{a_frame.piece->ref.actorID,
+                                      a_frame.geometry->name});
+  }
+  ImGui::PopID();
+  const std::optional<Studio::MaterialDumpResult> &result =
+      a_frame.snapshot->materialDump;
+  if (!result || result->geometry != a_frame.geometry->name) {
+    return;
+  }
+  if (!result->outcome) {
+    Warn(std::format("The dump failed: {}", result->outcome.error()));
+    return;
+  }
+  Ok(DumpWrittenText(*result->outcome));
 }
 
 std::optional<std::uint8_t> DrawClusterExplorer(const ClusterSubject &a_subject,
@@ -371,6 +396,14 @@ ImGui::ImVec4 InkColour(std::uint32_t a_ink) {
     return static_cast<float>((a_ink >> a_shift) & 0xFFU) / 255.0f;
   };
   return ImGui::ImVec4{channel(0), channel(8), channel(16), channel(24)};
+}
+
+std::string DumpWrittenText(const Studio::MaterialDumpWritten &a_written) {
+  if (a_written.skipped == 0) {
+    return std::format("Dumped to {}", a_written.folder);
+  }
+  return std::format("Dumped to {} with {} items skipped; meta.json says why",
+                     a_written.folder, a_written.skipped);
 }
 }
 }

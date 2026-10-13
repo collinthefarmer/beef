@@ -1,4 +1,4 @@
-Status: active (2026-10-13) on branch `pure-tick`. The user approved the route on 2026-10-13. Step 0 (material dump) is next; nothing else is built.
+Status: active (2026-10-13) on branch `pure-tick`. The user approved the route on 2026-10-13. Step 0 (material dump) is built and waits for an in-game run; step 1 is next.
 
 # Material regions: segment first, then group
 

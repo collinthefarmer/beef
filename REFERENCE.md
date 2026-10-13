@@ -2966,6 +2966,33 @@ cancel by the user instead of the load.
   nearest cluster by weighted centre distance, the one it is most easily
   confused with. A new clustering clears the chosen comparison.
 
+### Material dump (`mesh/MaterialDump.h`, `engine/MaterialDump.cpp`, `TextureLab::CopyMapPixels`)
+
+- The **Dump material** button sits beside **Best guess** in the cluster
+  term pane and the `materialClusters` source inspector. It writes one
+  folder under `Data/SKSE/Plugins/<plugin>/dumps/`. The folder name is
+  `<armor>_<geometry>-<UTC stamp>`, with `-2` to `-9` added when the name
+  exists. `SanitisedName` keeps only ASCII letters, digits, `-` and `_`, so
+  a name cannot hold a separator or a dot and cannot leave that folder.
+- The folder holds `diffuse.tga`, `rmaos.tga`, `normal.tga`, `mesh.json` and
+  `meta.json`. A map or the mesh that cannot be written is listed in
+  `meta.json` under `skipped` with its reason.
+- A map is copied with the lab's copy mode into a square RGBA8 target of
+  side `min(512, max(width, height))`, then raised to the pool's 64 minimum.
+  The source is read at `MipThatFits` for that side. The readback waits on
+  the GPU; the dump is a rare user action, so the stall is accepted.
+- The TGA image is type 2 (uncompressed true colour), 32 bits a pixel,
+  descriptor `0x28`: bit 5 puts the origin at the top left, and the low
+  four bits say 8 alpha bits. Texels are stored blue, green, red, alpha.
+  `kMaxTgaSide` is 4096, the largest render target the pool makes.
+- `mesh.json` flattens the partitions in order, as `AnalyseMesh` does, so a
+  vertex index matches `componentOf` and `chartOf`. Each triangle's chart
+  and part are its first vertex's, because the analysis joins the three
+  corners of a triangle into one island. `-1` stands for `kNoIsland`.
+  Triangles past their partition's vertex count are dropped.
+- The caps of 500,000 triangles and 1,500,000 vertices keep `mesh.json`
+  under about 60 MB. A worn armor geometry is far below them.
+
 ## Build and tools
 
 - Project targets bypass the compiler launcher; third-party targets still

@@ -611,6 +611,7 @@ void Manager::PublishStatus(Snapshot &a_out) const {
   a_out.gesture = editor_.LastGesture();
   a_out.paintCommit = editor_.LastPaintCommit();
   a_out.paintUpdate = editor_.LastPaintUpdate();
+  a_out.materialDump = materialDump_;
   const Status status = GetStatus();
   const RecipeStoreStatus store = GetRecipeStoreStatus();
   a_out.tickMS = status.tickMS;

@@ -130,6 +130,8 @@ public:
 
   void FireAt(Studio::FireTrigger a_trigger);
   void RequestMesh(RE::FormID a_actorID, std::string a_geometry);
+  void DumpMaterial(RE::FormID a_actorID, std::string a_geometry);
+  void SetBuild(std::string_view a_build);
 
   void OnFrame();
   void FlushMetricsHeartbeat();
@@ -191,6 +193,8 @@ public:
 
 private:
   std::uint64_t renderFrame_ = 0;
+  std::optional<Studio::MaterialDumpResult> materialDump_;
+  std::string build_;
   std::uint32_t tickNowMS_ = 0;
   friend class RecipeEditor;
 

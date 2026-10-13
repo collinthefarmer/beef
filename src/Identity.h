@@ -55,6 +55,8 @@ inline std::filesystem::path PresetsPath() {
   return PluginFolder() / "presets.json";
 }
 
+inline std::filesystem::path DumpFolder() { return PluginFolder() / "dumps"; }
+
 inline std::filesystem::path TemplateFolder() {
   return PluginFolder() / "templates";
 }

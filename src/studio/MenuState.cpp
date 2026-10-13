@@ -621,6 +621,7 @@ struct ReduceVisitor {
     DropIndexedPreviews(state.previews, a_i.recipeID);
   }
   void operator()(const FireTrigger &) {}
+  void operator()(const DumpMaterial &) {}
 };
 }
 
@@ -649,23 +650,24 @@ SourceCatalog PaintSources(const MenuState &a_state, const RecipeRow &a_recipe,
         [](const ViewGeometry &) {}, [](const SetStackSplit &) {},
         [](const SetWorkspaceSplit &) {}, [](const ShowSettings &) {},
         [](const ShowResource &) {}, [](const ReadMesh &) {},
-        [](const SetTermOp &) {}, [](const SetTermText &) {},
-        [](const RemoveTerm &) {}, [](const MoveTerm &) {},
-        [](const PickTerm &) {}, [](const SoloTerm &) {},
-        [](const MuteTerm &) {}, [](const SetPeek &) {},
-        [](const LoadMask &) {}, [](const ClearMask &) {},
-        [](const SetMaskScope &) {}, [](const UndoMask &) {},
-        [](const RedoMask &) {}, [](const BeginPaint &) {},
-        [](const SetPaintSurface &) {}, [](const KeepPaint &) {},
-        [](const EndPaint &) {}, [](const UpdatePaint &) {},
-        [](const EditRecipe &) {}, [](const SoloRecipe &) {},
-        [](const SoloPiece &) {}, [](const SoloOutput &) {},
-        [](const SoloLayer &) {}, [](const MuteLayer &) {},
-        [](const SetFreeze &) {}, [](const SetScrub &) {},
-        [](const SetSpeed &) {}, [](const StepClock &) {}, [](const Undo &) {},
-        [](const Redo &) {}, [](const CreateRecipe &) {},
-        [](const RenameRecipe &) {}, [](const DeleteRecipe &) {},
-        [](const DuplicateRecipe &) {}, [](const FireTrigger &) {});
+        [](const DumpMaterial &) {}, [](const SetTermOp &) {},
+        [](const SetTermText &) {}, [](const RemoveTerm &) {},
+        [](const MoveTerm &) {}, [](const PickTerm &) {},
+        [](const SoloTerm &) {}, [](const MuteTerm &) {},
+        [](const SetPeek &) {}, [](const LoadMask &) {},
+        [](const ClearMask &) {}, [](const SetMaskScope &) {},
+        [](const UndoMask &) {}, [](const RedoMask &) {},
+        [](const BeginPaint &) {}, [](const SetPaintSurface &) {},
+        [](const KeepPaint &) {}, [](const EndPaint &) {},
+        [](const UpdatePaint &) {}, [](const EditRecipe &) {},
+        [](const SoloRecipe &) {}, [](const SoloPiece &) {},
+        [](const SoloOutput &) {}, [](const SoloLayer &) {},
+        [](const MuteLayer &) {}, [](const SetFreeze &) {},
+        [](const SetScrub &) {}, [](const SetSpeed &) {},
+        [](const StepClock &) {}, [](const Undo &) {}, [](const Redo &) {},
+        [](const CreateRecipe &) {}, [](const RenameRecipe &) {},
+        [](const DeleteRecipe &) {}, [](const DuplicateRecipe &) {},
+        [](const FireTrigger &) {});
   }
   return catalog;
 }
@@ -702,6 +704,7 @@ namespace {
       [](const ShowSettings &) { return false; },
       [](const ShowResource &) { return false; },
       [](const ReadMesh &) { return false; },
+      [](const DumpMaterial &) { return false; },
       [](const PickTerm &) { return false; },
       [](const BeginPaint &) { return false; },
       [](const KeepPaint &) { return false; },

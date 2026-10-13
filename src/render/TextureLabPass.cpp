@@ -1197,14 +1197,8 @@ bool TextureLab::SubmitMaterialSample(const MaterialMaps &a_maps,
   if (!EnsureSampleStaging(a_readback)) {
     return fail(a_rmaos, "no sample staging textures");
   }
-  const auto copy = [&](RE::NiSourceTexture *a_map, const Extent &a_extent,
-                        REX::W32::ID3D11Texture2D &a_staging) {
-    LayerParams params;
-    params.mode = Mode::kCopy;
-    params.scroll.sourceMip = MipThatFits(a_extent, kSampleSide);
-    return Render(*target, a_map, params) && CopyToStaging(*target, a_staging);
-  };
-  if (!copy(a_rmaos, *rmaosExtent, *a_readback.rmaos.Get())) {
+  if (!CopyMap(*target, a_rmaos, MipThatFits(*rmaosExtent, kSampleSide),
+               *a_readback.rmaos.Get())) {
     return fail(a_rmaos, "the RMAOS map could not be copied");
   }
   if (!DrawDiffuseDetail(*target, a_maps,
@@ -1214,6 +1208,14 @@ bool TextureLab::SubmitMaterialSample(const MaterialMaps &a_maps,
   }
   a_readback.pending = true;
   return true;
+}
+
+bool TextureLab::CopyMap(RenderTarget &a_target, RE::NiSourceTexture *a_map,
+                         float a_mip, REX::W32::ID3D11Texture2D &a_staging) {
+  LayerParams params;
+  params.mode = Mode::kCopy;
+  params.scroll.sourceMip = a_mip;
+  return Render(a_target, a_map, params) && CopyToStaging(a_target, a_staging);
 }
 
 std::optional<TextureLab::MaterialSampleResult>
@@ -1267,6 +1269,42 @@ TextureLab::SampleMaterial(const MaterialMaps &a_maps) {
     return std::nullopt;
   }
   return std::move(**sample);
+}
+
+TextureLab::MapPixelsResult
+TextureLab::CopyMapPixels(RE::NiSourceTexture *a_map, std::uint32_t a_maxSide) {
+  if (!Init()) {
+    return std::unexpected("the texture lab is unavailable");
+  }
+  const std::optional<Extent> extent = ExtentOf(a_map);
+  if (!extent || extent->width == 0 || extent->height == 0) {
+    return std::unexpected("the map is null or not a resident 2D texture");
+  }
+  const std::uint32_t wanted =
+      (std::min)(a_maxSide, (std::max)(extent->width, extent->height));
+  auto target = Acquire(TextureSize(wanted), "dump", TextureFormat::kRgba8,
+                        TargetMips::kNone);
+  if (!target || target->Side() == 0) {
+    return std::unexpected("no render target for the copy");
+  }
+  const std::uint32_t side = target->Side();
+  REX::W32::ComPtr<REX::W32::ID3D11Texture2D> staging;
+  if (!EnsureStaging(staging, side)) {
+    return std::unexpected("no staging texture for the copy");
+  }
+  MapPixels out;
+  out.mip = MipThatFits(*extent, side);
+  out.source = *extent;
+  if (!CopyMap(*target, a_map, out.mip, *staging.Get())) {
+    return std::unexpected("the map could not be copied");
+  }
+  std::optional<std::vector<std::uint8_t>> pixels =
+      ReadStagingRgba(*staging.Get(), side);
+  if (!pixels) {
+    return std::unexpected("the copy could not be read back");
+  }
+  out.image = RgbaImage{side, side, std::move(*pixels)};
+  return out;
 }
 
 bool TextureLab::RenderClusters(RenderTarget &a_target,
