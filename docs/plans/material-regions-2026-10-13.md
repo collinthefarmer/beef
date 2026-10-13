@@ -1,4 +1,4 @@
-Status: active (2026-10-13) on branch `pure-tick`. The user approved the route on 2026-10-13. Step 0 (material dump) is built and waits for an in-game run; step 1 is next.
+Status: active (2026-10-13) on branch `pure-tick`. The user approved the route on 2026-10-13. Step 0 (material dump) is done. Steps 1 and 2 are prototyped in Python over nine dumps; the user judged the hybrid labelling good on 2026-10-13. Next: the merge step, then the engine-free port.
 
 # Material regions: segment first, then group
 
@@ -29,10 +29,24 @@ A **material cluster** source (`MaterialClustersSource`) splits a geometry's mat
 | 1 | **Regions.** An engine-free module splits the UV texture, masked by mesh coverage, into small contiguous regions that follow colour edges and chart borders (SLIC superpixels or Felzenszwalb graph segmentation). Each region gets a descriptor: per-axis mean and internal variation. | Raw-texel clustering, padding noise (F1, F2), the detail scale constants. |
 | 2 | **Grouping.** A Gaussian mixture with per-cluster covariance over region descriptors, with the count chosen by BIC. | Weights, Otsu, boosts, silhouette tie-break (F3, F4). |
 | 3 | **Intent.** Two clicks mark regions as "different" or "same"; the grouping splits or merges to honour them (Fisher discriminant or a constrained mixture). | Best guess as the only control (F5). |
-| 4 | **Mask.** A per-material region-id bake; a mask is a lookup from region id to selected. | The per-pixel cluster shader. |
+| 2b | **Per-texel labels.** Each group gets the mean and covariance of the texels in its regions. Every texel is scored against the groups by its own values, and the scores are smoothed by a guided filter with the diffuse map as guide (radius 2–4 texels). | Region-mean labels, which lose features thinner than a superpixel. |
+| 4 | **Mask.** The cluster shader scores each pixel against the group Gaussians, and a guided-filter pass smooths the scores; a mask selects groups. | The weighted nearest-centre distance in the cluster shader. |
 
 Steps 1 and 2 are built and judged as a standalone prototype against dumps from the user's armor (the bonemold cuirass first) before anything in the render path changes. Step 4 changes the term and source shape; existing `materialClusters` recipes either migrate or keep the k-means path alongside.
 
+## Prototype results
+
+The prototype (`proto.py`, `hybrid.py`) compares three methods on nine dumps: today's k-means, regions (300 SLIC superpixels, Gaussian mixture by BIC) and the hybrid (step 2b).
+
+| Armor | Finding |
+|---|---|
+| Bonemold cuirass | Regions and hybrid find bone against leather (k=2). Today splits by brightness into stripes. |
+| Chitin cuirass | Regions lose the straps and rings. The hybrid at radius 2–4 keeps them without today's speckle. Radius 16 breaks thin straps. |
+| Deathbrand | Regions and hybrid over-split the crystal (k=5). Today's two clusters are clean. |
+
+- About 930 superpixels instead of 300 make BIC pick k=4 on Bonemold instead of 2. The superpixel count therefore changes the grouping, not only the region size.
+- The over-split needs a merge step after the mixture fit.
+
 ## Decisions for the user
 
-None yet. Step 4's migration choice comes after the prototype comparison.
+None yet. Step 4's migration choice comes after the merge step.
