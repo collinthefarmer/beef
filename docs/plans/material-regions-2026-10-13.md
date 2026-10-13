@@ -1,4 +1,4 @@
-Status: active (2026-10-13) on branch `pure-tick`. The user approved the route on 2026-10-13. Step 0 (material dump) is done. Steps 1 and 2 are prototyped in Python over nine dumps; the user judged the hybrid labelling good on 2026-10-13. Next: the merge step, then the engine-free port.
+Status: active (2026-10-13) on branch `pure-tick`. The user approved the route on 2026-10-13. Steps 0–2 are done as a Python prototype; on 2026-10-13 the user chose hybrid + merge (misclassification criterion) over the CRF, jump-flood and k-means variants. Next: the port below, waiting for the user's approval of D1–D3.
 
 # Material regions: segment first, then group
 
@@ -67,6 +67,21 @@ The prototype (`proto.py`, `hybrid.py`) compares three methods on nine dumps: to
 - Refitting the groups on texels with expectation maximisation, initialised from the region groups, makes every pair separable (minimum Fisher 1.9), so it removes the merge signal. It cleaned Stalhrim and Temple but added blotches on Blackguard and crack lines on Chitin. The prototype does not use it.
 - Parts that differ only by brightness inside one material (Blackguard straps) fall into one group. That split is an intent question for step 3.
 
+## Port of hybrid + merge
+
+| Stage | Where | What |
+|---|---|---|
+| P1 | `mesh/MaterialRegions` (engine-free) | SLIC inside the coverage mask, region descriptors, Gaussian mixture with BIC (k 2–8), group Gaussians from texels, misclassification merge. Native tests read the dumps under `tests/` and compare group counts and shares with the prototype. |
+| P2 | `TextureLab` | The material sample grows from 64 px to 256 px and carries the coverage mask rasterised from the mesh UVs. The fit runs once per geometry on the CPU, off the render thread. |
+| P3 | Cluster shader | `PSClusters` scores each texel against the group Gaussians (mean and inverse covariance per group in a constant buffer, 8 groups × 8 axes) instead of the weighted nearest centre. |
+| P4 | New passes | Guided filter over the per-group scores at the smoothing radius, highest score wins, then a jump-flood fill of the UV padding so filtering and mips do not pull in empty texels. The id map is baked once per geometry. |
+| P5 | Studio | The cluster chart shows group means; weights sliders and Best guess go; merge share and smoothing radius take their place. |
+
 ## Decisions for the user
 
-None yet. Step 4's migration choice comes after the merge step.
+| # | Decision | Recommendation |
+|---|---|---|
+| D1 | Recipe fields of `materialClusters`. | Replace `clusters`, `weights`, `seed`, `iterations` and `guess` with `merge` (share of confused texels, default 0.25) and `smoothing` (texels, default 4). Keep `pick`, `areaBias` and `palette`. No migration: old fields become a validation error, and the debug recipe is rewritten. |
+| D2 | Where the fit runs. | CPU at 256 px with the coverage mask; labelling on the GPU at full resolution. |
+| D3 | Group count control. | BIC picks k; the merge share is the only count control. A fixed `clusters` override is left out until a recipe needs it. |
+
