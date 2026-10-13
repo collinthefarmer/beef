@@ -78,7 +78,7 @@ Compositor::AnalyseMaterial(const MaterialInputs &a_material) {
   }
   record.sample = std::make_shared<const MaterialSample>(std::move(*sample));
   record.analysis = std::make_shared<const MaterialAnalysis>(
-      ClusterMaterial(*record.sample, ClusterSettings{}));
+      ClusterMaterial(*record.sample, GuessClusterSettings(*record.sample)));
   if (verbose) {
     logger::info("material '{}': sampled {}x{}, {} clusters",
                  a_material.rmaos->name.c_str() ? a_material.rmaos->name.c_str()

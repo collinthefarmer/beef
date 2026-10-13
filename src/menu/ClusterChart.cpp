@@ -69,6 +69,15 @@ std::uint32_t ClusterInk(std::uint8_t a_cluster,
          (static_cast<std::uint32_t>(a_alpha) << 24);
 }
 
+bool GuessButton(bool a_matchesGuess) {
+  bool clicked = false;
+  Disabled(a_matchesGuess, [&] { clicked = ImGui::Button("Best guess"); });
+  Tooltip(a_matchesGuess ? "These settings are the guess for this material."
+                         : "Set the cluster count, weights and seed from this "
+                           "material's sample.");
+  return clicked;
+}
+
 std::optional<std::uint8_t> DrawClusterExplorer(const ClusterSubject &a_subject,
                                                 Studio::ClusterMemo &a_memo,
                                                 float a_scale) {

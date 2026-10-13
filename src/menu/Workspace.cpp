@@ -730,7 +730,8 @@ void DrawResourceRemove(std::string_view a_name, std::size_t a_references,
       "Remove", [&] { a_post(true); });
 }
 
-void DrawSourceClusters(const MaterialClustersSource &a_source,
+void DrawSourceClusters(const std::string &a_name,
+                        const MaterialClustersSource &a_source,
                         std::span<const Studio::FormField> a_form,
                         const Frame &a_frame);
 
@@ -757,22 +758,32 @@ void DrawSourceInspector(const Studio::SourceSubject &a_source,
       Studio::SourceKindOf(*row).value_or(SourceKind{MaterialSource{}}));
   const ResourceCells cells{.name = row->name, .type = type};
   ResourceTable("source-header", {&cells, 1});
-  const std::vector<Studio::FormField> form =
-      Studio::SourceForm(*row, Studio::SignalNamesOf(recipe));
+  const std::vector<Studio::FormField> form = Studio::SourceForm(
+      *row, Studio::SignalNamesOf(recipe),
+      a_frame.geometry ? a_frame.geometry->clusterGuess : ClusterSettings{});
   const std::optional<SourceKind> kind = Studio::SourceKindOf(*row);
   if (const auto *clusters =
           kind ? Get<MaterialClustersSource>(*kind) : nullptr) {
-    DrawSourceClusters(*clusters, form, a_frame);
+    DrawSourceClusters(row->name, *clusters, form, a_frame);
   }
   DrawFormWithSignals("source", form, a_frame);
 }
 
-void DrawSourceClusters(const MaterialClustersSource &a_source,
+void DrawSourceClusters(const std::string &a_name,
+                        const MaterialClustersSource &a_source,
                         std::span<const Studio::FormField> a_form,
                         const Frame &a_frame) {
   if (!a_frame.geometry) {
     Dim("View a piece to chart its material's clusters.");
     return;
+  }
+  const ClusterSettings &guess = a_frame.geometry->clusterGuess;
+  if (GuessButton(a_source.settings == guess)) {
+    MaterialClustersSource guessed = a_source;
+    guessed.settings = guess;
+    Studio::Post(*a_frame.intents,
+                 Studio::EditRecipe{a_frame.recipe->id,
+                                    {Studio::SetSource{a_name, guessed}}});
   }
   Studio::ClusterMemo &memo = a_frame.state->sourceClusterMemo;
   const Studio::ClusterView *view = Studio::ClustersOf(

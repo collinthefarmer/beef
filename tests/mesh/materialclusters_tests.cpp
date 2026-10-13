@@ -207,5 +207,30 @@ int main() {
   Check(!PickValueOf(MaterialAnalysis{}, 0, 1.0f).has_value(),
         "an empty analysis has no pick value");
 
+  MaterialSample metalSplit;
+  metalSplit.width = 10;
+  metalSplit.height = 10;
+  for (std::size_t i = 0; i < 100; ++i) {
+    const float jitter = static_cast<float>(i % 7) * 0.01f;
+    MaterialTexel texel =
+        Texel(0.45f + jitter, i % 2 == 0 ? 0.0f : 1.0f, 0.5f, 0.5f, 0.5f);
+    texel.diffuse = Vec3{0.4f, 0.4f, 0.4f};
+    metalSplit.texels.push_back(texel);
+  }
+  const ClusterSettings guessed = GuessClusterSettings(metalSplit);
+  Check(guessed.clusters == 2,
+        "the guess finds two clusters where two groups differ");
+  Check(guessed.weights.metallic > 0.0f && guessed.weights.occlusion == 0.0f &&
+            guessed.weights.color == 0.0f &&
+            guessed.weights.metallic > guessed.weights.roughness,
+        "the guess weights the axis that splits the groups and drops flat "
+        "ones");
+  const MaterialAnalysis guessedAnalysis = ClusterMaterial(metalSplit, guessed);
+  Check(guessedAnalysis.clusters.size() == 2 &&
+            std::abs(guessedAnalysis.clusters[0].share - 0.5f) < 0.01f,
+        "the guessed settings separate the two groups");
+  Check(GuessClusterSettings(MaterialSample{}) == ClusterSettings{},
+        "an empty sample keeps the default settings");
+
   return test::Finish("materialclusters");
 }

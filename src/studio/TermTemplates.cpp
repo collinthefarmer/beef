@@ -679,12 +679,13 @@ void AppendMaterialOffers(std::vector<TermOffer> &a_offers,
                           const GeometryRow &a_geometry) {
   if (a_geometry.clusters.empty()) {
     a_offers.push_back(Unavailable(OfferGroup::kMaterials,
-                                   std::string{kNoClusters}, ClusterTerm{}));
+                                   std::string{kNoClusters},
+                                   ClusterTerm{a_geometry.clusterGuess, 0}));
   }
   for (const MaterialCluster &cluster : a_geometry.clusters) {
-    a_offers.push_back(
-        Offer(OfferGroup::kMaterials, std::format("material {}", cluster.id),
-              cluster.description, ClusterTerm{ClusterSettings{}, cluster.id}));
+    a_offers.push_back(Offer(
+        OfferGroup::kMaterials, std::format("material {}", cluster.id),
+        cluster.description, ClusterTerm{a_geometry.clusterGuess, cluster.id}));
     a_offers.back().coverage = cluster.share;
   }
 }

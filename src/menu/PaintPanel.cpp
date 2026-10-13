@@ -689,6 +689,8 @@ void DrawMaskTask(const Frame &a_frame) {
 }
 
 namespace {
+void DrawClusterGuess(std::size_t a_index, const Studio::ClusterTerm &a_term,
+                      const Frame &a_preview);
 void DrawClusterReadout(std::size_t a_index, const Studio::ClusterTerm &a_term,
                         const Frame &a_preview, Studio::ClusterMemo &a_memo);
 
@@ -770,6 +772,7 @@ void DrawTermTuningPane(const Frame &a_frame) {
       Studio::TermForm(term.kind, LoadedPresets(), *preview->geometry);
   Dim(std::format("Tuning term {}: {}", index, term.label));
   if (const auto *cluster = Get<Studio::ClusterTerm>(term.kind)) {
+    DrawClusterGuess(index, *cluster, *preview);
     DrawClusterReadout(index, *cluster, *preview, state.clusterMemo);
   }
   if (form.empty()) {
@@ -792,6 +795,18 @@ void DrawTermTuningPane(const Frame &a_frame) {
 }
 
 namespace {
+void DrawClusterGuess(std::size_t a_index, const Studio::ClusterTerm &a_term,
+                      const Frame &a_preview) {
+  const ClusterSettings &guess = a_preview.geometry->clusterGuess;
+  if (GuessButton(a_term.settings == guess)) {
+    Studio::ClusterTerm changed = a_term;
+    changed.settings = guess;
+    changed.id = std::min<std::uint8_t>(
+        a_term.id, static_cast<std::uint8_t>(guess.clusters - 1));
+    PostTermKind(a_index, Studio::TermKind{changed}, a_preview);
+  }
+}
+
 void DrawClusterReadout(std::size_t a_index, const Studio::ClusterTerm &a_term,
                         const Frame &a_preview, Studio::ClusterMemo &a_memo) {
   const std::optional<std::uint8_t> picked =

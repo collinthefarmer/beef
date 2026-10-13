@@ -272,8 +272,9 @@ InspectorForm(const Inspector &a_inspector);
                                                 const SignalNames &a_names);
 [[nodiscard]] std::optional<RecipeEdit>
 SignalValueEdit(const std::string &a_signal, const std::string &a_text);
-[[nodiscard]] std::vector<FormField> SourceForm(const SourceRow &a_source,
-                                                const SignalNames &a_names);
+[[nodiscard]] std::vector<FormField>
+SourceForm(const SourceRow &a_source, const SignalNames &a_names,
+           const ClusterSettings &a_clusterGuess = {});
 [[nodiscard]] std::vector<FormField>
 RecipeHeaderForm(const RecipeRow &a_recipe);
 

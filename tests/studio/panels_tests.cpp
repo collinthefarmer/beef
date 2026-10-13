@@ -153,6 +153,18 @@ void TestSourceForm() {
   Check(path != nullptr && path->bind &&
             std::holds_alternative<SetSource>(*path->bind("textures/a.dds")),
         "editing an image field emits a source edit");
+
+  ClusterSettings guess;
+  guess.clusters = 3;
+  guess.weights.metallic = 4.0f;
+  const std::vector<FormField> guessed = SourceForm(row, SignalNames{}, guess);
+  const std::optional<RecipeEdit> switched =
+      guessed[0].bind("materialClusters");
+  const auto *set = switched ? std::get_if<SetSource>(&*switched) : nullptr;
+  const auto *clusters =
+      set ? std::get_if<MaterialClustersSource>(&set->kind) : nullptr;
+  Check(clusters && clusters->settings == guess,
+        "switching a source to material clusters starts from the guess");
 }
 
 void TestEffectShaderImageForm() {

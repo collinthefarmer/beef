@@ -113,6 +113,7 @@ struct GeometryRow {
   std::vector<MeshIsland> islands;
   std::vector<MaterialCluster> clusters;
   std::shared_ptr<const MaterialSample> materialSample;
+  ClusterSettings clusterGuess;
   std::string shell;
   std::vector<SlotRow> materialSlots;
   std::vector<SlotRow> shellSlots;

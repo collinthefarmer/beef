@@ -154,6 +154,21 @@ int main() {
   Check(seed && !seed->field.range && !seed->field.workingRange,
         "the seed has no tuning range and stays a plain entry");
 
+  GeometryRow guessed = geometry;
+  guessed.clusterGuess.clusters = 3;
+  guessed.clusterGuess.weights.metallic = 4.0f;
+  const auto guessedOffers = OffersOf(presets, RecipeRow{}, guessed, "");
+  const auto materialOffer =
+      std::ranges::find_if(guessedOffers, [](const TermOffer &offer) {
+        return offer.group == OfferGroup::kMaterials;
+      });
+  const auto *offeredCluster =
+      materialOffer != guessedOffers.end()
+          ? std::get_if<ClusterTerm>(&materialOffer->kind)
+          : nullptr;
+  Check(offeredCluster && offeredCluster->settings == guessed.clusterGuess,
+        "a material offer carries the geometry's guessed settings");
+
   RecipeRow repeated;
   repeated.geometries = {geometry, geometry};
   repeated.geometries.back().name = "Other";
@@ -193,12 +208,12 @@ int main() {
         "area on each");
   repeated.geometries.back().clusters.front().description = "rough cloth";
   const auto varied = OffersOfRecipe(presets, repeated, "");
-  const auto materialOffer =
+  const auto variedOffer =
       std::ranges::find_if(varied, [](const TermOffer &offer) {
         return offer.group == OfferGroup::kMaterials;
       });
-  Check(materialOffer != varied.end() && materialOffer->geometry.empty() &&
-            materialOffer->detail == "varies by geometry",
+  Check(variedOffer != varied.end() && variedOffer->geometry.empty() &&
+            variedOffer->detail == "varies by geometry",
         "a shared cluster operation does not claim one geometry's material "
         "label");
 

@@ -463,12 +463,18 @@ BindEventFilterBound(std::string a_signal, SignalKind a_record,
   };
 }
 
-[[nodiscard]] FieldBinding BindSourceKindChoice(std::string a_name) {
-  return [name = std::move(a_name)](
+[[nodiscard]] FieldBinding
+BindSourceKindChoice(std::string a_name, ClusterSettings a_clusterGuess) {
+  return [name = std::move(a_name), a_clusterGuess](
              const std::string &a_text) -> std::optional<RecipeEdit> {
-    const auto kind = DefaultSourceKind(a_text);
-    return kind ? std::optional<RecipeEdit>{SetSource{name, *kind}}
-                : std::nullopt;
+    std::optional<SourceKind> kind = DefaultSourceKind(a_text);
+    if (!kind) {
+      return std::nullopt;
+    }
+    if (auto *clusters = Get<MaterialClustersSource>(*kind)) {
+      clusters->settings = a_clusterGuess;
+    }
+    return SetSource{name, *kind};
   };
 }
 
@@ -1549,13 +1555,14 @@ void ClustersFields(std::vector<FormField> &a_form, const SourceContext &a_ctx,
 }
 
 std::vector<FormField> SourceForm(const SourceRow &a_source,
-                                  const SignalNames &a_names) {
+                                  const SignalNames &a_names,
+                                  const ClusterSettings &a_clusterGuess) {
   std::vector<FormField> form;
   const std::string &name = a_source.name;
   form.push_back(ChoiceField(
       "kind",
       std::string{NameOf(kSourceKindWords, SourceRowKindId(a_source.kind))},
-      WordsOf(kSourceKindWords), BindSourceKindChoice(name)));
+      WordsOf(kSourceKindWords), BindSourceKindChoice(name, a_clusterGuess)));
   const std::optional<SourceKind> record = SourceKindOf(a_source);
   if (!record) {
     return form;

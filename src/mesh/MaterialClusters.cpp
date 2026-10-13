@@ -10,6 +10,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -310,6 +311,179 @@ MaterialAnalysis ClusterMaterial(const MaterialSample &a_sample,
     out.clusters.push_back(std::move(cluster));
   }
   return out;
+}
+
+namespace {
+constexpr std::size_t kSplitBins = 64;
+constexpr float kFlatSpread = 0.0004f;
+constexpr float kUnimodalSplit = 0.8f;
+constexpr float kMinimumGap = 0.1f;
+constexpr std::uint8_t kFewestGuessed = 2;
+constexpr std::uint32_t kGuessSeeds = 3;
+constexpr float kFitTolerance = 0.02f;
+
+struct AxisSplit {
+  float explained = 0.0f;
+  float gap = 0.0f;
+};
+
+AxisSplit BestSplit(const std::vector<Axes> &a_texels, std::size_t a_axis);
+float SplitWeight(const AxisSplit &a_split) noexcept;
+ChannelWeights GuessedWeights(const std::vector<Axes> &a_texels);
+float Inertia(const std::vector<Axes> &a_texels, const Clustering &a_clustering,
+              const Axes &a_scales) noexcept;
+float Fit(const std::vector<Axes> &a_texels, const Clustering &a_clustering,
+          const Axes &a_scales) noexcept;
+}
+
+ClusterSettings GuessClusterSettings(const MaterialSample &a_sample) {
+  ClusterSettings guess;
+  const std::vector<Axes> texels = TexelAxesOf(a_sample);
+  if (texels.size() < kFewestGuessed) {
+    return guess;
+  }
+  guess.weights = GuessedWeights(texels);
+  const Axes scales = ScalesOf(guess.weights);
+  std::optional<ClusterSettings> best;
+  float bestFit = 0.0f;
+  for (std::uint8_t count = kFewestGuessed; count <= kMaxMaterialClusters;
+       ++count) {
+    ClusterSettings tried = guess;
+    tried.clusters = count;
+    float tightest = 0.0f;
+    std::optional<Clustering> kept;
+    for (std::uint32_t seed = 1; seed <= kGuessSeeds; ++seed) {
+      ClusterSettings seeded = tried;
+      seeded.seed = seed;
+      Clustering clustering = ClusterTexels(texels, seeded);
+      const float inertia = Inertia(texels, clustering, scales);
+      if (!kept || inertia < tightest) {
+        tightest = inertia;
+        kept = std::move(clustering);
+        tried.seed = seed;
+      }
+    }
+    const float fit = Fit(texels, *kept, scales);
+    if (!best || fit > bestFit + kFitTolerance) {
+      best = tried;
+      bestFit = fit;
+    }
+  }
+  return best ? *best : guess;
+}
+
+namespace {
+AxisSplit BestSplit(const std::vector<Axes> &a_texels, std::size_t a_axis) {
+  std::array<float, kSplitBins> counts{};
+  std::array<float, kSplitBins> sums{};
+  float total = 0.0f;
+  float mean = 0.0f;
+  for (const Axes &texel : a_texels) {
+    const float value = texel[a_axis];
+    const std::size_t bin = std::min(
+        static_cast<std::size_t>(value * static_cast<float>(kSplitBins)),
+        kSplitBins - 1);
+    counts[bin] += 1.0f;
+    sums[bin] += value;
+    mean += value;
+    total += 1.0f;
+  }
+  mean /= total;
+  float spread = 0.0f;
+  for (const Axes &texel : a_texels) {
+    const float d = texel[a_axis] - mean;
+    spread += d * d;
+  }
+  spread /= total;
+  if (spread < kFlatSpread) {
+    return {};
+  }
+  AxisSplit best;
+  float lowCount = 0.0f;
+  float lowSum = 0.0f;
+  for (std::size_t bin = 0; bin + 1 < kSplitBins; ++bin) {
+    lowCount += counts[bin];
+    lowSum += sums[bin];
+    const float highCount = total - lowCount;
+    if (lowCount <= 0.0f || highCount <= 0.0f) {
+      continue;
+    }
+    const float lowMean = lowSum / lowCount;
+    const float highMean = (mean * total - lowSum) / highCount;
+    const float between = lowCount * highCount * (lowMean - highMean) *
+                          (lowMean - highMean) / (total * total);
+    const float explained = between / spread;
+    if (explained > best.explained) {
+      best = {explained, highMean - lowMean};
+    }
+  }
+  return best;
+}
+
+float SplitWeight(const AxisSplit &a_split) noexcept {
+  const float bimodal =
+      std::clamp((a_split.explained - kUnimodalSplit) / (1.0f - kUnimodalSplit),
+                 0.0f, 1.0f);
+  if (a_split.gap < kMinimumGap) {
+    return 0.0f;
+  }
+  return std::clamp(bimodal / (a_split.gap * a_split.gap), 0.0f,
+                    kMaxChannelWeight);
+}
+
+ChannelWeights GuessedWeights(const std::vector<Axes> &a_texels) {
+  Axes weights{};
+  for (std::size_t axis = 0; axis < kAxes; ++axis) {
+    weights[axis] = SplitWeight(BestSplit(a_texels, axis));
+  }
+  if (std::ranges::all_of(weights,
+                          [](float a_weight) { return a_weight <= 0.0f; })) {
+    return ChannelWeights{};
+  }
+  const float colour =
+      std::min(weights[5] + weights[6] + weights[7], kMaxChannelWeight);
+  return ChannelWeights{weights[0], weights[1], weights[2],
+                        weights[3], weights[4], colour};
+}
+
+float Inertia(const std::vector<Axes> &a_texels, const Clustering &a_clustering,
+              const Axes &a_scales) noexcept {
+  float sum = 0.0f;
+  for (std::size_t i = 0; i < a_texels.size() && i < a_clustering.owner.size();
+       ++i) {
+    const std::size_t owner = a_clustering.owner[i];
+    if (owner < a_clustering.centroids.size()) {
+      sum += Distance(a_texels[i], a_clustering.centroids[owner], a_scales);
+    }
+  }
+  return sum;
+}
+
+float Fit(const std::vector<Axes> &a_texels, const Clustering &a_clustering,
+          const Axes &a_scales) noexcept {
+  if (a_clustering.centroids.size() < 2 || a_texels.empty()) {
+    return 0.0f;
+  }
+  float sum = 0.0f;
+  for (std::size_t i = 0; i < a_texels.size() && i < a_clustering.owner.size();
+       ++i) {
+    const std::size_t owner = a_clustering.owner[i];
+    float own = 0.0f;
+    float other = -1.0f;
+    for (std::size_t c = 0; c < a_clustering.centroids.size(); ++c) {
+      const float d =
+          std::sqrt(Distance(a_texels[i], a_clustering.centroids[c], a_scales));
+      if (c == owner) {
+        own = d;
+      } else if (other < 0.0f || d < other) {
+        other = d;
+      }
+    }
+    const float larger = std::max(own, other);
+    sum += larger > 0.0f ? (other - own) / larger : 0.0f;
+  }
+  return sum / static_cast<float>(a_texels.size());
+}
 }
 
 std::uint8_t NearestCluster(const MaterialTexel &a_texel,

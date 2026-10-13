@@ -45,6 +45,8 @@ struct MaterialAnalysis {
 [[nodiscard]] MaterialAnalysis
 ClusterMaterial(const MaterialSample &a_sample,
                 const ClusterSettings &a_settings);
+[[nodiscard]] ClusterSettings
+GuessClusterSettings(const MaterialSample &a_sample);
 [[nodiscard]] std::uint8_t
 NearestCluster(const MaterialTexel &a_texel,
                const MaterialAnalysis &a_analysis) noexcept;
