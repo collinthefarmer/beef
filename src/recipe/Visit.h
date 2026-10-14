@@ -214,6 +214,7 @@ void VisitSourceParams(SourceKind &a_kind, Visitor &a_visit) {
               },
               [&](ChartLevel &c) {
                 VisitParam(c.count, std::nullopt, a_visit, "count");
+                VisitParam(c.minShare, std::nullopt, a_visit, "minShare");
               });
         }
       },

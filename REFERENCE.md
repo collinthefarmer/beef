@@ -3151,8 +3151,10 @@ The method and its prototype comparison are in
 ### Area pick (`mesh/AreaPick.h`, `PickSource`, `DrawClustersStep::area`)
 
 - `pick` lights an area level by level (`levels`, `PickLevel`), each from
-  what the level before left. `SupportedLevels` accepts geometry, then
-  groups, then chart, each at most once, with groups required; validation
+  what the level before left. A level names its set with `from`
+  (`"geometries"`, `"groups"`, `"charts"`; `"by"` before 2026-10-14):
+  a level picks from a set. `SupportedLevels` accepts geometries, then
+  groups, then charts, each at most once, with groups required; validation
   refuses any other list ("not supported yet"). The list form leaves room
   for other id levels (part, partition) without a format change. Absent
   `levels` means one material group on every geometry.
@@ -3167,9 +3169,14 @@ The method and its prototype comparison are in
   `areaBias`. With a chart level, only groups that cover at least one
   pickable chart (`GroupsWithCharts`) compete, so a group that lives only on
   charts past 254 cannot leave a picked geometry empty.
-- The charts: `CandidateCharts`, then each candidate lights when its
-  `ShufflePosition` under `HashUnit(seed, 4096 + 16 × index + group)` is
-  below the chart level's `count`. With no chart level the whole group
+- The charts: `CandidateCharts`, ordered by their `ShufflePosition` under
+  `HashUnit(seed, 4096 + 16 × index + group)` (`InShuffleOrder`). The pick
+  takes the first `count`, then keeps adding charts in that order while the
+  lit share is below `minShare` (a floor, 0 by default, a parameter so a
+  signal can scale it). An unreachable floor lights every candidate. The
+  floor exists because `minCover` is relative to a chart: a fully covered
+  tiny chart qualifies, and the 2026-10-14 in-game run showed 5 of 31 picks
+  lighting under 5% of their geometry. With no chart level the whole group
   lights and the draw has no chart filter. Every count rounds and clamps to
   1..what is available.
 - `ChartCoversOf` writes the cover table at grouping time: for each chart

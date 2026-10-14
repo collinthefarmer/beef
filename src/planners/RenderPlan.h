@@ -77,7 +77,7 @@ struct SubmitMaterialSampleStep {
   operator==(const SubmitMaterialSampleStep &) const = default;
 };
 struct ChartPickInputs {
-  RenderValueRef chartIds, count;
+  RenderValueRef chartIds, count, minShare;
   float minCover = kDefaultMinCover;
   [[nodiscard]] bool operator==(const ChartPickInputs &) const = default;
 };

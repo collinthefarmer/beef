@@ -109,6 +109,7 @@ ClustersRowOf(const MaterialGroupsSource &a_clusters) {
     pick.chartLevel = true;
     pick.charts = ParamText(levels.chart->count);
     pick.minCover = ParamText(levels.chart->minCover);
+    pick.minShare = ParamText(levels.chart->minShare);
   }
   return pick;
 }
@@ -303,8 +304,9 @@ ClustersKindOf(const MaterialGroupsSourceRow &a_row) {
   const auto smoothing = WholeNumber(a_row.smoothing, kMaxClusterSmoothing);
   const auto charts = ParseParam(a_row.charts);
   const auto minCover = UnitNumber(a_row.minCover);
+  const auto minShare = ParseParam(a_row.minShare);
   if (!seed || !geometries || !areaBias || !merge || !smoothing || !charts ||
-      !minCover) {
+      !minCover || !minShare) {
     return std::nullopt;
   }
   PickSource pick;
@@ -315,7 +317,7 @@ ClustersKindOf(const MaterialGroupsSourceRow &a_row) {
   }
   pick.levels.push_back(GroupLevel{*areaBias, {*merge, *smoothing}});
   if (a_row.chartLevel) {
-    pick.levels.push_back(ChartLevel{*charts, *minCover});
+    pick.levels.push_back(ChartLevel{*charts, *minCover, *minShare});
   }
   return SourceKind{pick};
 }

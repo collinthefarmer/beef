@@ -88,6 +88,7 @@ std::vector<OutputRef> InputsOf(const NodeKind &kind) {
                   k.geometries, k.areaBias, k.geometryIndex, k.geometryCount};
         if (k.charts) {
           inputs.push_back(k.charts->count);
+          inputs.push_back(k.charts->minShare);
         }
       },
       [&](const ReductionOperation &k) { add(k.value); });

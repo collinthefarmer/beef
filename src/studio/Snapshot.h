@@ -182,6 +182,7 @@ struct PickSourceRow {
   bool chartLevel = false;
   std::string charts = "1";
   std::string minCover = "0.05";
+  std::string minShare = "0";
 };
 
 using SourceRowKind =

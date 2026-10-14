@@ -432,6 +432,7 @@ struct RecipeGraphLowering {
                             std::nullopt};
     if (levels.chart) {
       operation.charts = ChartPickOperands{Parameter(levels.chart->count),
+                                           Parameter(levels.chart->minShare),
                                            levels.chart->minCover};
     }
     return operation;

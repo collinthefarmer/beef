@@ -16,6 +16,7 @@ inline constexpr std::size_t kChartSlots = 256;
 struct ChartChoice {
   float count = 1.0f;
   float minCover = kDefaultMinCover;
+  float minShare = 0.0f;
 };
 
 struct AreaPickSettings {

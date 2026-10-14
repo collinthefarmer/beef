@@ -381,7 +381,7 @@ int main() {
     "ripSrc":   { "ripple": { "trigger": "@trig", "speed": 90.0, "width": 8.0, "decay": 1.2, "shape": "disc" } },
     "clusters": { "material": { "groups": { "merge": 0.45, "smoothing": 3 } } },
     "debugClusters": { "material": { "groups": { "palette": true } } },
-    "lit": { "pick": { "seed": 0.4, "levels": [ { "by": "geometry", "count": 2 }, { "by": "groups", "smoothing": 4 }, { "by": "chart", "count": "@countSig", "minCover": 0.1 } ] } }
+    "lit": { "pick": { "seed": 0.4, "levels": [ { "from": "geometries", "count": 2 }, { "from": "groups", "smoothing": 4 }, { "from": "charts", "count": "@countSig", "minCover": 0.1, "minShare": 0.2 } ] } }
   }
 })";
     const Recipe r =
@@ -440,6 +440,7 @@ int main() {
               levels->groups->areaBias == Param{1.0f} && levels->chart &&
               levels->chart->count == Param{Ref{"countSig"}} &&
               levels->chart->minCover == 0.1f &&
+              levels->chart->minShare == Param{0.2f} &&
               SourceType(*lit) == ValueType::kScalar,
           "a pick round-trips its seed and every level's settings");
     const LoadResult bare = ParseRecipe(
@@ -451,21 +452,22 @@ int main() {
     Check(barePick && barePick->levels == PickSource{}.levels &&
               !bare.HasErrors(),
           "a pick without levels picks one material group");
-    for (const auto &[json, what, fragment] :
-         {std::tuple{R"({"pick":{"levels":[{"by":"groups"}]}})",
-                     "a pick without a seed", "seed"},
-          {R"({"pick":{"seed":0.5,"levels":[{"by":"groups"},)"
-           R"({"by":"chart","minCover":2}]}})",
-           "a pick cover above one", "minCover"},
-          {R"({"pick":{"seed":0.5,"levels":[{"by":"groups"},)"
-           R"({"by":"chart","count":0}]}})",
-           "a pick of no charts", "count"},
-          {R"({"pick":{"seed":0.5,"levels":[{"by":"chart"},{"by":"groups"}]}})",
-           "charts before groups", "not supported yet"},
-          {R"({"pick":{"seed":0.5,"levels":[{"by":"geometry"}]}})",
-           "a pick without groups", "groups required"},
-          {R"({"pick":{"seed":0.5,"levels":[{"by":"part"}]}})",
-           "an unknown level", "'by'"}}) {
+    for (
+        const auto &[json, what, fragment] :
+        {std::tuple{R"({"pick":{"levels":[{"from":"groups"}]}})",
+                    "a pick without a seed", "seed"},
+         {R"({"pick":{"seed":0.5,"levels":[{"from":"groups"},)"
+          R"({"from":"charts","minCover":2}]}})",
+          "a pick cover above one", "minCover"},
+         {R"({"pick":{"seed":0.5,"levels":[{"from":"groups"},)"
+          R"({"from":"charts","count":0}]}})",
+          "a pick of no charts", "count"},
+         {R"({"pick":{"seed":0.5,"levels":[{"from":"charts"},{"from":"groups"}]}})",
+          "charts before groups", "not supported yet"},
+         {R"({"pick":{"seed":0.5,"levels":[{"from":"geometries"}]}})",
+          "a pick without groups", "groups required"},
+         {R"({"pick":{"seed":0.5,"levels":[{"from":"parts"}]}})",
+          "an unknown level", "'from'"}}) {
       ExpectError(std::format(R"({{"format":1,"keys":["default"],)"
                               R"("sources":{{"p":{}}}}})",
                               json),

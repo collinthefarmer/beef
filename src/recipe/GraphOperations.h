@@ -191,7 +191,7 @@ struct MaterialGroupsOperation {
   bool palette = false;
 };
 struct ChartPickOperands {
-  OutputRef count;
+  OutputRef count, minShare;
   float minCover = kDefaultMinCover;
 };
 struct PickOperation {

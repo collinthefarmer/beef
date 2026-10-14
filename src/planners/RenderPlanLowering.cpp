@@ -611,6 +611,7 @@ struct PlanBuilder {
           Step(BakeMeshStep{chartBuffers, request.requirements, true},
                label + " charts"),
           BuildOperand(operation.charts->count, request, depth),
+          BuildOperand(operation.charts->minShare, request, depth),
           operation.charts->minCover};
     }
     DrawClustersStep draw{

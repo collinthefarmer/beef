@@ -740,6 +740,7 @@ std::optional<PickLevel> ChartLevelFrom(Reader &a_reader) {
   if (auto minCover = a_reader.Number("minCover")) {
     level.minCover = *minCover;
   }
+  a_reader.Read("minShare", level.minShare);
   return level;
 }
 
@@ -749,16 +750,16 @@ constexpr std::array<PickLevelParser, kPickLevelCount> kPickLevelParsers{
 
 std::optional<PickLevel> PickLevelFrom(const json &a_v, const Reporter &a_ctx) {
   Reader r(a_v, a_ctx);
-  if (!a_v.is_object() || !r.Has("by")) {
-    a_ctx.Error(std::format("a pick level is an object with 'by': one of {}",
+  if (!a_v.is_object() || !r.Has("from")) {
+    a_ctx.Error(std::format("a pick level is an object with 'from': one of {}",
                             Choices(kPickLevelWords)));
     return std::nullopt;
   }
-  const std::optional<PickLevelId> by = r.Enum("by", kPickLevelWords);
-  if (!by) {
+  const std::optional<PickLevelId> from = r.Enum("from", kPickLevelWords);
+  if (!from) {
     return std::nullopt;
   }
-  const std::size_t at = IndexOf(*by);
+  const std::size_t at = IndexOf(*from);
   if (at >= kPickLevelParsers.size()) {
     return std::nullopt;
   }

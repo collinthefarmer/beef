@@ -1,7 +1,7 @@
 {
   "format": 1,
   "name": "Fill import template",
-  "description": "The baseline import template for an effect shader with a fill texture. A low glow lights a few texture charts of one material group on one of the piece's geometries, either their cavities and engraved edges or the whole area, in the shader's colour with a seeded hue turn, scaled by the shader's pulse, with a DarkSwirls shimmer drifting through it whose bright-edged swirls swell and thin with each swell. A swell travels out from the chest, brightens the glow it crosses and lifts a transparent shell from the recesses; the shell glows brightly with the shimmer's swirls cut out of it, in a colour between the shader's edge colour and a seeded hue. The enchantment's magnitude scales the glow, swell, shimmer, flare and how many charts light. Every seeded choice comes from rand(): the enchantment and its effect fix the hue, whether the glow keeps to cavities, and the swell's timing, speed and width; the enchantment, its effect and the worn item fix which geometry, material group and charts glow, always at least one chart.",
+  "description": "The baseline import template for an effect shader with a fill texture. A low glow lights a few texture charts of one material group on one of the piece's geometries, either their cavities and engraved edges or the whole area, in the shader's colour with a seeded hue turn, scaled by the shader's pulse, with a DarkSwirls shimmer drifting through it whose bright-edged swirls swell and thin with each swell. A swell travels out from the chest, brightens the glow it crosses and lifts a transparent shell from the recesses; the shell glows brightly with the shimmer's swirls cut out of it, in a colour between the shader's edge colour and a seeded hue. The enchantment's magnitude scales the glow, swell, shimmer, flare, how many charts light and the least share of the geometry they cover. Every seeded choice comes from rand(): the enchantment and its effect fix the hue, whether the glow keeps to cavities, and the swell's timing, speed and width; the enchantment, its effect and the worn item fix which geometry, material group and charts glow, always at least one chart.",
   "keys": [
     {
       "effectShader": "ImportedEffectShader"
@@ -284,6 +284,12 @@
     "chartLit": {
       "expr": "randrange(1, floor(@chartMaxLitScaled) + 1)"
     },
+    "chartMinShareBase": {
+      "constant": 0.15
+    },
+    "chartMinShare": {
+      "expr": "saturate(@chartMinShareBase * @chartMagnitude)"
+    },
     "cavityChance": {
       "constant": 0.5
     },
@@ -306,14 +312,15 @@
         "seed": "@pickSeed",
         "levels": [
           {
-            "by": "geometry"
+            "from": "geometries"
           },
           {
-            "by": "groups"
+            "from": "groups"
           },
           {
-            "by": "chart",
-            "count": "@chartLit"
+            "from": "charts",
+            "count": "@chartLit",
+            "minShare": "@chartMinShare"
           }
         ]
       }

@@ -147,6 +147,15 @@ OptionalUnitParamOf(const std::string &a_text) {
   return std::optional<Param>{*param};
 }
 
+[[nodiscard]] std::optional<Param> UnitParamOf(const std::string &a_text) {
+  const auto param = ParseParam(a_text);
+  const auto *value = param ? Get<float>(*param) : nullptr;
+  if (!param || (value && (*value < 0.0f || *value > 1.0f))) {
+    return std::nullopt;
+  }
+  return param;
+}
+
 [[nodiscard]] std::optional<Param> AreaBiasOf(const std::string &a_text) {
   const auto param = ParseParam(a_text);
   const auto *value = param ? Get<float>(*param) : nullptr;
@@ -1702,6 +1711,14 @@ void PickFields(std::vector<FormField> &a_form, const SourceContext &a_ctx,
        .names = {},
        .bind = BindPickLevel<ChartLevel>(
            name, record, LevelMember(&ChartLevel::minCover, MergeShareOf))},
+      {0.0f, 1.0f}));
+  a_form.push_back(RangedField(
+      {.name = "minShare",
+       .kind = FieldKind::kScalar,
+       .text = a_source.minShare,
+       .names = a_ctx.names.scalar,
+       .bind = BindPickLevel<ChartLevel>(
+           name, record, LevelMember(&ChartLevel::minShare, UnitParamOf))},
       {0.0f, 1.0f}));
 }
 }

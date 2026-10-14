@@ -200,9 +200,10 @@ struct SourceFields {
   void operator()(const PickSource &s) const {
     Scalar(report, s.seed, "seed");
     if (!SupportedLevels(s)) {
-      report.Error("'levels' runs geometry, then groups, then chart, each at "
-                   "most once, with groups required; other orders are not "
-                   "supported yet");
+      report.Error(
+          "'levels' runs geometries, then groups, then charts, each at "
+          "most once, with groups required; other orders are not "
+          "supported yet");
     }
     for (const PickLevel &level : s.levels) {
       Match(level, [&](const auto &a_level) { Level(a_level); });
@@ -223,6 +224,11 @@ struct SourceFields {
     Number(report, a_level.minCover, "minCover");
     if (a_level.minCover < 0.0f || a_level.minCover > 1.0f) {
       report.Error("'minCover' is 0..1");
+    }
+    Scalar(report, a_level.minShare, "minShare");
+    if (const float *share = Get<float>(a_level.minShare);
+        share && (*share < 0.0f || *share > 1.0f)) {
+      report.Error("'minShare' is 0..1");
     }
   }
   void Count(const Param &a_count) const {

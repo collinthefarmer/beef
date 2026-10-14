@@ -536,6 +536,7 @@ struct GroupLevel {
 struct ChartLevel {
   Param count = 1.0f;
   float minCover = kDefaultMinCover;
+  Param minShare = 0.0f;
   [[nodiscard]] bool operator==(const ChartLevel &) const = default;
 };
 using PickLevel = std::variant<GeometryLevel, GroupLevel, ChartLevel>;

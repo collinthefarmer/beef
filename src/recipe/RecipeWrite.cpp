@@ -56,8 +56,10 @@ std::string DescribePickSource(const PickSource &a_source) {
         },
         [](const GroupLevel &) { return std::string{" one material group,"}; },
         [](const ChartLevel &c) {
-          return std::format(" {} chart(s) it covers by at least {:.0f}%,",
-                             ParamText(c.count), c.minCover * 100.0f);
+          return std::format(" at least {} chart(s) it covers by at least "
+                             "{:.0f}%, lighting at least {} of the geometry,",
+                             ParamText(c.count), c.minCover * 100.0f,
+                             ParamText(c.minShare));
         });
   }
   return text + std::format(" seeded by {}", ParamText(a_source.seed));
@@ -358,7 +360,7 @@ json MaterialGroupsToJson(const MaterialGroupsSource &k) {
 json PickLevelToJson(const PickLevel &a_level) {
   json o = json::object();
   Writer w{o};
-  w.WriteEnum("by", kPickLevelWords, FromIndex<PickLevelId>(a_level.index()));
+  w.WriteEnum("from", kPickLevelWords, FromIndex<PickLevelId>(a_level.index()));
   Match(
       a_level,
       [&](const GeometryLevel &g) {
@@ -375,6 +377,7 @@ json PickLevelToJson(const PickLevel &a_level) {
         const ChartLevel defaults;
         w.WriteIf("count", c.count, defaults.count);
         w.WriteNumberIf("minCover", c.minCover, defaults.minCover);
+        w.WriteIf("minShare", c.minShare, defaults.minShare);
       });
   return o;
 }

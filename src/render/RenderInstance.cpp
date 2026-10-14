@@ -512,9 +512,10 @@ ChartChoiceOf(const AreaPickInputs &area, const Arguments &arguments) {
   if (!area.charts)
     return std::nullopt;
   const auto count = ScalarArgument(arguments, area.charts->count);
-  if (!count)
-    return std::unexpected("the pick's chart count is unavailable");
-  return ChartChoice{*count, area.charts->minCover};
+  const auto minShare = ScalarArgument(arguments, area.charts->minShare);
+  if (!count || !minShare)
+    return std::unexpected("the pick's chart count or floor is unavailable");
+  return ChartChoice{*count, area.charts->minCover, *minShare};
 }
 std::expected<TextureLab::ClusterDraw, std::string>
 AreaDrawOf(const AreaPickInputs &area, const MaterialGrouping &grouping,

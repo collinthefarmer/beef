@@ -142,7 +142,8 @@ std::vector<RenderValueRef> InputsOf(const RenderStepKind &step) {
                          k.area->geometryIndex, k.area->geometryCount});
           if (k.area->charts) {
             inputs.insert(inputs.end(),
-                          {k.area->charts->chartIds, k.area->charts->count});
+                          {k.area->charts->chartIds, k.area->charts->count,
+                           k.area->charts->minShare});
           }
         }
         return inputs;
@@ -347,10 +348,13 @@ std::expected<void, std::string> ValidateAreaPick(const RenderPlan &plan,
             plan, area.charts->chartIds, RenderResourceType::kTexture);
         !charts)
       return charts;
-    if (std::expected<void, std::string> count =
-            RequireType(plan, area.charts->count, ValueType::kScalar);
-        !count)
-      return count;
+    for (const RenderValueRef scalar :
+         {area.charts->count, area.charts->minShare}) {
+      if (std::expected<void, std::string> checked =
+              RequireType(plan, scalar, ValueType::kScalar);
+          !checked)
+        return checked;
+    }
   }
   for (const RenderValueRef scalar : {area.seed, area.geometries, area.areaBias,
                                       area.geometryIndex, area.geometryCount}) {

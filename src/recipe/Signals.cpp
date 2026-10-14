@@ -368,6 +368,7 @@ std::vector<Diagnostic> CheckSourceInputs(const RowTypes &a_rows,
               },
               [&](const ChartLevel &c) {
                 CheckScalar(a_rows, report, c.count, "count");
+                CheckScalar(a_rows, report, c.minShare, "minShare");
               });
         }
       },

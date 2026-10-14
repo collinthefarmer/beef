@@ -147,7 +147,7 @@ void TestPickForm() {
   PickSource full;
   full.seed = Param{Ref{"seed"}};
   full.levels = {GeometryLevel{Param{2.0f}}, GroupLevel{Param{0.5f}, {0.4f, 6}},
-                 ChartLevel{Param{Ref{"count"}}, 0.1f}};
+                 ChartLevel{Param{Ref{"count"}}, 0.1f, Param{0.3f}}};
   const SourceRow fullRow = SourceRowOf(Source{"lit", full}, 0);
   const std::optional<SourceKind> back = SourceKindOf(fullRow);
   Check(back && *back == SourceKind{full},
@@ -187,6 +187,15 @@ void TestPickForm() {
                           : nullptr;
   Check(chart && chart->count == Param{3.0f},
         "editing the chart count changes the chart level");
+  const FormField *minShare = Field(chartForm, "minShare");
+  const std::optional<PickSource> floored =
+      minShare ? PickOf(minShare->bind("0.2")) : std::nullopt;
+  const auto *flooredChart = floored && floored->levels.size() == 2
+                                 ? Get<ChartLevel>(floored->levels[1])
+                                 : nullptr;
+  Check(flooredChart && flooredChart->minShare == Param{0.2f} && minShare &&
+            !minShare->bind("1.5"),
+        "the chart floor is editable and bounded to 0..1");
   const FormField *merge = Field(chartForm, "merge");
   Check(merge && !merge->bind("2"), "a merge above one is refused");
   const FormField *off = Field(chartForm, "chart level");

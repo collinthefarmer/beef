@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <ranges>
 #include <set>
 #include <vector>
 
@@ -142,6 +143,39 @@ void GroupsWithoutPickableChartsStepAside() {
                  "a picked geometry is never empty");
 }
 
+void FloorAddsChartsUntilTheShareIsReached() {
+  std::vector<ChartCover> covers;
+  for (std::uint16_t chart = 0; chart < 10; ++chart) {
+    covers.push_back({kMetal, chart, 1.0f, 0.1f});
+  }
+  MaterialAnalysis metal;
+  metal.clusters.push_back({kMetal, {}, 1.0f, {}});
+  AreaPickSettings settings;
+  bool counted = true;
+  bool floored = true;
+  bool exhausted = true;
+  for (int seed = 0; seed < 20; ++seed) {
+    settings.seed = static_cast<float>(seed) / 20.0f;
+    settings.charts = ChartChoice{1.0f, 0.0f, 0.0f};
+    const auto plain = PickArea(settings, {0, 1}, metal, covers);
+    counted = counted && plain && plain->litCharts == 1;
+    settings.charts = ChartChoice{1.0f, 0.0f, 0.35f};
+    const auto floor = PickArea(settings, {0, 1}, metal, covers);
+    floored = floored && floor && floor->litCharts == 4 &&
+              floor->share >= 0.35f && plain &&
+              (*floor->charts)[*std::ranges::find(
+                  std::views::iota(std::size_t{0}, kChartSlots), true,
+                  [&](std::size_t c) { return (*plain->charts)[c]; })];
+    settings.charts = ChartChoice{1.0f, 0.0f, 2.0f};
+    const auto all = PickArea(settings, {0, 1}, metal, covers);
+    exhausted = exhausted && all && all->litCharts == 10;
+  }
+  Check(counted, "without a floor the pick lights its count");
+  Check(floored, "a floor adds charts in shuffle order until the lit share "
+                 "reaches it, keeping the first pick");
+  Check(exhausted, "an unreachable floor lights every candidate");
+}
+
 void PickAreaLightsChartsOfOneGroup() {
   const std::vector<ChartCover> covers = Covers();
   const MaterialAnalysis analysis = TwoGroups(0.5f);
@@ -216,6 +250,7 @@ int main() {
   GeometriesPickTheirCount();
   PickAreaLightsChartsOfOneGroup();
   IntegerSeedsStillShuffle();
+  FloorAddsChartsUntilTheShareIsReached();
   GroupsWithoutPickableChartsStepAside();
   return test::Finish("areapick");
 }
