@@ -2119,9 +2119,9 @@ builds the new one beside it, as a resize does.
   reads the same value; the game keeps no stable identity for one copy of a
   non-unique item.
 - `chartCount` reads `MeshAnalysis::charts` from the mesh cache at render
-  time (`ChartCountOf`); its identity is the mesh identity. A mask uses it to
-  choose among the charts a mesh really has; the fill template's `chartSure`
-  uses it to light at least one existing chart.
+  time (`ItemFactOf`); its identity is the mesh identity. A mask uses it to
+  choose among the charts a mesh really has. The fill template no longer
+  reads it: its `pick` source chooses among the charts its group covers.
 - `geometryIndex` and `geometryCount`: `NumberGeometries`
   (`engine/ManagerApply.cpp`) sorts a piece's geometries by name with a stable
   sort and numbers them from 0. The name order does not change between loads,

@@ -1,15 +1,15 @@
 {
   "format": 1,
   "name": "Fill import template",
-  "description": "The baseline import template for an effect shader with a fill texture. A low glow lights a few of the piece's texture charts on one of its materials, either their cavities and engraved edges or the whole area, in the shader's colour with a seeded hue turn, scaled by the shader's pulse, with a DarkSwirls shimmer drifting through it whose bright-edged swirls swell and thin with each swell. A swell travels out from the chest, brightens the glow it crosses and lifts a transparent shell from the recesses; the shell glows brightly with the shimmer's swirls cut out of it, in a colour between the shader's edge colour and a seeded hue. The enchantment's magnitude scales the glow, swell, shimmer, flare and how many charts light. Every seeded choice comes from rand(): the enchantment and its effect fix the hue, material, whether the glow keeps to cavities, and the swell's timing, speed and width; the worn item also fixes which charts glow, always at least one.",
+  "description": "The baseline import template for an effect shader with a fill texture. A low glow lights a few texture charts of one material group on one of the piece's geometries, either their cavities and engraved edges or the whole area, in the shader's colour with a seeded hue turn, scaled by the shader's pulse, with a DarkSwirls shimmer drifting through it whose bright-edged swirls swell and thin with each swell. A swell travels out from the chest, brightens the glow it crosses and lifts a transparent shell from the recesses; the shell glows brightly with the shimmer's swirls cut out of it, in a colour between the shader's edge colour and a seeded hue. The enchantment's magnitude scales the glow, swell, shimmer, flare and how many charts light. Every seeded choice comes from rand(): the enchantment and its effect fix the hue, whether the glow keeps to cavities, and the swell's timing, speed and width; the enchantment, its effect and the worn item fix which geometry, material group and charts glow, always at least one chart.",
   "keys": [
     {
       "effectShader": "ImportedEffectShader"
     }
   ],
   "signals": {
-    "chartCount": {
-      "item": "chartCount"
+    "itemHash": {
+      "item": "itemHash"
     },
     "shaderFill": {
       "efsh": {
@@ -269,9 +269,6 @@
     "shimmerFringeGain": {
       "constant": 8.0
     },
-    "chartPoolMax": {
-      "constant": 13.0
-    },
     "chartMaxLit": {
       "constant": 3.0
     },
@@ -284,14 +281,17 @@
     "chartMaxLitScaled": {
       "expr": "max(1, @chartMaxLit * @chartMagnitude)"
     },
-    "seedMaterial": {
-      "expr": "rand()"
+    "chartLit": {
+      "expr": "randrange(1, floor(@chartMaxLitScaled) + 1)"
     },
     "cavityChance": {
       "constant": 0.5
     },
     "seedCavities": {
       "expr": "rand()"
+    },
+    "pickSeed": {
+      "expr": "frac(rand() + @itemHash)"
     }
   },
   "sources": {
@@ -301,14 +301,10 @@
     "slope": {
       "material": "normalSlope"
     },
-    "chartId": {
-      "mesh": "chart"
-    },
-    "materialPick": {
-      "material": {
-        "groups": {
-          "pick": "@seedMaterial"
-        }
+    "lit": {
+      "pick": {
+        "seed": "@pickSeed",
+        "charts": "@chartLit"
       }
     },
     "swellWave": {
@@ -343,16 +339,12 @@
     "recess": "smoothstep(@recessLow, @recessHigh, 1 - @relief)",
     "engraving": "smoothstep(@engravingLow, @engravingHigh, @slope)",
     "cavities": "saturate(max(@recess, @engraving))",
-    "chartIndex": "floor(@chartId * 255 + 0.5)",
-    "chartChoices": "min(@chartCount, @chartPoolMax)",
-    "chartLit": "randrange(1, min(@chartMaxLitScaled, @chartChoices) + 1)",
-    "chartPick": "shuffle(@chartIndex, @chartChoices, rand()) < @chartLit",
     "swellGlow": "pow(@swellWave, @swellSharpness)",
     "cavityGate": "@seedCavities < @cavityChance",
     "glowDepth": "max(@cavities, 1 - @cavityGate)",
     "flareReach": "max(@recess, 1 - @cavityGate)",
-    "glowArea": "@glowDepth * @chartPick * @materialPick",
-    "flareArea": "@swellWave * @flareReach * @chartPick * @materialPick",
+    "glowArea": "@glowDepth * @lit",
+    "flareArea": "@swellWave * @flareReach * @lit",
     "shimmer": "min(1 / smoothstep(@shimmerThreshold, @shimmerFalloff, @swirlA * @swirlB), @shimmerFringeGain)",
     "shellShimmerAlpha": "saturate(@shimmer * @glowArea)"
   },
