@@ -71,6 +71,28 @@ Families group by **origin**: where the data comes from. Whether a member is a s
 
 Moving them into the signal section changes where they are written, not where they are evaluated. A signal that reads an item fact is per geometry, like a mask. Stage 1 checks whether the graph already evaluates such a row in the render path, as it does the masks (`DeclarationCategory::kSpatial`). If it does not, an item fact is readable from masks and sources only, and validation says so.
 
+## Stage 1 result (2026-10-14)
+
+The recipe graph has three evaluation domains (`DeclarationCategory`, `recipe/RecipeCompilation.h`). The domain comes from the recipe section a row is in (`RecipeGraph.cpp:767-770`).
+
+| Domain | Rows | Evaluated | May read |
+|---|---|---|---|
+| signal | `signals` | once per recipe instance, on the CPU | signals |
+| spatial | `sources`, `masks` | per geometry, in the render path | signals and spatial rows |
+| function | `curves` | where called | — |
+
+Checked with `beef-validate` on three recipes:
+
+| Recipe | Result |
+|---|---|
+| a signal `expr` reads `@charts` (a `piece` source) | refused: "'@charts' has the wrong evaluation domain" |
+| masks chain over `@charts` (`lit = @charts * 2`, `area = @lit * 0.5`) | accepted: a mask can be a per-geometry scalar |
+| a layer `opacity` or an output `strength` reads that mask | refused: "reads unknown signal '@lit'" (`recipe/Signals.cpp:106`) |
+
+- Per-geometry scalars exist today: they are masks over `piece` sources. The template's `chartChoices` and `chartLit` are such masks.
+- A row is per geometry when it reads an item fact, directly or through other rows. The graph can infer that: a signal that reads an item fact moves to the spatial domain.
+- Scalar parameters (layer `opacity`, layer colour, output `strength`, light and shell parameters) accept signals only. `LayerField::value` is a `RenderValueRef` (`planners/RenderPlan.h:145`), so the render plan can carry a per-geometry value there. The lowering path for it is not checked.
+
 ## The nested pick
 
 `pick` is a special source that returns 1 on the picked area and 0 elsewhere. It picks in three steps, each from what the step before left.
