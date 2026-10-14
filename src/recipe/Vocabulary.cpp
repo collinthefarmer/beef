@@ -302,7 +302,8 @@ ValueType SourceType(const Source &a_source) noexcept {
       [](const RippleSource &) { return ValueType::kScalar; },
       [](const MaterialGroupsSource &s) {
         return s.palette ? ValueType::kVec3 : ValueType::kScalar;
-      });
+      },
+      [](const PickSource &) { return ValueType::kScalar; });
 }
 
 bool SourceHoldsIds(const SourceKind &a_kind) noexcept {

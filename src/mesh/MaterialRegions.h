@@ -105,6 +105,15 @@ struct GroupProbabilities {
   std::vector<std::array<std::uint8_t, kMaxGroups>> ofTexel;
 };
 
+inline constexpr std::uint16_t kMaxPickChart = 254;
+
+struct ChartCover {
+  std::uint8_t group = 0;
+  std::uint16_t chart = 0;
+  float cover = 0.0f;
+  [[nodiscard]] bool operator==(const ChartCover &) const = default;
+};
+
 struct MaterialGrouping {
   ClusterSettings settings;
   LabelledTexels labelled;
@@ -112,6 +121,7 @@ struct MaterialGrouping {
   std::vector<GroupScoring> scoring;
   GroupProbabilities smoothed;
   MaterialAnalysis analysis;
+  std::vector<ChartCover> covers;
 };
 
 [[nodiscard]] std::expected<MaterialRaster, std::string>
@@ -141,6 +151,9 @@ LabelWithOdds(const MaterialRaster &a_raster, const MaterialGroups &a_groups,
 [[nodiscard]] GroupProbabilities
 SmoothedProbabilities(const MaterialRaster &a_raster,
                       const MaterialGroups &a_groups, std::uint32_t a_radius);
+[[nodiscard]] std::vector<ChartCover>
+ChartCoversOf(const MaterialRaster &a_raster,
+              const std::vector<std::int16_t> &a_labels);
 [[nodiscard]] MaterialAnalysis
 AnalysisOf(const MaterialRaster &a_raster,
            const std::vector<std::int16_t> &a_labels);

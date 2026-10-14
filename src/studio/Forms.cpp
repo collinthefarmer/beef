@@ -1554,6 +1554,64 @@ void ClustersFields(std::vector<FormField> &a_form, const SourceContext &a_ctx,
   areaBias.workingRange = areaBias.range;
   a_form.push_back(std::move(areaBias));
 }
+
+void PickFields(std::vector<FormField> &a_form, const SourceContext &a_ctx,
+                const PickSourceRow &a_source) {
+  const std::string &name = a_ctx.name;
+  const SourceKind &record = a_ctx.record;
+  for (const auto &[field, text, member] :
+       {std::tuple{"seed", &a_source.seed, &PickSource::seed},
+        {"geometries", &a_source.geometries, &PickSource::geometries},
+        {"charts", &a_source.charts, &PickSource::charts}}) {
+    a_form.push_back(ParamField(
+        {.name = field,
+         .kind = FieldKind::kScalar,
+         .text = *text,
+         .names = a_ctx.names.scalar,
+         .bind = BindSourceMember(name, record, member, ParseParam)}));
+  }
+  FormField minCover =
+      ParamField({.name = "minCover",
+                  .kind = FieldKind::kScalar,
+                  .text = a_source.minCover,
+                  .names = {},
+                  .bind = BindSourceMember(name, record, &PickSource::minCover,
+                                           MergeShareOf)});
+  minCover.range = std::pair{0.0f, 1.0f};
+  minCover.workingRange = minCover.range;
+  a_form.push_back(std::move(minCover));
+  FormField areaBias =
+      ParamField({.name = "areaBias",
+                  .kind = FieldKind::kScalar,
+                  .text = a_source.areaBias,
+                  .names = a_ctx.names.scalar,
+                  .bind = BindSourceMember(name, record, &PickSource::areaBias,
+                                           AreaBiasOf)});
+  areaBias.range = std::pair{0.0f, kMaxAreaBias};
+  areaBias.workingRange = areaBias.range;
+  a_form.push_back(std::move(areaBias));
+  FormField merge = ParamField(
+      {.name = "merge",
+       .kind = FieldKind::kScalar,
+       .text = a_source.merge,
+       .names = {},
+       .bind = BindSourceMember(name, record, &PickSource::settings,
+                                &ClusterSettings::merge, MergeShareOf)});
+  merge.range = std::pair{0.0f, 1.0f};
+  merge.workingRange = merge.range;
+  a_form.push_back(std::move(merge));
+  FormField smoothing = ParamField(
+      {.name = "smoothing",
+       .kind = FieldKind::kScalar,
+       .text = a_source.smoothing,
+       .names = {},
+       .bind = BindSourceMember(name, record, &PickSource::settings,
+                                &ClusterSettings::smoothing, SmoothingOf)});
+  smoothing.range = std::pair{0.0f, static_cast<float>(kMaxClusterSmoothing)};
+  smoothing.workingRange = smoothing.range;
+  smoothing.integral = true;
+  a_form.push_back(std::move(smoothing));
+}
 }
 
 std::vector<FormField> SourceForm(const SourceRow &a_source,
@@ -1585,7 +1643,8 @@ std::vector<FormField> SourceForm(const SourceRow &a_source,
       },
       [&](const MaterialGroupsSourceRow &a_clusters) {
         ClustersFields(form, ctx, a_clusters);
-      });
+      },
+      [&](const PickSourceRow &a_pick) { PickFields(form, ctx, a_pick); });
   return form;
 }
 

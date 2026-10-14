@@ -355,6 +355,12 @@ std::vector<Diagnostic> CheckSourceInputs(const RowTypes &a_rows,
         }
         CheckScalar(a_rows, report, s.areaBias, "areaBias");
       },
+      [&](const PickSource &s) {
+        CheckScalar(a_rows, report, s.seed, "seed");
+        CheckScalar(a_rows, report, s.geometries, "geometries");
+        CheckScalar(a_rows, report, s.charts, "charts");
+        CheckScalar(a_rows, report, s.areaBias, "areaBias");
+      },
       [](const MaterialSource &) {});
   return out;
 }

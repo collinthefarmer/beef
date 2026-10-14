@@ -964,8 +964,12 @@ std::string SourceValueText(const SourceKind &a_kind) {
                            s.trigger.name);
       },
       [](const MaterialGroupsSource &s) {
-        return std::format("clusters, merge above {:.0f}%",
+        return std::format("groups, merge above {:.0f}%",
                            s.settings.merge * 100.0f);
+      },
+      [](const PickSource &s) {
+        return std::format("{} geometr(ies), {} chart(s)",
+                           ParamText(s.geometries), ParamText(s.charts));
       });
 }
 

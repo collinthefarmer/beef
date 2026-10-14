@@ -105,6 +105,11 @@ void EncodeSettings(Encoding &out, const NodeKind &kind) {
       [&](const MaterialGroupsOperation &k) {
         EncodeMaterialGroupsOperation(out, k);
       },
+      [&](const PickOperation &k) {
+        out.Number(k.settings.merge);
+        out.Number(k.settings.smoothing);
+        out.Number(k.minCover);
+      },
       [](const VectorOperation &) {}, [](const RampOperation &) {},
       [](const ToRootOperation &) {}, [](const HoldOperation &) {},
       [](const AccumulateOperation &) {}, [](const RateOperation &) {},

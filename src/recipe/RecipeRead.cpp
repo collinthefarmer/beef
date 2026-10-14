@@ -715,6 +715,39 @@ ParseSourceAlternative<MaterialGroupsSource>(const json &a_v,
   return k;
 }
 
+template <>
+std::optional<PickSource>
+ParseSourceAlternative<PickSource>(const json &a_v, const Reporter &a_ctx) {
+  if (!a_v.is_object()) {
+    a_ctx.Error("'pick' takes an object with 'seed', 'geometries', 'charts', "
+                "'minCover', 'areaBias', 'merge' and 'smoothing'");
+    return std::nullopt;
+  }
+  PickSource k;
+  Reader r(a_v, a_ctx);
+  bool ok = true;
+  r.Read("seed", k.seed);
+  if (!r.Has("seed")) {
+    a_ctx.Error("'pick' needs 'seed'");
+  }
+  r.Read("geometries", k.geometries);
+  r.Read("charts", k.charts);
+  if (auto minCover = r.Number("minCover")) {
+    k.minCover = *minCover;
+  }
+  r.Read("areaBias", k.areaBias);
+  if (auto merge = r.Number("merge")) {
+    k.settings.merge = *merge;
+  }
+  ok &= r.IntRange("smoothing", 0, static_cast<int>(kMaxClusterSmoothing),
+                   k.settings.smoothing);
+  r.Finish();
+  if (!ok) {
+    return std::nullopt;
+  }
+  return k;
+}
+
 using SourceParser = std::optional<SourceKind> (*)(const json &,
                                                    const Reporter &);
 

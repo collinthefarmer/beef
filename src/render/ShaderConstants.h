@@ -1,6 +1,7 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #pragma once
 
+#include "mesh/AreaPick.h"
 #include "mesh/MaterialClusters.h"
 #include "planners/FieldProgram.h"
 #include "planners/StackShader.h"
@@ -73,6 +74,7 @@ struct alignas(16) GroupConstants {
   float palette[kMaxMaterialClusters][4];
   float levels[4];
   float detail[4];
+  float charts[kChartSlots / 4][4];
 };
 
 struct alignas(16) DiffuseDetailConstants {

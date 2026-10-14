@@ -1395,6 +1395,7 @@ GroupMaterial(const MaterialSample &a_sample,
   const std::vector<std::int16_t> labels = LabelWithOdds(
       *raster, *groups, out.scoring, out.smoothed, OddsWeightOf(a_settings));
   out.analysis = AnalysisOf(*raster, labels);
+  out.covers = ChartCoversOf(*raster, labels);
   out.labelled = LabelledOf(*raster, labels);
   out.groups = std::move(*groups);
   out.groups.ofTexel.clear();
@@ -1402,6 +1403,38 @@ GroupMaterial(const MaterialSample &a_sample,
     return std::unexpected("the material has no groups");
   }
   return out;
+}
+
+std::vector<ChartCover>
+ChartCoversOf(const MaterialRaster &a_raster,
+              const std::vector<std::int16_t> &a_labels) {
+  constexpr std::size_t kCharts = kMaxPickChart + 1;
+  std::vector<std::size_t> totals(kCharts, 0);
+  std::vector<std::array<std::size_t, kMaxGroups>> counts(kCharts);
+  const std::size_t texels = std::min(a_raster.charts.size(), a_labels.size());
+  for (std::size_t i = 0; i < texels; ++i) {
+    const std::uint16_t chart = a_raster.charts[i];
+    const std::int16_t group = a_labels[i];
+    if (chart >= kCharts || group < 0 ||
+        static_cast<std::size_t>(group) >= kMaxGroups) {
+      continue;
+    }
+    ++totals[chart];
+    ++counts[chart][static_cast<std::size_t>(group)];
+  }
+  std::vector<ChartCover> covers;
+  for (std::size_t chart = 0; chart < kCharts; ++chart) {
+    for (std::size_t group = 0; group < kMaxGroups; ++group) {
+      if (counts[chart][group] == 0) {
+        continue;
+      }
+      covers.push_back({static_cast<std::uint8_t>(group),
+                        static_cast<std::uint16_t>(chart),
+                        static_cast<float>(counts[chart][group]) /
+                            static_cast<float>(totals[chart])});
+    }
+  }
+  return covers;
 }
 
 float OddsWeightOf(const ClusterSettings &a_settings) noexcept {

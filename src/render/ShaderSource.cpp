@@ -578,7 +578,17 @@ cbuffer GroupParams : register(b3)
 	float4 groupPalette[8];
 	float4 groupLevels;
 	float4 groupDetail;
+	float4 groupCharts[64];
 };
+
+float ChartLitAt(float2 uv)
+{
+	uint w, h;
+	tex3.GetDimensions(w, h);
+	int2 texel = min(int2(uv * float2(w, h)), int2(w, h) - 1);
+	int chart = clamp((int)round(tex3.Load(int3(texel, 0)).r * 255.0), 0, 255);
+	return groupCharts[chart >> 2][chart & 3];
+}
 
 float NormalDetailAt(float2 uv, float4 detail)
 {
@@ -652,6 +662,8 @@ float4 PSClusters(VSOut i) : SV_Target
 	float v = groupMisc.y > 0.5
 	              ? (abs(id - (groupMisc.y - 1.0)) < 0.5 ? 1.0 : 0.0)
 	              : id / 255.0;
+	if (groupLevels.z > 0.5)
+		v *= ChartLitAt(i.uv);
 	return float4(v, v, v, 1);
 }
 )";

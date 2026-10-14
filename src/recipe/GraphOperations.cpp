@@ -83,6 +83,11 @@ std::vector<OutputRef> InputsOf(const NodeKind &kind) {
           inputs.push_back(*k.areaBias);
         }
       },
+      [&](const PickOperation &k) {
+        inputs = {k.material, k.geometry,      k.coordinates,
+                  k.seed,     k.geometries,    k.charts,
+                  k.areaBias, k.geometryIndex, k.geometryCount};
+      },
       [&](const ReductionOperation &k) { add(k.value); });
   return inputs;
 }

@@ -501,6 +501,44 @@ StepResult ExecuteSubmitMaterialSampleStep(const SubmitMaterialSampleStep &step,
     return std::unexpected("material sampling failed");
   return RenderValue{Value{0.0f}};
 }
+struct PickedCharts {
+  std::uint8_t picked = 0;
+  TextureLab::ChartFilter filter;
+};
+constexpr std::uint8_t kNoPickedGroup = 255;
+std::expected<PickedCharts, std::string>
+ChartFilterOf(const AreaPickInputs &area, const MaterialGrouping &grouping,
+              const Arguments &arguments) {
+  const auto *chartIds = arguments.Find<TextureView>(area.chartIds);
+  if (!chartIds || !chartIds->target)
+    return std::unexpected("the chart ids are unavailable");
+  const auto scalar = [&](RenderValueRef ref) -> std::optional<float> {
+    const auto *value = arguments.Find<Value>(ref);
+    return value ? std::optional{AsScalar(*value)} : std::nullopt;
+  };
+  const auto seed = scalar(area.seed), geometries = scalar(area.geometries),
+             charts = scalar(area.charts), areaBias = scalar(area.areaBias),
+             index = scalar(area.geometryIndex),
+             count = scalar(area.geometryCount);
+  if (!seed || !geometries || !charts || !areaBias || !index || !count)
+    return std::unexpected("a pick input is unavailable");
+  const AreaPickSettings settings{*seed, *geometries, *charts, area.minCover,
+                                  *areaBias};
+  const GeometryPlace place{
+      static_cast<std::uint32_t>(std::clamp(*index, 0.0f, 65535.0f)),
+      static_cast<std::uint32_t>(std::clamp(*count, 1.0f, 65535.0f))};
+  PickedCharts out;
+  out.filter.chartIds = chartIds->target.get();
+  const std::optional<PickedArea> picked =
+      PickArea(settings, place, grouping.analysis, grouping.covers);
+  if (!picked) {
+    out.picked = kNoPickedGroup;
+    return out;
+  }
+  out.picked = picked->group;
+  out.filter.lit = picked->charts;
+  return out;
+}
 StepResult ExecuteDrawClustersStep(const DrawClustersStep &step,
                                    StepExecution &execution) {
   const auto *material =
@@ -510,24 +548,30 @@ StepResult ExecuteDrawClustersStep(const DrawClustersStep &step,
           step.groups);
   if (!material || !grouping || !*grouping)
     return std::unexpected("cluster draw failed");
-  std::optional<std::uint8_t> picked;
-  if (step.pick) {
+  TextureLab::ClusterDraw draw{.palette = step.palette};
+  if (step.area) {
+    auto charts = ChartFilterOf(*step.area, **grouping, execution.arguments);
+    if (!charts)
+      return std::unexpected(charts.error());
+    draw.picked = charts->picked;
+    draw.charts = charts->filter;
+  } else if (step.pick) {
     const auto *pick = execution.arguments.Find<Value>(*step.pick);
     const auto *bias = step.areaBias
                            ? execution.arguments.Find<Value>(*step.areaBias)
                            : nullptr;
     if (!pick)
       return std::unexpected("cluster pick is unavailable");
-    picked = PickCluster((*grouping)->analysis, AsScalar(*pick),
-                         bias ? AsScalar(*bias) : 1.0f);
-    if (!picked)
+    draw.picked = PickCluster((*grouping)->analysis, AsScalar(*pick),
+                              bias ? AsScalar(*bias) : 1.0f);
+    if (!draw.picked)
       return std::unexpected("the material has no cluster to pick");
   }
   const auto target =
       AcquireStepTarget(execution, step.requirements,
                         TextureLab::MipsFor(step.requirements.mipPolicy));
   if (!target || !execution.lab.RenderClusters(*target, MapsOf(*material),
-                                               *grouping, picked, step.palette))
+                                               *grouping, draw))
     return std::unexpected("cluster draw failed");
   auto view = View(target);
   view.sampling.nearest = true;

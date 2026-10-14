@@ -92,6 +92,18 @@ ClustersRowOf(const MaterialGroupsSource &a_clusters) {
   return clusters;
 }
 
+[[nodiscard]] PickSourceRow PickRowOf(const PickSource &a_pick) {
+  PickSourceRow pick;
+  pick.seed = ParamText(a_pick.seed);
+  pick.geometries = ParamText(a_pick.geometries);
+  pick.charts = ParamText(a_pick.charts);
+  pick.minCover = ParamText(a_pick.minCover);
+  pick.areaBias = ParamText(a_pick.areaBias);
+  pick.merge = ParamText(a_pick.settings.merge);
+  pick.smoothing = std::to_string(a_pick.settings.smoothing);
+  return pick;
+}
+
 }
 
 SourceRow SourceRowOf(const Source &a_source, std::size_t a_references) {
@@ -118,6 +130,9 @@ SourceRow SourceRowOf(const Source &a_source, std::size_t a_references) {
       },
       [](const MaterialGroupsSource &a_clusters) -> SourceRowKind {
         return ClustersRowOf(a_clusters);
+      },
+      [](const PickSource &a_pick) -> SourceRowKind {
+        return PickRowOf(a_pick);
       });
   return row;
 }
@@ -261,6 +276,38 @@ ClustersKindOf(const MaterialGroupsSourceRow &a_row) {
   }
   return SourceKind{clusters};
 }
+
+[[nodiscard]] std::optional<float> UnitNumber(const std::string &a_text) {
+  const auto parsed = ParseParam(a_text);
+  const auto *value = parsed ? Get<float>(*parsed) : nullptr;
+  if (!value || !(*value >= 0.0f) || *value > 1.0f) {
+    return std::nullopt;
+  }
+  return *value;
+}
+
+[[nodiscard]] std::optional<SourceKind> PickKindOf(const PickSourceRow &a_row) {
+  const auto seed = ParseParam(a_row.seed);
+  const auto geometries = ParseParam(a_row.geometries);
+  const auto charts = ParseParam(a_row.charts);
+  const auto areaBias = ParseParam(a_row.areaBias);
+  const auto minCover = UnitNumber(a_row.minCover);
+  const auto merge = UnitNumber(a_row.merge);
+  const auto smoothing = WholeNumber(a_row.smoothing, kMaxClusterSmoothing);
+  if (!seed || !geometries || !charts || !areaBias || !minCover || !merge ||
+      !smoothing) {
+    return std::nullopt;
+  }
+  PickSource pick;
+  pick.seed = *seed;
+  pick.geometries = *geometries;
+  pick.charts = *charts;
+  pick.areaBias = *areaBias;
+  pick.minCover = *minCover;
+  pick.settings.merge = *merge;
+  pick.settings.smoothing = *smoothing;
+  return SourceKind{pick};
+}
 }
 
 std::optional<SourceKind> SourceKindOf(const SourceRow &a_row) {
@@ -273,7 +320,8 @@ std::optional<SourceKind> SourceKindOf(const SourceRow &a_row) {
       [](const RippleSourceRow &a_row) { return RippleKindOf(a_row); },
       [](const MaterialGroupsSourceRow &a_row) {
         return ClustersKindOf(a_row);
-      });
+      },
+      [](const PickSourceRow &a_row) { return PickKindOf(a_row); });
 }
 
 }

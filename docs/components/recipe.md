@@ -126,6 +126,7 @@ order, and the asserts in `Words.h` keep `kSourceKindWords` in the same order.
 | `DistanceSource` | `distance` | The texel's distance from a named skeleton node. |
 | `RippleSource` | `ripple` | A ring or disc (`RippleShape`) that spreads from a trigger firing at `speed`, `width` wide, fading at `decay`. A nonzero `direction` turns it into a plane sweep. |
 | `MaterialGroupsSource` | `material` → `groups` | The id of each texel's material group under `ClusterSettings`, or 1 on one picked group, or a palette colour. |
+| `PickSource` | `pick` | 1 on a picked area: 1 to `geometries` geometries, one material group on each, then 1 to `charts` charts the group covers by at least `minCover`, all fixed by `seed`. |
 
 ### Outputs (`Recipe.h`)
 

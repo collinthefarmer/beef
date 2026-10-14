@@ -85,6 +85,13 @@ std::string DescribeSource(const SourceKind &a_kind) {
       },
       [](const MaterialGroupsSource &s) {
         return DescribeMaterialGroupsSource(s);
+      },
+      [](const PickSource &s) {
+        return std::format("pick {} geometr(ies), then one material group, "
+                           "then {} chart(s) it covers by at least {:.0f}%, "
+                           "seeded by {}",
+                           ParamText(s.geometries), ParamText(s.charts),
+                           s.minCover * 100.0f, ParamText(s.seed));
       });
 }
 
@@ -337,6 +344,20 @@ json MaterialGroupsToJson(const MaterialGroupsSource &k) {
   return o;
 }
 
+json PickToJson(const PickSource &k) {
+  const PickSource defaults;
+  json o = json::object();
+  Writer w{o};
+  w.Write("seed", k.seed);
+  w.WriteIf("geometries", k.geometries, defaults.geometries);
+  w.WriteIf("charts", k.charts, defaults.charts);
+  w.WriteNumberIf("minCover", k.minCover, defaults.minCover);
+  w.WriteIf("areaBias", k.areaBias, defaults.areaBias);
+  w.WriteNumberIf("merge", k.settings.merge, defaults.settings.merge);
+  w.WriteIf("smoothing", k.settings.smoothing, defaults.settings.smoothing);
+  return o;
+}
+
 json RippleToJson(const RippleSource &k) {
   json o = json::object();
   Writer w{o};
@@ -361,7 +382,8 @@ json SourceKindToJson(const SourceKind &a_kind) {
       [](const MeshSource &k) { return MeshToJson(k); },
       [](const DistanceSource &k) { return json(k.from); },
       [](const RippleSource &k) { return RippleToJson(k); },
-      [](const MaterialGroupsSource &k) { return MaterialGroupsToJson(k); });
+      [](const MaterialGroupsSource &k) { return MaterialGroupsToJson(k); },
+      [](const PickSource &k) { return PickToJson(k); });
   const SourceKey &key = kSourceKeys[IndexOf(SourceKindIdOf(a_kind))];
   json row = json::object();
   row[std::string{key.key}] =

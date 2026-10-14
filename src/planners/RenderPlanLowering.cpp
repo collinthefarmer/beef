@@ -356,6 +356,9 @@ struct PlanBuilder {
         [&](const MaterialGroupsOperation &operation) -> RenderValueRef {
           return LowerMaterialGroupsOperation(operation, site, request, depth);
         },
+        [&](const PickOperation &operation) -> RenderValueRef {
+          return LowerPickOperation(operation, site, request, depth);
+        },
         [&](const RippleOperation &operation) -> RenderValueRef {
           return LowerRippleOperation(operation, site, request, depth);
         },
@@ -577,6 +580,42 @@ struct PlanBuilder {
     if (operation.areaBias) {
       draw.areaBias = BuildOperand(*operation.areaBias, request, depth);
     }
+    return Step(draw, label);
+  }
+  RenderValueRef LowerPickOperation(const PickOperation &operation,
+                                    const LoweringSite &site,
+                                    const LoweringRequest &request,
+                                    std::size_t depth) {
+    const std::string &label = site.node.displayName;
+    const RenderValueRef material =
+        BuildOperand(operation.material, request, depth);
+    const RenderValueRef mesh =
+        BuildOperand(operation.geometry, request, depth);
+    const RenderValueRef submission =
+        Step(SubmitMaterialSampleStep{material, mesh, operation.settings},
+             label + " samples");
+    const auto *submitted = Get<StepOutputRef>(submission);
+    if (!submitted)
+      return submission;
+    const RenderValueRef chartBuffers =
+        Step(BuildBakeBuffersStep{mesh, BakeKind{ChartBake{}}},
+             label + " chart buffers");
+    const RenderValueRef chartIds =
+        Step(BakeMeshStep{chartBuffers, request.requirements, true},
+             label + " charts");
+    const AreaPickInputs area{
+        chartIds,
+        BuildOperand(operation.seed, request, depth),
+        BuildOperand(operation.geometries, request, depth),
+        BuildOperand(operation.charts, request, depth),
+        BuildOperand(operation.areaBias, request, depth),
+        BuildOperand(operation.geometryIndex, request, depth),
+        BuildOperand(operation.geometryCount, request, depth),
+        operation.minCover};
+    DrawClustersStep draw{
+        material, Readback(*submitted, RenderResourceType::kMaterialGroups),
+        request.requirements};
+    draw.area = area;
     return Step(draw, label);
   }
   RenderValueRef LowerRippleOperation(const RippleOperation &operation,

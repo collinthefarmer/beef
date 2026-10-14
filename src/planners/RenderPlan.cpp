@@ -136,6 +136,12 @@ std::vector<RenderValueRef> InputsOf(const RenderStepKind &step) {
         if (k.areaBias) {
           inputs.push_back(*k.areaBias);
         }
+        if (k.area) {
+          inputs.insert(inputs.end(),
+                        {k.area->chartIds, k.area->seed, k.area->geometries,
+                         k.area->charts, k.area->areaBias,
+                         k.area->geometryIndex, k.area->geometryCount});
+        }
         return inputs;
       },
       [](const SampleFieldStep &k) {
@@ -329,6 +335,22 @@ ValidateBuildBakeBuffersStep(const RenderPlan &plan,
     return mesh;
   if (const RenderValueRef *origin = Get<RenderValueRef>(step.operation))
     return RequireType(plan, *origin, ValueType::kVec3);
+  return {};
+}
+std::expected<void, std::string> ValidateAreaPick(const RenderPlan &plan,
+                                                  const AreaPickInputs &area) {
+  if (std::expected<void, std::string> charts =
+          RequireType(plan, area.chartIds, RenderResourceType::kTexture);
+      !charts)
+    return charts;
+  for (const RenderValueRef scalar :
+       {area.seed, area.geometries, area.charts, area.areaBias,
+        area.geometryIndex, area.geometryCount}) {
+    if (std::expected<void, std::string> checked =
+            RequireType(plan, scalar, ValueType::kScalar);
+        !checked)
+      return checked;
+  }
   return {};
 }
 std::expected<void, std::string>
@@ -544,6 +566,11 @@ std::expected<void, std::string> ValidateStepKind(const RenderPlan &plan,
               if (!k.areaBias)
                 return {};
               return RequireType(plan, *k.areaBias, ValueType::kScalar);
+            })
+            .and_then([&]() -> Validation {
+              if (!k.area)
+                return {};
+              return ValidateAreaPick(plan, *k.area);
             });
       },
       [&](const SampleFieldStep &k) -> Validation {

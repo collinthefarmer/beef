@@ -187,10 +187,7 @@ struct SourceFields {
       }
     }
     Scalar(report, s.areaBias, "areaBias");
-    if (const float *bias = Get<float>(s.areaBias);
-        bias && (*bias < 0.0f || *bias > kMaxAreaBias)) {
-      report.Error(std::format("'areaBias' is 0..{}", kMaxAreaBias));
-    }
+    AreaBias(s.areaBias);
     if (s.palette && s.pick) {
       report.Error("'palette' colours every cluster and 'pick' selects one; "
                    "use one of them");
@@ -198,11 +195,38 @@ struct SourceFields {
     if (!s.pick && s.areaBias != Param{MaterialGroupsSource{}.areaBias}) {
       report.Warn("'areaBias' has no effect without 'pick'");
     }
-    Number(report, s.settings.merge, "merge");
-    if (s.settings.merge < 0.0f || s.settings.merge > 1.0f) {
+    Settings(s.settings);
+  }
+  void operator()(const PickSource &s) const {
+    Scalar(report, s.seed, "seed");
+    Scalar(report, s.geometries, "geometries");
+    Scalar(report, s.charts, "charts");
+    Scalar(report, s.areaBias, "areaBias");
+    AreaBias(s.areaBias);
+    Number(report, s.minCover, "minCover");
+    if (s.minCover < 0.0f || s.minCover > 1.0f) {
+      report.Error("'minCover' is 0..1");
+    }
+    for (const auto &[count, field] :
+         {std::pair{&s.geometries, "geometries"}, {&s.charts, "charts"}}) {
+      if (const float *value = Get<float>(*count); value && *value < 1.0f) {
+        report.Error(std::format("'{}' is at least 1", field));
+      }
+    }
+    Settings(s.settings);
+  }
+  void AreaBias(const Param &a_bias) const {
+    if (const float *bias = Get<float>(a_bias);
+        bias && (*bias < 0.0f || *bias > kMaxAreaBias)) {
+      report.Error(std::format("'areaBias' is 0..{}", kMaxAreaBias));
+    }
+  }
+  void Settings(const ClusterSettings &a_settings) const {
+    Number(report, a_settings.merge, "merge");
+    if (a_settings.merge < 0.0f || a_settings.merge > 1.0f) {
       report.Error("'merge' is 0..1");
     }
-    if (s.settings.smoothing > kMaxClusterSmoothing) {
+    if (a_settings.smoothing > kMaxClusterSmoothing) {
       report.Error(std::format("'smoothing' is 0..{}", kMaxClusterSmoothing));
     }
   }

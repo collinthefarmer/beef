@@ -5,6 +5,7 @@
 #include "PCH.h"
 #include "diagnostics/GpuTiming.h"
 #include "diagnostics/Trace.h"
+#include "mesh/AreaPick.h"
 #include "mesh/MaterialClusters.h"
 #include "mesh/MaterialDump.h"
 #include "mesh/MaterialRegions.h"
@@ -327,9 +328,18 @@ public:
   [[nodiscard]] MapPixelsResult CopyMapPixels(RE::NiSourceTexture *a_map,
                                               std::uint32_t a_maxSide);
 
+  struct ChartFilter {
+    const RenderTarget *chartIds = nullptr;
+    std::array<bool, kChartSlots> lit{};
+  };
+  struct ClusterDraw {
+    std::optional<std::uint8_t> picked;
+    bool palette = false;
+    std::optional<ChartFilter> charts;
+  };
   bool RenderClusters(RenderTarget &a_target, const MaterialMaps &a_maps,
                       const std::shared_ptr<const MaterialGrouping> &a_grouping,
-                      std::optional<std::uint8_t> a_picked, bool a_palette);
+                      const ClusterDraw &a_draw);
   [[nodiscard]] bool ClustersAvailable() const noexcept;
   [[nodiscard]] bool BakingAvailable() const noexcept;
 

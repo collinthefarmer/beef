@@ -1310,7 +1310,7 @@ TextureLab::CopyMapPixels(RE::NiSourceTexture *a_map, std::uint32_t a_maxSide) {
 bool TextureLab::RenderClusters(
     RenderTarget &a_target, const MaterialMaps &a_maps,
     const std::shared_ptr<const MaterialGrouping> &a_owner,
-    std::optional<std::uint8_t> a_picked, bool a_palette) {
+    const ClusterDraw &a_draw) {
   if (!a_owner) {
     return false;
   }
@@ -1357,8 +1357,9 @@ bool TextureLab::RenderClusters(
         (OddsWeightOf(a_grouping.settings) > 0.0f ? group.logShare : 0.0f);
   }
   constants.misc[0] = static_cast<float>(scoring.size());
-  constants.misc[1] = a_picked ? static_cast<float>(*a_picked) + 1.0f : 0.0f;
-  constants.misc[2] = a_palette ? 1.0f : 0.0f;
+  constants.misc[1] =
+      a_draw.picked ? static_cast<float>(*a_draw.picked) + 1.0f : 0.0f;
+  constants.misc[2] = a_draw.palette ? 1.0f : 0.0f;
   constants.misc[3] = OddsWeightOf(a_grouping.settings);
   for (std::size_t k = 0; k < kClusterPalette.size(); ++k) {
     constants.palette[k][0] = kClusterPalette[k].x;
@@ -1370,6 +1371,18 @@ bool TextureLab::RenderClusters(
   constants.levels[1] = WholeReadMip(a_maps.diffuse, a_target.size);
   const std::array<float, 4> detail = NormalDetailLevels(a_maps.normal);
   std::ranges::copy(detail, constants.detail);
+  REX::W32::ID3D11ShaderResourceView *chartIds = nullptr;
+  if (a_draw.charts) {
+    if (!a_draw.charts->chartIds || !a_draw.charts->chartIds->srv.Get()) {
+      return false;
+    }
+    chartIds = a_draw.charts->chartIds->srv.Get();
+    constants.levels[2] = 1.0f;
+    for (std::size_t chart = 0; chart < kChartSlots; ++chart) {
+      constants.charts[chart / 4][chart % 4] =
+          a_draw.charts->lit[chart] ? 1.0f : 0.0f;
+    }
+  }
 
   pass.Context().UpdateSubresource(pipeline.constants.Get(), 0, nullptr,
                                    &constants, 0, 0);
@@ -1379,7 +1392,7 @@ bool TextureLab::RenderClusters(
       reinterpret_cast<REX::W32::ID3D11ShaderResourceView *>(
           rmaosData->resourceView),
       NormalView(a_maps.normal),
-      nullptr,
+      chartIds,
       (*odds)[0].Get(),
       (*odds)[1].Get()};
   REX::W32::ID3D11Buffer *cbs[4]{nullptr, nullptr, nullptr,

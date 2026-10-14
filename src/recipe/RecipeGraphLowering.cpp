@@ -410,6 +410,21 @@ struct RecipeGraphLowering {
             operation.areaBias = Parameter(k.areaBias);
           }
           return operation;
+        },
+        [&](const PickSource &k) -> NodeKind {
+          return PickOperation{Material(),
+                               Geometry(),
+                               Uv(),
+                               k.settings,
+                               Parameter(k.seed),
+                               Parameter(k.geometries),
+                               Parameter(k.charts),
+                               Parameter(k.areaBias),
+                               Shared(ItemInput{ItemField::kGeometryIndex},
+                                      ValueType::kScalar, "geometry index"),
+                               Shared(ItemInput{ItemField::kGeometryCount},
+                                      ValueType::kScalar, "geometry count"),
+                               k.minCover};
         });
   }
   void Functions() {

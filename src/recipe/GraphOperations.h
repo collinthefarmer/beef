@@ -190,20 +190,26 @@ struct MaterialGroupsOperation {
   std::optional<OutputRef> areaBias;
   bool palette = false;
 };
+struct PickOperation {
+  OutputRef material, geometry, coordinates;
+  ClusterSettings settings;
+  OutputRef seed, geometries, charts, areaBias;
+  OutputRef geometryIndex, geometryCount;
+  float minCover = kDefaultMinCover;
+};
 struct ReductionOperation {
   ReductionKind kind = ReductionKind::kMean;
   OutputRef value;
 };
-using NodeKind =
-    std::variant<ConstantOperation, ExternalInput, VectorOperation,
-                 ExpressionOperation, ParameterOperation, CallOperation,
-                 MapFunctionOperation, WaveOperation, RampOperation,
-                 EffectShaderOperation, NoiseOperation, GradientOperation,
-                 ToRootOperation, TriggerOperation, HoldOperation,
-                 CounterOperation, AccumulateOperation, RateOperation,
-                 SmoothOperation, TextureCoordinatesOperation, ImageOperation,
-                 MaterialOperation, BakeOperation, DistanceOperation,
-                 RippleOperation, MaterialGroupsOperation, ReductionOperation>;
+using NodeKind = std::variant<
+    ConstantOperation, ExternalInput, VectorOperation, ExpressionOperation,
+    ParameterOperation, CallOperation, MapFunctionOperation, WaveOperation,
+    RampOperation, EffectShaderOperation, NoiseOperation, GradientOperation,
+    ToRootOperation, TriggerOperation, HoldOperation, CounterOperation,
+    AccumulateOperation, RateOperation, SmoothOperation,
+    TextureCoordinatesOperation, ImageOperation, MaterialOperation,
+    BakeOperation, DistanceOperation, RippleOperation, MaterialGroupsOperation,
+    PickOperation, ReductionOperation>;
 struct RecipeNode {
   std::string displayName;
   NodeKind kind;

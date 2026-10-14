@@ -3119,6 +3119,34 @@ The method and its prototype comparison are in
   material's maps only. Two geometries that share maps share the first
   geometry's charts in the studio chart.
 
+### Area pick (`mesh/AreaPick.h`, `PickSource`, `DrawClustersStep::area`)
+
+- `pick` lights an area in three steps, each from what the step before
+  left. `IsGeometryPicked`: geometry `index` of `count` lights when its
+  `ShufflePosition` under `seed` is below `geometries`. The group:
+  `PickCluster` with `HashUnit(seed, 1 + index)` and `areaBias`. The charts:
+  `CandidateCharts`, then each candidate lights when its `ShufflePosition`
+  under `HashUnit(seed, 4096 + 16 × index + group)` is below `charts`. Every
+  count rounds and clamps to 1..what is available.
+- `ChartCoversOf` writes the cover table at grouping time: for each chart
+  and group, the group's share of the chart's labelled texels in the 256 px
+  raster. Only charts 0..254 (`kMaxPickChart`) enter it, because the chart
+  bake stores id / 255 in an 8-bit channel and 255 is `kNoIsland`.
+- `CandidateCharts` keeps the charts the group covers by at least
+  `minCover`. With none, it keeps the group's largest chart, so a picked
+  geometry never gets an empty area. It keeps at most 251 charts, the
+  `ShufflePosition` limit, largest cover first.
+- Every geometry runs the pick on its own, with the same seed. The
+  geometry step agrees across geometries because each one computes the
+  same shuffle of `count` indices.
+- The draw is the cluster draw (`PSClusters`) with the picked group, a
+  nearest-sampled chart bake at t3, and a 256-entry lit table in
+  `groupCharts`; `groupLevels.z` turns the chart filter on. A geometry that
+  is not picked draws with group 255, which matches no texel.
+- `seed` is required, with no default. A default from the piece identity
+  would hide which value fixes the pick; an author mixes `rand()` and
+  `@itemHash` in a signal when the item should change the pick.
+
 ## Build and tools
 
 - Project targets bypass the compiler launcher; third-party targets still

@@ -132,7 +132,8 @@ inline constexpr Named<SourceKindId> kSourceKindWords[]{
     {SourceKindId::kMesh, "mesh"},
     {SourceKindId::kDistance, "distance"},
     {SourceKindId::kRipple, "ripple"},
-    {SourceKindId::kMaterialGroups, "material groups"}};
+    {SourceKindId::kMaterialGroups, "material groups"},
+    {SourceKindId::kPick, "pick"}};
 static_assert(Complete(kSourceKindWords, kSourceKindCount));
 struct SourceKey {
   SourceKindId value;
@@ -145,7 +146,8 @@ inline constexpr SourceKey kSourceKeys[]{
     {SourceKindId::kMesh, "mesh", {}},
     {SourceKindId::kDistance, "distance", {}},
     {SourceKindId::kRipple, "ripple", {}},
-    {SourceKindId::kMaterialGroups, "material", "groups"}};
+    {SourceKindId::kMaterialGroups, "material", "groups"},
+    {SourceKindId::kPick, "pick", {}}};
 static_assert(Complete(kSourceKeys, kSourceKindCount));
 static_assert([] {
   for (std::size_t i = 0; i < kSourceKindCount; ++i) {
@@ -173,7 +175,8 @@ static_assert(
     std::is_same_v<std::variant_alternative_t<3, SourceKind>, DistanceSource> &&
     std::is_same_v<std::variant_alternative_t<4, SourceKind>, RippleSource> &&
     std::is_same_v<std::variant_alternative_t<5, SourceKind>,
-                   MaterialGroupsSource>);
+                   MaterialGroupsSource> &&
+    std::is_same_v<std::variant_alternative_t<6, SourceKind>, PickSource>);
 inline constexpr std::string_view kTriggerOriginWords[]{"event", "plugin",
                                                         "when"};
 static_assert(std::size(kTriggerOriginWords) ==

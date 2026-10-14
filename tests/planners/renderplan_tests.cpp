@@ -304,6 +304,40 @@ int main() {
                                   return draw && draw->pick && draw->areaBias;
                                 }),
         "a cluster pick reaches the cluster draw as two operands");
+  Recipe areaRecipe;
+  PickSource areaSource;
+  areaSource.seed = Param{0.5f};
+  areaSource.charts = Param{3.0f};
+  areaSource.minCover = 0.2f;
+  areaRecipe.sources = {{"lit", areaSource}};
+  SurfaceOutput areaSurface;
+  Layer areaLayer;
+  areaLayer.source = Ref{"lit"};
+  areaSurface.stack.push_back(areaLayer);
+  areaRecipe.outputs.push_back(areaSurface);
+  const auto areaGraph = RecipeGraph::Compile(areaRecipe);
+  const std::array areaRequests{RenderStackRequest{
+      &areaGraph, &areaSurface, 1, PlacementId{0}, 0, {SideRef{0}}}};
+  const auto areaPlan = BuildRenderPlan({}, areaRequests, Bindings());
+  const auto areaDraw =
+      areaPlan ? std::ranges::find_if(areaPlan->steps,
+                                      [](const RenderStep &step) {
+                                        return Is<DrawClustersStep>(step.kind);
+                                      })
+               : std::vector<RenderStep>::const_iterator{};
+  const DrawClustersStep *area = areaPlan && areaDraw != areaPlan->steps.end()
+                                     ? Get<DrawClustersStep>(areaDraw->kind)
+                                     : nullptr;
+  const auto *chartIds =
+      area && area->area ? Get<StepOutputRef>(area->area->chartIds) : nullptr;
+  const auto *chartBake =
+      chartIds && chartIds->step < areaPlan->steps.size()
+          ? Get<BakeMeshStep>(areaPlan->steps[chartIds->step].kind)
+          : nullptr;
+  Check(area && area->area && !area->pick && area->area->minCover == 0.2f,
+        "a pick reaches the cluster draw as an area pick, not a group pick");
+  Check(chartBake && chartBake->nearest,
+        "the area pick reads the chart ids from a nearest-sampled bake");
   const auto plainDraw =
       clusterPlan
           ? std::ranges::find_if(clusterPlan->steps,

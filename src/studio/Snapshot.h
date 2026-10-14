@@ -172,9 +172,20 @@ struct MaterialGroupsSourceRow {
   std::string areaBias = "1";
 };
 
+struct PickSourceRow {
+  std::string seed;
+  std::string geometries = "1";
+  std::string charts = "1";
+  std::string minCover = "0.05";
+  std::string areaBias = "1";
+  std::string merge = "0.3";
+  std::string smoothing = "8";
+};
+
 using SourceRowKind =
     std::variant<ImageSourceRow, MaterialSourceRow, MeshSourceRow,
-                 DistanceSourceRow, RippleSourceRow, MaterialGroupsSourceRow>;
+                 DistanceSourceRow, RippleSourceRow, MaterialGroupsSourceRow,
+                 PickSourceRow>;
 static_assert(std::variant_size_v<SourceRowKind> == kSourceKindCount);
 static_assert(std::is_same_v<std::variant_alternative_t<0, SourceRowKind>,
                              ImageSourceRow> &&
@@ -187,7 +198,9 @@ static_assert(std::is_same_v<std::variant_alternative_t<0, SourceRowKind>,
                   std::is_same_v<std::variant_alternative_t<4, SourceRowKind>,
                                  RippleSourceRow> &&
                   std::is_same_v<std::variant_alternative_t<5, SourceRowKind>,
-                                 MaterialGroupsSourceRow>,
+                                 MaterialGroupsSourceRow> &&
+                  std::is_same_v<std::variant_alternative_t<6, SourceRowKind>,
+                                 PickSourceRow>,
               "SourceRowKind alternative order must match SourceKindId");
 
 [[nodiscard]] inline SourceKindId

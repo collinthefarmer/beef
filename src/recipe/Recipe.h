@@ -521,10 +521,20 @@ struct MaterialGroupsSource {
   bool palette = false;
   [[nodiscard]] bool operator==(const MaterialGroupsSource &) const = default;
 };
+inline constexpr float kDefaultMinCover = 0.05f;
+struct PickSource {
+  Param seed = 0.0f;
+  Param geometries = 1.0f;
+  Param charts = 1.0f;
+  float minCover = kDefaultMinCover;
+  Param areaBias = 1.0f;
+  ClusterSettings settings;
+  [[nodiscard]] bool operator==(const PickSource &) const = default;
+};
 
 using SourceKind =
     std::variant<ImageSource, MaterialSource, MeshSource, DistanceSource,
-                 RippleSource, MaterialGroupsSource>;
+                 RippleSource, MaterialGroupsSource, PickSource>;
 enum class SourceKindId {
   kImage,
   kMaterial,
@@ -532,8 +542,9 @@ enum class SourceKindId {
   kDistance,
   kRipple,
   kMaterialGroups,
+  kPick,
 };
-inline constexpr std::size_t kSourceKindCount = 6;
+inline constexpr std::size_t kSourceKindCount = 7;
 static_assert(kSourceKindCount == std::variant_size_v<SourceKind>);
 [[nodiscard]] inline SourceKindId
 SourceKindIdOf(const SourceKind &a_kind) noexcept {

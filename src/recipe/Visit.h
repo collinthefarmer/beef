@@ -201,6 +201,12 @@ void VisitSourceParams(SourceKind &a_kind, Visitor &a_visit) {
         }
         VisitParam(s.areaBias, std::nullopt, a_visit, "areaBias");
       },
+      [&](PickSource &s) {
+        VisitParam(s.seed, std::nullopt, a_visit, "seed");
+        VisitParam(s.geometries, std::nullopt, a_visit, "geometries");
+        VisitParam(s.charts, std::nullopt, a_visit, "charts");
+        VisitParam(s.areaBias, std::nullopt, a_visit, "areaBias");
+      },
       [](MaterialSource &) {}, [](MeshSource &) {}, [](DistanceSource &) {});
 }
 
