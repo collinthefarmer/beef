@@ -137,6 +137,65 @@ void TestClusterPickRoundTrip() {
   Check(!SourceKindOf(bad), "an area bias above eight is refused");
 }
 
+std::optional<PickSource> PickOf(const std::optional<RecipeEdit> &a_edit) {
+  const auto *set = a_edit ? std::get_if<SetSource>(&*a_edit) : nullptr;
+  const auto *pick = set ? Get<PickSource>(set->kind) : nullptr;
+  return pick ? std::optional{*pick} : std::nullopt;
+}
+
+void TestPickForm() {
+  PickSource full;
+  full.seed = Param{Ref{"seed"}};
+  full.levels = {GeometryLevel{Param{2.0f}}, GroupLevel{Param{0.5f}, {0.4f, 6}},
+                 ChartLevel{Param{Ref{"count"}}, 0.1f}};
+  const SourceRow fullRow = SourceRowOf(Source{"lit", full}, 0);
+  const std::optional<SourceKind> back = SourceKindOf(fullRow);
+  Check(back && *back == SourceKind{full},
+        "every pick level survives the studio row");
+
+  const SourceRow groupRow = SourceRowOf(Source{"lit", PickSource{}}, 0);
+  const std::vector<FormField> form = SourceForm(groupRow, SignalNames{});
+  Check(Field(form, "geometry level") && Field(form, "chart level") &&
+            !Field(form, "geometries") && !Field(form, "charts") &&
+            Field(form, "merge"),
+        "a pick shows the fields of the levels it has");
+
+  const FormField *chartLevel = Field(form, "chart level");
+  const std::optional<PickSource> withCharts =
+      chartLevel ? PickOf(chartLevel->bind("on")) : std::nullopt;
+  Check(withCharts && withCharts->levels.size() == 2 &&
+            Is<GroupLevel>(withCharts->levels[0]) &&
+            Is<ChartLevel>(withCharts->levels[1]),
+        "turning the chart level on appends it after the groups");
+
+  const SourceRow chartRow =
+      SourceRowOf(Source{"lit", withCharts ? *withCharts : PickSource{}}, 0);
+  const std::vector<FormField> chartForm = SourceForm(chartRow, SignalNames{});
+  const FormField *geometryLevel = Field(chartForm, "geometry level");
+  const std::optional<PickSource> allLevels =
+      geometryLevel ? PickOf(geometryLevel->bind("on")) : std::nullopt;
+  Check(allLevels && SupportedLevels(*allLevels) &&
+            allLevels->levels.size() == 3 &&
+            Is<GeometryLevel>(allLevels->levels[0]),
+        "turning the geometry level on puts it first");
+
+  const FormField *charts = Field(chartForm, "charts");
+  const std::optional<PickSource> threeCharts =
+      charts ? PickOf(charts->bind("3")) : std::nullopt;
+  const auto *chart = threeCharts && threeCharts->levels.size() == 2
+                          ? Get<ChartLevel>(threeCharts->levels[1])
+                          : nullptr;
+  Check(chart && chart->count == Param{3.0f},
+        "editing the chart count changes the chart level");
+  const FormField *merge = Field(chartForm, "merge");
+  Check(merge && !merge->bind("2"), "a merge above one is refused");
+  const FormField *off = Field(chartForm, "chart level");
+  const std::optional<PickSource> withoutCharts =
+      off ? PickOf(off->bind("off")) : std::nullopt;
+  Check(withoutCharts && withoutCharts->levels == PickSource{}.levels,
+        "turning the chart level off removes it");
+}
+
 void TestSourceForm() {
   const Source source{"tex", ImageSource{}};
   const SourceRow row = SourceRowOf(source, 0);
@@ -655,6 +714,7 @@ int main() {
   TestSignalFormWave();
   TestSourceRoundTrip();
   TestClusterPickRoundTrip();
+  TestPickForm();
   TestSourceForm();
   TestEffectShaderImageForm();
   TestMatchedEfshForm();
