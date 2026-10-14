@@ -363,7 +363,11 @@ int main() {
     "toRootSig":  { "toRoot": "@posV" },
     "posV":       { "actorState": "position" },
     "smoothSig":  { "smooth": { "of": "@c", "seconds": 0.5 } },
-    "exprSig":    { "expr": "1 + 2" }
+    "exprSig":    { "expr": "1 + 2" },
+    "itemSig":    { "item": "itemHash" },
+    "chartsSig":  { "item": "chartCount" },
+    "indexSig":   { "item": "geometryIndex" },
+    "countSig":   { "item": "geometryCount" }
   },
   "sources": {
     "img":      { "image": { "path": "Effects\\X.dds", "channel": "luma", "space": "mesh", "mirror": [true, false], "transpose": true, "mip": 1.0 } },
@@ -373,8 +377,6 @@ int main() {
     "bakeBone": { "bake": { "boneWeight": ["NPC Spine", "NPC Spine1"] } },
     "bakeGeom": { "bake": { "geometry": "BonemoldCuirass_1" } },
     "uvSrc":    { "bake": "uv" },
-    "itemSrc":  { "piece": "itemHash" },
-    "chartsSrc": { "piece": "chartCount" },
     "distNode": { "distance": "NPC Root [Root]" },
     "ripSrc":   { "ripple": { "trigger": "@trig", "speed": 90.0, "width": 8.0, "decay": 1.2, "shape": "disc" } },
     "clusters": { "materialClusters": { "merge": 0.45, "smoothing": 3 } },
@@ -426,17 +428,18 @@ int main() {
     for (const bool seen : sourceSeen) {
       allSources = allSources && seen;
     }
-    Check(allSources, "every one of the 7 source kinds round-trips");
-    const Source *item = r.FindSource("itemSrc");
-    const PieceSource *itemPiece =
-        item ? Get<PieceSource>(item->kind) : nullptr;
-    Check(itemPiece && itemPiece->field == PieceField::kItemHash,
-          "a piece itemHash source round-trips");
-    const Source *charts = r.FindSource("chartsSrc");
-    const PieceSource *chartsPiece =
-        charts ? Get<PieceSource>(charts->kind) : nullptr;
-    Check(chartsPiece && chartsPiece->field == PieceField::kChartCount,
-          "a piece chartCount source round-trips");
+    Check(allSources, "every one of the 6 source kinds round-trips");
+    const auto itemFieldOf = [&](std::string_view a_name) {
+      const auto found = std::ranges::find(r.signals, a_name, &Signal::name);
+      const ItemSignal *item =
+          found != r.signals.end() ? Get<ItemSignal>(found->kind) : nullptr;
+      return item ? std::optional{item->field} : std::nullopt;
+    };
+    Check(itemFieldOf("itemSig") == ItemField::kItemHash &&
+              itemFieldOf("chartsSig") == ItemField::kChartCount &&
+              itemFieldOf("indexSig") == ItemField::kGeometryIndex &&
+              itemFieldOf("countSig") == ItemField::kGeometryCount,
+          "every item signal field round-trips");
     const Source *geometry = r.FindSource("bakeGeom");
     const BakeSource *geometryBake =
         geometry ? Get<BakeSource>(geometry->kind) : nullptr;

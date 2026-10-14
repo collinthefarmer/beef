@@ -43,7 +43,8 @@ RenderBindingResolver Wearer(std::string a_actor, std::string a_item) {
     return ValueBindings{
         [instance, item](const ExternalSource &a_source)
             -> std::expected<std::string, std::string> {
-          if (Is<ItemHashInput>(a_source)) {
+          if (const auto *fact = Get<ItemInput>(a_source);
+              fact && fact->field == ItemField::kItemHash) {
             return "item:" + item;
           }
           if (const auto *enchantment = Get<EnchantmentSignal>(a_source)) {

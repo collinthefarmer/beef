@@ -28,6 +28,8 @@ struct IdentityFacts {
   std::array<float, kEnchantmentFieldCount> enchantment{};
   MatchedShaderFacts shader;
   std::string geometryName;
+  std::uint32_t geometryIndex = 0;
+  std::uint32_t geometryCount = 1;
 };
 
 [[nodiscard]] const std::string &

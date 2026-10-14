@@ -133,7 +133,7 @@ int main() {
   Check(DistanceBakeIdentity({1, 2, 3}) != DistanceBakeIdentity({1, 2, 4}),
         "distance cache identifies resolved position");
   Recipe item;
-  item.sources = {{"item", PieceSource{PieceField::kItemHash}}};
+  item.signals = {{"item", ItemSignal{ItemField::kItemHash}, std::nullopt}};
   item.masks = {{"partCount", "1 + floor(@item * 7)"}};
   const auto itemGraph = RecipeGraph::Compile(item);
   const std::optional<std::size_t> itemNode = itemGraph.FindNodeIndex("item");
@@ -141,12 +141,14 @@ int main() {
       itemNode ? itemGraph.NodeAt(*itemNode) : nullptr;
   const auto *itemInput =
       itemSource ? Get<ExternalInput>(itemSource->kind) : nullptr;
-  Check(itemInput && Is<ItemHashInput>(itemInput->source),
+  Check(itemInput && Get<ItemInput>(itemInput->source) &&
+            Get<ItemInput>(itemInput->source)->field == ItemField::kItemHash,
         "an itemHash bake lowers to the per-geometry item hash input");
   Check(itemNode && !itemGraph.SampleDependent({*itemNode, 0}),
         "the item hash is uniform over the piece");
   Recipe counted;
-  counted.sources = {{"charts", PieceSource{PieceField::kChartCount}}};
+  counted.signals = {
+      {"charts", ItemSignal{ItemField::kChartCount}, std::nullopt}};
   const auto countedGraph = RecipeGraph::Compile(counted);
   const std::optional<std::size_t> chartsNode =
       countedGraph.FindNodeIndex("charts");
@@ -154,7 +156,9 @@ int main() {
       chartsNode ? countedGraph.NodeAt(*chartsNode) : nullptr;
   const auto *chartsInput =
       chartsSource ? Get<ExternalInput>(chartsSource->kind) : nullptr;
-  Check(chartsInput && Is<ChartCountInput>(chartsInput->source) &&
+  Check(chartsInput && Get<ItemInput>(chartsInput->source) &&
+            Get<ItemInput>(chartsInput->source)->field ==
+                ItemField::kChartCount &&
             !countedGraph.SampleDependent({*chartsNode, 0}),
         "a chartCount bake lowers to a uniform per-piece input");
   const std::optional<std::size_t> countNode =
@@ -166,7 +170,10 @@ int main() {
     ValueBindings bindings = Bindings();
     bindings.external = [a_hash](const ExternalSource &source)
         -> std::expected<std::string, std::string> {
-      return Is<ItemHashInput>(source) ? a_hash : std::string{"instance"};
+      const auto *item = Get<ItemInput>(source);
+      return item && item->field == ItemField::kItemHash
+                 ? a_hash
+                 : std::string{"instance"};
     };
     return bindings;
   };

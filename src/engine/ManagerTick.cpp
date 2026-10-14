@@ -292,7 +292,8 @@ SlotChain RenderMergedChain(const SlotContext &a_context,
     }
     chain.outputs.push_back(found->material);
     chain.resolved.push_back(
-        Studio::ResolveOutput(*found->material, *found->instance->signals));
+        Studio::ResolveOutput(*found->material, *found->instance->signals,
+                              ItemFactsOf(a_context.bound.inputs)));
     drawn.push_back(found->output);
   }
   for (std::size_t link = 0; link < shown.size(); ++link) {
@@ -358,8 +359,8 @@ SlotChain RenderSlotChain(LiveActor &a_state, LiveGeometry &a_bound,
       chain.texture = texture;
     }
     chain.outputs.push_back(material);
-    chain.resolved.push_back(
-        Studio::ResolveOutput(*material, *instance.signals));
+    chain.resolved.push_back(Studio::ResolveOutput(
+        *material, *instance.signals, ItemFactsOf(a_bound.inputs)));
   }
   return chain;
 }
@@ -391,18 +392,19 @@ void PoseShell(LiveGeometry &a_bound, LiveActor &a_state,
     return;
   }
   const ShellSettings &shell = instance.recipe->shell;
-  SignalState &signals = *instance.signals;
+  const SignalState &signals = *instance.signals;
+  const ItemFacts facts = ItemFactsOf(a_bound.inputs);
   const ShellPoseValues pose{
-      .inflate = signals.Resolve(shell.pose.inflate),
-      .offset = signals.Resolve(shell.pose.offset),
-      .scale = signals.Resolve(shell.pose.scale),
+      .inflate = signals.Resolve(shell.pose.inflate, facts),
+      .offset = signals.Resolve(shell.pose.offset, facts),
+      .scale = signals.Resolve(shell.pose.scale, facts),
       .scalePoint = shell.pose.scalePoint,
-      .spin = signals.Resolve(shell.pose.spin),
+      .spin = signals.Resolve(shell.pose.spin, facts),
       .spinAxis = shell.pose.spinAxis,
   };
-  a_bound.shell->Pose(pose, signals.Resolve(shell.opacity),
-                      signals.Resolve(shell.rimPower),
-                      signals.Resolve(shell.emissive));
+  a_bound.shell->Pose(pose, signals.Resolve(shell.opacity, facts),
+                      signals.Resolve(shell.rimPower, facts),
+                      signals.Resolve(shell.emissive, facts));
   a_bound.shell->SetVisible(a_view.RecipeShown(instance.recipe->id));
 }
 

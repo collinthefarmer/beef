@@ -98,7 +98,7 @@ std::vector<std::string> Dependencies(const Signal &a_signal,
       },
       [](const ConstantSignal &) {}, [](const EfshSignal &) {},
       [](const ActorValueSignal &) {}, [](const ActorStateSignal &) {},
-      [](const EnchantmentSignal &) {});
+      [](const EnchantmentSignal &) {}, [](const ItemSignal &) {});
   return out;
 }
 
@@ -591,6 +591,7 @@ struct RecipeGraphBuilder {
           return VectorValued(k.kind) ? ValueType::kVec3 : ValueType::kScalar;
         },
         [](const EnchantmentSignal &) { return ValueType::kScalar; },
+        [](const ItemSignal &) { return ValueType::kScalar; },
         [](const TriggerSignal &) { return ValueType::kScalar; },
         [](const CounterSignal &) { return ValueType::kScalar; },
         [](const AccumulateSignal &) { return ValueType::kScalar; },

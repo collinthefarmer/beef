@@ -100,6 +100,7 @@
               "properties": { "of": { "$ref": "#/$defs/name" }, "measure": { "enum": ["current", "base", "permanent", "temporaryModifier", "damage", "max"] } } } ] } } },
         { "$ref": "#/$defs/signalKind", "required": ["actorState"], "properties": { "actorState": { "enum": ["inCombat", "sneaking", "weaponDrawn", "swimming", "sprinting", "mounted", "movementSpeed", "position", "target", "hasTarget", "resolutionLevel"], "description": "inCombat, sneaking, weaponDrawn, swimming, sprinting, mounted, hasTarget (a combat target exists) are 0/1; movementSpeed is a scalar; resolutionLevel is the wearer's applied render resolution level (0 full, 1 half, 2 quarter, 3 eighth; 0 before the first render); position (the wearer) and target (the current combat target, zero when none — gate with hasTarget) are world positions (vec3). distance(@target, @position) gives the distance to the hostile. An NPC's combat AI maintains the target while fighting; on the player it follows the attack/crosshair focus." } } },
         { "$ref": "#/$defs/signalKind", "required": ["enchantment"], "properties": { "enchantment": { "enum": ["magnitude", "cost", "idHash", "effectHash"], "description": "magnitude and cost of the instance's effect; idHash, a stable 0..1 hash of the enchantment; effectHash, a stable 0..1 hash of the instance's magic effect." } } },
+        { "$ref": "#/$defs/signalKind", "required": ["item"], "properties": { "item": { "enum": ["itemHash", "chartCount", "geometryIndex", "geometryCount"], "description": "A fact of the worn item, evaluated per geometry: itemHash, a stable 0..1 hash of the worn item's form; chartCount, how many UV charts the geometry's mesh has; geometryIndex, the geometry's place (from 0) among the piece's geometries sorted by name; geometryCount, how many geometries the piece has. A row that reads an item fact is per geometry: layer, source and output parameters accept it; light parameters refuse it." } } },
         { "$ref": "#/$defs/signalKind", "required": ["trigger"], "properties": { "trigger": { "$ref": "#/$defs/trigger" } } },
         { "$ref": "#/$defs/signalKind", "required": ["payload"], "properties": { "payload": { "$ref": "#/$defs/ref", "description": "Reads the named trigger's newest firing value, typed by the trigger's declared payload; holds between firings." } } },
         { "$ref": "#/$defs/signalKind", "required": ["counter"], "properties": { "counter": {
@@ -128,7 +129,7 @@
     },
     "signalKind": {
       "type": "object",
-      "propertyNames": { "enum": ["curve", "note", "constant", "wave", "ramp", "efsh", "av", "actorState", "enchantment", "trigger", "payload", "counter", "accumulate", "noise", "gradient", "rate", "smooth", "toRoot", "expr"] },
+      "propertyNames": { "enum": ["curve", "note", "constant", "wave", "ramp", "efsh", "av", "actorState", "enchantment", "item", "trigger", "payload", "counter", "accumulate", "noise", "gradient", "rate", "smooth", "toRoot", "expr"] },
       "minProperties": 1, "maxProperties": 3
     },
 
@@ -197,8 +198,7 @@
               "smoothing": { "type": "integer", "minimum": 0, "maximum": 32, "default": 8, "description": "Radius in texels of the 256-texel analysis over which a texel's group follows its neighbours of similar colour; 0 labels every texel on its own." },
               "pick": { "oneOf": [{ "$ref": "#/$defs/number", "minimum": 0, "maximum": 1 }, { "$ref": "#/$defs/ref" }], "description": "Pick one cluster with this 0..1 value (for example @enchantment idHash): the source is then 1 on the picked cluster's texels and 0 elsewhere. Absent, the source is the id map." },
               "areaBias": { "oneOf": [{ "$ref": "#/$defs/number", "minimum": 0, "maximum": 8 }, { "$ref": "#/$defs/ref" }], "default": 1, "description": "How a pick favours large clusters: each cluster weighs its share of the texels to this power, so 0 picks every cluster equally, 1 in proportion to area, and more favours the largest." },
-              "palette": { "type": "boolean", "default": false, "description": "Colour every cluster from a fixed palette; the source is then a colour. Excludes pick." } } } } },
-        { "required": ["piece"], "properties": { "piece": { "enum": ["itemHash", "chartCount"], "description": "A per-piece fact, one value for the whole piece. itemHash is a stable 0..1 hash of the worn item's form, the same on every texel of that piece and for every copy of the item; two pieces sharing one enchantment still read their own values. chartCount is how many UV charts the piece's mesh has." } } }
+              "palette": { "type": "boolean", "default": false, "description": "Colour every cluster from a fixed palette; the source is then a colour. Excludes pick." } } } } }
       ]
     },
 

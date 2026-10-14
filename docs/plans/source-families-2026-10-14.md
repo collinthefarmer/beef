@@ -1,4 +1,4 @@
-Status: active (2026-10-14) on branch `pure-tick`. The user decided D1–D5 on 2026-10-14: rename the keys, **material group** (and **part**), per-geometry item facts, the pick order and `minCover` 0.05 as recommended. Stage 0 is in progress.
+Status: active (2026-10-14) on branch `pure-tick`. The user decided D1–D5 on 2026-10-14: rename the keys, **material group** (and **part**), per-geometry item facts, the pick order and `minCover` 0.05 as recommended. Stages 0 and 1 are done; option (ii) of stage 1 (item signals evaluated per geometry) is done and covers stage 3's `geometryIndex` and `geometryCount`.
 
 # Source families, item facts and the nested pick
 

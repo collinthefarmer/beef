@@ -71,10 +71,12 @@ inline constexpr Named<EnchantmentField> kEnchantmentFields[]{
     {EnchantmentField::kIdHash, "idHash"},
     {EnchantmentField::kEffectHash, "effectHash"}};
 static_assert(Complete(kEnchantmentFields, kEnchantmentFieldCount));
-inline constexpr Named<PieceField> kPieceFields[]{
-    {PieceField::kItemHash, "itemHash"},
-    {PieceField::kChartCount, "chartCount"}};
-static_assert(Complete(kPieceFields, kPieceFieldCount));
+inline constexpr Named<ItemField> kItemFields[]{
+    {ItemField::kItemHash, "itemHash"},
+    {ItemField::kChartCount, "chartCount"},
+    {ItemField::kGeometryIndex, "geometryIndex"},
+    {ItemField::kGeometryCount, "geometryCount"}};
+static_assert(Complete(kItemFields, kItemFieldCount));
 inline constexpr Named<ValueType> kValueTypes[]{{ValueType::kScalar, "scalar"},
                                                 {ValueType::kVec2, "vec2"},
                                                 {ValueType::kVec3, "vec3"}};
@@ -130,8 +132,7 @@ inline constexpr Named<SourceKindId> kSourceKindWords[]{
     {SourceKindId::kBake, "bake"},
     {SourceKindId::kDistance, "distance"},
     {SourceKindId::kRipple, "ripple"},
-    {SourceKindId::kMaterialClusters, "materialClusters"},
-    {SourceKindId::kPiece, "piece"}};
+    {SourceKindId::kMaterialClusters, "materialClusters"}};
 static_assert(Complete(kSourceKindWords, kSourceKindCount));
 static_assert(
     std::is_same_v<std::variant_alternative_t<0, SourceKind>, ImageSource> &&
@@ -182,6 +183,7 @@ inline constexpr SignalKindSpec kSignalKinds[]{
     {SignalKindId::kActorValue, "av", false},
     {SignalKindId::kActorState, "actorState", false},
     {SignalKindId::kEnchantment, "enchantment", false},
+    {SignalKindId::kItem, "item", false},
     {SignalKindId::kTrigger, "trigger", false},
     {SignalKindId::kPayload, "payload", false},
     {SignalKindId::kCounter, "counter", false},

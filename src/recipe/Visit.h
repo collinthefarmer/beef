@@ -178,7 +178,7 @@ void VisitSignalParams(SignalKind &a_kind, Visitor &a_visit) {
       },
       [](ConstantSignal &) {}, [](EfshSignal &) {}, [](ActorValueSignal &) {},
       [](ActorStateSignal &) {}, [](EnchantmentSignal &) {},
-      [](ExprSignal &) {});
+      [](ItemSignal &) {}, [](ExprSignal &) {});
 }
 
 template <class Visitor>
@@ -201,8 +201,7 @@ void VisitSourceParams(SourceKind &a_kind, Visitor &a_visit) {
         }
         VisitParam(s.areaBias, std::nullopt, a_visit, "areaBias");
       },
-      [](MaterialSource &) {}, [](BakeSource &) {}, [](DistanceSource &) {},
-      [](PieceSource &) {});
+      [](MaterialSource &) {}, [](BakeSource &) {}, [](DistanceSource &) {});
 }
 
 template <class Visitor>

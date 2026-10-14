@@ -215,6 +215,14 @@ std::optional<SignalKind> ParseEnchantment(const json &a_v,
   return EnchantmentSignal{*field};
 }
 
+std::optional<SignalKind> ParseItem(const json &a_v, const Reporter &a_ctx) {
+  const auto field = EnumShorthand(a_v, kItemFields, "item", a_ctx);
+  if (!field) {
+    return std::nullopt;
+  }
+  return ItemSignal{*field};
+}
+
 EventFilter FilterFrom(const json &a_f, const Reporter &a_ctx) {
   EventFilter filter;
   Reader fr(a_f, a_ctx);
@@ -458,10 +466,10 @@ using SignalParser = std::optional<SignalKind> (*)(const json &,
                                                    const Reporter &);
 constexpr SignalParser kSignalParsers[]{
     &ParseConstant,   &ParseWave,       &ParseRamp,        &ParseEfsh,
-    &ParseActorValue, &ParseActorState, &ParseEnchantment, &ParseTrigger,
-    &ParsePayload,    &ParseCounter,    &ParseAccumulate,  &ParseNoise,
-    &ParseGradient,   &ParseRate,       &ParseSmooth,      &ParseToRoot,
-    &ParseExpr};
+    &ParseActorValue, &ParseActorState, &ParseEnchantment, &ParseItem,
+    &ParseTrigger,    &ParsePayload,    &ParseCounter,     &ParseAccumulate,
+    &ParseNoise,      &ParseGradient,   &ParseRate,        &ParseSmooth,
+    &ParseToRoot,     &ParseExpr};
 static_assert(std::size(kSignalParsers) == kSignalKindCount);
 
 std::optional<Signal> SignalFrom(const std::string &a_name, const json &a_j,
@@ -646,16 +654,6 @@ ParseSourceAlternative<DistanceSource>(const json &a_v, const Reporter &a_ctx) {
 }
 
 template <>
-std::optional<PieceSource>
-ParseSourceAlternative<PieceSource>(const json &a_v, const Reporter &a_ctx) {
-  const auto field = EnumShorthand(a_v, kPieceFields, "piece", a_ctx);
-  if (!field) {
-    return std::nullopt;
-  }
-  return PieceSource{*field};
-}
-
-template <>
 std::optional<RippleSource>
 ParseSourceAlternative<RippleSource>(const json &a_v, const Reporter &a_ctx) {
   if (!a_v.is_object()) {
@@ -750,6 +748,8 @@ std::optional<Source> SourceFrom(const std::string &a_name, const json &a_j,
 }
 }
 
+constexpr std::string_view kRetiredPieceSource = "piece";
+
 std::optional<SourceKind> ParseSourceKind(Reader &a_reader) {
   const Reporter &ctx = a_reader.Context();
   const auto entry = OneKey(a_reader.Object(), ctx, "a source", {"note"});
@@ -757,6 +757,11 @@ std::optional<SourceKind> ParseSourceKind(Reader &a_reader) {
     return std::nullopt;
   }
   const auto blank = DefaultSourceKind(entry->key);
+  if (!blank && entry->key == kRetiredPieceSource) {
+    ctx.Error("'piece' facts are signals now: write {\"item\": \"itemHash\"} "
+              "or {\"item\": \"chartCount\"} under signals");
+    return std::nullopt;
+  }
   if (!blank) {
     ctx.Error(std::format("unknown source kind '{}'", entry->key));
     return std::nullopt;

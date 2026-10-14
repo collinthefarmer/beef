@@ -1072,5 +1072,59 @@ int main() {
           "a memory entry of another kind is ignored");
   }
 
+  {
+    std::vector<Signal> signals{
+        Signal{"charts", ItemSignal{ItemField::kChartCount}, std::nullopt},
+        Signal{"index", ItemSignal{ItemField::kGeometryIndex}, std::nullopt},
+        Signal{"power", EnchantmentSignal{EnchantmentField::kMagnitude},
+               std::nullopt},
+        Signal{"lit", ExprSignal{"@charts * 2 + @index + @power"},
+               std::nullopt}};
+    const auto graph = CompileSignals(signals);
+    SignalState state{graph};
+    FakeEnvironment environment;
+    environment.enchantment = 10.0f;
+    state.Tick(environment, TickInputs{0.0f, 0.0f});
+    const ItemFacts facts{0.5f, 3.0f, 1.0f, 2.0f};
+    Check(graph.IsPerGeometry("charts") && graph.IsPerGeometry("lit") &&
+              !graph.IsPerGeometry("power"),
+          "a signal that reads an item fact is per geometry, others are not");
+    Check(Near(state.Resolve(Param{Ref{"lit"}}, facts), 17.0f),
+          "a per-geometry signal resolves with the geometry's facts");
+    Check(Near(state.Resolve(Param{Ref{"power"}}, facts), 10.0f),
+          "a per-instance signal resolves to its ticked value");
+    Check(Near(state.Resolve(Param{Ref{"lit"}},
+                             ItemFacts{0.5f, 1.0f, 0.0f, 2.0f}),
+               12.0f),
+          "another geometry's facts give another value");
+
+    Recipe recipe;
+    recipe.signals = signals;
+    LightOutput light;
+    light.intensity = Param{Ref{"lit"}};
+    recipe.outputs.push_back(light);
+    SurfaceOutput surface;
+    surface.scalars.strength = Param{Ref{"lit"}};
+    Layer layer;
+    layer.source = Vec3{1.0f, 1.0f, 1.0f};
+    layer.opacity = Param{Ref{"lit"}};
+    surface.stack.push_back(layer);
+    recipe.outputs.push_back(surface);
+    const auto diagnostics = Validate(recipe, {});
+    Check(std::ranges::any_of(diagnostics,
+                              [](const Diagnostic &d) {
+                                return d.message.find("a light spans the whole "
+                                                      "piece") !=
+                                       std::string::npos;
+                              }),
+          "a light refuses a per-geometry value");
+    Check(std::ranges::none_of(diagnostics,
+                               [](const Diagnostic &d) {
+                                 return d.where.find("output 1") !=
+                                        std::string::npos;
+                               }),
+          "a layer opacity accepts a per-geometry value");
+  }
+
   return test::Finish("signals");
 }

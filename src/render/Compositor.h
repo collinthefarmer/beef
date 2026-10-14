@@ -77,6 +77,8 @@ struct GeometryInputs {
   RE::NiPointer<RE::BSGeometry> geometry;
   RE::NiPointer<RE::NiAVObject> root;
   float itemHash = 0.0f;
+  std::uint32_t geometryIndex = 0;
+  std::uint32_t geometryCount = 1;
   EnchantmentValues enchantment;
   MatchedShaderFacts shader;
   std::string name;
@@ -205,6 +207,8 @@ private:
   std::uint32_t lastSweepMS_ = 0;
 };
 
+[[nodiscard]] std::optional<float> ChartCountOf(const GeometryInputs &inputs);
+[[nodiscard]] ItemFacts ItemFactsOf(const GeometryInputs &inputs);
 [[nodiscard]] IdentityFacts IdentityFactsOf(const RecipeGraph &graph,
                                             const GeometryInputs &inputs);
 [[nodiscard]] ValueBindings TextureValueBindings(const RecipeGraph &graph,

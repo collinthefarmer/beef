@@ -118,9 +118,6 @@ SourceRow SourceRowOf(const Source &a_source, std::size_t a_references) {
       },
       [](const MaterialClustersSource &a_clusters) -> SourceRowKind {
         return ClustersRowOf(a_clusters);
-      },
-      [](const PieceSource &a_piece) -> SourceRowKind {
-        return PieceSourceRow{std::string{NameOf(kPieceFields, a_piece.field)}};
       });
   return row;
 }
@@ -276,14 +273,6 @@ std::optional<SourceKind> SourceKindOf(const SourceRow &a_row) {
       [](const RippleSourceRow &a_row) { return RippleKindOf(a_row); },
       [](const MaterialClustersSourceRow &a_row) {
         return ClustersKindOf(a_row);
-      },
-      [](const PieceSourceRow &a_row) -> std::optional<SourceKind> {
-        const std::optional<PieceField> field =
-            FromName(kPieceFields, a_row.field);
-        if (!field) {
-          return std::nullopt;
-        }
-        return SourceKind{PieceSource{*field}};
       });
 }
 

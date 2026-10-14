@@ -32,6 +32,7 @@ public:
   [[nodiscard]] std::span<const NodeId> TickOrder() const noexcept;
   [[nodiscard]] std::span<const NodeId> ChangingTickOrder() const noexcept;
   [[nodiscard]] bool SampleDependent(OutputRef a_output) const noexcept;
+  [[nodiscard]] bool IsPerGeometry(std::string_view a_signal) const;
   [[nodiscard]] std::optional<GraphValueType>
   OutputType(OutputRef a_output) const noexcept;
   [[nodiscard]] std::string_view NameOf(NodeId a_node) const noexcept;

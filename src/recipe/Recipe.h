@@ -216,6 +216,17 @@ struct EnchantmentSignal {
   EnchantmentField field = EnchantmentField::kMagnitude;
   [[nodiscard]] bool operator==(const EnchantmentSignal &) const = default;
 };
+enum class ItemField {
+  kItemHash,
+  kChartCount,
+  kGeometryIndex,
+  kGeometryCount,
+};
+inline constexpr std::size_t kItemFieldCount = 4;
+struct ItemSignal {
+  ItemField field = ItemField::kItemHash;
+  [[nodiscard]] bool operator==(const ItemSignal &) const = default;
+};
 
 struct ValueRange {
   std::optional<float> min;
@@ -313,9 +324,9 @@ struct ExprSignal {
 using SignalKind =
     std::variant<ConstantSignal, WaveSignal, RampSignal, EfshSignal,
                  ActorValueSignal, ActorStateSignal, EnchantmentSignal,
-                 TriggerSignal, PayloadSignal, CounterSignal, AccumulateSignal,
-                 NoiseSignal, GradientSignal, RateSignal, SmoothSignal,
-                 ToRootSignal, ExprSignal>;
+                 ItemSignal, TriggerSignal, PayloadSignal, CounterSignal,
+                 AccumulateSignal, NoiseSignal, GradientSignal, RateSignal,
+                 SmoothSignal, ToRootSignal, ExprSignal>;
 
 struct Signal {
   std::string name;
@@ -333,6 +344,7 @@ enum class SignalKindId {
   kActorValue,
   kActorState,
   kEnchantment,
+  kItem,
   kTrigger,
   kPayload,
   kCounter,
@@ -344,7 +356,7 @@ enum class SignalKindId {
   kToRoot,
   kExpr,
 };
-inline constexpr std::size_t kSignalKindCount = 17;
+inline constexpr std::size_t kSignalKindCount = 18;
 
 struct SignalKindSpec {
   SignalKindId value;
@@ -480,15 +492,6 @@ struct DistanceSource {
   std::string from;
   [[nodiscard]] bool operator==(const DistanceSource &) const = default;
 };
-enum class PieceField {
-  kItemHash,
-  kChartCount,
-};
-inline constexpr std::size_t kPieceFieldCount = 2;
-struct PieceSource {
-  PieceField field = PieceField::kItemHash;
-  [[nodiscard]] bool operator==(const PieceSource &) const = default;
-};
 enum class RippleShape {
   kRing,
   kDisc,
@@ -521,7 +524,7 @@ struct MaterialClustersSource {
 
 using SourceKind =
     std::variant<ImageSource, MaterialSource, BakeSource, DistanceSource,
-                 RippleSource, MaterialClustersSource, PieceSource>;
+                 RippleSource, MaterialClustersSource>;
 enum class SourceKindId {
   kImage,
   kMaterial,
@@ -529,9 +532,8 @@ enum class SourceKindId {
   kDistance,
   kRipple,
   kMaterialClusters,
-  kPiece,
 };
-inline constexpr std::size_t kSourceKindCount = 7;
+inline constexpr std::size_t kSourceKindCount = 6;
 static_assert(kSourceKindCount == std::variant_size_v<SourceKind>);
 [[nodiscard]] inline SourceKindId
 SourceKindIdOf(const SourceKind &a_kind) noexcept {

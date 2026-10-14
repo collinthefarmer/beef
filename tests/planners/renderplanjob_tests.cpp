@@ -100,7 +100,7 @@ void IdentityBindingsReadOnlyTheFacts() {
   Check(bindings.external(ExternalSource{GeometryInput{}}) ==
             std::string{"mesh:9"},
         "the geometry input names the mesh");
-  Check(bindings.external(ExternalSource{ChartCountInput{}}) ==
+  Check(bindings.external(ExternalSource{ItemInput{ItemField::kChartCount}}) ==
             std::string{"charts:mesh:9"},
         "the chart count names the mesh");
   Check(bindings.external(ExternalSource{MaterialInput{}}) ==

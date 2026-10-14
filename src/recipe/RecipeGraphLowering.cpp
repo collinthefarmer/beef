@@ -168,10 +168,10 @@ struct RecipeGraphLowering {
   }
   OutputRef PieceIdentity() {
     if (!pieceIdentity)
-      pieceIdentity =
-          Hashed(InstanceIdentity(),
-                 Shared(ItemHashInput{}, ValueType::kScalar, "item hash"),
-                 "piece identity");
+      pieceIdentity = Hashed(InstanceIdentity(),
+                             Shared(ItemInput{ItemField::kItemHash},
+                                    ValueType::kScalar, "item hash"),
+                             "piece identity");
     return *pieceIdentity;
   }
   OutputRef RowIdentity(const RecipeDeclaration &declaration) {
@@ -235,6 +235,9 @@ struct RecipeGraphLowering {
         [&](const ActorStateSignal &k) -> NodeKind { return ExternalInput{k}; },
         [&](const EnchantmentSignal &k) -> NodeKind {
           return ExternalInput{k};
+        },
+        [&](const ItemSignal &k) -> NodeKind {
+          return ExternalInput{ItemInput{k.field}};
         },
         [&](const NoiseSignal &k) -> NodeKind {
           return NoiseOperation{Parameter(k.frequency), Parameter(k.amplitude),
@@ -380,11 +383,6 @@ struct RecipeGraphLowering {
         },
         [&](const BakeSource &k) -> NodeKind {
           return BakeOperation{Geometry(), Uv(), k.bake};
-        },
-        [&](const PieceSource &k) -> NodeKind {
-          if (k.field == PieceField::kChartCount)
-            return ExternalInput{ChartCountInput{}};
-          return ExternalInput{ItemHashInput{}};
         },
         [&](const DistanceSource &k) -> NodeKind {
           return DistanceOperation{Geometry(), Uv(),
@@ -733,8 +731,7 @@ struct RecipeGraphLowering {
     if (const auto *external = Get<ExternalInput>(kind)) {
       traits.sampleDependent = Is<SampleUvInput>(external->source);
       traits.backendRequired = Is<NodePositionInput>(external->source) ||
-                               Is<ItemHashInput>(external->source) ||
-                               Is<ChartCountInput>(external->source);
+                               Is<ItemInput>(external->source);
       traits.changing = Is<TimeInput>(external->source) ||
                         Is<DeltaTimeInput>(external->source) ||
                         Is<ActorValueSignal>(external->source) ||

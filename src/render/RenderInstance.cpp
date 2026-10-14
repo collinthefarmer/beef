@@ -1062,14 +1062,15 @@ bool StableResource(const ExternalInput *external) {
 }
 std::optional<RenderValue> NumberValueOf(const BoundTextureValue &bound,
                                          ValueType type) {
-  if (bound.external && Is<ItemHashInput>(bound.external->source))
-    return Value{bound.geometry.itemHash};
-  if (bound.external && Is<ChartCountInput>(bound.external->source)) {
-    const auto mesh = Compositor::GetSingleton()->MeshOf(
-        bound.geometry.geometry.get(), MeshUse::kSummary);
-    if (!mesh || !*mesh)
-      return std::nullopt;
-    return Value{static_cast<float>((*mesh)->analysis.charts)};
+  if (const auto *item =
+          bound.external ? Get<ItemInput>(bound.external->source) : nullptr) {
+    if (item->field == ItemField::kChartCount) {
+      const std::optional<float> charts = ChartCountOf(bound.geometry);
+      if (!charts)
+        return std::nullopt;
+      return Value{*charts};
+    }
+    return Value{ItemFactOf(ItemFactsOf(bound.geometry), item->field)};
   }
   const auto *position =
       bound.external ? Get<NodePositionInput>(bound.external->source) : nullptr;

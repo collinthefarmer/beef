@@ -141,6 +141,7 @@ struct SignalFields {
   void operator()(const ActorValueSignal &) const {}
   void operator()(const ActorStateSignal &) const {}
   void operator()(const EnchantmentSignal &) const {}
+  void operator()(const ItemSignal &) const {}
   void operator()(const PayloadSignal &) const {}
   void operator()(const RateSignal &) const {}
   void operator()(const ToRootSignal &) const {}
@@ -207,7 +208,6 @@ struct SourceFields {
   }
   void operator()(const MaterialSource &) const {}
   void operator()(const DistanceSource &) const {}
-  void operator()(const PieceSource &) const {}
 };
 
 void CheckSkinnedBones(const Reporter &a_report, const SkinnedBones &a_bones) {

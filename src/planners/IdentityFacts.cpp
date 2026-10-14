@@ -47,10 +47,17 @@ Identity ExternalSourceIdentity(const ExternalSource &a_source,
         return std::format("{}:{}:{}", a_facts.geometry, a_facts.root,
                            a_input.name);
       },
-      [&](const ChartCountInput &) -> Identity {
-        return "charts:" + a_facts.mesh;
-      },
-      [&](const ItemHashInput &) -> Identity {
+      [&](const ItemInput &a_input) -> Identity {
+        switch (a_input.field) {
+        case ItemField::kChartCount:
+          return "charts:" + a_facts.mesh;
+        case ItemField::kGeometryIndex:
+          return std::format("geometryIndex:{}", a_facts.geometryIndex);
+        case ItemField::kGeometryCount:
+          return std::format("geometryCount:{}", a_facts.geometryCount);
+        case ItemField::kItemHash:
+          break;
+        }
         return std::format("item:{:08x}",
                            std::bit_cast<std::uint32_t>(a_facts.itemHash));
       },

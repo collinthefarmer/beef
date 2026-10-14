@@ -24,7 +24,7 @@ Recipe MaterialRecipe() {
 
 Recipe ItemRecipe() {
   Recipe recipe;
-  recipe.sources = {{"item", PieceSource{PieceField::kItemHash}}};
+  recipe.signals = {{"item", ItemSignal{ItemField::kItemHash}, std::nullopt}};
   recipe.masks = {{"partCount", "1 + floor(@item * 7)"}};
   return recipe;
 }
@@ -49,7 +49,9 @@ ValueBindings ItemBindings(std::string a_item) {
   ValueBindings bindings;
   bindings.external = [a_item = std::move(a_item)](const ExternalSource &source)
       -> std::expected<std::string, std::string> {
-    return Is<ItemHashInput>(source) ? a_item : std::string{"static"};
+    const auto *item = Get<ItemInput>(source);
+    return item && item->field == ItemField::kItemHash ? a_item
+                                                       : std::string{"static"};
   };
   bindings.state = [](NodeId node) { return std::to_string(node); };
   return bindings;

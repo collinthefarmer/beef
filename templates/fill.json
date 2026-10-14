@@ -8,6 +8,9 @@
     }
   ],
   "signals": {
+    "chartCount": {
+      "item": "chartCount"
+    },
     "shaderFill": {
       "efsh": {
         "field": "fillAlpha",
@@ -300,9 +303,6 @@
     },
     "chartId": {
       "bake": "chartId"
-    },
-    "chartCount": {
-      "piece": "chartCount"
     },
     "materialPick": {
       "materialClusters": {

@@ -112,6 +112,17 @@ SignalTypeOf(const RowTypes &a_rows, std::string_view a_name) noexcept;
 
 struct SignalMemoryEntry;
 
+struct ItemFacts {
+  float itemHash = 0.0f;
+  float chartCount = 0.0f;
+  float geometryIndex = 0.0f;
+  float geometryCount = 1.0f;
+};
+[[nodiscard]] float ItemFactOf(const ItemFacts &a_facts,
+                               ItemField a_field) noexcept;
+
+inline constexpr std::size_t kMaxPerGeometryDepth = 64;
+
 class SignalState {
 public:
   explicit SignalState(const RecipeGraph &a_graph);
@@ -127,6 +138,14 @@ public:
   [[nodiscard]] float Resolve(const Param &a_param) const noexcept;
   [[nodiscard]] Vec2 Resolve(const Vec2Param &a_param) const noexcept;
   [[nodiscard]] Vec3 Resolve(const Vec3Param &a_param) const noexcept;
+  [[nodiscard]] bool IsPerGeometry(OutputRef a_output) const noexcept;
+  [[nodiscard]] bool IsPerGeometry(const Param &a_param) const noexcept;
+  [[nodiscard]] Value ValueFor(OutputRef a_output,
+                               const ItemFacts &a_facts) const noexcept;
+  [[nodiscard]] float Resolve(const Param &a_param,
+                              const ItemFacts &a_facts) const noexcept;
+  [[nodiscard]] Vec3 Resolve(const Vec3Param &a_param,
+                             const ItemFacts &a_facts) const noexcept;
 
   [[nodiscard]] std::span<const TriggerFiring>
   Firings(std::string_view a_trigger) const noexcept;
@@ -176,6 +195,9 @@ public:
 
 private:
   struct Evaluator;
+  struct GeometryEvaluator;
+  [[nodiscard]] Value ValueAtDepth(OutputRef a_output, const ItemFacts &a_facts,
+                                   std::size_t a_depth) const noexcept;
 
   template <class State> [[nodiscard]] State *Memory(NodeId a_node) noexcept;
   template <class State>
@@ -194,6 +216,7 @@ private:
   std::vector<std::optional<std::size_t>> stateSlots_;
   std::vector<OperationState> states_;
   std::vector<NodeId> triggers_;
+  std::vector<bool> inTickOrder_;
   bool ticked_ = false;
 };
 

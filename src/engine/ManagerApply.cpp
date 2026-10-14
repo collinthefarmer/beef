@@ -37,6 +37,7 @@
 #include <expected>
 #include <format>
 #include <memory>
+#include <numeric>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -133,6 +134,20 @@ LiveGeometry MakeGeometry(RE::BSGeometry *a_geometry,
   return bound;
 }
 
+void NumberGeometries(std::vector<LiveGeometry> &a_geometries) {
+  std::vector<std::size_t> order(a_geometries.size());
+  std::iota(order.begin(), order.end(), std::size_t{0});
+  std::ranges::stable_sort(order, {}, [&](std::size_t a_index) {
+    return a_geometries[a_index].name;
+  });
+  const auto count = static_cast<std::uint32_t>(a_geometries.size());
+  for (std::size_t rank = 0; rank < order.size(); ++rank) {
+    GeometryInputs &inputs = a_geometries[order[rank]].inputs;
+    inputs.geometryIndex = static_cast<std::uint32_t>(rank);
+    inputs.geometryCount = count;
+  }
+}
+
 std::string ArmorNameOf(RE::FormID a_armor) {
   const auto *armor = RE::TESForm::LookupByID<RE::TESObjectARMO>(a_armor);
   const char *name = armor ? armor->GetName() : nullptr;
@@ -191,6 +206,7 @@ LivePiecesOf(RE::Actor &a_actor, const Actors::ActorFacts &a_facts,
       bound.ref = *ref;
       piece.geometries.push_back(std::move(bound));
     }
+    NumberGeometries(piece.geometries);
     pieces.push_back(std::move(piece));
   }
   return pieces;

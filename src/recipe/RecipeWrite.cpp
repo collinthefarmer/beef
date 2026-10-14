@@ -79,13 +79,6 @@ std::string DescribeSource(const SourceKind &a_kind) {
         return std::format(
             "distance from node {} (bind pose, 0..256 units as 0..1)", s.from);
       },
-      [](const PieceSource &s) {
-        return s.field == PieceField::kItemHash
-                   ? std::string{"piece itemHash (a stable 0..1 hash of the "
-                                 "worn item)"}
-                   : std::string{"piece chartCount (how many UV charts the "
-                                 "mesh has)"};
-      },
       [](const RippleSource &s) {
         return std::format("ripple {} from @{}, speed {}, width {}, decay {}",
                            s.shape == RippleShape::kDisc ? "disc" : "ring",
@@ -267,6 +260,7 @@ json SignalKindToJson(const SignalKind &a_kind) {
       [&](const EnchantmentSignal &k) {
         row[word] = NameOf(kEnchantmentFields, k.field);
       },
+      [&](const ItemSignal &k) { row[word] = NameOf(kItemFields, k.field); },
       [&](const TriggerSignal &k) { row[word] = TriggerToJson(k); },
       [&](const PayloadSignal &k) { row[word] = "@" + k.trigger.name; },
       [&](const CounterSignal &k) { row[word] = CounterToJson(k); },
@@ -370,7 +364,6 @@ json SourceKindToJson(const SourceKind &a_kind) {
       },
       [&](const BakeSource &k) { row[word] = BakeToJson(k); },
       [&](const DistanceSource &k) { row[word] = k.from; },
-      [&](const PieceSource &k) { row[word] = NameOf(kPieceFields, k.field); },
       [&](const RippleSource &k) { row[word] = RippleToJson(k); },
       [&](const MaterialClustersSource &k) {
         row[word] = MaterialClustersToJson(k);

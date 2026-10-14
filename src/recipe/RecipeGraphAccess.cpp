@@ -74,6 +74,12 @@ bool RecipeGraph::MayChangeOverTime(std::string_view name) const {
     return false;
   return lowered_ ? changing_[*index] : declarations_[*index].mayChangeOverTime;
 }
+bool RecipeGraph::IsPerGeometry(std::string_view a_signal) const {
+  const std::optional<OutputRef> output = FindSignalOutput(a_signal);
+  return output && !IsDisabled(output->node) &&
+         !std::ranges::contains(tickOrder_, output->node);
+}
+
 bool RecipeGraph::SampleDependent(OutputRef output) const noexcept {
   return output.node < sampleDependent_.size() && sampleDependent_[output.node];
 }

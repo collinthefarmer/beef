@@ -52,14 +52,15 @@ struct EventInput {
 struct NodePositionInput {
   std::string name;
 };
-struct ItemHashInput {};
-struct ChartCountInput {};
+struct ItemInput {
+  ItemField field = ItemField::kItemHash;
+};
 using ExternalSource =
     std::variant<TimeInput, DeltaTimeInput, SampleUvInput, RootTransformInput,
                  GeometryInput, MaterialInput, TextureInput, EffectShaderInput,
                  MatchedShaderInput, MatchedShaderTextureInput, EventInput,
-                 NodePositionInput, ItemHashInput, ChartCountInput,
-                 ActorValueSignal, ActorStateSignal, EnchantmentSignal>;
+                 NodePositionInput, ItemInput, ActorValueSignal,
+                 ActorStateSignal, EnchantmentSignal>;
 struct ExternalInput {
   ExternalSource source;
 };

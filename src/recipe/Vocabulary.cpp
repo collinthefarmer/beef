@@ -302,8 +302,7 @@ ValueType SourceType(const Source &a_source) noexcept {
       [](const RippleSource &) { return ValueType::kScalar; },
       [](const MaterialClustersSource &s) {
         return s.palette ? ValueType::kVec3 : ValueType::kScalar;
-      },
-      [](const PieceSource &) { return ValueType::kScalar; });
+      });
 }
 
 bool SourceHoldsIds(const SourceKind &a_kind) noexcept {
@@ -808,12 +807,13 @@ bool IsAnimated(const RecipeGraph &a_graph, const Output &a_output) {
 
 bool RecipeInputsAreActorIndependent(const Recipe &a_recipe) noexcept {
   for (const Source &source : a_recipe.sources) {
-    if (Is<BakeSource>(source.kind) || Is<DistanceSource>(source.kind) ||
-        Is<PieceSource>(source.kind)) {
+    if (Is<BakeSource>(source.kind) || Is<DistanceSource>(source.kind)) {
       return false;
     }
   }
-  return true;
+  return std::ranges::none_of(a_recipe.signals, [](const Signal &a_signal) {
+    return Is<ItemSignal>(a_signal.kind);
+  });
 }
 
 namespace {

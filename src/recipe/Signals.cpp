@@ -342,7 +342,6 @@ std::vector<Diagnostic> CheckSourceInputs(const RowTypes &a_rows,
           report.Error("'distance' names a skeleton node");
         }
       },
-      [](const PieceSource &) {},
       [&](const RippleSource &s) {
         CheckTrigger(a_rows, report, s.trigger, "trigger");
         CheckScalar(a_rows, report, s.speed, "speed");
@@ -466,11 +465,41 @@ std::vector<Diagnostic> CheckSurfaceOutput(const RowTypes &a_rows,
   return out;
 }
 
+void CheckWholePiece(const RowTypes &a_rows, const Reporter &a_report,
+                     const Param &a_param, std::string_view a_field) {
+  const auto *ref = Get<Ref>(a_param);
+  if (ref && a_rows.graph.IsPerGeometry(ref->name)) {
+    a_report.Error(std::format(
+        "'{}' reads '@{}', which differs per geometry because it reads an "
+        "item fact; a light spans the whole piece",
+        a_field, ref->name));
+  }
+}
+
+void CheckWholePiece(const RowTypes &a_rows, const Reporter &a_report,
+                     const Vec3Param &a_param, std::string_view a_field) {
+  Match(
+      a_param,
+      [&](const Ref &a_ref) {
+        CheckWholePiece(a_rows, a_report, Param{a_ref}, a_field);
+      },
+      [&](const std::array<Param, 3> &a_parts) {
+        for (const Param &part : a_parts) {
+          CheckWholePiece(a_rows, a_report, part, a_field);
+        }
+      });
+}
+
 std::vector<Diagnostic> CheckLightOutput(const RowTypes &a_rows,
                                          const LightOutput &a_l,
                                          std::string_view a_where) {
   std::vector<Diagnostic> out;
   const Reporter report{out, a_where};
+  CheckWholePiece(a_rows, report, a_l.offset, "offset");
+  CheckWholePiece(a_rows, report, a_l.color, "color");
+  CheckWholePiece(a_rows, report, a_l.intensity, "intensity");
+  CheckWholePiece(a_rows, report, a_l.size, "size");
+  CheckWholePiece(a_rows, report, a_l.cutoff, "cutoff");
   CheckVector<3>(a_rows, report, a_l.offset, "offset");
   CheckColor(a_rows, report, a_l.color, "color");
   CheckScalar(a_rows, report, a_l.intensity, "intensity");
@@ -633,7 +662,13 @@ const State *SignalState::Memory(NodeId a_node) const noexcept {
 }
 
 SignalState::SignalState(const RecipeGraph &a_graph)
-    : graph_(a_graph), stateSlots_(a_graph.Size()) {
+    : graph_(a_graph), stateSlots_(a_graph.Size()),
+      inTickOrder_(a_graph.Size(), false) {
+  for (const NodeId id : graph_.TickOrder()) {
+    if (id < inTickOrder_.size()) {
+      inTickOrder_[id] = true;
+    }
+  }
   outputOffsets_.reserve(a_graph.Size());
   for (NodeId id = 0; id < graph_.Size(); ++id) {
     const auto *node = graph_.NodeAt(id);
@@ -1184,6 +1219,152 @@ struct SignalState::Evaluator {
     return Default();
   }
 };
+
+struct SignalState::GeometryEvaluator {
+  const SignalState &state;
+  const ItemFacts &facts;
+  std::size_t depth;
+  NodeId index;
+
+  [[nodiscard]] Value Read(OutputRef output) const {
+    return state.ValueAtDepth(output, facts, depth + 1);
+  }
+  [[nodiscard]] float Scalar(OutputRef output) const {
+    return AsScalar(Read(output));
+  }
+  [[nodiscard]] Value Stored() const {
+    return state.ValueOf(OutputRef{index, 0});
+  }
+
+  Value operator()(const ConstantOperation &operation) const {
+    return operation.value;
+  }
+  Value operator()(const ExternalInput &operation) const {
+    const auto *item = Get<ItemInput>(operation.source);
+    return item ? Value{ItemFactOf(facts, item->field)} : Stored();
+  }
+  Value operator()(const VectorOperation &operation) const {
+    if (operation.components.size() == 2)
+      return Vec2{Scalar(operation.components[0]),
+                  Scalar(operation.components[1])};
+    if (operation.components.size() == 3)
+      return Vec3{Scalar(operation.components[0]),
+                  Scalar(operation.components[1]),
+                  Scalar(operation.components[2])};
+    return Stored();
+  }
+  Value operator()(const ExpressionOperation &operation) const {
+    const auto &expression = operation.expression;
+    if (expression.valueBindings.size() > kMaxExpressionOps)
+      return Stored();
+    std::array<Value, kMaxExpressionOps> values;
+    for (std::size_t i = 0; i < expression.valueBindings.size(); ++i)
+      values[i] = Read(expression.valueBindings[i]);
+    Program::Inputs arguments;
+    arguments.refs = std::span{values.data(), expression.valueBindings.size()};
+    arguments.callFunction = [&](std::size_t binding, float x, float) {
+      if (binding >= expression.functionBindings.size())
+        return 0.0f;
+      const auto &call = expression.functionBindings[binding];
+      const auto *function = state.graph_.FunctionAt(call.function);
+      if (!function || function->parameters.size() > kMaxExpressionOps ||
+          call.sampledParameter >= function->parameters.size())
+        return 0.0f;
+      std::vector<Value> parameters(function->parameters.size(), Value{0.0f});
+      parameters[call.sampledParameter] = x;
+      for (const auto &argument : call.arguments) {
+        if (argument.parameter >= parameters.size())
+          return 0.0f;
+        parameters[argument.parameter] = Read(argument.value);
+      }
+      return AsScalar(
+          EvaluateFunction(state.graph_, call.function, parameters));
+    };
+    return expression.program.Evaluate(arguments);
+  }
+  Value operator()(const CallOperation &operation) const {
+    if (operation.arguments.size() > kMaxExpressionOps)
+      return Stored();
+    std::array<Value, kMaxExpressionOps> arguments;
+    for (std::size_t i = 0; i < operation.arguments.size(); ++i)
+      arguments[i] = Read(operation.arguments[i]);
+    return EvaluateFunction(
+        state.graph_, operation.function,
+        std::span{arguments.data(), operation.arguments.size()});
+  }
+  Value operator()(const MapFunctionOperation &operation) const {
+    return (*this)(CallOperation{operation.function, operation.arguments});
+  }
+  template <class Operation> Value operator()(const Operation &) const {
+    return Stored();
+  }
+};
+
+float ItemFactOf(const ItemFacts &a_facts, ItemField a_field) noexcept {
+  switch (a_field) {
+  case ItemField::kChartCount:
+    return a_facts.chartCount;
+  case ItemField::kGeometryIndex:
+    return a_facts.geometryIndex;
+  case ItemField::kGeometryCount:
+    return a_facts.geometryCount;
+  case ItemField::kItemHash:
+    break;
+  }
+  return a_facts.itemHash;
+}
+
+bool SignalState::IsPerGeometry(OutputRef a_output) const noexcept {
+  return a_output.node < inTickOrder_.size() && !inTickOrder_[a_output.node] &&
+         !graph_.IsDisabled(a_output.node);
+}
+
+bool SignalState::IsPerGeometry(const Param &a_param) const noexcept {
+  const Ref *reference = Get<Ref>(a_param);
+  const auto output =
+      reference ? graph_.FindSignalOutput(reference->name) : std::nullopt;
+  return output && IsPerGeometry(*output);
+}
+
+Value SignalState::ValueAtDepth(OutputRef a_output, const ItemFacts &a_facts,
+                                std::size_t a_depth) const noexcept {
+  if (!IsPerGeometry(a_output) || a_depth > kMaxPerGeometryDepth) {
+    return ValueOf(a_output);
+  }
+  const auto *node = graph_.NodeAt(a_output.node);
+  return node ? Match(node->kind,
+                      GeometryEvaluator{*this, a_facts, a_depth, a_output.node})
+              : ValueOf(a_output);
+}
+
+Value SignalState::ValueFor(OutputRef a_output,
+                            const ItemFacts &a_facts) const noexcept {
+  return ValueAtDepth(a_output, a_facts, 0);
+}
+
+float SignalState::Resolve(const Param &a_param,
+                           const ItemFacts &a_facts) const noexcept {
+  return Match(
+      a_param, [](float value) { return value; },
+      [&](const Ref &reference) {
+        const auto output = graph_.FindSignalOutput(reference.name);
+        return output ? AsScalar(ValueFor(*output, a_facts)) : 0.0f;
+      });
+}
+
+Vec3 SignalState::Resolve(const Vec3Param &a_param,
+                          const ItemFacts &a_facts) const noexcept {
+  return Match(
+      a_param,
+      [&](const Ref &reference) {
+        const auto output = graph_.FindSignalOutput(reference.name);
+        return output ? AsVec3(ValueFor(*output, a_facts)) : Vec3{};
+      },
+      [&](const std::array<Param, 3> &parts) {
+        return Vec3{Resolve(parts[0], a_facts), Resolve(parts[1], a_facts),
+                    Resolve(parts[2], a_facts)};
+      });
+}
 
 Value SignalState::Evaluate(NodeId a_node,
                             const SignalEnvironment &a_environment,

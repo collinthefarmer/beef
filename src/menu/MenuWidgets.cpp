@@ -958,9 +958,6 @@ std::string SourceValueText(const SourceKind &a_kind) {
             [](const GeometryBake &g) { return "geometry " + g.geometry; });
       },
       [](const DistanceSource &s) { return s.from; },
-      [](const PieceSource &s) {
-        return std::string{NameOf(kPieceFields, s.field)};
-      },
       [](const RippleSource &s) {
         return std::format("{} from @{}",
                            s.shape == RippleShape::kDisc ? "disc" : "ring",

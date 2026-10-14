@@ -1135,7 +1135,7 @@ That is safe only when every input that can enter a content key is in the
 render plan key. Static external inputs are exactly those inputs, so the key
 takes their identities from the same `ValueBindings` the content keys use and
 a new input kind needs no edit here. Before 2026-10-06 the key was a
-hand-kept list; it missed `ItemHashInput` (`item:<hash>`), so an actor in a
+hand-kept list; it missed the item hash input (`item:<hash>`), so an actor in a
 different item with the same mesh reused another item's static outputs.
 A plan is never cached (`uncacheable` in the trace) when a graph reads a node
 position (`ReadsNodePositions`: a distance bake from an actor's skeleton, whose
@@ -2088,24 +2088,42 @@ builds the new one beside it, as a resize does.
   and the plan key's static inputs carry whether each geometry bake matches
   this geometry's name, never the name itself, and only in graphs that hold
   a geometry bake.
-- The `piece` source kind holds two per-piece facts, `itemHash` and
-  `chartCount` (`PieceSource`). Before 2026-10-07 they were bake words; a
-  recipe that still writes `{"bake": "itemHash"}` fails to load.
-- `itemHash` is `UnitHash` of the
-  worn armor form's key (0 when the form is gone), one value for the whole
-  piece, so the graph lowers it to the `ItemHashInput` uniform and no
-  texture is drawn. It is per geometry, not per recipe instance: one
-  instance covers every piece that carries its enchantment, and vanilla
-  reuses enchantment forms across items. Its render identity is the hash
-  bits, so copies of one item share computations and different items do
-  not. Every copy of an item reads the same value; the game keeps no
-  stable identity for one copy of a non-unique item.
-- `chartCount`: the
-  `ChartCountInput` uniform reads `MeshAnalysis::charts` from the mesh cache
-  at render time, so it needs no field on `GeometryInputs`; its identity is
-  the mesh identity. It exists so a mask can choose among the charts a mesh
-  really has (`chartId` ranks above it do not exist on that mesh); the fill
-  template's `chartSure` uses it to light at least one existing chart.
+- The `item` signal kind (`ItemSignal`) holds four facts of the worn item:
+  `itemHash`, `chartCount`, `geometryIndex` and `geometryCount`. Before
+  2026-10-14 the first two were the `piece` source kind; a recipe that still
+  writes `{"piece": …}` fails to load and names the signal. Before
+  2026-10-07 they were bake words.
+- An item fact lowers to `ExternalInput{ItemInput{field}}`, a uniform the
+  render path binds per geometry (`NumberValueOf`, `render/RenderInstance.cpp`).
+  The graph marks `ItemInput` `backendRequired`, so a signal that reads an
+  item fact, directly or through other signals, is not in the tick order.
+  `RecipeGraph::IsPerGeometry` names such a signal. Masks, sources and layer
+  parameters read it through the render plan, which builds per geometry.
+- The CPU consumers (output scalars in `ResolveOutput`, shell parameters in
+  `PoseShell`, the snapshot) resolve a per-geometry signal with
+  `SignalState::Resolve(param, ItemFacts)`. The resolver evaluates only
+  constants, item facts, vectors, expressions, calls and map functions; every
+  other node kind takes its ticked value. `kMaxPerGeometryDepth` (64) bounds
+  the walk.
+- A light spans every geometry of the piece, so validation refuses a light
+  parameter (offset, colour, intensity, size, cutoff) that reads a
+  per-geometry signal.
+- `itemHash` is `UnitHash` of the worn armor form's key (0 when the form is
+  gone). It is per geometry, not per recipe instance: one instance covers
+  every piece that carries its enchantment, and vanilla reuses enchantment
+  forms across items. Its render identity is the hash bits, so copies of one
+  item share computations and different items do not. Every copy of an item
+  reads the same value; the game keeps no stable identity for one copy of a
+  non-unique item.
+- `chartCount` reads `MeshAnalysis::charts` from the mesh cache at render
+  time (`ChartCountOf`); its identity is the mesh identity. A mask uses it to
+  choose among the charts a mesh really has; the fill template's `chartSure`
+  uses it to light at least one existing chart.
+- `geometryIndex` and `geometryCount`: `NumberGeometries`
+  (`engine/ManagerApply.cpp`) sorts a piece's geometries by name with a stable
+  sort and numbers them from 0. The name order does not change between loads,
+  while the scene graph's child order can. The identities are
+  `geometryIndex:<n>` and `geometryCount:<n>`.
 - Every source bakes into the geometry's UV space, so a bake
   distinguishes exactly what the UVs distinguish — no more. Any texel
   sharing collapses it: humanoid armor mirrors left onto right on one

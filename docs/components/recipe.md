@@ -100,6 +100,7 @@ tune.
 | `ActorValueSignal` | `av` | The wearer's actor value under one `Measure`: current, base, permanent, temporaryModifier, damage, or max. |
 | `ActorStateSignal` | `actorState` | One `ActorStateKind`: seven 0/1 flags, the scalars movementSpeed and resolutionLevel, and the vec3 positions position and target. |
 | `EnchantmentSignal` | `enchantment` | One field of the matched enchantment and effect: `magnitude`, `cost`, `idHash` or `effectHash`. The fields are fixed for an instance, so they are static inputs. |
+| `ItemSignal` | `item` | One `ItemField` of the worn item: `itemHash`, `chartCount`, `geometryIndex` or `geometryCount`. A signal that reads one is per geometry. |
 | `TriggerSignal` | `trigger` | The age of the newest firing as a fraction of `lifetime`. The `TriggerOrigin` is an `EventOrigin`, a `PluginOrigin`, or a `WhenOrigin`. The row declares its `payload` type and a `TriggerAnchor`, and keeps at most `max` firings. |
 | `PayloadSignal` | `payload` | The value of the named trigger's newest firing, held between firings. |
 | `CounterSignal` | `counter` | A count of a trigger's firings, with an optional `reset` trigger and `cap`. |
@@ -122,7 +123,6 @@ order, and the asserts in `Words.h` keep `kSourceKindWords` in the same order.
 | `ImageSource` | `image` | A texture sampled per texel: one `ImageChannel` in tiled or mesh `ImageSpace`, with optional scroll, tile, mirror, transpose, and mip. Its `ImageTexture` is an `ImageFile` (`path`) or an `EffectShaderImage` (`effectShader`: the fill or membrane texture of the matched effect's shader). |
 | `MaterialSource` | `material` | One `MaterialChannel` of the piece's own material, such as diffuseRgb, roughness, or relief. |
 | `BakeSource` | `bake` | One `BakeKind` computed from the mesh: position, localPosition, normal, uv, partition, boneWeight, componentId, or chartId. |
-| `PieceSource` | `piece` | One `PieceField`, a single value for the whole piece: `itemHash` (a stable hash of the worn item) or `chartCount` (how many UV charts the mesh has). |
 | `DistanceSource` | `distance` | The texel's distance from a named skeleton node. |
 | `RippleSource` | `ripple` | A ring or disc (`RippleShape`) that spreads from a trigger firing at `speed`, `width` wide, fading at `decay`. A nonzero `direction` turns it into a plane sweep. |
 | `MaterialClustersSource` | `materialClusters` | The id of each texel's nearest material cluster under `ClusterSettings` and its `ChannelWeights`. |
@@ -167,7 +167,7 @@ before it reuses a target. Each predicate has a form that takes a compiled
 | `ShareableAcrossActors` (output) | True when the output is a `SurfaceOutput`, `IsAnimated` is false, `RecipeInputsAreActorIndependent` holds, and the graph's signals equal the authored signals. |
 | `ShareableAcrossActors` (mask) | True when the mask is enabled, does not change over time, and meets the same two recipe conditions. |
 | `RebuildScope`, `ScopeOf` | Which actors an edit rebuilds: `RebuildApplying{recipe}` when the edit names a recipe and leaves every recipe's `MatchFacts` unchanged, otherwise `RebuildAll`. `Manager::ChangeAndRebuildActors` matches on it. |
-| `RecipeInputsAreActorIndependent` | True when the recipe has no `BakeSource`, `DistanceSource` or `PieceSource`, because those read per-actor geometry or the worn item. |
+| `RecipeInputsAreActorIndependent` | True when the recipe has no `BakeSource` or `DistanceSource` and no `ItemSignal`, because those read per-actor geometry or the worn item. |
 | `IsAnimated` | True when a signal, source, mask, or output reads a value that `RecipeGraph::MayChangeOverTime` marks as changing. |
 
 ### Diagnostics and resolution (`Recipe.h`)

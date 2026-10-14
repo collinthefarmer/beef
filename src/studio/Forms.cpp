@@ -972,6 +972,15 @@ void EnchantmentFields(std::vector<FormField> &a_form,
                        WordOf(kEnchantmentFields))));
 }
 
+void ItemFields(std::vector<FormField> &a_form, const SignalContext &a_ctx,
+                const ItemSignal &a_item) {
+  a_form.push_back(
+      ChoiceField("field", std::string{NameOf(kItemFields, a_item.field)},
+                  WordsOf(kItemFields),
+                  BindSignalMember(a_ctx.name, a_ctx.record, &ItemSignal::field,
+                                   WordOf(kItemFields))));
+}
+
 constexpr std::array<std::string, 3> kAnchorWords{"none", "world", "node"};
 
 std::string_view AnchorWord(const TriggerAnchor &a_anchor) {
@@ -1292,6 +1301,7 @@ std::vector<FormField> SignalForm(const SignalRow &a_signal,
       [&](const EnchantmentSignal &a_enchantment) {
         EnchantmentFields(form, ctx, a_enchantment);
       },
+      [&](const ItemSignal &a_item) { ItemFields(form, ctx, a_item); },
       [&](const TriggerSignal &a_trigger) {
         TriggerFields(form, ctx, a_trigger);
       },
@@ -1442,14 +1452,6 @@ void DistanceFields(std::vector<FormField> &a_form, const SourceContext &a_ctx,
                                 DistanceFromOf)}));
 }
 
-void PieceFields(std::vector<FormField> &a_form, const SourceContext &a_ctx,
-                 const PieceSourceRow &a_source) {
-  a_form.push_back(
-      ChoiceField("field", a_source.field, WordsOf(kPieceFields),
-                  BindSourceMember(a_ctx.name, a_ctx.record,
-                                   &PieceSource::field, WordOf(kPieceFields))));
-}
-
 void RippleFields(std::vector<FormField> &a_form, const SourceContext &a_ctx,
                   const RippleSourceRow &a_source) {
   const std::string &name = a_ctx.name;
@@ -1583,8 +1585,7 @@ std::vector<FormField> SourceForm(const SourceRow &a_source,
       },
       [&](const MaterialClustersSourceRow &a_clusters) {
         ClustersFields(form, ctx, a_clusters);
-      },
-      [&](const PieceSourceRow &a_piece) { PieceFields(form, ctx, a_piece); });
+      });
   return form;
 }
 
