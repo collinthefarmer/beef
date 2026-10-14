@@ -1,7 +1,7 @@
 {
   "format": 1,
   "name": "Fill import template",
-  "description": "The baseline import template for an effect shader with a fill texture. A low glow lights the cavities and engraved edges of a few of the piece's texture charts, on one of its materials, in the shader's colour with a seeded hue turn, scaled by the shader's pulse, with a DarkSwirls shimmer drifting through it whose bright-edged swirls swell and thin with each swell. A swell travels out from the chest, brightens the glow it crosses and lifts a transparent shell from the recesses; the shell glows brightly with the shimmer's swirls cut out of it, in a colour between the shader's edge colour and a seeded hue. The enchantment's magnitude scales the glow, swell, shimmer, flare and how many charts light. Every seeded choice comes from rand(): the enchantment and its effect fix the hue, material, and the swell's timing, speed and width; the worn item also fixes which charts glow, always at least one.",
+  "description": "The baseline import template for an effect shader with a fill texture. A low glow lights a few of the piece's texture charts on one of its materials, either their cavities and engraved edges or the whole area, in the shader's colour with a seeded hue turn, scaled by the shader's pulse, with a DarkSwirls shimmer drifting through it whose bright-edged swirls swell and thin with each swell. A swell travels out from the chest, brightens the glow it crosses and lifts a transparent shell from the recesses; the shell glows brightly with the shimmer's swirls cut out of it, in a colour between the shader's edge colour and a seeded hue. The enchantment's magnitude scales the glow, swell, shimmer, flare and how many charts light. Every seeded choice comes from rand(): the enchantment and its effect fix the hue, material, whether the glow keeps to cavities, and the swell's timing, speed and width; the worn item also fixes which charts glow, always at least one.",
   "keys": [
     {
       "effectShader": "ImportedEffectShader"
@@ -283,6 +283,12 @@
     },
     "seedMaterial": {
       "expr": "rand()"
+    },
+    "cavityChance": {
+      "constant": 0.5
+    },
+    "seedCavities": {
+      "expr": "rand()"
     }
   },
   "sources": {
@@ -340,8 +346,11 @@
     "chartLit": "randrange(1, min(@chartMaxLitScaled, @chartChoices) + 1)",
     "chartPick": "shuffle(@chartIndex, @chartChoices, rand()) < @chartLit",
     "swellGlow": "pow(@swellWave, @swellSharpness)",
-    "glowArea": "@cavities * @chartPick * @materialPick",
-    "flareArea": "@swellWave * @recess * @chartPick * @materialPick",
+    "cavityGate": "@seedCavities < @cavityChance",
+    "glowDepth": "max(@cavities, 1 - @cavityGate)",
+    "flareReach": "max(@recess, 1 - @cavityGate)",
+    "glowArea": "@glowDepth * @chartPick * @materialPick",
+    "flareArea": "@swellWave * @flareReach * @chartPick * @materialPick",
     "shimmer": "min(1 / smoothstep(@shimmerThreshold, @shimmerFalloff, @swirlA * @swirlB), @shimmerFringeGain)",
     "shellShimmerAlpha": "saturate(@shimmer * @glowArea)"
   },
