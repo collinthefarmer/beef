@@ -53,6 +53,7 @@ enchantment on the piece itself.
 | `docs/plans/effects-runtime-2026-10-10.md` | How would `Manager` split into named parts with a data-driven load reset and frame table, and in which order? (proposed, on hold) |
 | `docs/plans/edge-fixes-2026-10-12.md` | How are the component-edge findings fixed: the plan queue, the swap instead of the blank, narrower invalidation and the per-piece install, and which decisions are open? (proposed)
 | `docs/plans/edge-fixes-stage2-swap-2026-10-12.md` | How does a reinstall restage the render beside the published one, as a resize does, so an edit never shows the vanilla look, and which decisions are open? (proposed) |
+| `docs/plans/source-families-2026-10-14.md` | How are sources and signals grouped by origin, which recipe keys change, how do item facts reach a recipe, and how does the nested geometry, material group and chart pick work? (proposed) |
 | `docs/plans/code-review-backlog-2026-10-11.md` | What did the code walk find, in which order is it worked through, and what needs the user's decision? |
 | `docs/checkpoints/render-performance-review-2026-09-30.md` | What did the review of the layer-field and generated-shader commits find, and which findings are fixed? |
 | `docs/checkpoints/actor-core-review-2026-10-03.md` | What did the review of the actor-core branch find, what must be fixed before it merges, and how is each fix proven? |
