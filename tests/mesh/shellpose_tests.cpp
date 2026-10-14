@@ -23,6 +23,23 @@ int main() {
   const RestSkinToBone identity;
 
   {
+    RestSkinToBone horn;
+    horn.translate = Vec3{0.0f, 0.0f, 0.0f};
+    horn.inflateCentre = Vec3{20.0f, 0.0f, -10.0f};
+    ShellPoseValues pose{};
+    pose.inflate = Vec3{0.5f, 0.5f, 0.5f};
+    const RestSkinToBone posed = PosedTransform(horn, pose);
+    const Vec3 centre = Apply(posed, horn.inflateCentre);
+    Near(centre.x, 20.0f, "inflate leaves the bone's vertex centre fixed (x)");
+    Near(centre.z, -10.0f, "inflate leaves the bone's vertex centre fixed (z)");
+    const Vec3 tip = Apply(posed, Vec3{24.0f, 0.0f, -10.0f});
+    Near(tip.x, 26.0f,
+         "inflate swells a point about the centre, not the joint");
+    const Vec3 joint = Apply(posed, Vec3{0.0f, 0.0f, 0.0f});
+    Near(joint.x, -10.0f, "the joint itself moves away from the centre");
+  }
+
+  {
     const ShellPoseValues noPose{};
     const RestSkinToBone posed = PosedTransform(identity, noPose);
     Near(posed.rotate[0][0], 1.0f, "identity pose keeps rotate[0][0]");

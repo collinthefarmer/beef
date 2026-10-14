@@ -82,9 +82,11 @@ RestSkinToBone PosedTransform(const RestSkinToBone &a_rest,
                {a_rest.rotate[2][0] * inflateAxis.z,
                 a_rest.rotate[2][1] * inflateAxis.z,
                 a_rest.rotate[2][2] * inflateAxis.z}}};
-  Vec3 translate{a_rest.translate.x * inflateAxis.x,
-                 a_rest.translate.y * inflateAxis.y,
-                 a_rest.translate.z * inflateAxis.z};
+  const Vec3 &centre = a_rest.inflateCentre;
+  Vec3 translate{
+      a_rest.translate.x * inflateAxis.x + centre.x * (1.0f - inflateAxis.x),
+      a_rest.translate.y * inflateAxis.y + centre.y * (1.0f - inflateAxis.y),
+      a_rest.translate.z * inflateAxis.z + centre.z * (1.0f - inflateAxis.z)};
 
   for (auto &row : rotate) {
     for (float &value : row) {

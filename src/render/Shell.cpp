@@ -6,6 +6,7 @@
 #include "render/SkinData.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 
 namespace BetterEnchantmentEffects {
@@ -86,7 +87,8 @@ void TraceShellState(std::string_view a_role, RE::BSGeometry *a_geometry) {
   });
 }
 
-RestSkinToBone ToRestSkinToBone(const RE::NiTransform &a_transform) {
+RestSkinToBone ToRestSkinToBone(const RE::NiSkinData::BoneData &a_bone) {
+  const RE::NiTransform &a_transform = a_bone.skinToBone;
   RestSkinToBone out;
   for (int row = 0; row < 3; ++row) {
     for (int col = 0; col < 3; ++col) {
@@ -96,6 +98,12 @@ RestSkinToBone ToRestSkinToBone(const RE::NiTransform &a_transform) {
   out.translate = Vec3{a_transform.translate.x, a_transform.translate.y,
                        a_transform.translate.z};
   out.scale = a_transform.scale;
+  const RE::NiBound &bound = a_bone.bound;
+  if (bound.radius > 0.0f && std::isfinite(bound.radius) &&
+      std::isfinite(bound.center.x) && std::isfinite(bound.center.y) &&
+      std::isfinite(bound.center.z)) {
+    out.inflateCentre = Vec3{bound.center.x, bound.center.y, bound.center.z};
+  }
   return out;
 }
 
@@ -601,8 +609,8 @@ void ShellBinding::Pose(const ShellPoseValues &a_pose, float a_alpha,
     lastPose_ = a_pose;
     for (std::uint32_t i = 0;
          i < restSkinToBone_.size() && i < skinData_->bones; ++i) {
-      skinData_->boneData[i].skinToBone = ToNiTransform(PosedTransform(
-          ToRestSkinToBone(restSkinToBone_[i].skinToBone), a_pose));
+      skinData_->boneData[i].skinToBone = ToNiTransform(
+          PosedTransform(ToRestSkinToBone(restSkinToBone_[i]), a_pose));
     }
   }
   if (tracedPoseCalls_ < 30) {

@@ -891,10 +891,18 @@ Lab mechanics:
 - Geometry names ending in `Identity::ShellNodeSuffix()` are shells the plugin
   attached; the apply traversal skips them, and shells are collected before
   applying because attaching one adds a sibling a live walk would visit.
+- Inflate pivots on each bone's bounding-sphere centre
+  (`NiSkinData::BoneData::bound`, bone space, the vertices that bone
+  carries in this geometry), falling back to the joint when the sphere is
+  empty or non-finite (`RestSkinToBone::inflateCentre`). Until 2026-10-14 it
+  pivoted on the joint, so a piece weighted to a bone but far from its
+  joint (a horn at the belt on the pelvis) drifted away by
+  inflate × its distance from the joint; body meshes, which wrap their
+  bones, hid the difference.
 - `ShellPose` (Plan G, 2026-09-14): `PosedTransform` (`mesh/ShellPose.h`,
   engine-free, unit-tested in `tests/mesh/shellpose_tests.cpp`) composes all
   six pose fields onto a bone's rest skin-to-bone transform, per bone, in
-  this order: inflate (as before), then scale about `scalePoint`, then spin
+  this order: inflate about the bone's vertex centre, then scale about `scalePoint`, then spin
   about `spinAxis` through `scalePoint`, then translate by `offset`. No code
   in this plugin writes a shell clone's own `local`/`world` transform for
   posing, only `skinToBone` (as inflate already did); `skinToBone` is

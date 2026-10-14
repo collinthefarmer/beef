@@ -11,6 +11,7 @@ struct RestSkinToBone {
       {{1.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}}};
   Vec3 translate;
   float scale = 1.0f;
+  Vec3 inflateCentre;
   [[nodiscard]] bool operator==(const RestSkinToBone &) const = default;
 };
 
