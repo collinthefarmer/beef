@@ -758,7 +758,11 @@ std::optional<PickLevel> PickLevelFrom(const json &a_v, const Reporter &a_ctx) {
   if (!by) {
     return std::nullopt;
   }
-  std::optional<PickLevel> level = kPickLevelParsers[IndexOf(*by)](r);
+  const std::size_t at = IndexOf(*by);
+  if (at >= kPickLevelParsers.size()) {
+    return std::nullopt;
+  }
+  std::optional<PickLevel> level = kPickLevelParsers[at](r);
   r.Finish();
   return level;
 }

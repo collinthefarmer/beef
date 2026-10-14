@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <set>
 #include <vector>
 
 using namespace BetterEnchantmentEffects;
@@ -108,6 +109,39 @@ void GeometriesPickTheirCount() {
         "a non-finite count lights one geometry");
 }
 
+void IntegerSeedsStillShuffle() {
+  AreaPickSettings settings;
+  settings.geometries = 1.0f;
+  std::set<std::uint32_t> picked;
+  for (int seed = 0; seed < 12; ++seed) {
+    settings.seed = static_cast<float>(seed);
+    for (std::uint32_t index = 0; index < 5; ++index) {
+      if (IsGeometryPicked(settings, {index, 5})) {
+        picked.insert(index);
+      }
+    }
+  }
+  Check(picked.size() > 1,
+        "integer seeds, the studio default 0 among them, pick different "
+        "geometries");
+}
+
+void GroupsWithoutPickableChartsStepAside() {
+  const std::vector<ChartCover> covers{{kMetal, 300, 1.0f, 0.5f},
+                                       {kLeather, 1, 0.8f, 0.5f}};
+  AreaPickSettings settings;
+  settings.charts = ChartChoice{};
+  bool leather = true;
+  for (int seed = 0; seed < 20; ++seed) {
+    settings.seed = static_cast<float>(seed) / 20.0f;
+    const auto area = PickArea(settings, {0, 1}, TwoGroups(0.9f), covers);
+    leather =
+        leather && area && area->group == kLeather && area->litCharts == 1;
+  }
+  Check(leather, "a group with no pickable chart never wins a chart pick, so "
+                 "a picked geometry is never empty");
+}
+
 void PickAreaLightsChartsOfOneGroup() {
   const std::vector<ChartCover> covers = Covers();
   const MaterialAnalysis analysis = TwoGroups(0.5f);
@@ -181,5 +215,7 @@ int main() {
   CandidatesKeepCoveredCharts();
   GeometriesPickTheirCount();
   PickAreaLightsChartsOfOneGroup();
+  IntegerSeedsStillShuffle();
+  GroupsWithoutPickableChartsStepAside();
   return test::Finish("areapick");
 }

@@ -123,6 +123,10 @@ SimpleCurve(const std::string &a_text, const RecipeRow &a_recipe) {
 
 std::expected<ResponseGraph, std::string>
 BuildResponseGraph(const SignalRow &a_signal, const RecipeRow &a_recipe) {
+  if (a_signal.perGeometry) {
+    return std::unexpected(
+        "This signal differs per geometry; it has no single response.");
+  }
   Signal signal{a_signal.name, a_signal.definition, std::nullopt};
   const auto duration = HoldDefinition(signal.kind, a_recipe);
   if (!duration) {

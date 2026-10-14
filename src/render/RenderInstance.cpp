@@ -534,8 +534,9 @@ AreaDrawOf(const AreaPickInputs &area, const MaterialGrouping &grouping,
   const std::optional<PickedArea> picked =
       PickArea(settings, place, grouping.analysis, grouping.covers);
   if (!picked) {
-    logger::info("area pick: geometry {} of {} is not picked", place.index + 1,
-                 place.count);
+    logger::info("area pick: geometry {} of {} lights nothing (not picked, or "
+                 "no group covers a pickable chart)",
+                 place.index + 1, place.count);
     return TextureLab::ClusterDraw{.picked = kNoPickedGroup};
   }
   logger::info("area pick: geometry {} of {} lights material group {} on {}, "
@@ -568,7 +569,8 @@ StepResult ExecuteDrawClustersStep(const DrawClustersStep &step,
     auto area = AreaDrawOf(*step.area, **grouping, execution.arguments);
     if (!area)
       return std::unexpected(area.error());
-    draw = *area;
+    draw.picked = area->picked;
+    draw.charts = area->charts;
   } else if (step.pick) {
     const auto *pick = execution.arguments.Find<Value>(*step.pick);
     const auto *bias = step.areaBias

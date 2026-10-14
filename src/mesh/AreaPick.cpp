@@ -8,6 +8,7 @@
 
 namespace BetterEnchantmentEffects {
 namespace {
+constexpr float kGeometrySalt = 0.5f;
 constexpr float kGroupSalt = 1.0f;
 constexpr float kChartSalt = 4096.0f;
 constexpr auto kMostShuffled = static_cast<std::size_t>(kMaxShuffleTotal);
@@ -18,6 +19,8 @@ std::vector<ChartCover> CoversOfGroup(std::span<const ChartCover> a_covers,
 float ChartSeedOf(float a_seed, GeometryPlace a_place, std::uint8_t a_group);
 float LitShareOf(std::span<const ChartCover> a_covers,
                  const PickedArea &a_picked);
+MaterialAnalysis GroupsWithCharts(const MaterialAnalysis &a_analysis,
+                                  std::span<const ChartCover> a_covers);
 std::optional<LitCharts>
 PickCharts(const ChartChoice &a_choice, float a_seed,
            const std::vector<std::uint16_t> &a_candidates);
@@ -32,8 +35,9 @@ std::optional<PickedArea> PickArea(const AreaPickSettings &a_settings,
   }
   const float groupSeed =
       HashUnit(a_settings.seed, kGroupSalt + static_cast<float>(a_place.index));
-  const std::optional<std::uint8_t> group =
-      PickCluster(a_analysis, groupSeed, a_settings.areaBias);
+  const std::optional<std::uint8_t> group = PickCluster(
+      a_settings.charts ? GroupsWithCharts(a_analysis, a_covers) : a_analysis,
+      groupSeed, a_settings.areaBias);
   if (!group) {
     return std::nullopt;
   }
@@ -64,7 +68,8 @@ bool IsGeometryPicked(const AreaPickSettings &a_settings,
   const std::size_t lit = CountOf(a_settings.geometries, count);
   return ShufflePosition(static_cast<float>(a_place.index),
                          static_cast<float>(count),
-                         a_settings.seed) < static_cast<float>(lit);
+                         HashUnit(a_settings.seed, kGeometrySalt)) <
+         static_cast<float>(lit);
 }
 
 std::vector<std::uint16_t> CandidateCharts(std::span<const ChartCover> a_covers,
@@ -118,6 +123,17 @@ std::vector<ChartCover> CoversOfGroup(std::span<const ChartCover> a_covers,
     }
   }
   return covers;
+}
+
+MaterialAnalysis GroupsWithCharts(const MaterialAnalysis &a_analysis,
+                                  std::span<const ChartCover> a_covers) {
+  MaterialAnalysis kept;
+  for (const MaterialCluster &cluster : a_analysis.clusters) {
+    if (!CoversOfGroup(a_covers, cluster.id).empty()) {
+      kept.clusters.push_back(cluster);
+    }
+  }
+  return kept;
 }
 
 float ChartSeedOf(float a_seed, GeometryPlace a_place, std::uint8_t a_group) {

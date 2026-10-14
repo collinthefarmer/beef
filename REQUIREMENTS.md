@@ -102,8 +102,8 @@ The model:
 | Part | Definition |
 |---|---|
 | Recipe | `keys`, `priority`, `merge`, `clock`, `signals`, `curves`, `sources`, `masks`, `outputs`, `shell`, `variants`, plus metadata. |
-| **Signals** | A value that varies per tick, evaluated once per tick in dependency order. Seventeen kinds: `constant`, `wave`, `ramp`, `efsh`, `av`, `actorState`, `enchantment`, `trigger`, `payload`, `counter`, `accumulate`, `noise`, `gradient`, `rate`, `smooth`, `toRoot`, `expr`. The wire word `av` is the modding community's abbreviation for actor value. |
-| **Sources** | A value that varies per texel, in a geometry's UV space. Six kinds: `image`, `material`, `bake`, `distance`, `ripple`, `materialClusters`. |
+| **Signals** | A value that varies per tick, evaluated once per tick in dependency order. Eighteen kinds: `constant`, `wave`, `ramp`, `efsh`, `av`, `actorState`, `enchantment`, `item`, `trigger`, `payload`, `counter`, `accumulate`, `noise`, `gradient`, `rate`, `smooth`, `toRoot`, `expr`. The wire word `av` is the modding community's abbreviation for actor value. An `item` signal, and an `expr` signal that reads one, differs per geometry: it is evaluated in the render path and is readable from masks, sources and layer parameters only. |
+| **Sources** | A value that varies per texel, in a geometry's UV space. Six kinds: `image`, `material` (a channel, or `{"groups": …}` for the material groups), `mesh`, `distance`, `ripple`, `pick`. |
 | **Masks** | A per-texel expression, interpreted on the GPU by one fixed shader from a constant buffer, with a capped op count reported per row. |
 | **Curves** | A one-argument expression in `x`. |
 | **Outputs** | A surface output (a slot, its scalars, a selector, a replace flag, an ordered layer stack) or a light output. |

@@ -3157,14 +3157,21 @@ The method and its prototype comparison are in
   for other id levels (part, partition) without a format change. Absent
   `levels` means one material group on every geometry.
 - `IsGeometryPicked`: geometry `index` of `count` lights when its
-  `ShufflePosition` under `seed` is below the geometry level's `count`;
-  with no geometry level, `geometries` is `kEveryGeometryCount` and every
-  geometry lights. The group: `PickCluster` with `HashUnit(seed, 1 +
-  index)` and `areaBias`. The charts: `CandidateCharts`, then each
-  candidate lights when its `ShufflePosition` under `HashUnit(seed, 4096 +
-  16 × index + group)` is below the chart level's `count`; with no chart
-  level the whole group lights and the draw has no chart filter. Every
-  count rounds and clamps to 1..what is available.
+  `ShufflePosition` under `HashUnit(seed, 0.5)` is below the geometry
+  level's `count`. The seed is hashed first because `ShufflePosition` keeps
+  an integer seed (the studio default 0) in place, which would always light
+  geometry 0. With no geometry level, `geometries` is `kEveryGeometryCount`
+  and every geometry lights. Geometries past index 250 (the shuffle limit)
+  never light.
+- The group: `PickCluster` with `HashUnit(seed, 1 + index)` and
+  `areaBias`. With a chart level, only groups that cover at least one
+  pickable chart (`GroupsWithCharts`) compete, so a group that lives only on
+  charts past 254 cannot leave a picked geometry empty.
+- The charts: `CandidateCharts`, then each candidate lights when its
+  `ShufflePosition` under `HashUnit(seed, 4096 + 16 × index + group)` is
+  below the chart level's `count`. With no chart level the whole group
+  lights and the draw has no chart filter. Every count rounds and clamps to
+  1..what is available.
 - `ChartCoversOf` writes the cover table at grouping time: for each chart
   and group, the group's share of the chart's labelled texels in the 256 px
   raster. Only charts 0..254 (`kMaxPickChart`) enter it, because the chart

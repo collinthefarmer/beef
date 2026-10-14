@@ -214,7 +214,7 @@ dependence from these connections.
 | `BoundFunction` / `BoundFunctionArgument` | A called `FunctionId`, the parameter it samples, and the other arguments bound to graph outputs. |
 | `CallOperation` / `MapFunctionOperation` | A function call on a signal value, and a function applied to each component of a layer value. |
 | `WaveOperation` … `SmoothOperation` | One operation per signal kind: wave, ramp, effect shader, noise, gradient, toRoot, trigger, hold (payload), counter, accumulate, rate, and smooth. |
-| `TextureCoordinatesOperation`, `ImageOperation`, `MaterialOperation`, `BakeOperation`, `DistanceOperation`, `RippleOperation`, `MaterialClustersOperation` | One operation per source kind, and the texture coordinates an image reads. |
+| `TextureCoordinatesOperation`, `ImageOperation`, `MaterialOperation`, `BakeOperation`, `DistanceOperation`, `RippleOperation`, `MaterialGroupsOperation`, `PickOperation` | One operation per source kind, and the texture coordinates an image reads. |
 | `ReductionOperation` | A `ReductionKind` (mean, sum, minimum, maximum) over a numeric value. Lowering uses the mean for an image mean and for a layer curve's `mean`. |
 | `FunctionDefinition` / `FunctionParameter` | A curve as a small node list with typed parameters and a result port. |
 | `detail::RecipeDeclaration` | One authored row during compilation: its definition, `DeclarationCategory` (signal, spatial, function), dependencies, parsed expression, and disabled flag. |

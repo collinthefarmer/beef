@@ -1116,6 +1116,27 @@ int main() {
     scalars.outputs[1] = surface;
     scalars.shell.emissive = Param{Ref{"index"}};
     scalars.shell.pose.spin = Param{Ref{"lit"}};
+    Recipe stepped;
+    stepped.signals = signals;
+    stepped.signals.push_back(Signal{
+        "tint",
+        GradientSignal{
+            Param{Ref{"index"}},
+            {GradientStop{0.0f, std::array<Param, 3>{1.0f, 0.0f, 0.0f}}}},
+        std::nullopt});
+    Check(std::ranges::any_of(Validate(stepped, {}),
+                              [](const Diagnostic &d) {
+                                return d.where == SignalWhere("tint") &&
+                                       d.message.find("cannot read an item "
+                                                      "fact") !=
+                                           std::string::npos;
+                              }) &&
+              std::ranges::none_of(Validate(stepped, {}),
+                                   [](const Diagnostic &d) {
+                                     return d.where == SignalWhere("lit");
+                                   }),
+          "only expr and item signals may differ per geometry");
+
     Check(refusals(scalars, "output 1") == 1,
           "an output scalar refuses a per-geometry value");
     Check(refusals(scalars, "shell") == 1 &&

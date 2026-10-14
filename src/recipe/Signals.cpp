@@ -508,6 +508,25 @@ std::vector<Diagnostic> CheckSurfaceOutput(const RowTypes &a_rows,
   return out;
 }
 
+bool IsRenderComputable(const SignalKind &a_kind) noexcept {
+  return Is<ExprSignal>(a_kind) || Is<ItemSignal>(a_kind);
+}
+
+std::vector<Diagnostic> CheckPerGeometryKind(const RowTypes &a_rows,
+                                             const Signal &a_signal) {
+  std::vector<Diagnostic> out;
+  if (IsRenderComputable(a_signal.kind) ||
+      !a_rows.graph.IsPerGeometry(a_signal.name)) {
+    return out;
+  }
+  const Reporter report{out, SignalWhere(a_signal.name)};
+  report.Error(std::format(
+      "a {} signal cannot read an item fact; read the fact in an expr signal "
+      "or a mask instead",
+      SignalKindName(SignalKindOf(a_signal.kind))));
+  return out;
+}
+
 std::vector<Diagnostic> CheckLightOutput(const RowTypes &a_rows,
                                          const LightOutput &a_l,
                                          std::string_view a_where) {
@@ -653,6 +672,9 @@ Validate(const Recipe &a_recipe,
 
   for (const auto &d : graph.Diagnostics()) {
     out.push_back(d);
+  }
+  for (const auto &s : a_recipe.signals) {
+    append(CheckPerGeometryKind(rows, s));
   }
   for (const auto &c : a_recipe.curves) {
     append(CheckCurve(rows, c));
