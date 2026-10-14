@@ -1,5 +1,9 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
+#include "planners/RenderPlan.h"
 #include "planners/ShaderSource.h"
+#include "planners/StackShader.h"
+#include "recipe/Importer.h"
+#include "recipe/RecipeGraph.h"
 #include "render/ShaderConstants.h"
 #include "test_support.h"
 
@@ -8,8 +12,11 @@
 #include <filesystem>
 #include <format>
 #include <optional>
+#include <set>
 #include <string>
 #include <string_view>
+#include <utility>
+#include <vector>
 
 using namespace BetterEnchantmentEffects;
 using test::Check;
@@ -119,6 +126,196 @@ std::optional<std::size_t> PackedBytes(std::string_view a_source,
   return total;
 }
 
+struct GeneratedShader {
+  std::string entry;
+  std::string text;
+  [[nodiscard]] auto operator<=>(const GeneratedShader &) const = default;
+};
+
+constexpr std::string_view kExampleRecipes[]{
+    "recipes/examples/arcane-circuit.json",
+    "recipes/examples/resonant-ward.json", "recipes/examples/winterglass.json"};
+
+constexpr std::string_view kImportTemplates[]{"fill.json", "bare.json"};
+
+RenderBindingResolver InstanceBindings() {
+  return [](const TextureValue &a_value, GeometryId) {
+    return ValueBindings{[instance = a_value.instance](const ExternalSource &)
+                             -> std::expected<std::string, std::string> {
+                           return std::to_string(instance);
+                         },
+                         [instance = a_value.instance](NodeId a_node) {
+                           return std::format("{}:{}", instance, a_node);
+                         }};
+  };
+}
+
+std::optional<Recipe> RecipeAt(const std::filesystem::path &a_path) {
+  const LoadResult loaded =
+      ParseRecipe(test::ReadFile(a_path), a_path.stem().string());
+  Check(loaded.recipe.has_value() && !loaded.HasErrors(),
+        std::format("{} parses", a_path.string()));
+  return loaded.recipe;
+}
+
+std::optional<Recipe> ImportedFrom(const std::filesystem::path &a_template) {
+  const std::optional<Recipe> templated = RecipeAt(a_template);
+  const auto record = ParseEffectShaderRecord(
+      test::ReadFile(test::Fixtures() / "efsh" / "SyntheticTiled.json"));
+  if (!templated || !record) {
+    return std::nullopt;
+  }
+  return ImportEffectShader(*record, *templated);
+}
+
+std::vector<Recipe> PlannedRecipes() {
+  std::vector<Recipe> recipes;
+  for (const std::string_view name : kImportTemplates) {
+    if (std::optional<Recipe> imported =
+            ImportedFrom(test::Templates() / name)) {
+      recipes.push_back(std::move(*imported));
+    }
+  }
+  for (const std::string_view path : kExampleRecipes) {
+    if (std::optional<Recipe> example = RecipeAt(path)) {
+      recipes.push_back(std::move(*example));
+    }
+  }
+  return recipes;
+}
+
+std::optional<RenderPlan> PlanOf(const Recipe &a_recipe,
+                                 const RecipeGraph &a_graph) {
+  std::vector<RenderStackRequest> requests;
+  for (std::size_t o = 0; o < a_recipe.outputs.size(); ++o) {
+    if (const auto *surface = Get<SurfaceOutput>(a_recipe.outputs[o])) {
+      requests.push_back(
+          {&a_graph, surface, 1, PlacementId{o}, o, {SideRef{0}}});
+    }
+  }
+  std::expected<RenderPlan, std::string> plan =
+      BuildRenderPlan({}, requests, InstanceBindings());
+  Check(plan.has_value(),
+        std::format("recipe {} lowers into a plan", a_recipe.id));
+  return plan ? std::optional{std::move(*plan)} : std::nullopt;
+}
+
+std::uint32_t ChannelBitsOf(const ChannelSet &a_channels) {
+  return (a_channels.r ? 1u : 0u) | (a_channels.g ? 2u : 0u) |
+         (a_channels.b ? 4u : 0u) | (a_channels.a ? 8u : 0u);
+}
+
+std::optional<StackShape> StackShapeOf(const CompositeStackStep &a_stack) {
+  std::vector<const PlannedLayer *> layers;
+  for (const PlannedLayer &layer : a_stack.layers) {
+    layers.push_back(&layer);
+  }
+  const std::vector<std::size_t> fields = VisibleLayerFields(layers);
+  std::vector<const LayerField *> used;
+  for (const std::size_t field : fields) {
+    if (field >= a_stack.fields.size()) {
+      return std::nullopt;
+    }
+    used.push_back(&a_stack.fields[field]);
+  }
+  const auto packed = PackLayerFields(used);
+  if (!packed) {
+    return std::nullopt;
+  }
+  StackShape shape;
+  shape.base = true;
+  shape.code = CodeWithoutNumbers(packed->pack.code);
+  shape.slots = InputTextureSlots(packed->pack.inputs);
+  shape.segments = packed->pack.segments;
+  for (const PlannedLayer &layer : a_stack.layers) {
+    LayerShape out;
+    if (const auto segment = SegmentIndexOf(fields, layer.source)) {
+      out.source = SegmentRead{*segment};
+    } else {
+      out.source = SourceTexture{};
+    }
+    if (layer.mask) {
+      if (const auto segment = SegmentIndexOf(fields, *layer.mask)) {
+        out.mask = SegmentRead{*segment};
+      } else {
+        out.mask = MaskTexture{};
+      }
+    }
+    out.blend = static_cast<std::uint32_t>(std::to_underlying(layer.blend));
+    out.channels = ChannelBitsOf(layer.channels);
+    shape.layers.push_back(out);
+  }
+  return shape;
+}
+
+std::set<GeneratedShader> GeneratedShadersOf(const RenderPlan &a_plan) {
+  std::set<GeneratedShader> shaders;
+  for (const RenderStep &step : a_plan.steps) {
+    if (const auto *program = Get<EvaluateProgramStep>(step.kind)) {
+      shaders.insert({std::string{kGeneratedProgramEntry},
+                      GenerateProgramShader(program->program)});
+    }
+    const auto *stack = Get<CompositeStackStep>(step.kind);
+    const std::optional<StackShape> shape =
+        stack ? StackShapeOf(*stack) : std::nullopt;
+    const auto text = shape ? GenerateStackShader(*shape)
+                            : std::expected<std::string, std::string>{
+                                  std::unexpected("no stack")};
+    Check(!stack || text.has_value(),
+          "every stack of the plan generates a shader");
+    if (text) {
+      shaders.insert({std::string{kGeneratedStackEntry}, *text});
+    }
+  }
+  return shaders;
+}
+
+bool Compiles(const std::filesystem::path &a_scratch, std::string_view a_name,
+              std::string_view a_entry, std::string_view a_profile,
+              std::string_view a_text) {
+  const std::filesystem::path source =
+      a_scratch / std::format("{}.hlsl", a_name);
+  const std::filesystem::path log = a_scratch / std::format("{}.log", a_name);
+  if (!test::WriteFile(source, a_text)) {
+    return false;
+  }
+  const std::string command = std::format(
+      R"("{}" -HV 2018 -T {} -E {} -Fo "{}" "{}" > "{}" 2>&1)", BEEF_DXC,
+      a_profile, a_entry, (a_scratch / std::format("{}.dxil", a_name)).string(),
+      source.string(), log.string());
+  const bool compiled = std::system(command.c_str()) == 0;
+  if (!compiled) {
+    std::printf("%s\n", test::ReadFile(log).c_str());
+  }
+  return compiled;
+}
+
+void GeneratedShadersCompile() {
+  const std::filesystem::path scratch = test::ScratchDir("generated");
+  std::set<GeneratedShader> shaders;
+  for (const Recipe &recipe : PlannedRecipes()) {
+    const RecipeGraph graph = RecipeGraph::Compile(recipe);
+    if (const std::optional<RenderPlan> plan = PlanOf(recipe, graph)) {
+      shaders.merge(GeneratedShadersOf(*plan));
+    }
+  }
+  std::size_t programs = 0;
+  std::size_t stacks = 0;
+  std::size_t index = 0;
+  for (const GeneratedShader &shader : shaders) {
+    const std::string name = std::format("generated{}", index++);
+    const bool compiled =
+        Compiles(scratch, name, shader.entry, "ps_6_0",
+                 std::string{kShaderSource} + "\n" + shader.text);
+    Check(compiled,
+          std::format("{} ({}) compiles with dxc", name, shader.entry));
+    (shader.entry == kGeneratedStackEntry ? stacks : programs) += 1;
+  }
+  std::printf("compiled %zu program and %zu stack shaders\n", programs, stacks);
+  Check(programs > 0 && stacks > 0,
+        "the planned recipes generate program and stack shaders");
+}
+
 void ConstantBuffersMatchTheirStructs() {
   for (const ConstantBuffer &buffer : kConstantBuffers) {
     const std::optional<std::size_t> packed =
@@ -133,21 +330,10 @@ void ConstantBuffersMatchTheirStructs() {
 
 void EveryEntryPointCompiles() {
   const std::filesystem::path scratch = test::ScratchDir("shadersource");
-  const std::filesystem::path source = scratch / "shaders.hlsl";
-  Check(test::WriteFile(source, kShaderSource), "the shader source is written");
   for (const EntryPoint &entry : kEntryPoints) {
-    const std::filesystem::path log =
-        scratch / std::format("{}.log", entry.name);
-    const std::string command =
-        std::format(R"("{}" -HV 2018 -T {} -E {} -Fo "{}" "{}" > "{}" 2>&1)",
-                    BEEF_DXC, entry.profile, entry.name,
-                    (scratch / std::format("{}.dxil", entry.name)).string(),
-                    source.string(), log.string());
-    const bool compiled = std::system(command.c_str()) == 0;
-    if (!compiled) {
-      std::printf("%s\n", test::ReadFile(log).c_str());
-    }
-    Check(compiled, std::format("{} compiles with dxc", entry.name));
+    Check(
+        Compiles(scratch, entry.name, entry.name, entry.profile, kShaderSource),
+        std::format("{} compiles with dxc", entry.name));
   }
 }
 }
@@ -155,5 +341,6 @@ void EveryEntryPointCompiles() {
 int main() {
   ConstantBuffersMatchTheirStructs();
   EveryEntryPointCompiles();
+  GeneratedShadersCompile();
   return test::Finish("shadersource");
 }
