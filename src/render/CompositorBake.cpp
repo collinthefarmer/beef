@@ -43,9 +43,16 @@ void Compositor::SweepMeshes(std::uint32_t a_nowMS,
 void Compositor::ClearMeshes() noexcept { meshes_.Clear(); }
 
 Compositor::MaterialKey
-Compositor::MaterialKeyOf(const MaterialInputs &a_material) {
+Compositor::MaterialKeyOf(const MaterialInputs &a_material,
+                          std::uint64_t a_meshHash) {
   return {TextureIdentity(a_material.rmaos),
-          TextureIdentity(a_material.diffuse)};
+          TextureIdentity(a_material.diffuse), a_meshHash};
+}
+
+std::uint64_t
+Compositor::MeshHashOf(RE::BSGeometry *a_geometry) const noexcept {
+  const std::shared_ptr<const MeshEntry> entry = CachedMesh(a_geometry);
+  return entry ? entry->hash : 0;
 }
 
 namespace {
@@ -70,7 +77,8 @@ void Settle(Compositor::MaterialRecord &a_record) {
 const Compositor::MaterialRecord &
 Compositor::AnalyseMaterial(const MaterialInputs &a_material,
                             const std::shared_ptr<MeshEntry> &a_mesh) {
-  auto &record = materials_.Get(MaterialKeyOf(a_material), nowMS_);
+  auto &record = materials_.Get(
+      MaterialKeyOf(a_material, a_mesh ? a_mesh->hash : 0), nowMS_);
   Settle(record);
   if (record.ticket || record.grouping || !record.problem.empty()) {
     return record;
@@ -112,8 +120,9 @@ Compositor::AnalyseMaterial(const MaterialInputs &a_material,
 }
 
 const Compositor::MaterialRecord *
-Compositor::CachedMaterial(const MaterialInputs &a_material) {
-  const MaterialKey key = MaterialKeyOf(a_material);
+Compositor::CachedMaterial(const MaterialInputs &a_material,
+                           std::uint64_t a_meshHash) {
+  const MaterialKey key = MaterialKeyOf(a_material, a_meshHash);
   if (!materials_.Find(key)) {
     return nullptr;
   }

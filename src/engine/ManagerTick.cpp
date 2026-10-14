@@ -431,22 +431,24 @@ InstanceTiming InstanceTimeFor(LiveInstance &a_instance,
   return InstanceTiming{time, delta};
 }
 
-void AddBoundMeshes(BoundMeshes &a_meshes, const LivePiece &a_piece) {
+void AddBoundMeshes(BoundMeshes &a_meshes, const LivePiece &a_piece,
+                    const Compositor &a_compositor) {
   for (const LiveGeometry &g : a_piece.geometries) {
     if (!g.lost) {
       a_meshes.geometries.push_back(g.geometry.get());
-      a_meshes.materials.push_back(
-          Compositor::MaterialKeyOf(g.inputs.material));
+      a_meshes.materials.push_back(Compositor::MaterialKeyOf(
+          g.inputs.material, a_compositor.MeshHashOf(g.geometry.get())));
     }
   }
 }
 
 BoundMeshes
-BoundMeshesOf(const std::unordered_map<RE::FormID, LiveActor> &a_applied) {
+BoundMeshesOf(const std::unordered_map<RE::FormID, LiveActor> &a_applied,
+              const Compositor &a_compositor) {
   BoundMeshes meshes;
   for (const auto &[actorID, state] : a_applied) {
     for (const LivePiece &piece : state.pieces) {
-      AddBoundMeshes(meshes, piece);
+      AddBoundMeshes(meshes, piece, a_compositor);
     }
   }
   return meshes;
@@ -459,7 +461,7 @@ void SweepBoundMeshes(
   if (!a_compositor.MeshSweepDue(a_nowMS)) {
     return;
   }
-  const BoundMeshes meshes = BoundMeshesOf(a_applied);
+  const BoundMeshes meshes = BoundMeshesOf(a_applied, a_compositor);
   a_compositor.SweepMeshes(a_nowMS, meshes.geometries);
   a_compositor.SweepMaterials(a_nowMS, meshes.materials);
 }

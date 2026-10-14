@@ -34,6 +34,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <unordered_map>
 #include <vector>
 
@@ -166,9 +167,11 @@ public:
                    std::span<RE::BSGeometry *const> a_bound);
   void ClearMeshes() noexcept;
 
-  using MaterialKey = std::pair<std::string, std::string>;
+  using MaterialKey = std::tuple<std::string, std::string, std::uint64_t>;
   [[nodiscard]] static MaterialKey
-  MaterialKeyOf(const MaterialInputs &a_material);
+  MaterialKeyOf(const MaterialInputs &a_material, std::uint64_t a_meshHash);
+  [[nodiscard]] std::uint64_t
+  MeshHashOf(RE::BSGeometry *a_geometry) const noexcept;
   static constexpr std::uint32_t kMaterialMaxAgeMS = 30000;
   static constexpr std::size_t kMaxUnusedMaterials = 64;
   struct MaterialRecord {
@@ -180,7 +183,7 @@ public:
   AnalyseMaterial(const MaterialInputs &a_material,
                   const std::shared_ptr<MeshEntry> &a_mesh);
   [[nodiscard]] const MaterialRecord *
-  CachedMaterial(const MaterialInputs &a_material);
+  CachedMaterial(const MaterialInputs &a_material, std::uint64_t a_meshHash);
   void ClearMaterials() noexcept;
   void SweepMaterials(std::uint32_t a_nowMS,
                       std::span<const MaterialKey> a_keep);

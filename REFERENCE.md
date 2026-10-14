@@ -3124,8 +3124,10 @@ The method and its prototype comparison are in
   32-bit word at a time. Each cluster draw reuses the odds textures of its
   grouping from a 16-entry cache (`GroupOddsOf`).
 - The studio's grouping (`Compositor::AnalyseMaterial`) is keyed by the
-  material's maps only. Two geometries that share maps share the first
-  geometry's charts in the studio chart.
+  material's maps and the mesh hash (`MaterialKeyOf`), as the game's
+  grouping is, so two geometries that share maps but not a mesh get their
+  own charts in the studio chart. Before 2026-10-14 the key held the maps
+  only, and the second geometry showed the first one's charts.
 
 ### Shader source check (`planners/ShaderSource.cpp`, `tests/planners/shadersource_tests.cpp`)
 

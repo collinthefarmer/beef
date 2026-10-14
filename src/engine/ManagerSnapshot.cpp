@@ -337,8 +337,9 @@ struct GeometrySnapshotBuilder {
       row.bones = entry->facts.bones;
       row.islands = entry->analysis.islands;
     }
-    if (const Compositor::MaterialRecord *material =
-            compositor->CachedMaterial(bound.inputs.material);
+    if (const Compositor::MaterialRecord *material = compositor->CachedMaterial(
+            bound.inputs.material,
+            compositor->MeshHashOf(bound.geometry.get()));
         material && material->grouping) {
       row.clusters = material->grouping->analysis.clusters;
       row.grouping = material->grouping;
