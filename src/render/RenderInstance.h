@@ -1,6 +1,7 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #pragma once
 
+#include "planners/MaterialGrouper.h"
 #include "planners/RenderExecution.h"
 #include "planners/RenderFirings.h"
 #include "planners/TargetCost.h"
@@ -31,7 +32,7 @@ struct GroupingRequest {
   MeshAnalysis analysis;
   std::uint64_t meshHash = 0;
   ClusterSettings settings;
-  std::optional<std::uint64_t> key;
+  std::optional<GroupingTicket> ticket;
 };
 struct RenderScratch {
   std::weak_ptr<TextureLab::RenderTarget> target;

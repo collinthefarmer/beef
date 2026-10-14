@@ -294,5 +294,41 @@ int main() {
   Check(SmoothedProbabilities(speckled, MaterialGroups{}, 4).ofTexel.empty(),
         "no groups give no probabilities");
 
+  const std::vector<std::int16_t> density = LabelTexels(raster, *groups);
+  const std::vector<std::int16_t> unweighted = LabelWithOdds(
+      raster, *groups, ScoringOf(*groups), GroupProbabilities{}, 0.0f);
+  std::size_t agree = 0;
+  for (std::size_t i = 0; i < density.size(); ++i) {
+    agree += density[i] == unweighted[i] ? 1 : 0;
+  }
+  Check(agree * 100 >= density.size() * 99,
+        "with no odds weight the packed scoring labels as the exact density "
+        "does");
+
+  MaterialSample sample{kSide, kSide, raster.texels};
+  const auto grouping = GroupMaterial(sample, raster.charts, ClusterSettings{});
+  Check(grouping.has_value(), "the two-material sample groups end to end");
+  const std::size_t stride = kLabelledStride;
+  Check(grouping &&
+            grouping->labelled.texels.size() ==
+                (kSide / stride) * (kSide / stride) &&
+            grouping->labelled.labels.size() ==
+                grouping->labelled.texels.size(),
+        "the grouping keeps a strided subset of labelled texels for the chart");
+  Check(grouping && grouping->groups.ofTexel.empty(),
+        "the grouping drops its per-texel region groups");
+  Check(grouping && grouping->smoothed.ofTexel.size() == raster.texels.size(),
+        "the grouping keeps the smoothed odds for the draw");
+  Check(grouping && std::ranges::all_of(grouping->scoring,
+                                        [](const GroupScoring &a_g) {
+                                          return a_g.logShare < 0.0f;
+                                        }),
+        "each group carries the log of its share");
+
+  Regions overflowing = regions;
+  overflowing.ofTexel[100] = regions.count + 5;
+  Check(!GroupRegions(raster, overflowing, GroupSettings{}),
+        "a texel naming a region past the count is refused");
+
   return test::Finish("materialregions");
 }

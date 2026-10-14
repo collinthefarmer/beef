@@ -8,6 +8,7 @@
 #include "mesh/MeshFacts.h"
 #include "mesh/TextureSize.h"
 #include "planners/IdentityFacts.h"
+#include "planners/MaterialGrouper.h"
 #include "planners/RenderPlan.h"
 #include "planners/RetainedCache.h"
 #include "planners/StackPlan.h"
@@ -169,7 +170,7 @@ public:
   static constexpr std::uint32_t kMaterialMaxAgeMS = 30000;
   static constexpr std::size_t kMaxUnusedMaterials = 64;
   struct MaterialRecord {
-    std::optional<std::uint64_t> key;
+    std::optional<GroupingTicket> ticket;
     std::shared_ptr<const MaterialGrouping> grouping;
     std::string problem;
   };

@@ -634,8 +634,9 @@ struct Sample {
 SampleOf(const MaterialRaster &a_raster, const Standardisation &a_s,
          const std::vector<std::int16_t> &a_groups, std::size_t a_limit) {
   const std::size_t covered = CoveredCount(a_raster);
+  const std::size_t limit = std::max<std::size_t>(a_limit, 1);
   const std::size_t stride =
-      std::max<std::size_t>(1, covered / std::max<std::size_t>(a_limit, 1));
+      std::max<std::size_t>(1, (covered + limit - 1) / limit);
   std::vector<double> values;
   Sample sample;
   std::size_t seen = 0;
@@ -859,6 +860,11 @@ GroupRegions(const MaterialRaster &a_raster, const Regions &a_regions,
       a_raster.texels.size() != grid.Size()) {
     return std::unexpected("the regions do not match the raster");
   }
+  if (std::ranges::any_of(a_regions.ofTexel, [&](std::int32_t a_region) {
+        return a_region >= a_regions.count;
+      })) {
+    return std::unexpected("a texel names a region past the region count");
+  }
   if (CoveredCount(a_raster) < kMinCoveredTexels) {
     return std::unexpected(
         std::format("fewer than {} covered texels", kMinCoveredTexels));
@@ -935,6 +941,23 @@ std::vector<std::int16_t> LabelTexels(const MaterialRaster &a_raster,
 namespace BetterEnchantmentEffects {
 namespace {
 constexpr double kGuidedEpsilon = 1e-3;
+constexpr float kOddsFloor = 1.0f / 512.0f;
+
+[[nodiscard]] LabelledTexels
+LabelledOf(const MaterialRaster &a_raster,
+           const std::vector<std::int16_t> &a_labels) {
+  LabelledTexels out;
+  for (std::uint32_t y = 0; y < a_raster.side; y += kLabelledStride) {
+    for (std::uint32_t x = 0; x < a_raster.side; x += kLabelledStride) {
+      const std::size_t i = static_cast<std::size_t>(y) * a_raster.side + x;
+      if (i < a_labels.size() && i < a_raster.texels.size()) {
+        out.texels.push_back(a_raster.texels[i]);
+        out.labels.push_back(a_labels[i]);
+      }
+    }
+  }
+  return out;
+}
 constexpr double kTexelCentre = 0.5;
 
 [[nodiscard]] double EdgeSide(const Vec2 &a_a, const Vec2 &a_b, double a_x,
@@ -1222,8 +1245,11 @@ std::vector<GroupScoring> ScoringOf(const MaterialGroups &a_groups) {
     if (!whitening) {
       continue;
     }
-    GroupScoring scoring{
-        group.id, {}, *whitening, static_cast<float>(prepared->logScale)};
+    GroupScoring scoring{group.id,
+                         {},
+                         *whitening,
+                         static_cast<float>(prepared->logScale),
+                         static_cast<float>(std::log(group.gaussian.weight))};
     for (std::size_t a = 0; a < kTexelAxes; ++a) {
       scoring.mean[a] = static_cast<float>(prepared->mean[a]);
     }
@@ -1364,14 +1390,49 @@ GroupMaterial(const MaterialSample &a_sample,
   }
   MaterialGrouping out;
   out.settings = a_settings;
-  out.labels = LabelTexels(*raster, *groups);
-  out.analysis = AnalysisOf(*raster, out.labels);
   out.scoring = ScoringOf(*groups);
   out.smoothed = SmoothedProbabilities(*raster, *groups, a_settings.smoothing);
+  const std::vector<std::int16_t> labels = LabelWithOdds(
+      *raster, *groups, out.scoring, out.smoothed, OddsWeightOf(a_settings));
+  out.analysis = AnalysisOf(*raster, labels);
+  out.labelled = LabelledOf(*raster, labels);
   out.groups = std::move(*groups);
-  out.raster = std::move(*raster);
+  out.groups.ofTexel.clear();
   if (out.scoring.empty() || out.analysis.clusters.empty()) {
     return std::unexpected("the material has no groups");
+  }
+  return out;
+}
+
+float OddsWeightOf(const ClusterSettings &a_settings) noexcept {
+  return a_settings.smoothing > 0 ? 1.0f : 0.0f;
+}
+
+std::vector<std::int16_t>
+LabelWithOdds(const MaterialRaster &a_raster, const MaterialGroups &a_groups,
+              const std::vector<GroupScoring> &a_scoring,
+              const GroupProbabilities &a_odds, float a_oddsWeight) {
+  std::vector<std::int16_t> out(a_raster.texels.size(), kNoGroup);
+  const bool useOdds =
+      a_oddsWeight > 0.0f && a_odds.ofTexel.size() == out.size();
+  for (std::size_t i = 0; i < out.size() && i < a_raster.charts.size(); ++i) {
+    if (!IsCovered(a_raster, i)) {
+      continue;
+    }
+    float best = -std::numeric_limits<float>::infinity();
+    for (const GroupScoring &group : a_scoring) {
+      float score =
+          ScoreOf(group, a_groups.standardisation, a_raster.texels[i]);
+      const auto id = static_cast<std::size_t>(group.id);
+      if (useOdds && id < kMaxGroups) {
+        const float odds = std::max(a_odds.ofTexel[i][id] / 255.0f, kOddsFloor);
+        score += a_oddsWeight * (std::log(odds) - group.logShare);
+      }
+      if (score > best) {
+        best = score;
+        out[i] = group.id;
+      }
+    }
   }
   return out;
 }

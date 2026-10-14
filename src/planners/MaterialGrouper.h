@@ -33,25 +33,32 @@ struct GroupingJob {
 using GroupingResult =
     std::expected<std::shared_ptr<const MaterialGrouping>, std::string>;
 
+struct GroupingTicket {
+  GroupingJob job;
+};
+
 [[nodiscard]] std::uint64_t
 GroupingKeyOf(const MaterialSample &a_sample, std::uint64_t a_meshHash,
               const ClusterSettings &a_settings) noexcept;
+[[nodiscard]] GroupingResult GroupJob(const GroupingJob &a_job);
 
 class MaterialGrouper {
 public:
+  using Work = GroupingResult (*)(const GroupingJob &);
+
+  MaterialGrouper(Work a_work, std::size_t a_capacity, std::size_t a_cacheSize);
   [[nodiscard]] static MaterialGrouper &GetSingleton();
-  [[nodiscard]] std::optional<GroupingResult> Find(std::uint64_t a_key);
-  [[nodiscard]] bool IsPending(std::uint64_t a_key);
-  bool Request(GroupingJob a_job);
+  [[nodiscard]] std::optional<GroupingResult>
+  Poll(const GroupingTicket &a_ticket);
 
 private:
-  MaterialGrouper();
   void CollectLocked();
   void RememberLocked(std::uint64_t a_key, GroupingResult a_result);
-  [[nodiscard]] static GroupingResult Work(const GroupingJob &a_job);
+  [[nodiscard]] bool IsPendingLocked(std::uint64_t a_key) const;
 
   std::mutex lock_;
   JobQueue<GroupingJob, GroupingResult> queue_;
+  std::size_t cacheSize_;
   std::map<JobId, std::uint64_t> pending_;
   std::map<std::uint64_t, GroupingResult> done_;
   std::deque<std::uint64_t> order_;

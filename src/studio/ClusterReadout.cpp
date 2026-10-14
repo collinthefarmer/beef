@@ -50,12 +50,13 @@ LargestFirst(const MaterialAnalysis &a_analysis) {
 
 ClusterChart ChartOf(const MaterialGrouping &a_grouping) {
   const MaterialAnalysis &a_analysis = a_grouping.analysis;
-  const std::vector<MaterialTexel> &texels = a_grouping.raster.texels;
+  const std::vector<MaterialTexel> &texels = a_grouping.labelled.texels;
   ClusterChart chart;
   std::vector<std::vector<AxisValues>> members(a_analysis.clusters.size());
-  const std::size_t count = std::min(texels.size(), a_grouping.labels.size());
+  const std::size_t count =
+      std::min(texels.size(), a_grouping.labelled.labels.size());
   for (std::size_t t = 0; t < count; ++t) {
-    const std::int16_t id = a_grouping.labels[t];
+    const std::int16_t id = a_grouping.labelled.labels[t];
     if (id == kNoGroup) {
       continue;
     }

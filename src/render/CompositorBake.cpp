@@ -1,6 +1,6 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
+#include "planners/MaterialGrouper.h"
 #include "render/Compositor.h"
-#include "render/MaterialGrouper.h"
 
 #include "SettingsFile.h"
 #include "render/MeshCache.h"
@@ -50,14 +50,15 @@ Compositor::MaterialKeyOf(const MaterialInputs &a_material) {
 
 namespace {
 void Settle(Compositor::MaterialRecord &a_record) {
-  if (!a_record.key || a_record.grouping || !a_record.problem.empty()) {
+  if (!a_record.ticket) {
     return;
   }
   std::optional<GroupingResult> result =
-      MaterialGrouper::GetSingleton().Find(*a_record.key);
+      MaterialGrouper::GetSingleton().Poll(*a_record.ticket);
   if (!result) {
     return;
   }
+  a_record.ticket.reset();
   if (*result) {
     a_record.grouping = **result;
   } else {
@@ -71,7 +72,7 @@ Compositor::AnalyseMaterial(const MaterialInputs &a_material,
                             const std::shared_ptr<MeshEntry> &a_mesh) {
   auto &record = materials_.Get(MaterialKeyOf(a_material), nowMS_);
   Settle(record);
-  if (record.key || !record.problem.empty()) {
+  if (record.ticket || record.grouping || !record.problem.empty()) {
     return record;
   }
   if (!RealTexture(a_material.rmaos) || !RealTexture(a_material.diffuse)) {
@@ -100,12 +101,8 @@ Compositor::AnalyseMaterial(const MaterialInputs &a_material,
   }
   job.key = GroupingKeyOf(*sample, a_mesh ? a_mesh->hash : 0, job.settings);
   job.sample = std::move(*sample);
-  const std::uint64_t key = job.key;
-  if (!MaterialGrouper::GetSingleton().Request(std::move(job))) {
-    record.problem = "the grouping worker refused the material";
-    return record;
-  }
-  record.key = key;
+  record.ticket = GroupingTicket{std::move(job)};
+  Settle(record);
   if (GetSettings().verboseLogging) {
     logger::info("material '{}': sampled, grouping on the worker",
                  a_material.rmaos->name.c_str() ? a_material.rmaos->name.c_str()

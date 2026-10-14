@@ -1307,11 +1307,14 @@ TextureLab::CopyMapPixels(RE::NiSourceTexture *a_map, std::uint32_t a_maxSide) {
   return out;
 }
 
-bool TextureLab::RenderClusters(RenderTarget &a_target,
-                                const MaterialMaps &a_maps,
-                                const MaterialGrouping &a_grouping,
-                                std::optional<std::uint8_t> a_picked,
-                                bool a_palette) {
+bool TextureLab::RenderClusters(
+    RenderTarget &a_target, const MaterialMaps &a_maps,
+    const std::shared_ptr<const MaterialGrouping> &a_owner,
+    std::optional<std::uint8_t> a_picked, bool a_palette) {
+  if (!a_owner) {
+    return false;
+  }
+  const MaterialGrouping &a_grouping = *a_owner;
   auto *renderer = RE::BSGraphics::Renderer::GetSingleton();
   if (!available_ || !renderer || !borrowedContext_ || !a_target.rtv.Get() ||
       !gpu_->clusters.has_value()) {
@@ -1325,7 +1328,7 @@ bool TextureLab::RenderClusters(RenderTarget &a_target,
       scoring.size() > kMaxMaterialClusters) {
     return false;
   }
-  const std::optional<GroupOdds> odds = CreateGroupOdds(a_grouping.smoothed);
+  const std::optional<GroupOdds> odds = GroupOddsOf(a_owner);
   if (!odds) {
     return false;
   }
@@ -1349,12 +1352,14 @@ bool TextureLab::RenderClusters(RenderTarget &a_target,
       constants.whitening[at / 4][at % 4] = group.whitening[w];
     }
     constants.info[k][0] = static_cast<float>(group.id);
-    constants.info[k][1] = group.logScale;
+    constants.info[k][1] =
+        group.logScale -
+        (OddsWeightOf(a_grouping.settings) > 0.0f ? group.logShare : 0.0f);
   }
   constants.misc[0] = static_cast<float>(scoring.size());
   constants.misc[1] = a_picked ? static_cast<float>(*a_picked) + 1.0f : 0.0f;
   constants.misc[2] = a_palette ? 1.0f : 0.0f;
-  constants.misc[3] = a_grouping.settings.smoothing > 0 ? 1.0f : 0.0f;
+  constants.misc[3] = OddsWeightOf(a_grouping.settings);
   for (std::size_t k = 0; k < kClusterPalette.size(); ++k) {
     constants.palette[k][0] = kClusterPalette[k].x;
     constants.palette[k][1] = kClusterPalette[k].y;
@@ -1381,6 +1386,26 @@ bool TextureLab::RenderClusters(RenderTarget &a_target,
                                  pipeline.constants.Get()};
   DrawFullScreen(pass, a_target, {pipeline.shader.Get(), srvs, cbs});
   return true;
+}
+
+std::optional<TextureLab::GroupOdds> TextureLab::GroupOddsOf(
+    const std::shared_ptr<const MaterialGrouping> &a_grouping) {
+  std::erase_if(groupOdds_,
+                [](const auto &a_entry) { return a_entry.first.expired(); });
+  for (const auto &[owner, odds] : groupOdds_) {
+    if (owner.lock() == a_grouping) {
+      return odds;
+    }
+  }
+  std::optional<GroupOdds> odds = CreateGroupOdds(a_grouping->smoothed);
+  if (!odds) {
+    return std::nullopt;
+  }
+  if (groupOdds_.size() >= kGroupOddsCacheSize) {
+    groupOdds_.erase(groupOdds_.begin());
+  }
+  groupOdds_.emplace_back(a_grouping, *odds);
+  return odds;
 }
 
 std::optional<TextureLab::GroupOdds>

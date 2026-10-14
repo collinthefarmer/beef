@@ -78,7 +78,7 @@ The prototype (`proto.py`, `hybrid.py`) compares three methods on nine dumps: to
 
 | Stage | Where | What |
 |---|---|---|
-| P1 | `mesh/MaterialRegions` (engine-free) | SLIC inside the coverage mask, region descriptors, Gaussian mixture with BIC (k 2–8), group Gaussians from texels, misclassification merge. Native tests read the dumps under `tests/` and compare group counts and shares with the prototype. |
+| P1 | `mesh/MaterialRegions` (engine-free) | SLIC inside the coverage mask, region descriptors, Gaussian mixture with ICL (k 2–8; BIC was planned), group Gaussians from texels, misclassification merge. Native tests use synthetic rasters; the dumps cannot be fixtures, so a scratch harness compared the port with the prototype. |
 | P2 | `TextureLab` | The material sample grows from 64 px to 256 px and carries the coverage mask rasterised from the mesh UVs. The fit runs once per geometry on the CPU, off the render thread. |
 | P3 | Cluster shader | `PSClusters` scores each texel against the group Gaussians (mean and inverse covariance per group in a constant buffer, 8 groups × 8 axes) instead of the weighted nearest centre. |
 | P4 | CPU + shader | Built differently from this row: the guided filter runs on the CPU over the 256-texel group probabilities, and the shader adds their log to each texel's own density (one CRF-style pass). The shader scores the padded material maps, so no padding fill is needed. |
@@ -88,7 +88,7 @@ The prototype (`proto.py`, `hybrid.py`) compares three methods on nine dumps: to
 
 | # | Decision | Recommendation |
 |---|---|---|
-| D1 | Recipe fields of `materialClusters`. | Replace `clusters`, `weights`, `seed`, `iterations` and `guess` with `merge` (share of confused texels, default 0.25) and `smoothing` (texels, default 4). Keep `pick`, `areaBias` and `palette`. No migration: old fields become a validation error, and the debug recipe is rewritten. |
+| D1 | Recipe fields of `materialClusters`. | Replace `clusters`, `weights`, `seed`, `iterations` and `guess` with `merge` (share of confused texels, default 0.3) and `smoothing` (texels, default 8). Built with 0.3 and 8 after the tuning on 2026-10-13. Keep `pick`, `areaBias` and `palette`. No migration: old fields become a validation error, and the debug recipe is rewritten. |
 | D2 | Where the fit runs. | CPU at 256 px with the coverage mask; labelling on the GPU at full resolution. |
 | D3 | Group count control. | BIC picks k; the merge share is the only count control. A fixed `clusters` override is left out until a recipe needs it. |
 

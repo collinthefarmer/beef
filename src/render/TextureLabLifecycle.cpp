@@ -314,5 +314,6 @@ void TextureLab::Clear() {
   channelMeans_.clear();
   reductionLevels_.clear();
   sampleWarned_.clear();
+  groupOdds_.clear();
 }
 }

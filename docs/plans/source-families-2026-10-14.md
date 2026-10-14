@@ -1,4 +1,4 @@
-Status: proposed (2026-10-14) on branch `pure-tick`. The user agreed the families on 2026-10-14; decisions D1–D5 are open. Stage 0 is the prerequisite from the material clustering review.
+Status: active (2026-10-14) on branch `pure-tick`. The user decided D1–D5 on 2026-10-14: rename the keys, **material group** (and **part**), per-geometry item facts, the pick order and `minCover` 0.05 as recommended. Stage 0 is in progress.
 
 # Source families, item facts and the nested pick
 

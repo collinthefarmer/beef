@@ -328,7 +328,7 @@ public:
                                               std::uint32_t a_maxSide);
 
   bool RenderClusters(RenderTarget &a_target, const MaterialMaps &a_maps,
-                      const MaterialGrouping &a_grouping,
+                      const std::shared_ptr<const MaterialGrouping> &a_grouping,
                       std::optional<std::uint8_t> a_picked, bool a_palette);
   [[nodiscard]] bool ClustersAvailable() const noexcept;
   [[nodiscard]] bool BakingAvailable() const noexcept;
@@ -470,6 +470,11 @@ private:
       std::array<REX::W32::ComPtr<REX::W32::ID3D11ShaderResourceView>, 2>;
   [[nodiscard]] std::optional<GroupOdds>
   CreateGroupOdds(const GroupProbabilities &a_odds);
+  [[nodiscard]] std::optional<GroupOdds>
+  GroupOddsOf(const std::shared_ptr<const MaterialGrouping> &a_grouping);
+  inline static constexpr std::size_t kGroupOddsCacheSize = 16;
+  std::vector<std::pair<std::weak_ptr<const MaterialGrouping>, GroupOdds>>
+      groupOdds_;
   bool EnsureStaging(REX::W32::ComPtr<REX::W32::ID3D11Texture2D> &a_staging,
                      std::uint32_t a_side);
   [[nodiscard]] bool CopyMap(RenderTarget &a_target, RE::NiSourceTexture *a_map,

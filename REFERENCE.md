@@ -2942,7 +2942,7 @@ cancel by the user instead of the load.
 - Only XY is read, so BC5 maps (XY only) and three-channel maps give the same
   measure. A raw normal direction would split one material by slope; the
   variation does not.
-- The 64-px material sample and the cluster shader call the same
+- The 256-px material sample and the cluster shader call the same
   `NormalDetailAt` with the same levels (`NormalDetailScaleOf`), so a
   centroid's detail and a texel's detail are on one scale at any target size.
   The sample writes detail into the alpha of its diffuse copy
@@ -3068,13 +3068,32 @@ The method and its prototype comparison are in
   sends a `GroupingJob` to `MaterialGrouper`. The worker rasterises the
   charts (`ChartRasterOf`) and runs `GroupMaterial`. The readback input
   stays pending while the job runs, so the stack waits and does not fail.
-- `ChartRasterOf` gives a texel the chart of the first triangle that covers
+- `ChartRasterOf` gives a texel the chart of the last triangle that covers
   its centre, with the triangle's chart taken from its first vertex. A mesh
-  that is missing, or that covers no texel, counts the whole sample as one
-  chart.
-- `MaterialGrouper` keys a result by the sample's bytes, the mesh hash and
+  that is missing, or that covers fewer than 64 texels, counts the whole
+  sample as one chart. Charts past the largest 255 have no id
+  (`kNoIsland`), so their triangles are left out.
+- **Odds weight.** With smoothing on, a texel's score is the group's density
+  without its share, plus the log of the group's smoothed odds. The odds
+  already hold the share, so the share counts once. `GroupScoring::logShare`
+  carries the log share; the shader subtracts it from `logScale`. The CPU
+  labels (`LabelWithOdds`) use the same score, so the shares the studio and
+  `pick` read match the drawn mask.
+- **Kept size.** A cached grouping keeps the scoring, the standardisation,
+  the smoothed odds (8 bytes a texel) and every fourth texel in each axis
+  with its label (`LabelledTexels`, `kLabelledStride` 4) for the chart. It
+  drops the raster and the per-texel region groups: about 0.7 MB at 256 px.
+- **Tickets.** A consumer holds a `GroupingTicket` (the job) until `Poll`
+  returns a result. `Poll` submits the job when its key is neither cached
+  nor pending, so a job refused by a full queue runs on a later poll, and a
+  result evicted before its consumer polled is computed again. Only a worker
+  that cannot start is a failure. `MaterialGrouper` lives in `planners/` so
+  native tests reach it.
+- `MaterialGrouper` keys a result by the sample's values, the mesh hash and
   the settings, so actors that wear the same piece share one grouping. It
-  keeps the last 32 results and takes 8 jobs at a time.
+  keeps the last 32 results and takes 8 jobs at a time. The key mixes one
+  32-bit word at a time. Each cluster draw reuses the odds textures of its
+  grouping from a 16-entry cache (`GroupOddsOf`).
 - The studio's grouping (`Compositor::AnalyseMaterial`) is keyed by the
   material's maps only. Two geometries that share maps share the first
   geometry's charts in the studio chart.

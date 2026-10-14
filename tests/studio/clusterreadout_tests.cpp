@@ -24,17 +24,19 @@ MaterialTexel Texel(float a_roughness, float a_metallic) {
 }
 
 std::shared_ptr<const MaterialGrouping> ThreeToOne() {
-  MaterialGrouping grouping;
-  grouping.raster.side = 8;
+  MaterialRaster raster;
+  raster.side = 8;
+  std::vector<std::int16_t> labels;
   for (std::size_t i = 0; i < 64; ++i) {
     const bool rough = i % 4 == 0;
-    grouping.raster.texels.push_back(rough ? Texel(0.9f, 0.0f)
-                                           : Texel(0.1f, 1.0f));
-    grouping.raster.charts.push_back(0);
-    grouping.labels.push_back(rough ? kRough : kMetal);
+    raster.texels.push_back(rough ? Texel(0.9f, 0.0f) : Texel(0.1f, 1.0f));
+    raster.charts.push_back(0);
+    labels.push_back(rough ? kRough : kMetal);
   }
-  grouping.labels[1] = kNoGroup;
-  grouping.analysis = AnalysisOf(grouping.raster, grouping.labels);
+  labels[1] = kNoGroup;
+  MaterialGrouping grouping;
+  grouping.analysis = AnalysisOf(raster, labels);
+  grouping.labelled = LabelledTexels{raster.texels, labels};
   return std::make_shared<const MaterialGrouping>(std::move(grouping));
 }
 }

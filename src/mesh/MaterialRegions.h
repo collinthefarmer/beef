@@ -90,6 +90,14 @@ struct GroupScoring {
   std::array<float, kTexelAxes> mean{};
   std::array<float, kWhiteningFloats> whitening{};
   float logScale = 0.0f;
+  float logShare = 0.0f;
+};
+
+inline constexpr std::uint32_t kLabelledStride = 4;
+
+struct LabelledTexels {
+  std::vector<MaterialTexel> texels;
+  std::vector<std::int16_t> labels;
 };
 
 struct GroupProbabilities {
@@ -99,8 +107,7 @@ struct GroupProbabilities {
 
 struct MaterialGrouping {
   ClusterSettings settings;
-  MaterialRaster raster;
-  std::vector<std::int16_t> labels;
+  LabelledTexels labelled;
   MaterialGroups groups;
   std::vector<GroupScoring> scoring;
   GroupProbabilities smoothed;
@@ -123,6 +130,11 @@ ChartRasterOf(const MeshData &a_mesh, const MeshAnalysis &a_analysis,
               std::uint32_t a_side);
 [[nodiscard]] std::vector<GroupScoring>
 ScoringOf(const MaterialGroups &a_groups);
+[[nodiscard]] float OddsWeightOf(const ClusterSettings &a_settings) noexcept;
+[[nodiscard]] std::vector<std::int16_t>
+LabelWithOdds(const MaterialRaster &a_raster, const MaterialGroups &a_groups,
+              const std::vector<GroupScoring> &a_scoring,
+              const GroupProbabilities &a_odds, float a_oddsWeight);
 [[nodiscard]] float ScoreOf(const GroupScoring &a_group,
                             const Standardisation &a_standardisation,
                             const MaterialTexel &a_texel) noexcept;

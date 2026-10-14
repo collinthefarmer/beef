@@ -4,7 +4,7 @@
 #include "diagnostics/Metrics.h"
 #include "diagnostics/Trace.h"
 
-#include "render/MaterialGrouper.h"
+#include "planners/MaterialGrouper.h"
 #include "render/MeshReader.h"
 #include "render/SourceSampling.h"
 #include <algorithm>
@@ -526,9 +526,8 @@ StepResult ExecuteDrawClustersStep(const DrawClustersStep &step,
   const auto target =
       AcquireStepTarget(execution, step.requirements,
                         TextureLab::MipsFor(step.requirements.mipPolicy));
-  if (!target ||
-      !execution.lab.RenderClusters(*target, MapsOf(*material), **grouping,
-                                    picked, step.palette))
+  if (!target || !execution.lab.RenderClusters(*target, MapsOf(*material),
+                                               *grouping, picked, step.palette))
     return std::unexpected("cluster draw failed");
   auto view = View(target);
   view.sampling.nearest = true;
@@ -1390,10 +1389,9 @@ void RenderInstance::CollectReadback(RenderInputId input) {
 }
 void RenderInstance::CollectGrouping(RenderInputId input,
                                      RenderScratch &scratch) {
-  auto *lab = TextureLab::GetSingleton();
-  MaterialGrouper &grouper = MaterialGrouper::GetSingleton();
   GroupingRequest &request = scratch.grouping;
-  if (!request.key) {
+  if (!request.ticket) {
+    auto *lab = TextureLab::GetSingleton();
     if (!lab)
       return;
     auto collected = lab->CollectMaterialSample(scratch.material);
@@ -1404,22 +1402,17 @@ void RenderInstance::CollectGrouping(RenderInputId input,
       execution_.UnsetInput(input);
       return;
     }
-    GroupingJob job{
-        GroupingKeyOf(**collected, request.meshHash, request.settings),
-        std::move(**collected), request.mesh, request.analysis,
-        request.settings};
-    request.key = job.key;
-    if (!grouper.Request(std::move(job))) {
-      logger::warn("material grouping: the grouping worker refused the job");
-      request.key.reset();
-      execution_.UnsetInput(input);
-      return;
-    }
+    const std::uint64_t key =
+        GroupingKeyOf(**collected, request.meshHash, request.settings);
+    request.ticket =
+        GroupingTicket{GroupingJob{key, std::move(**collected), request.mesh,
+                                   request.analysis, request.settings}};
   }
-  std::optional<GroupingResult> result = grouper.Find(*request.key);
+  std::optional<GroupingResult> result =
+      MaterialGrouper::GetSingleton().Poll(*request.ticket);
   if (!result)
     return;
-  request.key.reset();
+  request.ticket.reset();
   if (!*result) {
     logger::warn("material grouping: {}", result->error());
     execution_.UnsetInput(input);
@@ -1441,7 +1434,7 @@ bool RenderInstance::AwaitingFirstReadback() const {
       continue;
     const auto &scratch = execution_.Steps()[binding->submission].scratch;
     if (!PendingNewestFirst(scratch.reduction.ring).empty() ||
-        scratch.material.pending || scratch.grouping.key)
+        scratch.material.pending || scratch.grouping.ticket)
       return true;
   }
   return false;
