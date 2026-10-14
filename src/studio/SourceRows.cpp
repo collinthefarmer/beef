@@ -47,8 +47,8 @@ MaterialRowOf(const MaterialSource &a_material) {
       std::string{MaterialChannelName(a_material.channel)}};
 }
 
-[[nodiscard]] BakeSourceRow BakeRowOf(const BakeSource &a_bake) {
-  BakeSourceRow bake;
+[[nodiscard]] MeshSourceRow BakeRowOf(const MeshSource &a_bake) {
+  MeshSourceRow bake;
   bake.bake = std::string{BakeKindName(a_bake.bake)};
   if (const PartitionBake *partition = Get<PartitionBake>(a_bake.bake)) {
     bake.partition = PartitionText(partition->bipedSlot);
@@ -80,10 +80,10 @@ DistanceRowOf(const DistanceSource &a_distance) {
   return ripple;
 }
 
-[[nodiscard]] MaterialClustersSourceRow
-ClustersRowOf(const MaterialClustersSource &a_clusters) {
+[[nodiscard]] MaterialGroupsSourceRow
+ClustersRowOf(const MaterialGroupsSource &a_clusters) {
   const ClusterSettings &s = a_clusters.settings;
-  MaterialClustersSourceRow clusters;
+  MaterialGroupsSourceRow clusters;
   clusters.merge = ParamText(s.merge);
   clusters.smoothing = std::to_string(s.smoothing);
   clusters.pick = a_clusters.pick ? ParamText(*a_clusters.pick) : "";
@@ -107,7 +107,7 @@ SourceRow SourceRowOf(const Source &a_source, std::size_t a_references) {
       [](const MaterialSource &a_material) -> SourceRowKind {
         return MaterialRowOf(a_material);
       },
-      [](const BakeSource &a_bake) -> SourceRowKind {
+      [](const MeshSource &a_bake) -> SourceRowKind {
         return BakeRowOf(a_bake);
       },
       [](const DistanceSource &a_distance) -> SourceRowKind {
@@ -116,7 +116,7 @@ SourceRow SourceRowOf(const Source &a_source, std::size_t a_references) {
       [](const RippleSource &a_ripple) -> SourceRowKind {
         return RippleRowOf(a_ripple);
       },
-      [](const MaterialClustersSource &a_clusters) -> SourceRowKind {
+      [](const MaterialGroupsSource &a_clusters) -> SourceRowKind {
         return ClustersRowOf(a_clusters);
       });
   return row;
@@ -182,7 +182,7 @@ MaterialKindOf(const MaterialSourceRow &a_row) {
                  : std::nullopt;
 }
 
-[[nodiscard]] std::optional<SourceKind> BakeKindOf(const BakeSourceRow &a_row) {
+[[nodiscard]] std::optional<SourceKind> BakeKindOf(const MeshSourceRow &a_row) {
   auto bake = DefaultBakeKind(a_row.bake);
   if (!bake) {
     return std::nullopt;
@@ -200,7 +200,7 @@ MaterialKindOf(const MaterialSourceRow &a_row) {
   if (GeometryBake *geometry = Get<GeometryBake>(*bake)) {
     geometry->geometry = a_row.geometry;
   }
-  return SourceKind{BakeSource{*bake}};
+  return SourceKind{MeshSource{*bake}};
 }
 
 [[nodiscard]] std::optional<SourceKind>
@@ -232,8 +232,8 @@ RippleKindOf(const RippleSourceRow &a_row) {
 }
 
 [[nodiscard]] std::optional<SourceKind>
-ClustersKindOf(const MaterialClustersSourceRow &a_row) {
-  MaterialClustersSource clusters;
+ClustersKindOf(const MaterialGroupsSourceRow &a_row) {
+  MaterialGroupsSource clusters;
   const auto merge = ParseParam(a_row.merge);
   const auto *mergeValue = merge ? Get<float>(*merge) : nullptr;
   const auto smoothing = WholeNumber(a_row.smoothing, kMaxClusterSmoothing);
@@ -268,10 +268,10 @@ std::optional<SourceKind> SourceKindOf(const SourceRow &a_row) {
       a_row.kind,
       [](const ImageSourceRow &a_row) { return ImageKindOf(a_row); },
       [](const MaterialSourceRow &a_row) { return MaterialKindOf(a_row); },
-      [](const BakeSourceRow &a_row) { return BakeKindOf(a_row); },
+      [](const MeshSourceRow &a_row) { return BakeKindOf(a_row); },
       [](const DistanceSourceRow &a_row) { return DistanceKindOf(a_row); },
       [](const RippleSourceRow &a_row) { return RippleKindOf(a_row); },
-      [](const MaterialClustersSourceRow &a_row) {
+      [](const MaterialGroupsSourceRow &a_row) {
         return ClustersKindOf(a_row);
       });
 }

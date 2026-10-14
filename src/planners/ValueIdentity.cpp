@@ -51,12 +51,11 @@ void EncodeBakeOperation(Encoding &out, const BakeOperation &operation) {
           out.Add(bone);
       },
       [](const PositionBake &) {}, [](const LocalPositionBake &) {},
-      [](const NormalBake &) {}, [](const UvBake &) {},
-      [](const ComponentIdBake &) {}, [](const ChartIdBake &) {},
-      [](const GeometryBake &) {});
+      [](const NormalBake &) {}, [](const UvBake &) {}, [](const PartBake &) {},
+      [](const ChartBake &) {}, [](const GeometryBake &) {});
 }
-void EncodeMaterialClustersOperation(
-    Encoding &out, const MaterialClustersOperation &operation) {
+void EncodeMaterialGroupsOperation(Encoding &out,
+                                   const MaterialGroupsOperation &operation) {
   const ClusterSettings &s = operation.settings;
   out.Number(operation.pick.has_value());
   out.Number(operation.palette);
@@ -103,8 +102,8 @@ void EncodeSettings(Encoding &out, const NodeKind &kind) {
       [&](const MaterialOperation &k) { out.Number(k.channel); },
       [&](const BakeOperation &k) { EncodeBakeOperation(out, k); },
       [&](const RippleOperation &k) { out.Number(k.shape); },
-      [&](const MaterialClustersOperation &k) {
-        EncodeMaterialClustersOperation(out, k);
+      [&](const MaterialGroupsOperation &k) {
+        EncodeMaterialGroupsOperation(out, k);
       },
       [](const VectorOperation &) {}, [](const RampOperation &) {},
       [](const ToRootOperation &) {}, [](const HoldOperation &) {},

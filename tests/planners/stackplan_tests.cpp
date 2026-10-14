@@ -69,7 +69,7 @@ int main() {
           "an animated output is not shareable across actors");
 
     Recipe withBake = StaticRecipe();
-    withBake.sources.push_back(Source{"pos", BakeSource{PositionBake{}}});
+    withBake.sources.push_back(Source{"pos", MeshSource{PositionBake{}}});
     Check(!ShareableAcrossActors(withBake, withBake.outputs.front()),
           "a recipe holding a bake source is not shareable (per-actor mesh)");
 
@@ -97,7 +97,7 @@ int main() {
     Check(!ShareableAcrossActors(invalid, invalid.masks.front()),
           "an invalid static mask cannot share a rendered result");
     Recipe maskWithBake = masks;
-    maskWithBake.sources.push_back(Source{"pos", BakeSource{PositionBake{}}});
+    maskWithBake.sources.push_back(Source{"pos", MeshSource{PositionBake{}}});
     Check(!ShareableAcrossActors(maskWithBake, maskWithBake.masks.front()),
           "a static mask is not shareable when the recipe holds a bake");
   }

@@ -353,9 +353,8 @@ struct PlanBuilder {
         [&](const DistanceOperation &operation) -> RenderValueRef {
           return LowerDistanceOperation(operation, site, request, depth);
         },
-        [&](const MaterialClustersOperation &operation) -> RenderValueRef {
-          return LowerMaterialClustersOperation(operation, site, request,
-                                                depth);
+        [&](const MaterialGroupsOperation &operation) -> RenderValueRef {
+          return LowerMaterialGroupsOperation(operation, site, request, depth);
         },
         [&](const RippleOperation &operation) -> RenderValueRef {
           return LowerRippleOperation(operation, site, request, depth);
@@ -536,8 +535,8 @@ struct PlanBuilder {
                              operation.bake},
         label + " buffers");
     return Step(BakeMeshStep{buffers, request.requirements,
-                             Is<ComponentIdBake>(operation.bake) ||
-                                 Is<ChartIdBake>(operation.bake)},
+                             Is<PartBake>(operation.bake) ||
+                                 Is<ChartBake>(operation.bake)},
                 label);
   }
   std::string GeometryNameOf(const LoweringRequest &request) const {
@@ -554,8 +553,8 @@ struct PlanBuilder {
         label + " buffers");
     return Step(BakeMeshStep{buffers, request.requirements}, label);
   }
-  RenderValueRef LowerMaterialClustersOperation(
-      const MaterialClustersOperation &operation, const LoweringSite &site,
+  RenderValueRef LowerMaterialGroupsOperation(
+      const MaterialGroupsOperation &operation, const LoweringSite &site,
       const LoweringRequest &request, std::size_t depth) {
     const std::string &label = site.node.displayName;
     const RenderValueRef material =

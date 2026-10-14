@@ -106,22 +106,22 @@ int main() {
     const Recipe picked = StableRoundTrip(
         R"({"format":1,"keys":["default"],)"
         R"("signals":{"which":{"enchantment":"idHash"}},)"
-        R"("sources":{"zone":{"materialClusters":{"pick":"@which",)"
-        R"("areaBias":0.5}}}})",
+        R"("sources":{"zone":{"material":{"groups":{"pick":"@which",)"
+        R"("areaBias":0.5}}}}})",
         "picked", "a cluster pick driven by the enchantment hash");
     const auto *clusters =
         picked.sources.empty()
             ? nullptr
-            : Get<MaterialClustersSource>(picked.sources.front().kind);
+            : Get<MaterialGroupsSource>(picked.sources.front().kind);
     Check(clusters && clusters->pick == Param{Ref{"which"}} &&
               clusters->areaBias == Param{0.5f},
           "the pick and area bias survive a round trip");
     ExpectError(R"({"format":1,"keys":["default"],"sources":{"zone":)"
-                R"({"materialClusters":{"pick":0.5,"areaBias":9}}}})",
+                R"({"material":{"groups":{"pick":0.5,"areaBias":9}}}}})",
                 "an area bias above eight", "areaBias");
     const LoadResult unpicked =
         ParseRecipe(R"({"format":1,"keys":["default"],"sources":{"zone":)"
-                    R"({"materialClusters":{"areaBias":0.5}}}})",
+                    R"({"material":{"groups":{"areaBias":0.5}}}}})",
                     "unpicked");
     Check(unpicked.recipe.has_value() && !unpicked.HasErrors() &&
               std::ranges::any_of(
@@ -133,7 +133,7 @@ int main() {
           "an area bias without a pick loads with a warning");
     const LoadResult plain =
         ParseRecipe(R"({"format":1,"keys":["default"],"sources":{"zone":)"
-                    R"({"materialClusters":{}}}})",
+                    R"({"material":{"groups":{}}}}})",
                     "plain");
     Check(plain.recipe.has_value() &&
               std::ranges::none_of(plain.diagnostics,
@@ -372,30 +372,30 @@ int main() {
   "sources": {
     "img":      { "image": { "path": "Effects\\X.dds", "channel": "luma", "space": "mesh", "mirror": [true, false], "transpose": true, "mip": 1.0 } },
     "mat":      { "material": "roughness" },
-    "bakePos":  { "bake": "position" },
-    "bakePart": { "bake": { "partition": "body" } },
-    "bakeBone": { "bake": { "boneWeight": ["NPC Spine", "NPC Spine1"] } },
-    "bakeGeom": { "bake": { "geometry": "BonemoldCuirass_1" } },
-    "uvSrc":    { "bake": "uv" },
+    "bakePos":  { "mesh": "position" },
+    "bakePart": { "mesh": { "partition": "body" } },
+    "bakeBone": { "mesh": { "boneWeight": ["NPC Spine", "NPC Spine1"] } },
+    "bakeGeom": { "mesh": { "geometry": "BonemoldCuirass_1" } },
+    "uvSrc":    { "mesh": "uv" },
     "distNode": { "distance": "NPC Root [Root]" },
     "ripSrc":   { "ripple": { "trigger": "@trig", "speed": 90.0, "width": 8.0, "decay": 1.2, "shape": "disc" } },
-    "clusters": { "materialClusters": { "merge": 0.45, "smoothing": 3 } },
-    "debugClusters": { "materialClusters": { "palette": true } }
+    "clusters": { "material": { "groups": { "merge": 0.45, "smoothing": 3 } } },
+    "debugClusters": { "material": { "groups": { "palette": true } } }
   }
 })";
     const Recipe r =
         StableRoundTrip(everyKind, "every-kind", "every-kind recipe");
     const Source *debugClusters = r.FindSource("debugClusters");
-    const auto *debugKind =
-        debugClusters ? Get<MaterialClustersSource>(debugClusters->kind)
-                      : nullptr;
+    const auto *debugKind = debugClusters
+                                ? Get<MaterialGroupsSource>(debugClusters->kind)
+                                : nullptr;
     Check(debugKind && debugKind->palette &&
               SourceType(*debugClusters) == ValueType::kVec3,
           "a palette cluster source round-trips as a colour");
-    MaterialClustersSource picked;
+    MaterialGroupsSource picked;
     picked.pick = Param{0.5f};
-    Check(SourceHoldsIds(SourceKind{MaterialClustersSource{}}) &&
-              SourceHoldsIds(SourceKind{BakeSource{ChartIdBake{}}}) &&
+    Check(SourceHoldsIds(SourceKind{MaterialGroupsSource{}}) &&
+              SourceHoldsIds(SourceKind{MeshSource{ChartBake{}}}) &&
               !SourceHoldsIds(SourceKind{picked}) &&
               !SourceHoldsIds(debugClusters->kind) &&
               !SourceHoldsIds(SourceKind{MaterialSource{}}),
@@ -403,7 +403,7 @@ int main() {
           "material sources do not");
     const Source *legacy = r.FindSource("clusters");
     const auto *legacyKind =
-        legacy ? Get<MaterialClustersSource>(legacy->kind) : nullptr;
+        legacy ? Get<MaterialGroupsSource>(legacy->kind) : nullptr;
     Check(legacyKind && legacyKind->settings.merge == 0.45f &&
               legacyKind->settings.smoothing == 3 &&
               SourceType(*legacy) == ValueType::kScalar,
@@ -441,21 +441,33 @@ int main() {
               itemFieldOf("countSig") == ItemField::kGeometryCount,
           "every item signal field round-trips");
     const Source *geometry = r.FindSource("bakeGeom");
-    const BakeSource *geometryBake =
-        geometry ? Get<BakeSource>(geometry->kind) : nullptr;
+    const MeshSource *geometryBake =
+        geometry ? Get<MeshSource>(geometry->kind) : nullptr;
     const GeometryBake *named =
         geometryBake ? Get<GeometryBake>(geometryBake->bake) : nullptr;
     Check(named && named->geometry == "BonemoldCuirass_1",
           "a geometry bake round-trips with its geometry name");
     ExpectError(R"({"format":1,"keys":["default"],"sources":{"g":)"
-                R"({"bake":{"geometry":""}}}})",
+                R"({"mesh":{"geometry":""}}}})",
                 "a geometry bake with an empty name", "'geometry'");
     ExpectError(R"({"format":1,"keys":["default"],"sources":{"g":)"
-                R"({"bake":"geometry"}}})",
+                R"({"mesh":"geometry"}}})",
                 "a geometry bake without a name", "geometry");
     const LoadResult oldWord = ParseRecipe(
-        R"({"format": 1, "sources": {"item": {"bake": "itemHash"}}})", "old");
-    Check(oldWord.HasErrors(), "the bake word itemHash is no longer read");
+        R"({"format": 1, "sources": {"item": {"mesh": "itemHash"}}})", "old");
+    Check(oldWord.HasErrors(), "the mesh word itemHash is no longer read");
+    for (const auto &[retired, replacement] :
+         {std::pair{R"({"bake": "uv"})", "'mesh'"},
+          std::pair{R"({"materialClusters": {}})", "\"groups\""},
+          std::pair{R"({"mesh": "componentId"})", "part"}}) {
+      ExpectError(std::format(R"({{"format":1,"keys":["default"],)"
+                              R"("sources":{{"s":{}}}}})",
+                              retired),
+                  retired, replacement);
+    }
+    ExpectError(R"({"format":1,"keys":["default"],"sources":{"s":)"
+                R"({"material":{"roughness":1}}}})",
+                "a material object other than groups", "groups");
   }
 
   {

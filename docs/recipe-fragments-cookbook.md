@@ -86,7 +86,7 @@ Sample the actual material source to choose rfTint; these bronze-like numbers ar
 
 <a id="fragment-2"></a>
 
-## 2. One material cluster
+## 2. One material group
 
 Select one group produced by the material analysis rather than hand-authoring several channel thresholds.
 
@@ -101,13 +101,8 @@ Select one group produced by the material analysis rather than hand-authoring se
   },
   "sources": {
     "rfClusters": {
-      "materialClusters": {
-        "clusters": 4,
-        "weights": {
-          "color": 1
-        },
-        "seed": 1,
-        "iterations": 32
+      "material": {
+        "groups": {}
       }
     }
   },
@@ -117,7 +112,7 @@ Select one group produced by the material analysis rather than hand-authoring se
 }
 ```
 
-IDs are integers from 0 through the actual cluster count minus one. Inspect the map first: ID 0 is not a named material, and IDs are local to each geometry. Changing weights, seed or input textures can reassign IDs. RGB color weighting requires the material-editing build; older builds lack weights.color. Analysis/rendering is more expensive than a simple material threshold, particularly while tuning. Keep the integer decode inside this expression.
+IDs are integers from 0 through the actual group count minus one. Inspect the map first: ID 0 is not a named material, and IDs are local to each geometry. Changing `merge`, `smoothing` or the input textures can reassign IDs. Analysis/rendering is more expensive than a simple material threshold, particularly while tuning. Keep the integer decode inside this expression.
 
 <a id="fragment-3"></a>
 
@@ -131,7 +126,7 @@ Bias snow, dust, frost or intermittent glints toward surfaces whose bind-pose no
 {
   "sources": {
     "rfNormal": {
-      "bake": "normal"
+      "mesh": "normal"
     }
   },
   "masks": {
@@ -190,7 +185,7 @@ Create a repeating band in the shared root-position frame so separate pieces can
   },
   "sources": {
     "rfRootPosition": {
-      "bake": "position"
+      "mesh": "position"
     }
   },
   "masks": {
@@ -218,7 +213,7 @@ Restrict another effect to one UV island before choosing its orientation or dens
   },
   "sources": {
     "rfCharts": {
-      "bake": "chartId"
+      "mesh": "chart"
     }
   },
   "masks": {
@@ -227,7 +222,7 @@ Restrict another effect to one UV island before choosing its orientation or dens
 }
 ```
 
-Use the mesh analysis to pick an ID. IDs are geometry-local and mesh-dependent, not persistent plate names; isolate the intended geometry with an output selector when necessary. Swap chartId for componentId to select connected mesh components. This mask selects a region but does not unwrap, reorient or rescale its UVs.
+Use the mesh analysis to pick an ID. IDs are geometry-local and mesh-dependent, not persistent plate names; isolate the intended geometry with an output selector when necessary. Swap chart for part to select connected mesh parts. This mask selects a region but does not unwrap, reorient or rescale its UVs.
 
 <a id="fragment-7"></a>
 
@@ -578,7 +573,7 @@ Flash the bind-pose surfaces facing the last reported attacker position.
   },
   "sources": {
     "rfAttackNormal": {
-      "bake": "normal"
+      "mesh": "normal"
     }
   },
   "masks": {

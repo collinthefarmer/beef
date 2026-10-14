@@ -158,7 +158,7 @@ struct SourceFields {
     if (s.tile)
       Vector(report, *s.tile, "tile");
   }
-  void operator()(const BakeSource &s) const {
+  void operator()(const MeshSource &s) const {
     if (const auto *bones = Get<BoneWeightBake>(s.bake)) {
       CheckBoneNames(report, bones->bones);
     }
@@ -178,7 +178,7 @@ struct SourceFields {
     Scalar(report, s.decay, "decay");
     Vector(report, s.direction, "direction");
   }
-  void operator()(const MaterialClustersSource &s) const {
+  void operator()(const MaterialGroupsSource &s) const {
     if (s.pick) {
       Scalar(report, *s.pick, "pick");
       if (const float *pick = Get<float>(*s.pick);
@@ -195,7 +195,7 @@ struct SourceFields {
       report.Error("'palette' colours every cluster and 'pick' selects one; "
                    "use one of them");
     }
-    if (!s.pick && s.areaBias != Param{MaterialClustersSource{}.areaBias}) {
+    if (!s.pick && s.areaBias != Param{MaterialGroupsSource{}.areaBias}) {
       report.Warn("'areaBias' has no effect without 'pick'");
     }
     Number(report, s.settings.merge, "merge");

@@ -195,13 +195,13 @@ void VisitSourceParams(SourceKind &a_kind, Visitor &a_visit) {
         VisitParam(s.width, std::nullopt, a_visit, "width");
         VisitParam(s.decay, std::nullopt, a_visit, "decay");
       },
-      [&](MaterialClustersSource &s) {
+      [&](MaterialGroupsSource &s) {
         if (s.pick) {
           VisitParam(*s.pick, std::nullopt, a_visit, "pick");
         }
         VisitParam(s.areaBias, std::nullopt, a_visit, "areaBias");
       },
-      [](MaterialSource &) {}, [](BakeSource &) {}, [](DistanceSource &) {});
+      [](MaterialSource &) {}, [](MeshSource &) {}, [](DistanceSource &) {});
 }
 
 template <class Visitor>

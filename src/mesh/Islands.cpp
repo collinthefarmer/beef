@@ -24,7 +24,7 @@ std::string_view PlainIslandSourceName(IslandSource a_source) noexcept {
 
 SourceKind IslandBakeOf(IslandSource a_source) noexcept {
   const IslandSourceSpec *row = RowOf(kIslandSources, a_source);
-  return SourceKind{BakeSource{row ? row->bake : BakeKind{ComponentIdBake{}}}};
+  return SourceKind{MeshSource{row ? row->bake : BakeKind{PartBake{}}}};
 }
 
 namespace {

@@ -73,7 +73,7 @@ void EverySourceKindIsAccepted() {
     "presets": [
       { "name": "wide", "expression": "@u + @d + @i",
         "sources": {
-          "u": { "bake": "uv" },
+          "u": { "mesh": "uv" },
           "d": { "distance": "NPC Root [Root]" },
           "i": { "image": { "path": "Effects\\X.dds" } } } }
     ]

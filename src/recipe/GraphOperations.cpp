@@ -74,7 +74,7 @@ std::vector<OutputRef> InputsOf(const NodeKind &kind) {
         inputs = {k.firings, k.geometry, k.coordinates, k.time,
                   k.speed,   k.width,    k.decay,       k.direction};
       },
-      [&](const MaterialClustersOperation &k) {
+      [&](const MaterialGroupsOperation &k) {
         inputs = {k.material, k.geometry, k.coordinates};
         if (k.pick) {
           inputs.push_back(*k.pick);

@@ -105,8 +105,8 @@ void SourceKindsRoundTrip() {
   std::vector<Diagnostic> diagnostics;
   const Reporter ctx{diagnostics, "source s"};
   for (const std::string_view text :
-       {R"({"material": "roughness"})", R"({"bake": "uv"})",
-        R"({"bake": {"partition": "body"}})", R"({"distance": "NPC Root"})"}) {
+       {R"({"material": "roughness"})", R"({"mesh": "uv"})",
+        R"({"mesh": {"partition": "body"}})", R"({"distance": "NPC Root"})"}) {
     const json object = json::parse(text);
     Reader r(object, ctx);
     const auto kind = ParseSourceKind(r);

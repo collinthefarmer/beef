@@ -217,7 +217,7 @@ int main() {
          "AddCurve then RemoveCurve");
   Undoes(base, AddMask{"probeMask"}, RemoveMask{"probeMask"},
          "AddMask then RemoveMask");
-  Undoes(base, AddSource{"probeSource", MaterialClustersSource{}},
+  Undoes(base, AddSource{"probeSource", MaterialGroupsSource{}},
          RemoveSource{"probeSource"}, "AddSource clusters then RemoveSource");
 
   Undoes(base, RenameSignal{"glowHue", "glowTint"},
@@ -267,7 +267,7 @@ int main() {
     Refused(base, RemoveKey{base.keys.front()}, "RemoveKey the only key");
   }
 
-  MaterialClustersSource bad;
+  MaterialGroupsSource bad;
   bad.settings.merge = 1.5f;
   Refused(base, AddSource{"badClusters", bad},
           "AddSource with a merge share past one (loader parity)");
@@ -381,10 +381,10 @@ int main() {
     ripple.decay = Ref{"drive"};
     recipe.sources.push_back(Source{"wave", ripple});
     recipe.sources.push_back(Source{"rough", MaterialSource{}});
-    recipe.sources.push_back(Source{"pos", BakeSource{}});
-    recipe.sources.push_back(Source{"u", BakeSource{UvBake{}}});
+    recipe.sources.push_back(Source{"pos", MeshSource{}});
+    recipe.sources.push_back(Source{"u", MeshSource{UvBake{}}});
     recipe.sources.push_back(Source{"far", DistanceSource{}});
-    recipe.sources.push_back(Source{"bands", MaterialClustersSource{}});
+    recipe.sources.push_back(Source{"bands", MaterialGroupsSource{}});
     Check(!Apply(recipe, RenameSignal{"drive", "energy"}),
           "renaming a signal read by every referencing source kind");
     const auto *renamedImage = Get<ImageSource>(recipe.sources[0].kind);
@@ -400,10 +400,10 @@ int main() {
           "ripple trigger, speed, width and decay follow the rename");
     Check(recipe.sources.size() == 7 &&
               Is<MaterialSource>(recipe.sources[2].kind) &&
-              Is<BakeSource>(recipe.sources[3].kind) &&
-              Is<BakeSource>(recipe.sources[4].kind) &&
+              Is<MeshSource>(recipe.sources[3].kind) &&
+              Is<MeshSource>(recipe.sources[4].kind) &&
               Is<DistanceSource>(recipe.sources[5].kind) &&
-              Is<MaterialClustersSource>(recipe.sources[6].kind),
+              Is<MaterialGroupsSource>(recipe.sources[6].kind),
           "sources without parameters are visited and left unchanged");
   }
 

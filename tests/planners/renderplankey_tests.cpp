@@ -122,7 +122,7 @@ void ItemHashSeparatesKeysOnlyWhenRead() {
 
 Recipe GeometryRecipe() {
   Recipe recipe;
-  recipe.sources = {{"cuirass", BakeSource{GeometryBake{"Cuirass*"}}}};
+  recipe.sources = {{"cuirass", MeshSource{GeometryBake{"Cuirass*"}}}};
   recipe.masks = {{"onCuirass", "@cuirass"}};
   return recipe;
 }

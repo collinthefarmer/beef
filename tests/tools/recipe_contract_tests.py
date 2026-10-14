@@ -69,13 +69,13 @@ class RecipeContractTests(unittest.TestCase):
                   for value in (-0.1, 0, 8, 8.1)]
         for settings, valid in cases:
             with self.subTest(settings=settings):
-                self.check_case(recipe(sources={'clusters': {'materialClusters': settings}}), valid, valid)
+                self.check_case(recipe(sources={'clusters': {'material': {'groups': settings}}}), valid, valid)
 
     def test_partition_boundaries_before_narrowing(self):
         for value in (29, 30, 61, 62, 4294967326, -4294967266):
             with self.subTest(value=value):
                 valid = 30 <= value <= 61
-                self.check_case(recipe(sources={'part': {'bake': {'partition': value}}}), valid, valid)
+                self.check_case(recipe(sources={'part': {'mesh': {'partition': value}}}), valid, valid)
 
     def test_floating_point_range(self):
         for value in (-3.4028234663852886e38, 3.4028234663852886e38, -1e39, 1e39):
@@ -189,17 +189,17 @@ class RecipeContractTests(unittest.TestCase):
             with self.subTest(depth=depth):
                 self.check_case(recipe(meta=nested), True, depth == 32)
 
-    def test_geometry_bake_names_a_geometry(self):
+    def test_geometry_mesh_fact_names_a_geometry(self):
         for bake, valid in (({'geometry': 'BonemoldCuirass_1'}, True), ({'geometry': '*Cuirass*'}, True),
                             ({'geometry': ''}, False), ({'geometry': 3}, False),
                             ('geometry', False), ({'geometry': 'a', 'partition': 32}, False)):
             with self.subTest(bake=bake):
-                self.check_case(recipe(sources={'cuirass': {'bake': bake}}), valid, valid)
+                self.check_case(recipe(sources={'cuirass': {'mesh': bake}}), valid, valid)
 
     def test_bone_names_are_nonempty(self):
         for bones, valid in (([], False), ([''], False), (['NPC Spine [Spn0]'], True)):
             with self.subTest(bones=bones):
-                self.check_case(recipe(sources={'weights': {'bake': {'boneWeight': bones}}}), valid, valid)
+                self.check_case(recipe(sources={'weights': {'mesh': {'boneWeight': bones}}}), valid, valid)
                 self.check_case(recipe(outputs=[{'target': 'light', 'bones': {'named': bones},
                                                  'color': [1, 1, 1], 'intensity': 1}]), valid, valid)
 

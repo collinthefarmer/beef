@@ -555,6 +555,11 @@ ImageTexture ReadImageTexture(Reader &a_reader) {
 template <>
 std::optional<MaterialSource>
 ParseSourceAlternative<MaterialSource>(const json &a_v, const Reporter &a_ctx) {
+  if (a_v.is_object()) {
+    a_ctx.Error(std::format("'material' is one of {}, or {{\"groups\": {{…}}}}",
+                            Choices(kMaterialChannels)));
+    return std::nullopt;
+  }
   const auto channel = EnumShorthand(a_v, kMaterialChannels, "material", a_ctx);
   if (!channel) {
     return std::nullopt;
@@ -606,13 +611,13 @@ bool IsParameterisedBake(const BakeKind &a_kind) {
 }
 
 template <>
-std::optional<BakeSource>
-ParseSourceAlternative<BakeSource>(const json &a_v, const Reporter &a_ctx) {
-  BakeSource k;
+std::optional<MeshSource>
+ParseSourceAlternative<MeshSource>(const json &a_v, const Reporter &a_ctx) {
+  MeshSource k;
   if (a_v.is_string()) {
     const auto bare = DefaultBakeKind(a_v.get<std::string>());
     if (!bare || IsParameterisedBake(*bare)) {
-      a_ctx.Error(std::format("'bake' is one of {}, or {{\"partition\": "
+      a_ctx.Error(std::format("'mesh' is one of {}, or {{\"partition\": "
                               "slot}}, {{\"boneWeight\": [bones]}} or "
                               "{{\"geometry\": name}}",
                               Choices(kBakeKindWords)));
@@ -621,7 +626,7 @@ ParseSourceAlternative<BakeSource>(const json &a_v, const Reporter &a_ctx) {
     k.bake = *bare;
     return k;
   }
-  const auto inner = OneKey(a_v, a_ctx, "'bake'");
+  const auto inner = OneKey(a_v, a_ctx, "'mesh'");
   if (!inner) {
     return std::nullopt;
   }
@@ -633,7 +638,7 @@ ParseSourceAlternative<BakeSource>(const json &a_v, const Reporter &a_ctx) {
   } else if (inner->key == "geometry") {
     bake = GeometryBakeFrom(*inner->value, a_ctx);
   } else {
-    a_ctx.Error(std::format("unknown bake '{}'", inner->key));
+    a_ctx.Error(std::format("unknown mesh fact '{}'", inner->key));
     return std::nullopt;
   }
   if (!bake) {
@@ -675,15 +680,15 @@ ParseSourceAlternative<RippleSource>(const json &a_v, const Reporter &a_ctx) {
 }
 
 template <>
-std::optional<MaterialClustersSource>
-ParseSourceAlternative<MaterialClustersSource>(const json &a_v,
-                                               const Reporter &a_ctx) {
+std::optional<MaterialGroupsSource>
+ParseSourceAlternative<MaterialGroupsSource>(const json &a_v,
+                                             const Reporter &a_ctx) {
   if (!a_v.is_object()) {
-    a_ctx.Error("'materialClusters' takes an object with 'merge', "
+    a_ctx.Error("'groups' takes an object with 'merge', "
                 "'smoothing', 'pick', 'areaBias' and 'palette'");
     return std::nullopt;
   }
-  MaterialClustersSource k;
+  MaterialGroupsSource k;
   Reader r(a_v, a_ctx);
   bool ok = true;
   if (auto merge = r.Number("merge")) {
@@ -748,7 +753,36 @@ std::optional<Source> SourceFrom(const std::string &a_name, const json &a_j,
 }
 }
 
-constexpr std::string_view kRetiredPieceSource = "piece";
+namespace {
+std::optional<std::string_view> SoleMemberOf(const json &a_value) {
+  if (!a_value.is_object() || a_value.size() != 1) {
+    return std::nullopt;
+  }
+  return std::string_view{a_value.begin().key()};
+}
+
+const SourceKey *SourceKeyOf(std::string_view a_key, const json &a_value) {
+  const std::optional<std::string_view> member = SoleMemberOf(a_value);
+  const SourceKey *plain = nullptr;
+  for (const SourceKey &candidate : kSourceKeys) {
+    if (candidate.key != a_key) {
+      continue;
+    }
+    if (candidate.member.empty()) {
+      plain = &candidate;
+    } else if (member == candidate.member) {
+      return &candidate;
+    }
+  }
+  return plain;
+}
+
+const RetiredWord *RetiredSourceKeyOf(std::string_view a_key) {
+  const auto *found =
+      std::ranges::find(kRetiredSourceKeys, a_key, &RetiredWord::word);
+  return found != std::ranges::end(kRetiredSourceKeys) ? found : nullptr;
+}
+}
 
 std::optional<SourceKind> ParseSourceKind(Reader &a_reader) {
   const Reporter &ctx = a_reader.Context();
@@ -756,18 +790,20 @@ std::optional<SourceKind> ParseSourceKind(Reader &a_reader) {
   if (!entry) {
     return std::nullopt;
   }
-  const auto blank = DefaultSourceKind(entry->key);
-  if (!blank && entry->key == kRetiredPieceSource) {
-    ctx.Error("'piece' facts are signals now: write {\"item\": \"itemHash\"} "
-              "or {\"item\": \"chartCount\"} under signals");
+  if (const RetiredWord *retired = RetiredSourceKeyOf(entry->key)) {
+    ctx.Error(std::string{retired->replacement});
     return std::nullopt;
   }
-  if (!blank) {
+  const SourceKey *key = SourceKeyOf(entry->key, *entry->value);
+  if (!key) {
     ctx.Error(std::format("unknown source kind '{}'", entry->key));
     return std::nullopt;
   }
   a_reader.Child(entry->key);
-  return kSourceParsers[IndexOf(SourceKindIdOf(*blank))](*entry->value, ctx);
+  const json &value = key->member.empty()
+                          ? *entry->value
+                          : entry->value->at(std::string{key->member});
+  return kSourceParsers[IndexOf(key->value)](value, ctx);
 }
 
 namespace {

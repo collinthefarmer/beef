@@ -302,11 +302,13 @@
       "material": "normalSlope"
     },
     "chartId": {
-      "bake": "chartId"
+      "mesh": "chart"
     },
     "materialPick": {
-      "materialClusters": {
-        "pick": "@seedMaterial"
+      "material": {
+        "groups": {
+          "pick": "@seedMaterial"
+        }
       }
     },
     "swellWave": {

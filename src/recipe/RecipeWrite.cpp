@@ -10,48 +10,46 @@
 
 namespace BetterEnchantmentEffects {
 namespace {
-std::string DescribeBakeSource(const BakeSource &a_source) {
+std::string DescribeMeshSource(const MeshSource &a_source) {
   return Match(
       a_source.bake,
       [](const PositionBake &) {
-        return std::string{"bake position (bind pose, -128..128 units "
+        return std::string{"mesh position (bind pose, -128..128 units "
                            "per axis as 0..1)"};
       },
       [](const LocalPositionBake &) {
         return std::string{
-            "bake localPosition (this geometry's bound as 0..1)"};
+            "mesh localPosition (this geometry's bound as 0..1)"};
       },
       [](const NormalBake &) {
-        return std::string{"bake normal (bind-pose normal, each axis as 0..1)"};
+        return std::string{"mesh normal (bind-pose normal, each axis as 0..1)"};
       },
       [](const UvBake &) {
-        return std::string{"bake uv (the coordinates as a vec2)"};
+        return std::string{"mesh uv (the coordinates as a vec2)"};
       },
       [](const PartitionBake &p) {
-        return std::format("bake partition {}",
+        return std::format("mesh partition {}",
                            std::to_underlying(p.bipedSlot));
       },
       [](const BoneWeightBake &b) {
-        return std::format("bake boneWeight of {} bone(s)", b.bones.size());
+        return std::format("mesh boneWeight of {} bone(s)", b.bones.size());
       },
-      [](const ComponentIdBake &) {
-        return std::string{
-            "bake componentId (the mesh's connected pieces, id / 255)"};
+      [](const PartBake &) {
+        return std::string{"mesh part (the mesh's connected parts, id / 255)"};
       },
-      [](const ChartIdBake &) {
-        return std::string{"bake chartId (the mesh's UV charts, id / 255)"};
+      [](const ChartBake &) {
+        return std::string{"mesh chart (the mesh's UV charts, id / 255)"};
       },
       [](const GeometryBake &g) {
-        return std::format("bake geometry {} (1 on that geometry's mesh)",
+        return std::format("mesh geometry {} (1 on that geometry's mesh)",
                            g.geometry);
       });
 }
 
-std::string
-DescribeMaterialClustersSource(const MaterialClustersSource &a_source) {
+std::string DescribeMaterialGroupsSource(const MaterialGroupsSource &a_source) {
   const ClusterSettings &settings = a_source.settings;
   std::string text =
-      std::format("materialClusters, merge above {:.0f}%, smoothing {}",
+      std::format("material groups, merge above {:.0f}%, smoothing {}",
                   settings.merge * 100.0f, settings.smoothing);
   if (a_source.pick) {
     text += std::format(", pick {}, area bias {}", ParamText(*a_source.pick),
@@ -74,7 +72,7 @@ std::string DescribeSource(const SourceKind &a_kind) {
       [](const MaterialSource &s) {
         return std::format("material {}", MaterialChannelName(s.channel));
       },
-      [](const BakeSource &s) { return DescribeBakeSource(s); },
+      [](const MeshSource &s) { return DescribeMeshSource(s); },
       [](const DistanceSource &s) {
         return std::format(
             "distance from node {} (bind pose, 0..256 units as 0..1)", s.from);
@@ -85,8 +83,8 @@ std::string DescribeSource(const SourceKind &a_kind) {
                            s.trigger.name, ParamText(s.speed),
                            ParamText(s.width), ParamText(s.decay));
       },
-      [](const MaterialClustersSource &s) {
-        return DescribeMaterialClustersSource(s);
+      [](const MaterialGroupsSource &s) {
+        return DescribeMaterialGroupsSource(s);
       });
 }
 
@@ -304,7 +302,7 @@ json ImageToJson(const ImageSource &k) {
   return o;
 }
 
-json BakeToJson(const BakeSource &k) {
+json MeshToJson(const MeshSource &k) {
   return Match(
       k.bake,
       [&](const PartitionBake &p) {
@@ -320,11 +318,11 @@ json BakeToJson(const BakeSource &k) {
       [&](const LocalPositionBake &) { return json(BakeKindName(k.bake)); },
       [&](const NormalBake &) { return json(BakeKindName(k.bake)); },
       [&](const UvBake &) { return json(BakeKindName(k.bake)); },
-      [&](const ComponentIdBake &) { return json(BakeKindName(k.bake)); },
-      [&](const ChartIdBake &) { return json(BakeKindName(k.bake)); });
+      [&](const PartBake &) { return json(BakeKindName(k.bake)); },
+      [&](const ChartBake &) { return json(BakeKindName(k.bake)); });
 }
 
-json MaterialClustersToJson(const MaterialClustersSource &k) {
+json MaterialGroupsToJson(const MaterialGroupsSource &k) {
   const ClusterSettings defaults;
   const ClusterSettings &s = k.settings;
   json o = json::object();
@@ -355,19 +353,20 @@ json RippleToJson(const RippleSource &k) {
 }
 
 json SourceKindToJson(const SourceKind &a_kind) {
-  const std::string word{SourceKindName(a_kind)};
-  json row = json::object();
-  Match(
-      a_kind, [&](const ImageSource &k) { row[word] = ImageToJson(k); },
-      [&](const MaterialSource &k) {
-        row[word] = NameOf(kMaterialChannels, k.channel);
+  const json value = Match(
+      a_kind, [](const ImageSource &k) { return ImageToJson(k); },
+      [](const MaterialSource &k) {
+        return json(NameOf(kMaterialChannels, k.channel));
       },
-      [&](const BakeSource &k) { row[word] = BakeToJson(k); },
-      [&](const DistanceSource &k) { row[word] = k.from; },
-      [&](const RippleSource &k) { row[word] = RippleToJson(k); },
-      [&](const MaterialClustersSource &k) {
-        row[word] = MaterialClustersToJson(k);
-      });
+      [](const MeshSource &k) { return MeshToJson(k); },
+      [](const DistanceSource &k) { return json(k.from); },
+      [](const RippleSource &k) { return RippleToJson(k); },
+      [](const MaterialGroupsSource &k) { return MaterialGroupsToJson(k); });
+  const SourceKey &key = kSourceKeys[IndexOf(SourceKindIdOf(a_kind))];
+  json row = json::object();
+  row[std::string{key.key}] =
+      key.member.empty() ? value
+                         : json::object({{std::string{key.member}, value}});
   return row;
 }
 

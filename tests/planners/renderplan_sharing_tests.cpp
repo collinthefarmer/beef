@@ -198,7 +198,7 @@ Recipe RippleBeforePositionBake() {
   recipe.signals = {{"hit", trigger}};
   RippleSource ripple;
   ripple.trigger = Ref{"hit"};
-  recipe.sources = {{"wave", ripple}, {"position", BakeSource{PositionBake{}}}};
+  recipe.sources = {{"wave", ripple}, {"position", MeshSource{PositionBake{}}}};
   SurfaceOutput surface;
   Layer wave;
   wave.source = Ref{"wave"};
@@ -214,7 +214,7 @@ Recipe ImageOverBake() {
   ImageSource image;
   image.texture = ImageFile{"shared.dds"};
   recipe.sources = {{"pattern", image},
-                    {"position", BakeSource{PositionBake{}}}};
+                    {"position", MeshSource{PositionBake{}}}};
   SurfaceOutput surface;
   Layer pattern;
   pattern.source = Ref{"pattern"};
@@ -557,7 +557,7 @@ Recipe LayerMaskedBy(BakeKind a_bake) {
   Recipe recipe;
   ImageSource image;
   image.texture = ImageFile{"shared.dds"};
-  recipe.sources = {{"pattern", image}, {"region", BakeSource{a_bake}}};
+  recipe.sources = {{"pattern", image}, {"region", MeshSource{a_bake}}};
   recipe.masks = {{"onRegion", "@region"}};
   SurfaceOutput surface;
   Layer layer;

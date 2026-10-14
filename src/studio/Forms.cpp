@@ -255,7 +255,7 @@ template <class Row, std::size_t N>
 }
 
 constexpr const char *kImageCreators[]{
-    "new image",    "new material", "new bake", "new uv",
+    "new image",    "new material", "new mesh", "new uv",
     "new distance", "new ripple",   "new mask"};
 constexpr const char *kValueCreators[]{"promote to signal", "new constant",
                                        "new expression"};
@@ -523,7 +523,7 @@ BindImageMirror(std::string a_name, SourceKind a_record, std::size_t a_axis) {
   return [name = std::move(a_name), record = std::move(a_record)](
              const std::string &a_text) -> std::optional<RecipeEdit> {
     SourceKind kind = record;
-    BakeSource *bake = Get<BakeSource>(kind);
+    MeshSource *bake = Get<MeshSource>(kind);
     PartitionBake *partition =
         bake != nullptr ? Get<PartitionBake>(bake->bake) : nullptr;
     if (partition == nullptr) {
@@ -543,7 +543,7 @@ BindImageMirror(std::string a_name, SourceKind a_record, std::size_t a_axis) {
   return [name = std::move(a_name), record = std::move(a_record)](
              const std::string &a_text) -> std::optional<RecipeEdit> {
     SourceKind kind = record;
-    BakeSource *bake = Get<BakeSource>(kind);
+    MeshSource *bake = Get<MeshSource>(kind);
     BoneWeightBake *bones =
         bake != nullptr ? Get<BoneWeightBake>(bake->bake) : nullptr;
     if (bones == nullptr) {
@@ -559,7 +559,7 @@ BindImageMirror(std::string a_name, SourceKind a_record, std::size_t a_axis) {
   return [name = std::move(a_name), record = std::move(a_record)](
              const std::string &a_text) -> std::optional<RecipeEdit> {
     SourceKind kind = record;
-    BakeSource *bake = Get<BakeSource>(kind);
+    MeshSource *bake = Get<MeshSource>(kind);
     GeometryBake *geometry =
         bake != nullptr ? Get<GeometryBake>(bake->bake) : nullptr;
     if (geometry == nullptr || a_text.empty()) {
@@ -1413,12 +1413,12 @@ void MaterialFields(std::vector<FormField> &a_form, const SourceContext &a_ctx,
 }
 
 void BakeFields(std::vector<FormField> &a_form, const SourceContext &a_ctx,
-                const BakeSourceRow &a_source) {
+                const MeshSourceRow &a_source) {
   const std::string &name = a_ctx.name;
   const SourceKind &record = a_ctx.record;
   a_form.push_back(ChoiceField(
-      "bake", a_source.bake, WordsOf(kBakeKindWords),
-      BindSourceMember(name, record, &BakeSource::bake, DefaultBakeKind)));
+      "fact", a_source.bake, WordsOf(kBakeKindWords),
+      BindSourceMember(name, record, &MeshSource::bake, DefaultBakeKind)));
   if (a_source.bake == "partition") {
     a_form.push_back(ChoiceField("partition", a_source.partition,
                                  BipedSlotNames(),
@@ -1504,19 +1504,19 @@ void RippleFields(std::vector<FormField> &a_form, const SourceContext &a_ctx,
 }
 
 void ClustersFields(std::vector<FormField> &a_form, const SourceContext &a_ctx,
-                    const MaterialClustersSourceRow &a_source) {
+                    const MaterialGroupsSourceRow &a_source) {
   const std::string &name = a_ctx.name;
   const SourceKind &record = a_ctx.record;
-  const MaterialClustersSourceRow &source = a_source;
+  const MaterialGroupsSourceRow &source = a_source;
   a_form.push_back(ToggleField(
       "palette", source.palette,
-      BindSourceMember(name, record, &MaterialClustersSource::palette, OnOff)));
+      BindSourceMember(name, record, &MaterialGroupsSource::palette, OnOff)));
   FormField merge = ParamField(
       {.name = "merge",
        .kind = FieldKind::kScalar,
        .text = source.merge,
        .names = {},
-       .bind = BindSourceMember(name, record, &MaterialClustersSource::settings,
+       .bind = BindSourceMember(name, record, &MaterialGroupsSource::settings,
                                 &ClusterSettings::merge, MergeShareOf)});
   merge.range = std::pair{0.0f, 1.0f};
   merge.workingRange = merge.range;
@@ -1526,7 +1526,7 @@ void ClustersFields(std::vector<FormField> &a_form, const SourceContext &a_ctx,
        .kind = FieldKind::kScalar,
        .text = source.smoothing,
        .names = {},
-       .bind = BindSourceMember(name, record, &MaterialClustersSource::settings,
+       .bind = BindSourceMember(name, record, &MaterialGroupsSource::settings,
                                 &ClusterSettings::smoothing, SmoothingOf)});
   smoothing.range = std::pair{0.0f, static_cast<float>(kMaxClusterSmoothing)};
   smoothing.workingRange = smoothing.range;
@@ -1537,7 +1537,7 @@ void ClustersFields(std::vector<FormField> &a_form, const SourceContext &a_ctx,
        .kind = FieldKind::kScalar,
        .text = source.pick,
        .names = a_ctx.names.scalar,
-       .bind = BindSourceMember(name, record, &MaterialClustersSource::pick,
+       .bind = BindSourceMember(name, record, &MaterialGroupsSource::pick,
                                 OptionalUnitParamOf)});
   pick.range = std::pair{0.0f, 1.0f};
   pick.workingRange = pick.range;
@@ -1548,7 +1548,7 @@ void ClustersFields(std::vector<FormField> &a_form, const SourceContext &a_ctx,
        .kind = FieldKind::kScalar,
        .text = source.areaBias,
        .names = a_ctx.names.scalar,
-       .bind = BindSourceMember(name, record, &MaterialClustersSource::areaBias,
+       .bind = BindSourceMember(name, record, &MaterialGroupsSource::areaBias,
                                 AreaBiasOf)});
   areaBias.range = std::pair{0.0f, kMaxAreaBias};
   areaBias.workingRange = areaBias.range;
@@ -1576,14 +1576,14 @@ std::vector<FormField> SourceForm(const SourceRow &a_source,
       [&](const MaterialSourceRow &a_material) {
         MaterialFields(form, ctx, a_material);
       },
-      [&](const BakeSourceRow &a_bake) { BakeFields(form, ctx, a_bake); },
+      [&](const MeshSourceRow &a_bake) { BakeFields(form, ctx, a_bake); },
       [&](const DistanceSourceRow &a_distance) {
         DistanceFields(form, ctx, a_distance);
       },
       [&](const RippleSourceRow &a_ripple) {
         RippleFields(form, ctx, a_ripple);
       },
-      [&](const MaterialClustersSourceRow &a_clusters) {
+      [&](const MaterialGroupsSourceRow &a_clusters) {
         ClustersFields(form, ctx, a_clusters);
       });
   return form;

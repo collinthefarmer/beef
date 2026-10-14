@@ -57,7 +57,7 @@ holds `RecipeRow`s, and a `RecipeRow` holds its resource, **geometry** and
 | `OutputRow` | One **output**: target, surface, **slot**, replace and merge flags, selector, `ScalarRow`s, `LayerRow`s, and its composite `TextureHandle`. | `Snapshot.h` |
 | `LayerRow` | One **layer**: source, mask, blend, opacity, color, curve, channels, a problem string, and its texture. | `Snapshot.h` |
 | `SignalRow` | One signal: name, kind, value type, current value, inert flag, reference count, and its full `SignalKind` definition. | `Snapshot.h` |
-| `SourceRow` | One source: name, value type, reference count, and a `SourceRowKind` variant (`ImageSourceRow` to `MaterialClustersSourceRow`). A `static_assert` fixes the alternative order to the order of `SourceKindId`. | `Snapshot.h` |
+| `SourceRow` | One source: name, value type, reference count, and a `SourceRowKind` variant (`ImageSourceRow` to `MaterialGroupsSourceRow`). A `static_assert` fixes the alternative order to the order of `SourceKindId`. | `Snapshot.h` |
 | `TextRow` | One curve or mask: name, text, and reference count. | `Snapshot.h` |
 | `PictureRow` | One source or mask preview on a geometry: name, value type, texture, `ShaderChannel`, and problem. | `Snapshot.h` |
 | `LightRow` | One **light**: presence, owning output, the parameter texts, shadow and replace flags, selector, and the bone fields. | `Snapshot.h` |

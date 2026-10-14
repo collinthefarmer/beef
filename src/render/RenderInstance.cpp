@@ -408,9 +408,9 @@ bool IdleReleasable(const std::vector<bool> &animated, RenderStepId step,
 }
 BakeBuffers BakeBuffersFor(const MeshData &mesh, const MeshAnalysis &analysis,
                            const BakeKind &kind) {
-  if (Is<ComponentIdBake>(kind))
+  if (Is<PartBake>(kind))
     return BuildIslandBake(mesh, analysis, IslandSource::kComponent);
-  if (Is<ChartIdBake>(kind))
+  if (Is<ChartBake>(kind))
     return BuildIslandBake(mesh, analysis, IslandSource::kChart);
   return BuildBake(mesh, kind);
 }

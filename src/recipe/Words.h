@@ -129,19 +129,51 @@ static_assert(Complete(kRippleShapes, kRippleShapeCount));
 inline constexpr Named<SourceKindId> kSourceKindWords[]{
     {SourceKindId::kImage, "image"},
     {SourceKindId::kMaterial, "material"},
-    {SourceKindId::kBake, "bake"},
+    {SourceKindId::kMesh, "mesh"},
     {SourceKindId::kDistance, "distance"},
     {SourceKindId::kRipple, "ripple"},
-    {SourceKindId::kMaterialClusters, "materialClusters"}};
+    {SourceKindId::kMaterialGroups, "material groups"}};
 static_assert(Complete(kSourceKindWords, kSourceKindCount));
+struct SourceKey {
+  SourceKindId value;
+  std::string_view key;
+  std::string_view member;
+};
+inline constexpr SourceKey kSourceKeys[]{
+    {SourceKindId::kImage, "image", {}},
+    {SourceKindId::kMaterial, "material", {}},
+    {SourceKindId::kMesh, "mesh", {}},
+    {SourceKindId::kDistance, "distance", {}},
+    {SourceKindId::kRipple, "ripple", {}},
+    {SourceKindId::kMaterialGroups, "material", "groups"}};
+static_assert(Complete(kSourceKeys, kSourceKindCount));
+static_assert([] {
+  for (std::size_t i = 0; i < kSourceKindCount; ++i) {
+    if (IndexOf(kSourceKeys[i].value) != i) {
+      return false;
+    }
+  }
+  return true;
+}());
+struct RetiredWord {
+  std::string_view word;
+  std::string_view replacement;
+};
+inline constexpr RetiredWord kRetiredSourceKeys[]{
+    {"bake", "'bake' is 'mesh' now, and its 'componentId' and 'chartId' are "
+             "'part' and 'chart': write {\"mesh\": \"uv\"}"},
+    {"materialClusters", "'materialClusters' is a material source now: write "
+                         "{\"material\": {\"groups\": {…}}}"},
+    {"piece", "'piece' facts are signals now: write {\"item\": "
+              "\"itemHash\"} or {\"item\": \"chartCount\"} under signals"}};
 static_assert(
     std::is_same_v<std::variant_alternative_t<0, SourceKind>, ImageSource> &&
     std::is_same_v<std::variant_alternative_t<1, SourceKind>, MaterialSource> &&
-    std::is_same_v<std::variant_alternative_t<2, SourceKind>, BakeSource> &&
+    std::is_same_v<std::variant_alternative_t<2, SourceKind>, MeshSource> &&
     std::is_same_v<std::variant_alternative_t<3, SourceKind>, DistanceSource> &&
     std::is_same_v<std::variant_alternative_t<4, SourceKind>, RippleSource> &&
     std::is_same_v<std::variant_alternative_t<5, SourceKind>,
-                   MaterialClustersSource>);
+                   MaterialGroupsSource>);
 inline constexpr std::string_view kTriggerOriginWords[]{"event", "plugin",
                                                         "when"};
 static_assert(std::size(kTriggerOriginWords) ==
@@ -152,8 +184,8 @@ static_assert(
                    PluginOrigin> &&
     std::is_same_v<std::variant_alternative_t<2, TriggerOrigin>, WhenOrigin>);
 inline constexpr std::string_view kBakeKindWords[]{
-    "position",   "localPosition", "normal",  "uv",      "partition",
-    "boneWeight", "componentId",   "chartId", "geometry"};
+    "position",   "localPosition", "normal", "uv",      "partition",
+    "boneWeight", "part",          "chart",  "geometry"};
 static_assert(std::size(kBakeKindWords) == std::variant_size_v<BakeKind>);
 static_assert(
     std::is_same_v<std::variant_alternative_t<0, BakeKind>, PositionBake> &&
@@ -163,8 +195,8 @@ static_assert(
     std::is_same_v<std::variant_alternative_t<3, BakeKind>, UvBake> &&
     std::is_same_v<std::variant_alternative_t<4, BakeKind>, PartitionBake> &&
     std::is_same_v<std::variant_alternative_t<5, BakeKind>, BoneWeightBake> &&
-    std::is_same_v<std::variant_alternative_t<6, BakeKind>, ComponentIdBake> &&
-    std::is_same_v<std::variant_alternative_t<7, BakeKind>, ChartIdBake> &&
+    std::is_same_v<std::variant_alternative_t<6, BakeKind>, PartBake> &&
+    std::is_same_v<std::variant_alternative_t<7, BakeKind>, ChartBake> &&
     std::is_same_v<std::variant_alternative_t<8, BakeKind>, GeometryBake>);
 
 inline constexpr BipedSlotSpec kBipedSlots[]{

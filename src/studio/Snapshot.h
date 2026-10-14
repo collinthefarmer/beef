@@ -144,7 +144,7 @@ struct MaterialSourceRow {
   std::string material;
 };
 
-struct BakeSourceRow {
+struct MeshSourceRow {
   std::string bake;
   std::string partition;
   std::string bones;
@@ -164,7 +164,7 @@ struct RippleSourceRow {
   std::string direction;
 };
 
-struct MaterialClustersSourceRow {
+struct MaterialGroupsSourceRow {
   std::string merge = "0.3";
   std::string smoothing = "8";
   bool palette = false;
@@ -173,21 +173,21 @@ struct MaterialClustersSourceRow {
 };
 
 using SourceRowKind =
-    std::variant<ImageSourceRow, MaterialSourceRow, BakeSourceRow,
-                 DistanceSourceRow, RippleSourceRow, MaterialClustersSourceRow>;
+    std::variant<ImageSourceRow, MaterialSourceRow, MeshSourceRow,
+                 DistanceSourceRow, RippleSourceRow, MaterialGroupsSourceRow>;
 static_assert(std::variant_size_v<SourceRowKind> == kSourceKindCount);
 static_assert(std::is_same_v<std::variant_alternative_t<0, SourceRowKind>,
                              ImageSourceRow> &&
                   std::is_same_v<std::variant_alternative_t<1, SourceRowKind>,
                                  MaterialSourceRow> &&
                   std::is_same_v<std::variant_alternative_t<2, SourceRowKind>,
-                                 BakeSourceRow> &&
+                                 MeshSourceRow> &&
                   std::is_same_v<std::variant_alternative_t<3, SourceRowKind>,
                                  DistanceSourceRow> &&
                   std::is_same_v<std::variant_alternative_t<4, SourceRowKind>,
                                  RippleSourceRow> &&
                   std::is_same_v<std::variant_alternative_t<5, SourceRowKind>,
-                                 MaterialClustersSourceRow>,
+                                 MaterialGroupsSourceRow>,
               "SourceRowKind alternative order must match SourceKindId");
 
 [[nodiscard]] inline SourceKindId

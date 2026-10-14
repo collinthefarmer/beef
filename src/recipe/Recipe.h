@@ -469,22 +469,22 @@ struct BoneWeightBake {
   std::vector<std::string> bones;
   [[nodiscard]] bool operator==(const BoneWeightBake &) const = default;
 };
-struct ComponentIdBake {
-  [[nodiscard]] bool operator==(const ComponentIdBake &) const = default;
+struct PartBake {
+  [[nodiscard]] bool operator==(const PartBake &) const = default;
 };
-struct ChartIdBake {
-  [[nodiscard]] bool operator==(const ChartIdBake &) const = default;
+struct ChartBake {
+  [[nodiscard]] bool operator==(const ChartBake &) const = default;
 };
 struct GeometryBake {
   std::string geometry;
   [[nodiscard]] bool operator==(const GeometryBake &) const = default;
 };
 using BakeKind = std::variant<PositionBake, LocalPositionBake, NormalBake,
-                              UvBake, PartitionBake, BoneWeightBake,
-                              ComponentIdBake, ChartIdBake, GeometryBake>;
-struct BakeSource {
+                              UvBake, PartitionBake, BoneWeightBake, PartBake,
+                              ChartBake, GeometryBake>;
+struct MeshSource {
   BakeKind bake = PositionBake{};
-  [[nodiscard]] bool operator==(const BakeSource &) const = default;
+  [[nodiscard]] bool operator==(const MeshSource &) const = default;
 };
 [[nodiscard]] bool IsNamedBy(const GeometryBake &a_bake,
                              std::string_view a_geometry) noexcept;
@@ -514,24 +514,24 @@ struct ClusterSettings {
   std::uint32_t smoothing = 8;
   [[nodiscard]] bool operator==(const ClusterSettings &) const = default;
 };
-struct MaterialClustersSource {
+struct MaterialGroupsSource {
   ClusterSettings settings;
   std::optional<Param> pick;
   Param areaBias = 1.0f;
   bool palette = false;
-  [[nodiscard]] bool operator==(const MaterialClustersSource &) const = default;
+  [[nodiscard]] bool operator==(const MaterialGroupsSource &) const = default;
 };
 
 using SourceKind =
-    std::variant<ImageSource, MaterialSource, BakeSource, DistanceSource,
-                 RippleSource, MaterialClustersSource>;
+    std::variant<ImageSource, MaterialSource, MeshSource, DistanceSource,
+                 RippleSource, MaterialGroupsSource>;
 enum class SourceKindId {
   kImage,
   kMaterial,
-  kBake,
+  kMesh,
   kDistance,
   kRipple,
-  kMaterialClusters,
+  kMaterialGroups,
 };
 inline constexpr std::size_t kSourceKindCount = 6;
 static_assert(kSourceKindCount == std::variant_size_v<SourceKind>);

@@ -167,7 +167,7 @@ void TestListAppend() {
 
 void TestFieldsUseCatalogs() {
   SourceRow bake{.name = "weights",
-                 .kind = BakeSourceRow{.bake = "boneWeight", .bones = "A"}};
+                 .kind = MeshSourceRow{.bake = "boneWeight", .bones = "A"}};
   const std::vector<FormField> bakeForm = SourceForm(bake, SignalNames{});
   const FormField *bones = FieldNamed(bakeForm, "bones");
   Check(bones && bones->catalog == GameObjectKind::kNode &&

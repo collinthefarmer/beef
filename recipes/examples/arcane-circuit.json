@@ -54,7 +54,7 @@
   },
   "sources": {
     "uv": {
-      "bake": "uv"
+      "mesh": "uv"
     },
     "metallic": {
       "material": "metallic"
@@ -66,13 +66,13 @@
       "material": "roughness"
     },
     "charts": {
-      "bake": "chartId"
+      "mesh": "chart"
     },
     "bake": {
-      "bake": "normal"
+      "mesh": "normal"
     },
     "components": {
-      "bake": "componentId"
+      "mesh": "part"
     },
     "luma": {
       "material": "diffuseLuma"

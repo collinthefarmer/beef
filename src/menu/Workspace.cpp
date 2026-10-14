@@ -774,7 +774,7 @@ void DrawResourceRemoveButton(std::string_view a_name, std::size_t a_references,
 }
 
 void DrawSourceClusters(const std::string &a_name,
-                        const MaterialClustersSource &a_source,
+                        const MaterialGroupsSource &a_source,
                         std::span<const Studio::FormField> a_form,
                         const Frame &a_frame);
 
@@ -814,14 +814,14 @@ void DrawSourceInspector(const Studio::SourceSubject &a_source,
       Studio::SourceForm(*row, Studio::SignalNamesOf(recipe), geometries);
   const std::optional<SourceKind> kind = Studio::SourceKindOf(*row);
   if (const auto *clusters =
-          kind ? Get<MaterialClustersSource>(*kind) : nullptr) {
+          kind ? Get<MaterialGroupsSource>(*kind) : nullptr) {
     DrawSourceClusters(row->name, *clusters, form, a_frame);
   }
   DrawFormWithSignals("source", form, a_frame);
 }
 
 void DrawSourceClusters(const std::string &a_name,
-                        const MaterialClustersSource &a_source,
+                        const MaterialGroupsSource &a_source,
                         std::span<const Studio::FormField> a_form,
                         const Frame &a_frame) {
   if (!a_frame.geometry) {

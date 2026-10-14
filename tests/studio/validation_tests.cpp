@@ -52,7 +52,7 @@ int main() {
   ImageSource image{ImageFile{"textures/test.dds"}};
   image.mip = -1.0f;
   Refused(recipe, SetSource{"image", image}, "negative mip");
-  MaterialClustersSource clusters;
+  MaterialGroupsSource clusters;
   clusters.settings.smoothing = kMaxClusterSmoothing + 1;
   Refused(recipe, SetSource{"image", clusters}, "excessive cluster smoothing");
   Refused(recipe, SetShellAlphaTest{2.0f}, "alpha test out of range");

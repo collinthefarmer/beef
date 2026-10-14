@@ -381,7 +381,7 @@ struct RecipeGraphLowering {
         [&](const MaterialSource &k) -> NodeKind {
           return MaterialOperation{Material(), Uv(), k.channel};
         },
-        [&](const BakeSource &k) -> NodeKind {
+        [&](const MeshSource &k) -> NodeKind {
           return BakeOperation{Geometry(), Uv(), k.bake};
         },
         [&](const DistanceSource &k) -> NodeKind {
@@ -401,9 +401,9 @@ struct RecipeGraphLowering {
                                  Parameter(k.direction),
                                  k.shape};
         },
-        [&](const MaterialClustersSource &k) -> NodeKind {
-          MaterialClustersOperation operation{Material(), Geometry(), Uv(),
-                                              k.settings};
+        [&](const MaterialGroupsSource &k) -> NodeKind {
+          MaterialGroupsOperation operation{Material(), Geometry(), Uv(),
+                                            k.settings};
           operation.palette = k.palette;
           if (k.pick) {
             operation.pick = Parameter(*k.pick);

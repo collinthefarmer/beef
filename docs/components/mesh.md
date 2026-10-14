@@ -73,7 +73,7 @@ them into a texture. A bake that cannot be built returns an empty
 
 | Symbol | Description |
 |---|---|
-| `BuildBake` | Bakes one `BakeKind` from `recipe/Recipe.h`. It returns a `problem` for `ComponentIdBake` and `ChartIdBake`, because those kinds need `BuildIslandBake`. A `PartitionBake` keeps only the partitions in its biped slot. |
+| `BuildBake` | Bakes one `BakeKind` from `recipe/Recipe.h`. It returns a `problem` for `PartBake` and `ChartBake`, because those kinds need `BuildIslandBake`. A `PartitionBake` keeps only the partitions in its biped slot. |
 | `kPositionFrame` | 128 units. `PositionBake` maps each position axis from -128..128 into 0..1. |
 | `LocalPositionBake` | Maps each position axis into 0..1 about `MeshData::center` and `MeshData::radius`. `BuildBake` returns a `problem` when the radius is zero. |
 | `BuildDistanceBake` | Bakes the distance from one point, divided by `kDistanceFrame`, as a scalar. |
@@ -134,7 +134,7 @@ clamps the cluster count to `kMaxMaterialClusters` (`recipe/Recipe.h`).
 `ClusterTexels` runs at most `kMaxClusterIterations` passes (`recipe/Recipe.h`). This
 header does not include `Mesh.h`, because clustering reads a
 `MaterialSample` and never a mesh. `ClusterSettings` and `ChannelWeights`
-live in `recipe/Recipe.h`, because `MaterialClustersSource` carries them.
+live in `recipe/Recipe.h`, because `MaterialGroupsSource` carries them.
 
 | Symbol | Description |
 |---|---|

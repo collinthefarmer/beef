@@ -115,9 +115,19 @@ std::vector<std::string> KindWords(const json &a_schema,
   return words;
 }
 
+std::vector<std::string> SourceKeyWords() {
+  std::vector<std::string> keys;
+  for (const SourceKey &key : kSourceKeys) {
+    if (key.member.empty()) {
+      keys.emplace_back(key.key);
+    }
+  }
+  return keys;
+}
+
 void SourceKindsMatchTheTable(const json &a_schema) {
-  Equal(Joined(KindWords(a_schema, "source")),
-        Joined(WordsOf(kSourceKindWords)), "source kinds");
+  Equal(Joined(KindWords(a_schema, "source")), Joined(SourceKeyWords()),
+        "source kinds");
   Equal(Joined(KindWords(a_schema, "signal")), Joined(WordsOf(kSignalKinds)),
         "signal kinds by required key");
   std::vector<std::string> propertyNames =
@@ -161,13 +171,14 @@ void SourceEnumsMatchTheTables(const json &a_schema) {
       a_schema,
       "/$defs/source/oneOf/0/properties/image/properties/effectShader/enum",
       WordsOf(kEffectShaderTextures), "image effect shader texture");
-  EnumMatches(a_schema, "/$defs/source/oneOf/1/properties/material/enum",
+  EnumMatches(a_schema,
+              "/$defs/source/oneOf/1/properties/material/oneOf/0/enum",
               WordsOf(kMaterialChannels), "material channel");
   EnumMatches(a_schema,
               "/$defs/source/oneOf/4/properties/ripple/properties/shape/enum",
               WordsOf(kRippleShapes), "ripple shape");
   std::vector<std::string> bakes =
-      Words(At(a_schema, "/$defs/source/oneOf/2/properties/bake/oneOf/0/enum"));
+      Words(At(a_schema, "/$defs/source/oneOf/2/properties/mesh/oneOf/0/enum"));
   bakes.emplace_back("partition");
   bakes.emplace_back("boneWeight");
   bakes.emplace_back("geometry");
@@ -188,7 +199,7 @@ void RecipeShapeMatchesTheTables(const json &a_schema) {
   Equal(Joined(KindWords(a_schema, "trigger")),
         Joined(WordsOf(kTriggerOriginWords)), "trigger origins");
   const std::vector<std::string> partitions = Words(
-      At(a_schema, "/$defs/source/oneOf/2/properties/bake/oneOf/1/properties/"
+      At(a_schema, "/$defs/source/oneOf/2/properties/mesh/oneOf/1/properties/"
                    "partition/oneOf/0/enum"));
   Check(!partitions.empty(), "the partition name enum exists");
   Equal(Joined(Sorted(partitions)), Joined(Sorted(WordsOf(kBipedSlots))),

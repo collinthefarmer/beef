@@ -69,7 +69,7 @@ same field for both. Colors and output strengths are starting values only.
   },
   "sources": {
     "cbUV": {
-      "bake": "uv"
+      "mesh": "uv"
     },
     "cbLuma": {
       "material": "diffuseLuma"
@@ -459,14 +459,14 @@ These named bones must exist in the armor's skinning. Inspect each source first.
       "material": "metallic"
     },
     "cbSpine": {
-      "bake": {
+      "mesh": {
         "boneWeight": [
           "NPC Spine2 [Spn2]"
         ]
       }
     },
     "cbClavicle": {
-      "bake": {
+      "mesh": {
         "boneWeight": [
           "NPC R Clavicle [RClv]"
         ]

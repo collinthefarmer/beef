@@ -227,19 +227,19 @@ std::array<float, 3> ValueOf(const MeshVertex &a_vertex,
         sum = std::clamp(sum, 0.0f, 1.0f);
         return std::array{sum, sum, sum};
       },
-      [&](const ComponentIdBake &) { return std::array{1.0f, 1.0f, 1.0f}; },
-      [&](const ChartIdBake &) { return std::array{1.0f, 1.0f, 1.0f}; },
+      [&](const PartBake &) { return std::array{1.0f, 1.0f, 1.0f}; },
+      [&](const ChartBake &) { return std::array{1.0f, 1.0f, 1.0f}; },
       [&](const GeometryBake &) { return std::array{1.0f, 1.0f, 1.0f}; });
 }
 
 std::string NeedsAnalysis(const BakeKind &a_kind) {
   return Match(
       a_kind,
-      [](const ComponentIdBake &) {
-        return std::string{"componentId needs the mesh analysis"};
+      [](const PartBake &) {
+        return std::string{"part needs the mesh analysis"};
       },
-      [](const ChartIdBake &) {
-        return std::string{"chartId needs the mesh analysis"};
+      [](const ChartBake &) {
+        return std::string{"chart needs the mesh analysis"};
       },
       [](const PositionBake &) { return std::string{}; },
       [](const LocalPositionBake &) { return std::string{}; },
@@ -403,8 +403,8 @@ std::string Definition(const BakeKind &a_kind) {
         }
         return std::format("boneWeight [{}]", names);
       },
-      [](const ComponentIdBake &) { return std::string{"componentId"}; },
-      [](const ChartIdBake &) { return std::string{"chartId"}; },
+      [](const PartBake &) { return std::string{"part"}; },
+      [](const ChartBake &) { return std::string{"chart"}; },
       [](const GeometryBake &) { return std::string{"geometry coverage"}; });
 }
 }

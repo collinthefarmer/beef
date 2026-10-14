@@ -122,10 +122,10 @@ order, and the asserts in `Words.h` keep `kSourceKindWords` in the same order.
 |---|---|---|
 | `ImageSource` | `image` | A texture sampled per texel: one `ImageChannel` in tiled or mesh `ImageSpace`, with optional scroll, tile, mirror, transpose, and mip. Its `ImageTexture` is an `ImageFile` (`path`) or an `EffectShaderImage` (`effectShader`: the fill or membrane texture of the matched effect's shader). |
 | `MaterialSource` | `material` | One `MaterialChannel` of the piece's own material, such as diffuseRgb, roughness, or relief. |
-| `BakeSource` | `bake` | One `BakeKind` computed from the mesh: position, localPosition, normal, uv, partition, boneWeight, componentId, or chartId. |
+| `MeshSource` | `mesh` | One `BakeKind` computed from the mesh: position, localPosition, normal, uv, partition, boneWeight, part, chart, or geometry. |
 | `DistanceSource` | `distance` | The texel's distance from a named skeleton node. |
 | `RippleSource` | `ripple` | A ring or disc (`RippleShape`) that spreads from a trigger firing at `speed`, `width` wide, fading at `decay`. A nonzero `direction` turns it into a plane sweep. |
-| `MaterialClustersSource` | `materialClusters` | The id of each texel's nearest material cluster under `ClusterSettings` and its `ChannelWeights`. |
+| `MaterialGroupsSource` | `material` → `groups` | The id of each texel's material group under `ClusterSettings`, or 1 on one picked group, or a palette colour. |
 
 ### Outputs (`Recipe.h`)
 
@@ -167,7 +167,7 @@ before it reuses a target. Each predicate has a form that takes a compiled
 | `ShareableAcrossActors` (output) | True when the output is a `SurfaceOutput`, `IsAnimated` is false, `RecipeInputsAreActorIndependent` holds, and the graph's signals equal the authored signals. |
 | `ShareableAcrossActors` (mask) | True when the mask is enabled, does not change over time, and meets the same two recipe conditions. |
 | `RebuildScope`, `ScopeOf` | Which actors an edit rebuilds: `RebuildApplying{recipe}` when the edit names a recipe and leaves every recipe's `MatchFacts` unchanged, otherwise `RebuildAll`. `Manager::ChangeAndRebuildActors` matches on it. |
-| `RecipeInputsAreActorIndependent` | True when the recipe has no `BakeSource` or `DistanceSource` and no `ItemSignal`, because those read per-actor geometry or the worn item. |
+| `RecipeInputsAreActorIndependent` | True when the recipe has no `MeshSource` or `DistanceSource` and no `ItemSignal`, because those read per-actor geometry or the worn item. |
 | `IsAnimated` | True when a signal, source, mask, or output reads a value that `RecipeGraph::MayChangeOverTime` marks as changing. |
 
 ### Diagnostics and resolution (`Recipe.h`)

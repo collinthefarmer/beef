@@ -331,7 +331,7 @@ std::vector<Diagnostic> CheckSourceInputs(const RowTypes &a_rows,
           CheckVector<2>(a_rows, report, *s.tile, "tile");
         }
       },
-      [&](const BakeSource &s) {
+      [&](const MeshSource &s) {
         if (const auto *bw = Get<BoneWeightBake>(s.bake);
             bw && bw->bones.empty()) {
           report.Error("boneWeight needs at least one bone");
@@ -349,7 +349,7 @@ std::vector<Diagnostic> CheckSourceInputs(const RowTypes &a_rows,
         CheckScalar(a_rows, report, s.decay, "decay");
         CheckVector<3>(a_rows, report, s.direction, "direction");
       },
-      [&](const MaterialClustersSource &s) {
+      [&](const MaterialGroupsSource &s) {
         if (s.pick) {
           CheckScalar(a_rows, report, *s.pick, "pick");
         }

@@ -116,21 +116,21 @@ void TestSourceRoundTrip() {
 }
 
 void TestClusterPickRoundTrip() {
-  MaterialClustersSource clusters;
+  MaterialGroupsSource clusters;
   clusters.pick = Param{Ref{"which"}};
   clusters.areaBias = Param{0.5f};
   const SourceRow row = SourceRowOf(Source{"zone", clusters}, 0);
   const std::optional<SourceKind> back = SourceKindOf(row);
-  const auto *picked = back ? Get<MaterialClustersSource>(*back) : nullptr;
+  const auto *picked = back ? Get<MaterialGroupsSource>(*back) : nullptr;
   Check(picked && picked->pick == clusters.pick &&
             picked->areaBias == clusters.areaBias,
         "a cluster pick and area bias survive the studio row");
   const auto *field = Field(SourceForm(row, SignalNames{}), "pick");
   Check(field && field->allowEmpty, "the pick field may be left empty");
-  MaterialClustersSourceRow tooBiased =
-      Get<MaterialClustersSourceRow>(row.kind)
-          ? *Get<MaterialClustersSourceRow>(row.kind)
-          : MaterialClustersSourceRow{};
+  MaterialGroupsSourceRow tooBiased =
+      Get<MaterialGroupsSourceRow>(row.kind)
+          ? *Get<MaterialGroupsSourceRow>(row.kind)
+          : MaterialGroupsSourceRow{};
   tooBiased.areaBias = "9";
   SourceRow bad = row;
   bad.kind = tooBiased;
@@ -154,12 +154,12 @@ void TestSourceForm() {
             std::holds_alternative<SetSource>(*path->bind("textures/a.dds")),
         "editing an image field emits a source edit");
 
-  const std::optional<RecipeEdit> switched = form[0].bind("materialClusters");
+  const std::optional<RecipeEdit> switched = form[0].bind("material groups");
   const auto *set = switched ? std::get_if<SetSource>(&*switched) : nullptr;
   const auto *clusters =
-      set ? std::get_if<MaterialClustersSource>(&set->kind) : nullptr;
+      set ? std::get_if<MaterialGroupsSource>(&set->kind) : nullptr;
   Check(clusters && clusters->settings == ClusterSettings{},
-        "switching a source to material clusters starts from the defaults");
+        "switching a source to material groups starts from the defaults");
 }
 
 void TestEffectShaderImageForm() {
@@ -606,7 +606,7 @@ void TestOptionalFieldRefusals() {
 }
 
 void TestClusterColor() {
-  MaterialClustersSource clusters;
+  MaterialGroupsSource clusters;
   clusters.settings.merge = 0.4f;
   clusters.settings.smoothing = 5;
   const SourceRow row = SourceRowOf(Source{"clusters", clusters}, 0);
@@ -620,7 +620,7 @@ void TestClusterColor() {
   if (merge && merge->bind) {
     const auto edit = merge->bind("0.2");
     const auto *set = edit ? Get<SetSource>(*edit) : nullptr;
-    const auto *value = set ? Get<MaterialClustersSource>(set->kind) : nullptr;
+    const auto *value = set ? Get<MaterialGroupsSource>(set->kind) : nullptr;
     Check(value && value->settings.merge == 0.2f &&
               value->settings.smoothing == 5,
           "editing the merge share keeps the smoothing");

@@ -289,7 +289,7 @@ ValueType SourceType(const Source &a_source) noexcept {
                    : ValueType::kScalar;
       },
       [](const MaterialSource &s) { return MaterialChannelType(s.channel); },
-      [](const BakeSource &s) {
+      [](const MeshSource &s) {
         if (Is<UvBake>(s.bake)) {
           return ValueType::kVec2;
         }
@@ -300,17 +300,17 @@ ValueType SourceType(const Source &a_source) noexcept {
       },
       [](const DistanceSource &) { return ValueType::kScalar; },
       [](const RippleSource &) { return ValueType::kScalar; },
-      [](const MaterialClustersSource &s) {
+      [](const MaterialGroupsSource &s) {
         return s.palette ? ValueType::kVec3 : ValueType::kScalar;
       });
 }
 
 bool SourceHoldsIds(const SourceKind &a_kind) noexcept {
-  if (const auto *clusters = Get<MaterialClustersSource>(a_kind)) {
+  if (const auto *clusters = Get<MaterialGroupsSource>(a_kind)) {
     return !clusters->pick && !clusters->palette;
   }
-  if (const auto *bake = Get<BakeSource>(a_kind)) {
-    return Is<ComponentIdBake>(bake->bake) || Is<ChartIdBake>(bake->bake);
+  if (const auto *bake = Get<MeshSource>(a_kind)) {
+    return Is<PartBake>(bake->bake) || Is<ChartBake>(bake->bake);
   }
   return false;
 }
@@ -807,7 +807,7 @@ bool IsAnimated(const RecipeGraph &a_graph, const Output &a_output) {
 
 bool RecipeInputsAreActorIndependent(const Recipe &a_recipe) noexcept {
   for (const Source &source : a_recipe.sources) {
-    if (Is<BakeSource>(source.kind) || Is<DistanceSource>(source.kind)) {
+    if (Is<MeshSource>(source.kind) || Is<DistanceSource>(source.kind)) {
       return false;
     }
   }

@@ -25,11 +25,11 @@ BuiltTerm MaterialiseTerm(const MaskPreset &a_preset,
   std::vector<std::string> factors;
   if (a_preset.partition) {
     factors.push_back(ReferenceText(sources.ReuseOrAdd(
-        "partition", BakeSource{PartitionBake{*a_preset.partition}})));
+        "partition", MeshSource{PartitionBake{*a_preset.partition}})));
   }
   if (!a_preset.bones.empty()) {
     factors.push_back(ReferenceText(sources.ReuseOrAdd(
-        "bones", BakeSource{BoneWeightBake{a_preset.bones}})));
+        "bones", MeshSource{BoneWeightBake{a_preset.bones}})));
   }
   if (!a_preset.expression.empty()) {
     std::vector<ExpressionRename> renames;
@@ -251,7 +251,7 @@ namespace {
                                   const std::string &a_geometry,
                                   SourcePlanBuilder &a_sources) {
   const std::string guard = a_sources.ReuseOrAdd(
-      GuardStem(a_geometry), BakeSource{GeometryBake{a_geometry}});
+      GuardStem(a_geometry), MeshSource{GeometryBake{a_geometry}});
   return std::format("({}) * {}", a_text, ReferenceText(guard));
 }
 }
@@ -284,11 +284,11 @@ BuiltTerm BuildTerm(const TermKind &a_kind, const MaskPresets &a_presets,
       },
       [&](const PartitionTerm &t) {
         return ReferenceText(
-            sources.ReuseOrAdd("partition", BakeSource{PartitionBake{t.slot}}));
+            sources.ReuseOrAdd("partition", MeshSource{PartitionBake{t.slot}}));
       },
       [&](const BoneTerm &t) {
         return ReferenceText(
-            sources.ReuseOrAdd("bones", BakeSource{BoneWeightBake{t.bones}}));
+            sources.ReuseOrAdd("bones", MeshSource{BoneWeightBake{t.bones}}));
       },
       [&](const IslandTerm &t) {
         const std::string name = sources.ReuseOrAdd(
@@ -298,7 +298,7 @@ BuiltTerm BuildTerm(const TermKind &a_kind, const MaskPresets &a_presets,
       },
       [&](const ClusterTerm &t) {
         const std::string name =
-            sources.ReuseOrAdd("clusters", MaterialClustersSource{t.settings});
+            sources.ReuseOrAdd("clusters", MaterialGroupsSource{t.settings});
         return IdMatchText(name, t.id);
       });
   if (a_guard && !text.empty()) {

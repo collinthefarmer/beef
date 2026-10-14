@@ -937,7 +937,7 @@ std::string SourceValueText(const SourceKind &a_kind) {
       [](const MaterialSource &s) {
         return std::string{MaterialChannelName(s.channel)};
       },
-      [](const BakeSource &s) {
+      [](const MeshSource &s) {
         return Match(
             s.bake,
             [](const PositionBake &) { return std::string{"position"}; },
@@ -953,8 +953,8 @@ std::string SourceValueText(const SourceKind &a_kind) {
             [](const BoneWeightBake &b) {
               return std::format("{} bone(s)", b.bones.size());
             },
-            [](const ComponentIdBake &) { return std::string{"componentId"}; },
-            [](const ChartIdBake &) { return std::string{"chartId"}; },
+            [](const PartBake &) { return std::string{"part"}; },
+            [](const ChartBake &) { return std::string{"chart"}; },
             [](const GeometryBake &g) { return "geometry " + g.geometry; });
       },
       [](const DistanceSource &s) { return s.from; },
@@ -963,7 +963,7 @@ std::string SourceValueText(const SourceKind &a_kind) {
                            s.shape == RippleShape::kDisc ? "disc" : "ring",
                            s.trigger.name);
       },
-      [](const MaterialClustersSource &s) {
+      [](const MaterialGroupsSource &s) {
         return std::format("clusters, merge above {:.0f}%",
                            s.settings.merge * 100.0f);
       });

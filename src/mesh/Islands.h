@@ -24,8 +24,8 @@ struct IslandSourceSpec {
   BakeKind bake;
 };
 inline constexpr IslandSourceSpec kIslandSources[]{
-    {IslandSource::kComponent, "component", "part", ComponentIdBake{}},
-    {IslandSource::kChart, "chart", "chart", ChartIdBake{}},
+    {IslandSource::kComponent, "component", "part", PartBake{}},
+    {IslandSource::kChart, "chart", "chart", ChartBake{}},
 };
 [[nodiscard]] std::string_view IslandSourceName(IslandSource a_source) noexcept;
 [[nodiscard]] std::string_view

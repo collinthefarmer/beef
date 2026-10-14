@@ -115,7 +115,7 @@ void ScopedOffersAndGuards(const MaskPresets &a_presets) {
         "the built mask keeps the guard");
 
   SourceCatalog guarded;
-  guarded.sources = {Source{"otherOnly", BakeSource{GeometryBake{"Other"}}}};
+  guarded.sources = {Source{"otherOnly", MeshSource{GeometryBake{"Other"}}}};
   guarded.reservedNames = {"otherOnly"};
   const BuiltTerm reused =
       BuildTerm(part->kind, a_presets, guarded, std::string{"Other"});

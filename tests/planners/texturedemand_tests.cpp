@@ -121,8 +121,8 @@ int main() {
             Identity(stateful, "clock", Bindings("another")),
         "clock identity tracks the runtime binding");
   Recipe geometry;
-  geometry.sources = {{"position", BakeSource{PositionBake{}}},
-                      {"same", BakeSource{PositionBake{}}},
+  geometry.sources = {{"position", MeshSource{PositionBake{}}},
+                      {"same", MeshSource{PositionBake{}}},
                       {"left", DistanceSource{"left"}},
                       {"right", DistanceSource{"right"}}};
   const auto geometryGraph = RecipeGraph::Compile(geometry);

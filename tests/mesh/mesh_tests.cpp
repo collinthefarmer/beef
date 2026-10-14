@@ -235,10 +235,10 @@ int main() {
   Check(partitionBake.problem == "no partition in biped slot 32 (body)",
         "a partition bake naming an absent slot reports it with the slot name");
 
-  const auto componentBake = BuildBake(mesh, ComponentIdBake{});
+  const auto componentBake = BuildBake(mesh, PartBake{});
   Check(!componentBake.vector &&
-            componentBake.problem == "componentId needs the mesh analysis",
-        "a componentId bake defers to the analysis");
+            componentBake.problem == "part needs the mesh analysis",
+        "a part bake defers to the analysis");
 
   const auto emptyBake = BuildBake(MeshData{}, PositionBake{});
   Check(emptyBake.problem == "the mesh has no triangles to bake",

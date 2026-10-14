@@ -246,7 +246,7 @@ int main() {
           "a failed submission blocks consumers");
   }
   Recipe clusterRecipe;
-  clusterRecipe.sources = {{"zones", MaterialClustersSource{}}};
+  clusterRecipe.sources = {{"zones", MaterialGroupsSource{}}};
   SurfaceOutput clusterSurface;
   Layer clusterLayer;
   clusterLayer.source = Ref{"zones"};
@@ -283,7 +283,7 @@ int main() {
           "the sample submission carries the source's cluster settings");
   }
   Recipe pickRecipe;
-  MaterialClustersSource pickSource;
+  MaterialGroupsSource pickSource;
   pickSource.pick = Param{0.25f};
   pickSource.areaBias = Param{2.0f};
   pickRecipe.sources = {{"zone", pickSource}};

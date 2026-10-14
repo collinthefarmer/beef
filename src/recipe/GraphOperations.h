@@ -183,7 +183,7 @@ struct RippleOperation {
       direction;
   RippleShape shape;
 };
-struct MaterialClustersOperation {
+struct MaterialGroupsOperation {
   OutputRef material, geometry, coordinates;
   ClusterSettings settings;
   std::optional<OutputRef> pick;
@@ -194,15 +194,16 @@ struct ReductionOperation {
   ReductionKind kind = ReductionKind::kMean;
   OutputRef value;
 };
-using NodeKind = std::variant<
-    ConstantOperation, ExternalInput, VectorOperation, ExpressionOperation,
-    ParameterOperation, CallOperation, MapFunctionOperation, WaveOperation,
-    RampOperation, EffectShaderOperation, NoiseOperation, GradientOperation,
-    ToRootOperation, TriggerOperation, HoldOperation, CounterOperation,
-    AccumulateOperation, RateOperation, SmoothOperation,
-    TextureCoordinatesOperation, ImageOperation, MaterialOperation,
-    BakeOperation, DistanceOperation, RippleOperation,
-    MaterialClustersOperation, ReductionOperation>;
+using NodeKind =
+    std::variant<ConstantOperation, ExternalInput, VectorOperation,
+                 ExpressionOperation, ParameterOperation, CallOperation,
+                 MapFunctionOperation, WaveOperation, RampOperation,
+                 EffectShaderOperation, NoiseOperation, GradientOperation,
+                 ToRootOperation, TriggerOperation, HoldOperation,
+                 CounterOperation, AccumulateOperation, RateOperation,
+                 SmoothOperation, TextureCoordinatesOperation, ImageOperation,
+                 MaterialOperation, BakeOperation, DistanceOperation,
+                 RippleOperation, MaterialGroupsOperation, ReductionOperation>;
 struct RecipeNode {
   std::string displayName;
   NodeKind kind;

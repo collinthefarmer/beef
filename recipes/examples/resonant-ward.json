@@ -55,20 +55,20 @@
       }
     },
     "bake": {
-      "bake": "normal"
+      "mesh": "normal"
     },
     "metallic": {
       "material": "metallic"
     },
     "bones": {
-      "bake": {
+      "mesh": {
         "boneWeight": [
           "NPC Spine2 [Spn2]"
         ]
       }
     },
     "bones2": {
-      "bake": {
+      "mesh": {
         "boneWeight": [
           "NPC R Clavicle [RClv]"
         ]

@@ -429,7 +429,7 @@ false position sweeping toward the frame origin at every seam. Mip
 levels deeper than the gutter still darken at borders; masks sample
 mip 0 unless a recipe asks otherwise. Adjacent islands with different
 values still blend where their borders touch, which for the id maps
-(`componentId`, `chartId`, and the `materialClusters` map — all three
+(`part`, `chart`, and the material groups map — all three
 carry id / 255 texels through the same linear sampler) fabricates ids
 between the two — those want nearest sampling, recorded as a backlog
 item, not a dilation fix.
@@ -544,7 +544,7 @@ mesh space, z normalise, w mip; `texTransform[8]` xy uv offset, zw tile;
 time, y op count, z vector result. The stack's `stackMisc` is x layer count,
 y has base, z the base's mip; `stackFlags[k].w` is layer k's source mip. The shared sampler is linear; w
 nearest snaps the uv to the texel centre before the read, so a texel is
-read whole. The id maps (componentId, chartId, materialClusters) set it:
+read whole. The id maps (part, chart, material groups) set it:
 their texels are identifiers scaled by 1/255, and a linear blend across
 an island border fabricates ids that exist on neither side. Every stack value is a float3 with a scalar
 broadcast, so component-wise arithmetic matches the CPU's rule;
@@ -2072,9 +2072,9 @@ builds the new one beside it, as a resize does.
   point-form was removed as derivable, see the frame identity above);
   `partition` is 1 on the biped slot's triangles; `boneWeight`
   is the summed weight of the named bones (sorted, so two orders of one set
-  share a key); `componentId` and `chartId` carry island id / 255 in x with
+  share a key); `part` and `chart` carry island id / 255 in x with
   `kNoIsland` vertices at 1 and need the analysis, not the mesh alone.
-- `{"bake": {"geometry": glob}}` (`GeometryBake`) is the mesh coverage (1 on
+- `{"mesh": {"geometry": glob}}` (`GeometryBake`) is the mesh coverage (1 on
   every triangle, all partitions) when the rendered geometry's name matches
   the glob (`IsNamedBy`, the selector clause's `GlobMatch`), else 0
   everywhere. It uses the object form like `partition` and `boneWeight`
@@ -2088,6 +2088,12 @@ builds the new one beside it, as a resize does.
   and the plan key's static inputs carry whether each geometry bake matches
   this geometry's name, never the name itself, and only in graphs that hold
   a geometry bake.
+- The source keys changed on 2026-10-14: `bake` is `mesh` (`MeshSource`),
+  its `componentId` and `chartId` are `part` and `chart`, and
+  `materialClusters` is `{"material": {"groups": {…}}}`
+  (`MaterialGroupsSource`). `kSourceKeys` (`recipe/Words.h`) maps each source
+  kind to its key and, for material groups, the member under that key. A
+  retired key fails to load and names its replacement (`kRetiredSourceKeys`).
 - The `item` signal kind (`ItemSignal`) holds four facts of the worn item:
   `itemHash`, `chartCount`, `geometryIndex` and `geometryCount`. Before
   2026-10-14 the first two were the `piece` source kind; a recipe that still
@@ -2985,7 +2991,7 @@ cancel by the user instead of the load.
 ### Material dump (`mesh/MaterialDump.h`, `engine/MaterialDump.cpp`, `TextureLab::CopyMapPixels`)
 
 - The **Dump material** button sits in the cluster term pane and the
-  `materialClusters` source inspector. It writes one
+  material groups source inspector. It writes one
   folder under `Data/SKSE/Plugins/<plugin>/dumps/`. The folder name is
   `<armor>_<geometry>-<UTC stamp>`, with `-2` to `-9` added when the name
   exists. `SanitisedName` keeps only ASCII letters, digits, `-` and `_`, so

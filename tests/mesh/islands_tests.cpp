@@ -110,13 +110,13 @@ int main() {
         "the chart's plain name is chart");
 
   const SourceKind componentBake = IslandBakeOf(IslandSource::kComponent);
-  const BakeSource *asBake = Get<BakeSource>(componentBake);
+  const MeshSource *asBake = Get<MeshSource>(componentBake);
   Check(asBake != nullptr, "a component's island bake is a bake source");
-  Check(asBake != nullptr && Is<ComponentIdBake>(asBake->bake),
+  Check(asBake != nullptr && Is<PartBake>(asBake->bake),
         "the component source bakes component ids");
   const SourceKind chartBake = IslandBakeOf(IslandSource::kChart);
-  const BakeSource *asChart = Get<BakeSource>(chartBake);
-  Check(asChart != nullptr && Is<ChartIdBake>(asChart->bake),
+  const MeshSource *asChart = Get<MeshSource>(chartBake);
+  Check(asChart != nullptr && Is<ChartBake>(asChart->bake),
         "the chart source bakes chart ids");
 
   const MeshData twoParts = TwoParts();

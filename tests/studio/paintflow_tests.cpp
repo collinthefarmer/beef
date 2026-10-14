@@ -118,7 +118,7 @@ void RetunedSources() {
   const auto *restored =
       flow.paint.sources.empty()
           ? nullptr
-          : Get<MaterialClustersSource>(flow.paint.sources.front().kind);
+          : Get<MaterialGroupsSource>(flow.paint.sources.front().kind);
   Check(flow.paint.sources.size() == 1 && restored &&
             restored->settings.smoothing == 6,
         "undo restores the prior generated source without retaining the "
@@ -194,7 +194,7 @@ void RapidOffersAndKeep() {
   flow.Publish();
   Check(!flow.state.mask.dirty && flow.paint.sources.size() == 3,
         "resending previously applied dependencies is idempotent");
-  const auto *partition = Get<BakeSource>(flow.paint.sources.front().kind);
+  const auto *partition = Get<MeshSource>(flow.paint.sources.front().kind);
   Check(partition && Get<PartitionBake>(partition->bake) &&
             Get<PartitionBake>(partition->bake)->bipedSlot == BipedSlot{32},
         "first partition retains its own source definition");

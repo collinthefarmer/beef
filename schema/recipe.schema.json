@@ -175,30 +175,31 @@
               "scroll": { "$ref": "#/$defs/vec2" }, "tile": { "$ref": "#/$defs/vec2" },
               "mirror": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "type": "boolean" } },
               "transpose": { "type": "boolean" }, "mip": { "$ref": "#/$defs/number", "minimum": 0 } } } } },
-        { "required": ["material"], "properties": { "material": { "enum": ["diffuseRgb", "diffuseLuma", "normalSlope", "normalRgb", "roughness", "metallic", "occlusion", "reflectance", "rmaosRgb", "displacement", "relief"], "description": "The worn piece's own maps. diffuseRgb, normalRgb and rmaosRgb are the raw vec3 reads; with dot() any single channel derives from them (roughness = dot(@rmaosRgb, [1, 0, 0])), and the named scalars remain as the PBR vocabulary. relief is the best available relief detail, not a stored map: the displacement map when it is non-flat, else occlusion." } } },
-        { "required": ["bake"], "properties": { "bake": { "oneOf": [
-            { "enum": ["position", "localPosition", "normal", "uv", "componentId", "chartId"], "description": "normal is the bind-pose surface normal, each axis mapped -1..1 to 0..1 (recover the vector as v * 2 - 1; dot(v, [0, 0, 1]) reads how far it points up). uv is the texel's coordinates as a vec2 (dot(v, [1, 0]) reads u, dot(v, [0, 1]) reads v). componentId and chartId: the mesh analysis' id map for that source (connected pieces, UV charts), each texel the region id / 255, rasterised once per geometry." },
+        { "required": ["material"], "properties": { "material": { "oneOf": [
+            { "enum": ["diffuseRgb", "diffuseLuma", "normalSlope", "normalRgb", "roughness", "metallic", "occlusion", "reflectance", "rmaosRgb", "displacement", "relief"], "description": "The worn piece's own maps. diffuseRgb, normalRgb and rmaosRgb are the raw vec3 reads; with dot() any single channel derives from them (roughness = dot(@rmaosRgb, [1, 0, 0])), and the named scalars remain as the PBR vocabulary. relief is the best available relief detail, not a stored map: the displacement map when it is non-flat, else occlusion."  },
+            { "$ref": "#/$defs/oneKey", "required": ["groups"], "properties": { "groups": {
+            "type": "object", "additionalProperties": false,
+            "description": "The material's groups: the material split into groups of similar texels (regions inside the mesh's UV charts, grouped by a Gaussian mixture), each texel the id / 255 of its group, rendered once per geometry. Every field has a default.",
+            "properties": {
+              "merge": { "$ref": "#/$defs/number", "minimum": 0, "maximum": 1, "default": 0.3, "description": "Two groups merge while more than this share of one group's texels would be labelled as the other. Lower merges more." },
+              "smoothing": { "type": "integer", "minimum": 0, "maximum": 32, "default": 8, "description": "Radius in texels of the 256-texel analysis over which a texel's group follows its neighbours of similar colour; 0 labels every texel on its own." },
+              "pick": { "oneOf": [{ "$ref": "#/$defs/number", "minimum": 0, "maximum": 1 }, { "$ref": "#/$defs/ref" }], "description": "Pick one group with this 0..1 value (for example @enchantment idHash): the source is then 1 on the picked group's texels and 0 elsewhere. Absent, the source is the id map." },
+              "areaBias": { "oneOf": [{ "$ref": "#/$defs/number", "minimum": 0, "maximum": 8 }, { "$ref": "#/$defs/ref" }], "default": 1, "description": "How a pick favours large groups: each group weighs its share of the texels to this power, so 0 picks every group equally, 1 in proportion to area, and more favours the largest." },
+              "palette": { "type": "boolean", "default": false, "description": "Colour every group from a fixed palette; the source is then a colour. Excludes pick." } } } } } ] } } },
+        { "required": ["mesh"], "properties": { "mesh": { "oneOf": [
+            { "enum": ["position", "localPosition", "normal", "uv", "part", "chart"], "description": "normal is the bind-pose surface normal, each axis mapped -1..1 to 0..1 (recover the vector as v * 2 - 1; dot(v, [0, 0, 1]) reads how far it points up). uv is the texel's coordinates as a vec2 (dot(v, [1, 0]) reads u, dot(v, [0, 1]) reads v). part and chart: the mesh analysis' id map for that source (connected parts, UV charts), each texel the region id / 255, rasterised once per geometry." },
             { "$ref": "#/$defs/oneKey", "required": ["partition"], "properties": { "partition": { "oneOf": [
                 { "enum": ["body", "hands", "forearms", "feet", "calves", "head", "hair", "amulet", "ring", "shield", "tail"] }, { "type": "integer", "minimum": 30, "maximum": 61 } ] } } },
             { "$ref": "#/$defs/oneKey", "required": ["boneWeight"], "properties": { "boneWeight": { "type": "array", "maxItems": 4096, "minItems": 1, "items": { "$ref": "#/$defs/node" } } } },
             { "$ref": "#/$defs/oneKey", "required": ["geometry"], "properties": { "geometry": { "$ref": "#/$defs/glob", "description": "1 where the rendered geometry's mesh covers the texture when the geometry's name matches this glob, 0 everywhere on every other geometry. Guards a mask term that only means something on one geometry." } } } ] } } },
-        { "required": ["distance"], "properties": { "distance": { "$ref": "#/$defs/node", "description": "Distance from this skeleton node, bind pose, 0..256 units as 0..1. A distance from a fixed point is distance() of a position bake in a mask." } } },
+        { "required": ["distance"], "properties": { "distance": { "$ref": "#/$defs/node", "description": "Distance from this skeleton node, bind pose, 0..256 units as 0..1. A distance from a fixed point is distance() of a mesh position in a mask." } } },
         { "required": ["ripple"], "properties": { "ripple": {
             "type": "object", "additionalProperties": false, "required": ["trigger"],
             "properties": {
               "trigger": { "$ref": "#/$defs/ref" }, "speed": { "$ref": "#/$defs/param" },
               "width": { "$ref": "#/$defs/param" }, "decay": { "$ref": "#/$defs/param" },
               "shape": { "enum": ["ring", "disc"] },
-              "direction": { "$ref": "#/$defs/vec3", "description": "A worldspace vector the wave travels along; the front is a plane sweeping from the anchor. Absent or zero radiates as a ring or disc from the anchor point. Animatable, so a signal (e.g. a payload carrying a hit direction) can steer it." } } } } },
-        { "required": ["materialClusters"], "properties": { "materialClusters": {
-            "type": "object", "additionalProperties": false,
-            "description": "The material's cluster map: the material split into groups of similar texels (regions inside the mesh's UV charts, grouped by a Gaussian mixture), each texel the id / 255 of its group, rendered once per geometry. Every field has a default.",
-            "properties": {
-              "merge": { "$ref": "#/$defs/number", "minimum": 0, "maximum": 1, "default": 0.3, "description": "Two groups merge while more than this share of one group's texels would be labelled as the other. Lower merges more." },
-              "smoothing": { "type": "integer", "minimum": 0, "maximum": 32, "default": 8, "description": "Radius in texels of the 256-texel analysis over which a texel's group follows its neighbours of similar colour; 0 labels every texel on its own." },
-              "pick": { "oneOf": [{ "$ref": "#/$defs/number", "minimum": 0, "maximum": 1 }, { "$ref": "#/$defs/ref" }], "description": "Pick one cluster with this 0..1 value (for example @enchantment idHash): the source is then 1 on the picked cluster's texels and 0 elsewhere. Absent, the source is the id map." },
-              "areaBias": { "oneOf": [{ "$ref": "#/$defs/number", "minimum": 0, "maximum": 8 }, { "$ref": "#/$defs/ref" }], "default": 1, "description": "How a pick favours large clusters: each cluster weighs its share of the texels to this power, so 0 picks every cluster equally, 1 in proportion to area, and more favours the largest." },
-              "palette": { "type": "boolean", "default": false, "description": "Colour every cluster from a fixed palette; the source is then a colour. Excludes pick." } } } } }
+              "direction": { "$ref": "#/$defs/vec3", "description": "A worldspace vector the wave travels along; the front is a plane sweeping from the anchor. Absent or zero radiates as a ring or disc from the anchor point. Animatable, so a signal (e.g. a payload carrying a hit direction) can steer it." } } } } }
       ]
     },
 

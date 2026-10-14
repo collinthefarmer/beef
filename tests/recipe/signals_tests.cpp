@@ -542,20 +542,20 @@ int main() {
     const auto graph = RecipeGraph::Compile(recipe);
     const RowTypes rows{recipe, graph};
 
-    Source bad{"k", MaterialClustersSource{}};
-    Get<MaterialClustersSource>(bad.kind)->settings.merge = 2.0f;
+    Source bad{"k", MaterialGroupsSource{}};
+    Get<MaterialGroupsSource>(bad.kind)->settings.merge = 2.0f;
     Check(HasMessage(CheckSource(rows, bad), "merge"),
           "CheckSource rejects a merge share past one");
 
-    Source both{"k3", MaterialClustersSource{}};
-    Get<MaterialClustersSource>(both.kind)->palette = true;
-    Get<MaterialClustersSource>(both.kind)->pick = Param{0.5f};
+    Source both{"k3", MaterialGroupsSource{}};
+    Get<MaterialGroupsSource>(both.kind)->palette = true;
+    Get<MaterialGroupsSource>(both.kind)->pick = Param{0.5f};
     Check(HasMessage(CheckSource(rows, both), "palette"),
           "a palette cluster source refuses a pick");
 
     Recipe broken;
-    Source zero{"zero", MaterialClustersSource{}};
-    Get<MaterialClustersSource>(zero.kind)->settings.smoothing =
+    Source zero{"zero", MaterialGroupsSource{}};
+    Get<MaterialGroupsSource>(zero.kind)->settings.smoothing =
         kMaxClusterSmoothing + 1;
     broken.sources = {zero};
     const auto diagnostics = Validate(broken, {});
@@ -578,7 +578,7 @@ int main() {
     Check(spinIndex && signalGraph.IsDisabled(*spinIndex),
           "a signal with a field error is inert in the graph");
 
-    Source clean{"k2", MaterialClustersSource{}};
+    Source clean{"k2", MaterialGroupsSource{}};
     Check(CheckSource(rows, clean).empty(),
           "CheckSource accepts a valid clusters source");
   }
