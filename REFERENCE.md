@@ -585,7 +585,7 @@ Group pass (`PSClusters`, cbuffer `GroupParams` b3, `GroupConstants`):
   analysis, one channel per group id. `TextureLab::CreateGroupOdds` makes
   them immutable for each draw. A sampled odds value below 1/512 counts as
   1/512.
-- `ScoreOf` (`mesh/MaterialRegions.cpp`) is the CPU reference for the density
+- `ScoreOf` (`mesh/MaterialScoring.cpp`) is the CPU reference for the density
   part. A test checks it against the exact density.
 - The id is written as id / 255 grey.
 
@@ -3016,6 +3016,14 @@ cancel by the user instead of the load.
   under about 60 MB. A worn armor geometry is far below them.
 
 ### Material regions (`mesh/MaterialRegions.h`, `mesh/GaussianMixture.h`)
+
+- `MaterialRegions.h` declares the whole grouping. The code is split by
+  stage: `MaterialSegments.cpp` (chart-aware SLIC regions),
+  `MaterialGroupFit.cpp` (region descriptors, the mixture fit and the
+  merge), `MaterialScoring.cpp` (texel scoring, the guided filter and the
+  odds) and `MaterialRegions.cpp` (the raster, the chart raster, the cover
+  table and `GroupMaterial`, which runs the stages in order).
+  `RasterGrid.h` holds the grid walk and coverage tests the stages share.
 
 The method and its prototype comparison are in
 `docs/plans/material-regions-2026-10-13.md`. The steps run in this order:

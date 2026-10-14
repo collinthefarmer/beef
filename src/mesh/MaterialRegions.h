@@ -129,6 +129,10 @@ struct MaterialGrouping {
 RasterOf(std::uint32_t a_side, std::vector<MaterialTexel> a_texels,
          std::vector<std::uint16_t> a_charts);
 [[nodiscard]] TexelAxes AxesOfTexel(const MaterialTexel &a_texel) noexcept;
+[[nodiscard]] TexelAxes Standardised(const Standardisation &a_s,
+                                     const MaterialTexel &a_texel) noexcept;
+[[nodiscard]] std::vector<PreparedGaussian>
+PreparedOf(const std::vector<MaterialGroup> &a_groups);
 [[nodiscard]] Regions SegmentRaster(const MaterialRaster &a_raster,
                                     const SegmentSettings &a_settings);
 [[nodiscard]] std::expected<MaterialGroups, std::string>
