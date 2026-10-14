@@ -3127,6 +3127,25 @@ The method and its prototype comparison are in
   material's maps only. Two geometries that share maps share the first
   geometry's charts in the studio chart.
 
+### Shader source check (`planners/ShaderSource.cpp`, `tests/planners/shadersource_tests.cpp`)
+
+- The game compiles every shader at runtime with `D3DCompile` (Shader Model
+  5). The native suite `planners_shadersource` compiles each fixed entry
+  point with dxc (`-HV 2018 -T ps_6_0`/`vs_6_0`), which catches syntax and
+  type errors before the game. dxc targets Shader Model 6, so a shader can
+  pass here and still fail under `D3DCompile` on an SM5-only construct.
+  `-HV 2018` keeps the HLSL rules `D3DCompile` uses (a ternary over vectors).
+- The same suite parses each `cbuffer` of the source and compares its size
+  with the C++ struct that fills it (`render/ShaderConstants.h`). A field
+  type other than float4, int4, uint4 or float4x4 fails the parse, so the
+  table must grow with the source.
+- Program and stack shaders (`GeneratedShaders`) append generated text to
+  this source. The suite plans the imported fill and bare templates and the
+  three example recipes natively, generates each plan's program and stack
+  shaders and compiles them. The stack shape it builds takes every layer as
+  visible and every non-field source as a texture, so it covers the code
+  paths of those recipes, not every runtime visibility combination.
+
 ### Area pick (`mesh/AreaPick.h`, `PickSource`, `DrawClustersStep::area`)
 
 - `pick` lights an area level by level (`levels`, `PickLevel`), each from
@@ -3159,6 +3178,12 @@ The method and its prototype comparison are in
   nearest-sampled chart bake at t3, and a 256-entry lit table in
   `groupCharts`; `groupLevels.z` turns the chart filter on. A geometry that
   is not picked draws with group 255, which matches no texel.
+- Each pick logs `area pick: geometry i of n lights material group g on k
+  chart(s), x% of the geometry` (or "every chart" without a chart level),
+  or that the geometry is not picked. The share is the sum, over lit
+  charts, of the group's cover of the chart times the chart's share of the
+  labelled raster (`ChartCover::chartShare`), so it measures how much of
+  the geometry glows before masks narrow it.
 - `seed` is required, with no default. A default from the piece identity
   would hide which value fixes the pick; an author mixes `rand()` and
   `@itemHash` in a signal when the item should change the pick.
