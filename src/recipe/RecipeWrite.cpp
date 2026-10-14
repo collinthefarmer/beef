@@ -46,6 +46,23 @@ std::string DescribeMeshSource(const MeshSource &a_source) {
       });
 }
 
+std::string DescribePickSource(const PickSource &a_source) {
+  std::string text = "pick";
+  for (const PickLevel &level : a_source.levels) {
+    text += Match(
+        level,
+        [](const GeometryLevel &g) {
+          return std::format(" {} geometr(ies),", ParamText(g.count));
+        },
+        [](const GroupLevel &) { return std::string{" one material group,"}; },
+        [](const ChartLevel &c) {
+          return std::format(" {} chart(s) it covers by at least {:.0f}%,",
+                             ParamText(c.count), c.minCover * 100.0f);
+        });
+  }
+  return text + std::format(" seeded by {}", ParamText(a_source.seed));
+}
+
 std::string DescribeMaterialGroupsSource(const MaterialGroupsSource &a_source) {
   const ClusterSettings &settings = a_source.settings;
   std::string text =
@@ -86,13 +103,7 @@ std::string DescribeSource(const SourceKind &a_kind) {
       [](const MaterialGroupsSource &s) {
         return DescribeMaterialGroupsSource(s);
       },
-      [](const PickSource &s) {
-        return std::format("pick {} geometr(ies), then one material group, "
-                           "then {} chart(s) it covers by at least {:.0f}%, "
-                           "seeded by {}",
-                           ParamText(s.geometries), ParamText(s.charts),
-                           s.minCover * 100.0f, ParamText(s.seed));
-      });
+      [](const PickSource &s) { return DescribePickSource(s); });
 }
 
 std::string DescribeImageTexture(const ImageTexture &a_texture) {
@@ -344,17 +355,41 @@ json MaterialGroupsToJson(const MaterialGroupsSource &k) {
   return o;
 }
 
+json PickLevelToJson(const PickLevel &a_level) {
+  json o = json::object();
+  Writer w{o};
+  w.WriteEnum("by", kPickLevelWords, FromIndex<PickLevelId>(a_level.index()));
+  Match(
+      a_level,
+      [&](const GeometryLevel &g) {
+        w.WriteIf("count", g.count, GeometryLevel{}.count);
+      },
+      [&](const GroupLevel &g) {
+        const GroupLevel defaults;
+        w.WriteIf("areaBias", g.areaBias, defaults.areaBias);
+        w.WriteNumberIf("merge", g.settings.merge, defaults.settings.merge);
+        w.WriteIf("smoothing", g.settings.smoothing,
+                  defaults.settings.smoothing);
+      },
+      [&](const ChartLevel &c) {
+        const ChartLevel defaults;
+        w.WriteIf("count", c.count, defaults.count);
+        w.WriteNumberIf("minCover", c.minCover, defaults.minCover);
+      });
+  return o;
+}
+
 json PickToJson(const PickSource &k) {
-  const PickSource defaults;
   json o = json::object();
   Writer w{o};
   w.Write("seed", k.seed);
-  w.WriteIf("geometries", k.geometries, defaults.geometries);
-  w.WriteIf("charts", k.charts, defaults.charts);
-  w.WriteNumberIf("minCover", k.minCover, defaults.minCover);
-  w.WriteIf("areaBias", k.areaBias, defaults.areaBias);
-  w.WriteNumberIf("merge", k.settings.merge, defaults.settings.merge);
-  w.WriteIf("smoothing", k.settings.smoothing, defaults.settings.smoothing);
+  if (k.levels != PickSource{}.levels) {
+    json levels = json::array();
+    for (const PickLevel &level : k.levels) {
+      levels.push_back(PickLevelToJson(level));
+    }
+    o["levels"] = std::move(levels);
+  }
   return o;
 }
 

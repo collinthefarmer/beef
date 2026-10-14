@@ -95,12 +95,21 @@ ClustersRowOf(const MaterialGroupsSource &a_clusters) {
 [[nodiscard]] PickSourceRow PickRowOf(const PickSource &a_pick) {
   PickSourceRow pick;
   pick.seed = ParamText(a_pick.seed);
-  pick.geometries = ParamText(a_pick.geometries);
-  pick.charts = ParamText(a_pick.charts);
-  pick.minCover = ParamText(a_pick.minCover);
-  pick.areaBias = ParamText(a_pick.areaBias);
-  pick.merge = ParamText(a_pick.settings.merge);
-  pick.smoothing = std::to_string(a_pick.settings.smoothing);
+  const PickLevels levels = SupportedLevels(a_pick).value_or(PickLevels{});
+  if (levels.geometry) {
+    pick.geometryLevel = true;
+    pick.geometries = ParamText(levels.geometry->count);
+  }
+  if (levels.groups) {
+    pick.areaBias = ParamText(levels.groups->areaBias);
+    pick.merge = ParamText(levels.groups->settings.merge);
+    pick.smoothing = std::to_string(levels.groups->settings.smoothing);
+  }
+  if (levels.chart) {
+    pick.chartLevel = true;
+    pick.charts = ParamText(levels.chart->count);
+    pick.minCover = ParamText(levels.chart->minCover);
+  }
   return pick;
 }
 
@@ -289,23 +298,25 @@ ClustersKindOf(const MaterialGroupsSourceRow &a_row) {
 [[nodiscard]] std::optional<SourceKind> PickKindOf(const PickSourceRow &a_row) {
   const auto seed = ParseParam(a_row.seed);
   const auto geometries = ParseParam(a_row.geometries);
-  const auto charts = ParseParam(a_row.charts);
   const auto areaBias = ParseParam(a_row.areaBias);
-  const auto minCover = UnitNumber(a_row.minCover);
   const auto merge = UnitNumber(a_row.merge);
   const auto smoothing = WholeNumber(a_row.smoothing, kMaxClusterSmoothing);
-  if (!seed || !geometries || !charts || !areaBias || !minCover || !merge ||
-      !smoothing) {
+  const auto charts = ParseParam(a_row.charts);
+  const auto minCover = UnitNumber(a_row.minCover);
+  if (!seed || !geometries || !areaBias || !merge || !smoothing || !charts ||
+      !minCover) {
     return std::nullopt;
   }
   PickSource pick;
   pick.seed = *seed;
-  pick.geometries = *geometries;
-  pick.charts = *charts;
-  pick.areaBias = *areaBias;
-  pick.minCover = *minCover;
-  pick.settings.merge = *merge;
-  pick.settings.smoothing = *smoothing;
+  pick.levels.clear();
+  if (a_row.geometryLevel) {
+    pick.levels.push_back(GeometryLevel{*geometries});
+  }
+  pick.levels.push_back(GroupLevel{*areaBias, {*merge, *smoothing}});
+  if (a_row.chartLevel) {
+    pick.levels.push_back(ChartLevel{*charts, *minCover});
+  }
   return SourceKind{pick};
 }
 }

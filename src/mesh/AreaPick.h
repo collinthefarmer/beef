@@ -13,13 +13,19 @@
 namespace BetterEnchantmentEffects {
 inline constexpr std::size_t kChartSlots = 256;
 
+struct ChartChoice {
+  float count = 1.0f;
+  float minCover = kDefaultMinCover;
+};
+
 struct AreaPickSettings {
   float seed = 0.0f;
-  float geometries = 1.0f;
-  float charts = 1.0f;
-  float minCover = kDefaultMinCover;
+  float geometries = kEveryGeometryCount;
   float areaBias = 1.0f;
+  std::optional<ChartChoice> charts;
 };
+
+using LitCharts = std::array<bool, kChartSlots>;
 
 struct GeometryPlace {
   std::uint32_t index = 0;
@@ -28,7 +34,7 @@ struct GeometryPlace {
 
 struct PickedArea {
   std::uint8_t group = 0;
-  std::array<bool, kChartSlots> charts{};
+  std::optional<LitCharts> charts;
   std::size_t litCharts = 0;
   float share = 0.0f;
 };

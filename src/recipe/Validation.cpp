@@ -199,21 +199,36 @@ struct SourceFields {
   }
   void operator()(const PickSource &s) const {
     Scalar(report, s.seed, "seed");
-    Scalar(report, s.geometries, "geometries");
-    Scalar(report, s.charts, "charts");
-    Scalar(report, s.areaBias, "areaBias");
-    AreaBias(s.areaBias);
-    Number(report, s.minCover, "minCover");
-    if (s.minCover < 0.0f || s.minCover > 1.0f) {
+    if (!SupportedLevels(s)) {
+      report.Error("'levels' runs geometry, then groups, then chart, each at "
+                   "most once, with groups required; other orders are not "
+                   "supported yet");
+    }
+    for (const PickLevel &level : s.levels) {
+      Match(level, [&](const auto &a_level) { Level(a_level); });
+    }
+  }
+  void Level(const GeometryLevel &a_level) const {
+    Scalar(report, a_level.count, "count");
+    Count(a_level.count);
+  }
+  void Level(const GroupLevel &a_level) const {
+    Scalar(report, a_level.areaBias, "areaBias");
+    AreaBias(a_level.areaBias);
+    Settings(a_level.settings);
+  }
+  void Level(const ChartLevel &a_level) const {
+    Scalar(report, a_level.count, "count");
+    Count(a_level.count);
+    Number(report, a_level.minCover, "minCover");
+    if (a_level.minCover < 0.0f || a_level.minCover > 1.0f) {
       report.Error("'minCover' is 0..1");
     }
-    for (const auto &[count, field] :
-         {std::pair{&s.geometries, "geometries"}, {&s.charts, "charts"}}) {
-      if (const float *value = Get<float>(*count); value && *value < 1.0f) {
-        report.Error(std::format("'{}' is at least 1", field));
-      }
+  }
+  void Count(const Param &a_count) const {
+    if (const float *value = Get<float>(a_count); value && *value < 1.0f) {
+      report.Error("'count' is at least 1");
     }
-    Settings(s.settings);
   }
   void AreaBias(const Param &a_bias) const {
     if (const float *bias = Get<float>(a_bias);

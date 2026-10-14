@@ -357,9 +357,19 @@ std::vector<Diagnostic> CheckSourceInputs(const RowTypes &a_rows,
       },
       [&](const PickSource &s) {
         CheckScalar(a_rows, report, s.seed, "seed");
-        CheckScalar(a_rows, report, s.geometries, "geometries");
-        CheckScalar(a_rows, report, s.charts, "charts");
-        CheckScalar(a_rows, report, s.areaBias, "areaBias");
+        for (const PickLevel &level : s.levels) {
+          Match(
+              level,
+              [&](const GeometryLevel &g) {
+                CheckScalar(a_rows, report, g.count, "count");
+              },
+              [&](const GroupLevel &g) {
+                CheckScalar(a_rows, report, g.areaBias, "areaBias");
+              },
+              [&](const ChartLevel &c) {
+                CheckScalar(a_rows, report, c.count, "count");
+              });
+        }
       },
       [](const MaterialSource &) {});
   return out;

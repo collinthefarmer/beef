@@ -202,15 +202,22 @@
               "direction": { "$ref": "#/$defs/vec3", "description": "A worldspace vector the wave travels along; the front is a plane sweeping from the anchor. Absent or zero radiates as a ring or disc from the anchor point. Animatable, so a signal (e.g. a payload carrying a hit direction) can steer it." } } } } },
         { "required": ["pick"], "properties": { "pick": {
             "type": "object", "additionalProperties": false, "required": ["seed"],
-            "description": "1 on a picked area and 0 elsewhere, picked in three steps: 1 to 'geometries' of the piece's geometries, then one material group on each picked geometry, then 1 to 'charts' of the UV charts that group covers by at least 'minCover'. The area is never empty on a picked geometry.",
+            "description": "1 on a picked area and 0 elsewhere. Each level picks from what the level before left: 'geometry' picks 'count' of the piece's geometries (absent: every geometry), 'groups' picks one material group on each, 'chart' picks 'count' of the charts that group covers by at least 'minCover' (absent: the whole group). Levels run geometry, groups, chart, each at most once, with groups required. A picked geometry never gets an empty area.",
             "properties": {
-              "seed": { "$ref": "#/$defs/param", "description": "0..1; every step hashes it, so one seed fixes the whole pick. For example an expression that mixes rand() with @itemHash." },
-              "geometries": { "$ref": "#/$defs/param", "default": 1, "description": "How many geometries light, rounded and clamped to 1..the piece's geometry count." },
-              "charts": { "$ref": "#/$defs/param", "default": 1, "description": "How many charts light, rounded and clamped to 1..the candidate count." },
-              "minCover": { "$ref": "#/$defs/number", "minimum": 0, "maximum": 1, "default": 0.05, "description": "The share of a chart the picked group must cover for the chart to be a candidate. With no chart above it, the group's largest chart is the one candidate." },
-              "areaBias": { "oneOf": [{ "$ref": "#/$defs/number", "minimum": 0, "maximum": 8 }, { "$ref": "#/$defs/ref" }], "default": 1, "description": "How the group pick favours large groups, as in material groups." },
-              "merge": { "$ref": "#/$defs/number", "minimum": 0, "maximum": 1, "default": 0.3, "description": "As in material groups." },
-              "smoothing": { "type": "integer", "minimum": 0, "maximum": 32, "default": 8, "description": "As in material groups." } } } } }
+              "seed": { "$ref": "#/$defs/param", "description": "0..1; every level hashes it, so one seed fixes the whole pick. For example an expression that mixes rand() with @itemHash." },
+              "levels": { "type": "array", "minItems": 1, "maxItems": 3, "default": [{ "by": "groups" }], "items": { "oneOf": [
+                { "type": "object", "additionalProperties": false, "required": ["by"], "properties": {
+                    "by": { "const": "geometry" },
+                    "count": { "$ref": "#/$defs/param", "default": 1, "description": "How many geometries light, rounded and clamped to 1..the piece's geometry count." } } },
+                { "type": "object", "additionalProperties": false, "required": ["by"], "properties": {
+                    "by": { "const": "groups" },
+                    "areaBias": { "oneOf": [{ "$ref": "#/$defs/number", "minimum": 0, "maximum": 8 }, { "$ref": "#/$defs/ref" }], "default": 1, "description": "How the group pick favours large groups, as in material groups." },
+                    "merge": { "$ref": "#/$defs/number", "minimum": 0, "maximum": 1, "default": 0.3, "description": "As in material groups." },
+                    "smoothing": { "type": "integer", "minimum": 0, "maximum": 32, "default": 8, "description": "As in material groups." } } },
+                { "type": "object", "additionalProperties": false, "required": ["by"], "properties": {
+                    "by": { "const": "chart" },
+                    "count": { "$ref": "#/$defs/param", "default": 1, "description": "How many charts light, rounded and clamped to 1..the candidate count." },
+                    "minCover": { "$ref": "#/$defs/number", "minimum": 0, "maximum": 1, "default": 0.05, "description": "The share of a chart the picked group must cover for the chart to be a candidate. With no chart above it, the group's largest chart is the one candidate." } } } ] } } } } } }
       ]
     },
 

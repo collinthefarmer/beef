@@ -307,8 +307,7 @@ int main() {
   Recipe areaRecipe;
   PickSource areaSource;
   areaSource.seed = Param{0.5f};
-  areaSource.charts = Param{3.0f};
-  areaSource.minCover = 0.2f;
+  areaSource.levels = {GroupLevel{}, ChartLevel{Param{3.0f}, 0.2f}};
   areaRecipe.sources = {{"lit", areaSource}};
   SurfaceOutput areaSurface;
   Layer areaLayer;
@@ -328,13 +327,15 @@ int main() {
   const DrawClustersStep *area = areaPlan && areaDraw != areaPlan->steps.end()
                                      ? Get<DrawClustersStep>(areaDraw->kind)
                                      : nullptr;
-  const auto *chartIds =
-      area && area->area ? Get<StepOutputRef>(area->area->chartIds) : nullptr;
+  const auto *chartIds = area && area->area && area->area->charts
+                             ? Get<StepOutputRef>(area->area->charts->chartIds)
+                             : nullptr;
   const auto *chartBake =
       chartIds && chartIds->step < areaPlan->steps.size()
           ? Get<BakeMeshStep>(areaPlan->steps[chartIds->step].kind)
           : nullptr;
-  Check(area && area->area && !area->pick && area->area->minCover == 0.2f,
+  Check(area && area->area && !area->pick && area->area->charts &&
+            area->area->charts->minCover == 0.2f,
         "a pick reaches the cluster draw as an area pick, not a group pick");
   Check(chartBake && chartBake->nearest,
         "the area pick reads the chart ids from a nearest-sampled bake");

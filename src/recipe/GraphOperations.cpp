@@ -84,9 +84,11 @@ std::vector<OutputRef> InputsOf(const NodeKind &kind) {
         }
       },
       [&](const PickOperation &k) {
-        inputs = {k.material, k.geometry,      k.coordinates,
-                  k.seed,     k.geometries,    k.charts,
-                  k.areaBias, k.geometryIndex, k.geometryCount};
+        inputs = {k.material,   k.geometry, k.coordinates,   k.seed,
+                  k.geometries, k.areaBias, k.geometryIndex, k.geometryCount};
+        if (k.charts) {
+          inputs.push_back(k.charts->count);
+        }
       },
       [&](const ReductionOperation &k) { add(k.value); });
   return inputs;

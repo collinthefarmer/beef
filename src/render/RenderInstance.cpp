@@ -501,49 +501,58 @@ StepResult ExecuteSubmitMaterialSampleStep(const SubmitMaterialSampleStep &step,
     return std::unexpected("material sampling failed");
   return RenderValue{Value{0.0f}};
 }
-struct PickedCharts {
-  std::uint8_t picked = 0;
-  TextureLab::ChartFilter filter;
-};
 constexpr std::uint8_t kNoPickedGroup = 255;
-std::expected<PickedCharts, std::string>
-ChartFilterOf(const AreaPickInputs &area, const MaterialGrouping &grouping,
-              const Arguments &arguments) {
-  const auto *chartIds = arguments.Find<TextureView>(area.chartIds);
-  if (!chartIds || !chartIds->target)
-    return std::unexpected("the chart ids are unavailable");
-  const auto scalar = [&](RenderValueRef ref) -> std::optional<float> {
-    const auto *value = arguments.Find<Value>(ref);
-    return value ? std::optional{AsScalar(*value)} : std::nullopt;
-  };
-  const auto seed = scalar(area.seed), geometries = scalar(area.geometries),
-             charts = scalar(area.charts), areaBias = scalar(area.areaBias),
-             index = scalar(area.geometryIndex),
-             count = scalar(area.geometryCount);
-  if (!seed || !geometries || !charts || !areaBias || !index || !count)
+std::optional<float> ScalarArgument(const Arguments &arguments,
+                                    RenderValueRef ref) {
+  const auto *value = arguments.Find<Value>(ref);
+  return value ? std::optional{AsScalar(*value)} : std::nullopt;
+}
+std::expected<std::optional<ChartChoice>, std::string>
+ChartChoiceOf(const AreaPickInputs &area, const Arguments &arguments) {
+  if (!area.charts)
+    return std::nullopt;
+  const auto count = ScalarArgument(arguments, area.charts->count);
+  if (!count)
+    return std::unexpected("the pick's chart count is unavailable");
+  return ChartChoice{*count, area.charts->minCover};
+}
+std::expected<TextureLab::ClusterDraw, std::string>
+AreaDrawOf(const AreaPickInputs &area, const MaterialGrouping &grouping,
+           const Arguments &arguments) {
+  const auto seed = ScalarArgument(arguments, area.seed),
+             geometries = ScalarArgument(arguments, area.geometries),
+             areaBias = ScalarArgument(arguments, area.areaBias),
+             index = ScalarArgument(arguments, area.geometryIndex),
+             count = ScalarArgument(arguments, area.geometryCount);
+  const auto charts = ChartChoiceOf(area, arguments);
+  if (!seed || !geometries || !areaBias || !index || !count || !charts)
     return std::unexpected("a pick input is unavailable");
-  const AreaPickSettings settings{*seed, *geometries, *charts, area.minCover,
-                                  *areaBias};
+  const AreaPickSettings settings{*seed, *geometries, *areaBias, *charts};
   const GeometryPlace place{
       static_cast<std::uint32_t>(std::clamp(*index, 0.0f, 65535.0f)),
       static_cast<std::uint32_t>(std::clamp(*count, 1.0f, 65535.0f))};
-  PickedCharts out;
-  out.filter.chartIds = chartIds->target.get();
   const std::optional<PickedArea> picked =
       PickArea(settings, place, grouping.analysis, grouping.covers);
   if (!picked) {
     logger::info("area pick: geometry {} of {} is not picked", place.index + 1,
                  place.count);
-    out.picked = kNoPickedGroup;
-    return out;
+    return TextureLab::ClusterDraw{.picked = kNoPickedGroup};
   }
-  logger::info("area pick: geometry {} of {} lights material group {} on {} "
-               "chart(s), {:.1f}% of the geometry",
-               place.index + 1, place.count, picked->group, picked->litCharts,
+  logger::info("area pick: geometry {} of {} lights material group {} on {}, "
+               "{:.1f}% of the geometry",
+               place.index + 1, place.count, picked->group,
+               picked->charts ? std::format("{} chart(s)", picked->litCharts)
+                              : std::string{"every chart"},
                picked->share * 100.0f);
-  out.picked = picked->group;
-  out.filter.lit = picked->charts;
-  return out;
+  TextureLab::ClusterDraw draw{.picked = picked->group};
+  if (picked->charts && area.charts) {
+    const auto *chartIds = arguments.Find<TextureView>(area.charts->chartIds);
+    if (!chartIds || !chartIds->target)
+      return std::unexpected("the chart ids are unavailable");
+    draw.charts =
+        TextureLab::ChartFilter{chartIds->target.get(), *picked->charts};
+  }
+  return draw;
 }
 StepResult ExecuteDrawClustersStep(const DrawClustersStep &step,
                                    StepExecution &execution) {
@@ -556,11 +565,10 @@ StepResult ExecuteDrawClustersStep(const DrawClustersStep &step,
     return std::unexpected("cluster draw failed");
   TextureLab::ClusterDraw draw{.palette = step.palette};
   if (step.area) {
-    auto charts = ChartFilterOf(*step.area, **grouping, execution.arguments);
-    if (!charts)
-      return std::unexpected(charts.error());
-    draw.picked = charts->picked;
-    draw.charts = charts->filter;
+    auto area = AreaDrawOf(*step.area, **grouping, execution.arguments);
+    if (!area)
+      return std::unexpected(area.error());
+    draw = *area;
   } else if (step.pick) {
     const auto *pick = execution.arguments.Find<Value>(*step.pick);
     const auto *bias = step.areaBias

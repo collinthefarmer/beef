@@ -30,7 +30,9 @@ std::vector<ChartCover> Covers() {
 }
 
 std::size_t LitCount(const PickedArea &a_area) {
-  return static_cast<std::size_t>(std::ranges::count(a_area.charts, true));
+  return a_area.charts ? static_cast<std::size_t>(
+                             std::ranges::count(*a_area.charts, true))
+                       : 0;
 }
 
 std::size_t PickedGeometries(const AreaPickSettings &a_settings,
@@ -85,6 +87,7 @@ void CandidatesKeepCoveredCharts() {
 
 void GeometriesPickTheirCount() {
   AreaPickSettings settings;
+  settings.geometries = 1.0f;
   bool exact = true;
   for (int seed = 0; seed < 40; ++seed) {
     settings.seed = static_cast<float>(seed) / 40.0f;
@@ -109,7 +112,7 @@ void PickAreaLightsChartsOfOneGroup() {
   const std::vector<ChartCover> covers = Covers();
   const MaterialAnalysis analysis = TwoGroups(0.5f);
   AreaPickSettings settings;
-  settings.charts = 2.0f;
+  settings.charts = ChartChoice{2.0f, kDefaultMinCover};
   bool consistent = true;
   bool varied = false;
   std::optional<std::uint8_t> firstGroup;
@@ -117,21 +120,23 @@ void PickAreaLightsChartsOfOneGroup() {
     settings.seed = static_cast<float>(seed) / 40.0f;
     const std::optional<PickedArea> area =
         PickArea(settings, {0, 1}, analysis, covers);
-    if (!area) {
+    if (!area || !area->charts) {
       consistent = false;
       continue;
     }
     const std::vector<std::uint16_t> candidates =
-        CandidateCharts(covers, area->group, settings.minCover);
-    for (std::size_t chart = 0; chart < area->charts.size(); ++chart) {
-      if (area->charts[chart] &&
+        CandidateCharts(covers, area->group, kDefaultMinCover);
+    for (std::size_t chart = 0; chart < area->charts->size(); ++chart) {
+      if ((*area->charts)[chart] &&
           !std::ranges::contains(candidates,
                                  static_cast<std::uint16_t>(chart))) {
         consistent = false;
       }
     }
-    consistent = consistent &&
-                 LitCount(*area) == std::min<std::size_t>(2, candidates.size());
+    const std::size_t lit = LitCount(*area);
+    consistent =
+        consistent && lit == std::min<std::size_t>(2, candidates.size()) &&
+        area->litCharts == lit && area->share > 0.0f && area->share <= 1.0f;
     firstGroup = firstGroup.value_or(area->group);
     varied = varied || area->group != *firstGroup;
   }
@@ -139,20 +144,21 @@ void PickAreaLightsChartsOfOneGroup() {
                     "candidates, and never an empty area");
   Check(varied, "different seeds pick different groups");
 
-  AreaPickSettings everyChart;
-  everyChart.charts = 9.0f;
-  everyChart.minCover = 0.0f;
+  AreaPickSettings wholeGroup;
   bool sums = true;
   for (int seed = 0; seed < 20; ++seed) {
-    everyChart.seed = static_cast<float>(seed) / 20.0f;
-    const auto area = PickArea(everyChart, {0, 1}, analysis, covers);
+    wholeGroup.seed = static_cast<float>(seed) / 20.0f;
+    const auto area = PickArea(wholeGroup, {0, 1}, analysis, covers);
     const float expected =
         area && area->group == kMetal
             ? 0.9f * 0.4f + 0.5f * 0.2f + 0.02f * 0.3f + 0.3f * 0.1f
             : 0.1f * 0.4f + 0.5f * 0.2f + 0.98f * 0.3f;
-    sums = sums && area && test::Near(area->share, expected);
+    sums = sums && area && !area->charts && test::Near(area->share, expected);
   }
-  Check(sums, "the lit share sums each lit chart's cover times its share");
+  Check(sums, "without a chart level the whole group lights, and the lit "
+              "share sums each chart's cover times its share");
+  Check(PickedGeometries(wholeGroup, 4) == 4,
+        "without a geometry level every geometry lights");
 
   settings.seed = 0.25f;
   Check(PickArea(settings, {0, 1}, analysis, covers).has_value() &&

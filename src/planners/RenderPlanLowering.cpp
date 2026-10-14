@@ -597,21 +597,22 @@ struct PlanBuilder {
     const auto *submitted = Get<StepOutputRef>(submission);
     if (!submitted)
       return submission;
-    const RenderValueRef chartBuffers =
-        Step(BuildBakeBuffersStep{mesh, BakeKind{ChartBake{}}},
-             label + " chart buffers");
-    const RenderValueRef chartIds =
-        Step(BakeMeshStep{chartBuffers, request.requirements, true},
-             label + " charts");
-    const AreaPickInputs area{
-        chartIds,
-        BuildOperand(operation.seed, request, depth),
-        BuildOperand(operation.geometries, request, depth),
-        BuildOperand(operation.charts, request, depth),
-        BuildOperand(operation.areaBias, request, depth),
-        BuildOperand(operation.geometryIndex, request, depth),
-        BuildOperand(operation.geometryCount, request, depth),
-        operation.minCover};
+    AreaPickInputs area{BuildOperand(operation.seed, request, depth),
+                        BuildOperand(operation.geometries, request, depth),
+                        BuildOperand(operation.areaBias, request, depth),
+                        BuildOperand(operation.geometryIndex, request, depth),
+                        BuildOperand(operation.geometryCount, request, depth),
+                        std::nullopt};
+    if (operation.charts) {
+      const RenderValueRef chartBuffers =
+          Step(BuildBakeBuffersStep{mesh, BakeKind{ChartBake{}}},
+               label + " chart buffers");
+      area.charts = ChartPickInputs{
+          Step(BakeMeshStep{chartBuffers, request.requirements, true},
+               label + " charts"),
+          BuildOperand(operation.charts->count, request, depth),
+          operation.charts->minCover};
+    }
     DrawClustersStep draw{
         material, Readback(*submitted, RenderResourceType::kMaterialGroups),
         request.requirements};

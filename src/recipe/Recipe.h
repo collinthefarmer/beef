@@ -522,15 +522,38 @@ struct MaterialGroupsSource {
   [[nodiscard]] bool operator==(const MaterialGroupsSource &) const = default;
 };
 inline constexpr float kDefaultMinCover = 0.05f;
-struct PickSource {
-  Param seed = 0.0f;
-  Param geometries = 1.0f;
-  Param charts = 1.0f;
-  float minCover = kDefaultMinCover;
+inline constexpr std::size_t kMaxPickLevels = 3;
+inline constexpr float kEveryGeometryCount = 65535.0f;
+struct GeometryLevel {
+  Param count = 1.0f;
+  [[nodiscard]] bool operator==(const GeometryLevel &) const = default;
+};
+struct GroupLevel {
   Param areaBias = 1.0f;
   ClusterSettings settings;
+  [[nodiscard]] bool operator==(const GroupLevel &) const = default;
+};
+struct ChartLevel {
+  Param count = 1.0f;
+  float minCover = kDefaultMinCover;
+  [[nodiscard]] bool operator==(const ChartLevel &) const = default;
+};
+using PickLevel = std::variant<GeometryLevel, GroupLevel, ChartLevel>;
+enum class PickLevelId { kGeometry, kGroups, kChart };
+inline constexpr std::size_t kPickLevelCount = 3;
+static_assert(kPickLevelCount == std::variant_size_v<PickLevel>);
+struct PickSource {
+  Param seed = 0.0f;
+  std::vector<PickLevel> levels{GroupLevel{}};
   [[nodiscard]] bool operator==(const PickSource &) const = default;
 };
+struct PickLevels {
+  const GeometryLevel *geometry = nullptr;
+  const GroupLevel *groups = nullptr;
+  const ChartLevel *chart = nullptr;
+};
+[[nodiscard]] std::optional<PickLevels>
+SupportedLevels(const PickSource &a_pick) noexcept;
 
 using SourceKind =
     std::variant<ImageSource, MaterialSource, MeshSource, DistanceSource,

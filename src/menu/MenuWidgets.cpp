@@ -968,8 +968,13 @@ std::string SourceValueText(const SourceKind &a_kind) {
                            s.settings.merge * 100.0f);
       },
       [](const PickSource &s) {
-        return std::format("{} geometr(ies), {} chart(s)",
-                           ParamText(s.geometries), ParamText(s.charts));
+        std::string levels;
+        for (const PickLevel &level : s.levels) {
+          levels += std::format(
+              "{}{}", levels.empty() ? "" : ", ",
+              NameOf(kPickLevelWords, FromIndex<PickLevelId>(level.index())));
+        }
+        return std::format("pick by {}", levels);
       });
 }
 

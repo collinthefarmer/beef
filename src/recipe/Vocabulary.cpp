@@ -306,6 +306,26 @@ ValueType SourceType(const Source &a_source) noexcept {
       [](const PickSource &) { return ValueType::kScalar; });
 }
 
+std::optional<PickLevels> SupportedLevels(const PickSource &a_pick) noexcept {
+  PickLevels found;
+  std::size_t next = 0;
+  for (const PickLevel &level : a_pick.levels) {
+    const std::size_t at = level.index();
+    if (at < next) {
+      return std::nullopt;
+    }
+    next = at + 1;
+    Match(
+        level, [&](const GeometryLevel &g) { found.geometry = &g; },
+        [&](const GroupLevel &g) { found.groups = &g; },
+        [&](const ChartLevel &c) { found.chart = &c; });
+  }
+  if (!found.groups) {
+    return std::nullopt;
+  }
+  return found;
+}
+
 bool SourceHoldsIds(const SourceKind &a_kind) noexcept {
   if (const auto *clusters = Get<MaterialGroupsSource>(a_kind)) {
     return !clusters->pick && !clusters->palette;

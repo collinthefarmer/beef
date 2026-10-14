@@ -715,32 +715,84 @@ ParseSourceAlternative<MaterialGroupsSource>(const json &a_v,
   return k;
 }
 
+std::optional<PickLevel> GeometryLevelFrom(Reader &a_reader) {
+  GeometryLevel level;
+  a_reader.Read("count", level.count);
+  return level;
+}
+
+std::optional<PickLevel> GroupLevelFrom(Reader &a_reader) {
+  GroupLevel level;
+  a_reader.Read("areaBias", level.areaBias);
+  if (auto merge = a_reader.Number("merge")) {
+    level.settings.merge = *merge;
+  }
+  if (!a_reader.IntRange("smoothing", 0, static_cast<int>(kMaxClusterSmoothing),
+                         level.settings.smoothing)) {
+    return std::nullopt;
+  }
+  return level;
+}
+
+std::optional<PickLevel> ChartLevelFrom(Reader &a_reader) {
+  ChartLevel level;
+  a_reader.Read("count", level.count);
+  if (auto minCover = a_reader.Number("minCover")) {
+    level.minCover = *minCover;
+  }
+  return level;
+}
+
+using PickLevelParser = std::optional<PickLevel> (*)(Reader &);
+constexpr std::array<PickLevelParser, kPickLevelCount> kPickLevelParsers{
+    &GeometryLevelFrom, &GroupLevelFrom, &ChartLevelFrom};
+
+std::optional<PickLevel> PickLevelFrom(const json &a_v, const Reporter &a_ctx) {
+  Reader r(a_v, a_ctx);
+  if (!a_v.is_object() || !r.Has("by")) {
+    a_ctx.Error(std::format("a pick level is an object with 'by': one of {}",
+                            Choices(kPickLevelWords)));
+    return std::nullopt;
+  }
+  const std::optional<PickLevelId> by = r.Enum("by", kPickLevelWords);
+  if (!by) {
+    return std::nullopt;
+  }
+  std::optional<PickLevel> level = kPickLevelParsers[IndexOf(*by)](r);
+  r.Finish();
+  return level;
+}
+
 template <>
 std::optional<PickSource>
 ParseSourceAlternative<PickSource>(const json &a_v, const Reporter &a_ctx) {
   if (!a_v.is_object()) {
-    a_ctx.Error("'pick' takes an object with 'seed', 'geometries', 'charts', "
-                "'minCover', 'areaBias', 'merge' and 'smoothing'");
+    a_ctx.Error("'pick' takes an object with 'seed' and 'levels'");
     return std::nullopt;
   }
   PickSource k;
   Reader r(a_v, a_ctx);
-  bool ok = true;
   r.Read("seed", k.seed);
   if (!r.Has("seed")) {
     a_ctx.Error("'pick' needs 'seed'");
   }
-  r.Read("geometries", k.geometries);
-  r.Read("charts", k.charts);
-  if (auto minCover = r.Number("minCover")) {
-    k.minCover = *minCover;
+  bool ok = true;
+  if (const json *levels = r.Child("levels")) {
+    if (!levels->is_array() || levels->empty() ||
+        levels->size() > kMaxPickLevels) {
+      a_ctx.Error(std::format("'levels' is an array of 1 to {} levels",
+                              kMaxPickLevels));
+      return std::nullopt;
+    }
+    k.levels.clear();
+    for (const json &entry : *levels) {
+      std::optional<PickLevel> level = PickLevelFrom(entry, a_ctx);
+      ok = ok && level.has_value();
+      if (level) {
+        k.levels.push_back(std::move(*level));
+      }
+    }
   }
-  r.Read("areaBias", k.areaBias);
-  if (auto merge = r.Number("merge")) {
-    k.settings.merge = *merge;
-  }
-  ok &= r.IntRange("smoothing", 0, static_cast<int>(kMaxClusterSmoothing),
-                   k.settings.smoothing);
   r.Finish();
   if (!ok) {
     return std::nullopt;

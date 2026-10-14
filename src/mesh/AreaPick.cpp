@@ -18,6 +18,9 @@ std::vector<ChartCover> CoversOfGroup(std::span<const ChartCover> a_covers,
 float ChartSeedOf(float a_seed, GeometryPlace a_place, std::uint8_t a_group);
 float LitShareOf(std::span<const ChartCover> a_covers,
                  const PickedArea &a_picked);
+std::optional<LitCharts>
+PickCharts(const ChartChoice &a_choice, float a_seed,
+           const std::vector<std::uint16_t> &a_candidates);
 }
 
 std::optional<PickedArea> PickArea(const AreaPickSettings &a_settings,
@@ -34,24 +37,18 @@ std::optional<PickedArea> PickArea(const AreaPickSettings &a_settings,
   if (!group) {
     return std::nullopt;
   }
-  const std::vector<std::uint16_t> candidates =
-      CandidateCharts(a_covers, *group, a_settings.minCover);
-  if (candidates.empty()) {
-    return std::nullopt;
-  }
-  const std::size_t lit = CountOf(a_settings.charts, candidates.size());
-  const float chartSeed = ChartSeedOf(a_settings.seed, a_place, *group);
-  const auto total = static_cast<float>(candidates.size());
   PickedArea picked;
   picked.group = *group;
-  for (std::size_t k = 0; k < candidates.size(); ++k) {
-    const float position =
-        ShufflePosition(static_cast<float>(k), total, chartSeed);
-    if (position < static_cast<float>(lit) &&
-        candidates[k] < picked.charts.size()) {
-      picked.charts[candidates[k]] = true;
-      ++picked.litCharts;
+  if (a_settings.charts) {
+    std::optional<LitCharts> charts = PickCharts(
+        *a_settings.charts, ChartSeedOf(a_settings.seed, a_place, *group),
+        CandidateCharts(a_covers, *group, a_settings.charts->minCover));
+    if (!charts) {
+      return std::nullopt;
     }
+    picked.charts = *charts;
+    picked.litCharts =
+        static_cast<std::size_t>(std::ranges::count(*picked.charts, true));
   }
   picked.share = LitShareOf(a_covers, picked);
   return picked;
@@ -129,12 +126,33 @@ float ChartSeedOf(float a_seed, GeometryPlace a_place, std::uint8_t a_group) {
   return HashUnit(a_seed, salt);
 }
 
+std::optional<LitCharts>
+PickCharts(const ChartChoice &a_choice, float a_seed,
+           const std::vector<std::uint16_t> &a_candidates) {
+  if (a_candidates.empty()) {
+    return std::nullopt;
+  }
+  const std::size_t lit = CountOf(a_choice.count, a_candidates.size());
+  const auto total = static_cast<float>(a_candidates.size());
+  LitCharts charts{};
+  for (std::size_t k = 0; k < a_candidates.size(); ++k) {
+    const float position =
+        ShufflePosition(static_cast<float>(k), total, a_seed);
+    if (position < static_cast<float>(lit) && a_candidates[k] < charts.size()) {
+      charts[a_candidates[k]] = true;
+    }
+  }
+  return charts;
+}
+
 float LitShareOf(std::span<const ChartCover> a_covers,
                  const PickedArea &a_picked) {
   float share = 0.0f;
   for (const ChartCover &cover : a_covers) {
-    if (cover.group == a_picked.group && cover.chart < a_picked.charts.size() &&
-        a_picked.charts[cover.chart]) {
+    const bool lit =
+        !a_picked.charts || (cover.chart < a_picked.charts->size() &&
+                             (*a_picked.charts)[cover.chart]);
+    if (cover.group == a_picked.group && lit) {
       share += cover.cover * cover.chartShare;
     }
   }

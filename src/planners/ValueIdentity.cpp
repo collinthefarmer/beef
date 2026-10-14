@@ -108,7 +108,10 @@ void EncodeSettings(Encoding &out, const NodeKind &kind) {
       [&](const PickOperation &k) {
         out.Number(k.settings.merge);
         out.Number(k.settings.smoothing);
-        out.Number(k.minCover);
+        out.Number(k.charts.has_value());
+        if (k.charts) {
+          out.Number(k.charts->minCover);
+        }
       },
       [](const VectorOperation &) {}, [](const RampOperation &) {},
       [](const ToRootOperation &) {}, [](const HoldOperation &) {},

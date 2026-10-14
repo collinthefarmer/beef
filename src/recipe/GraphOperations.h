@@ -190,12 +190,16 @@ struct MaterialGroupsOperation {
   std::optional<OutputRef> areaBias;
   bool palette = false;
 };
+struct ChartPickOperands {
+  OutputRef count;
+  float minCover = kDefaultMinCover;
+};
 struct PickOperation {
   OutputRef material, geometry, coordinates;
   ClusterSettings settings;
-  OutputRef seed, geometries, charts, areaBias;
+  OutputRef seed, geometries, areaBias;
   OutputRef geometryIndex, geometryCount;
-  float minCover = kDefaultMinCover;
+  std::optional<ChartPickOperands> charts;
 };
 struct ReductionOperation {
   ReductionKind kind = ReductionKind::kMean;

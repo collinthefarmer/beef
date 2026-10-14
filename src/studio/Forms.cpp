@@ -1555,62 +1555,154 @@ void ClustersFields(std::vector<FormField> &a_form, const SourceContext &a_ctx,
   a_form.push_back(std::move(areaBias));
 }
 
+template <class Level, class Apply>
+[[nodiscard]] FieldBinding BindPickLevel(std::string a_name,
+                                         SourceKind a_record, Apply a_apply) {
+  return [name = std::move(a_name), record = std::move(a_record),
+          a_apply](const std::string &a_text) -> std::optional<RecipeEdit> {
+    SourceKind kind = record;
+    PickSource *pick = Get<PickSource>(kind);
+    const auto found = pick
+                           ? std::ranges::find_if(pick->levels,
+                                                  [](const PickLevel &a_level) {
+                                                    return Is<Level>(a_level);
+                                                  })
+                           : std::vector<PickLevel>::iterator{};
+    Level *level =
+        pick && found != pick->levels.end() ? Get<Level>(*found) : nullptr;
+    if (level == nullptr || !a_apply(*level, a_text)) {
+      return std::nullopt;
+    }
+    return SetSource{name, kind};
+  };
+}
+
+template <class Level, class M, class Parse>
+[[nodiscard]] auto LevelMember(M Level::*a_member, Parse a_parse) {
+  return [a_member, a_parse](Level &a_level, const std::string &a_text) {
+    const auto value = a_parse(a_text);
+    if (!value) {
+      return false;
+    }
+    a_level.*a_member = *value;
+    return true;
+  };
+}
+
+template <class M, class Parse>
+[[nodiscard]] auto GroupSetting(M ClusterSettings::*a_member, Parse a_parse) {
+  return [a_member, a_parse](GroupLevel &a_level, const std::string &a_text) {
+    const auto value = a_parse(a_text);
+    if (!value) {
+      return false;
+    }
+    a_level.settings.*a_member = *value;
+    return true;
+  };
+}
+
+template <class Level>
+[[nodiscard]] FieldBinding BindPickLevelShown(std::string a_name,
+                                              SourceKind a_record) {
+  return [name = std::move(a_name), record = std::move(a_record)](
+             const std::string &a_text) -> std::optional<RecipeEdit> {
+    SourceKind kind = record;
+    PickSource *pick = Get<PickSource>(kind);
+    const std::optional<bool> shown = OnOff(a_text);
+    if (pick == nullptr || !shown) {
+      return std::nullopt;
+    }
+    std::erase_if(pick->levels,
+                  [](const PickLevel &a_level) { return Is<Level>(a_level); });
+    if (*shown) {
+      const PickLevel added = Level{};
+      const auto after =
+          std::ranges::find_if(pick->levels, [&](const PickLevel &a_level) {
+            return a_level.index() > added.index();
+          });
+      pick->levels.insert(after, added);
+    }
+    return SetSource{name, kind};
+  };
+}
+
+[[nodiscard]] FormField RangedField(ParamFieldSpec a_spec,
+                                    std::pair<float, float> a_range,
+                                    bool a_integral = false) {
+  FormField field = ParamField(std::move(a_spec));
+  field.range = a_range;
+  field.workingRange = a_range;
+  field.integral = a_integral;
+  return field;
+}
+
 void PickFields(std::vector<FormField> &a_form, const SourceContext &a_ctx,
                 const PickSourceRow &a_source) {
   const std::string &name = a_ctx.name;
   const SourceKind &record = a_ctx.record;
-  for (const auto &[field, text, member] :
-       {std::tuple{"seed", &a_source.seed, &PickSource::seed},
-        {"geometries", &a_source.geometries, &PickSource::geometries},
-        {"charts", &a_source.charts, &PickSource::charts}}) {
+  a_form.push_back(ParamField(
+      {.name = "seed",
+       .kind = FieldKind::kScalar,
+       .text = a_source.seed,
+       .names = a_ctx.names.scalar,
+       .bind = BindSourceMember(name, record, &PickSource::seed, ParseParam)}));
+  a_form.push_back(
+      ToggleField("geometry level", a_source.geometryLevel,
+                  BindPickLevelShown<GeometryLevel>(name, record)));
+  if (a_source.geometryLevel) {
     a_form.push_back(ParamField(
-        {.name = field,
+        {.name = "geometries",
          .kind = FieldKind::kScalar,
-         .text = *text,
+         .text = a_source.geometries,
          .names = a_ctx.names.scalar,
-         .bind = BindSourceMember(name, record, member, ParseParam)}));
+         .bind = BindPickLevel<GeometryLevel>(
+             name, record, LevelMember(&GeometryLevel::count, ParseParam))}));
   }
-  FormField minCover =
-      ParamField({.name = "minCover",
-                  .kind = FieldKind::kScalar,
-                  .text = a_source.minCover,
-                  .names = {},
-                  .bind = BindSourceMember(name, record, &PickSource::minCover,
-                                           MergeShareOf)});
-  minCover.range = std::pair{0.0f, 1.0f};
-  minCover.workingRange = minCover.range;
-  a_form.push_back(std::move(minCover));
-  FormField areaBias =
-      ParamField({.name = "areaBias",
-                  .kind = FieldKind::kScalar,
-                  .text = a_source.areaBias,
-                  .names = a_ctx.names.scalar,
-                  .bind = BindSourceMember(name, record, &PickSource::areaBias,
-                                           AreaBiasOf)});
-  areaBias.range = std::pair{0.0f, kMaxAreaBias};
-  areaBias.workingRange = areaBias.range;
-  a_form.push_back(std::move(areaBias));
-  FormField merge = ParamField(
+  a_form.push_back(RangedField(
+      {.name = "areaBias",
+       .kind = FieldKind::kScalar,
+       .text = a_source.areaBias,
+       .names = a_ctx.names.scalar,
+       .bind = BindPickLevel<GroupLevel>(
+           name, record, LevelMember(&GroupLevel::areaBias, AreaBiasOf))},
+      {0.0f, kMaxAreaBias}));
+  a_form.push_back(RangedField(
       {.name = "merge",
        .kind = FieldKind::kScalar,
        .text = a_source.merge,
        .names = {},
-       .bind = BindSourceMember(name, record, &PickSource::settings,
-                                &ClusterSettings::merge, MergeShareOf)});
-  merge.range = std::pair{0.0f, 1.0f};
-  merge.workingRange = merge.range;
-  a_form.push_back(std::move(merge));
-  FormField smoothing = ParamField(
-      {.name = "smoothing",
+       .bind = BindPickLevel<GroupLevel>(
+           name, record, GroupSetting(&ClusterSettings::merge, MergeShareOf))},
+      {0.0f, 1.0f}));
+  a_form.push_back(
+      RangedField({.name = "smoothing",
+                   .kind = FieldKind::kScalar,
+                   .text = a_source.smoothing,
+                   .names = {},
+                   .bind = BindPickLevel<GroupLevel>(
+                       name, record,
+                       GroupSetting(&ClusterSettings::smoothing, SmoothingOf))},
+                  {0.0f, static_cast<float>(kMaxClusterSmoothing)}, true));
+  a_form.push_back(ToggleField("chart level", a_source.chartLevel,
+                               BindPickLevelShown<ChartLevel>(name, record)));
+  if (!a_source.chartLevel) {
+    return;
+  }
+  a_form.push_back(ParamField(
+      {.name = "charts",
        .kind = FieldKind::kScalar,
-       .text = a_source.smoothing,
+       .text = a_source.charts,
+       .names = a_ctx.names.scalar,
+       .bind = BindPickLevel<ChartLevel>(
+           name, record, LevelMember(&ChartLevel::count, ParseParam))}));
+  a_form.push_back(RangedField(
+      {.name = "minCover",
+       .kind = FieldKind::kScalar,
+       .text = a_source.minCover,
        .names = {},
-       .bind = BindSourceMember(name, record, &PickSource::settings,
-                                &ClusterSettings::smoothing, SmoothingOf)});
-  smoothing.range = std::pair{0.0f, static_cast<float>(kMaxClusterSmoothing)};
-  smoothing.workingRange = smoothing.range;
-  smoothing.integral = true;
-  a_form.push_back(std::move(smoothing));
+       .bind = BindPickLevel<ChartLevel>(
+           name, record, LevelMember(&ChartLevel::minCover, MergeShareOf))},
+      {0.0f, 1.0f}));
 }
 }
 

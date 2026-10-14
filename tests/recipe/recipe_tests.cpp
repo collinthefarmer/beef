@@ -381,7 +381,7 @@ int main() {
     "ripSrc":   { "ripple": { "trigger": "@trig", "speed": 90.0, "width": 8.0, "decay": 1.2, "shape": "disc" } },
     "clusters": { "material": { "groups": { "merge": 0.45, "smoothing": 3 } } },
     "debugClusters": { "material": { "groups": { "palette": true } } },
-    "lit": { "pick": { "seed": 0.4, "geometries": 2, "charts": "@countSig", "minCover": 0.1, "smoothing": 4 } }
+    "lit": { "pick": { "seed": 0.4, "levels": [ { "by": "geometry", "count": 2 }, { "by": "groups", "smoothing": 4 }, { "by": "chart", "count": "@countSig", "minCover": 0.1 } ] } }
   }
 })";
     const Recipe r =
@@ -432,21 +432,45 @@ int main() {
     Check(allSources, "every one of the 7 source kinds round-trips");
     const Source *lit = r.FindSource("lit");
     const auto *pick = lit ? Get<PickSource>(lit->kind) : nullptr;
-    Check(
-        pick && pick->seed == Param{0.4f} && pick->geometries == Param{2.0f} &&
-            pick->charts == Param{Ref{"countSig"}} && pick->minCover == 0.1f &&
-            pick->settings.smoothing == 4 && pick->areaBias == Param{1.0f} &&
-            SourceType(*lit) == ValueType::kScalar,
-        "a pick round-trips its seed, counts, cover and settings");
-    ExpectError(R"({"format":1,"keys":["default"],"sources":{"p":)"
-                R"({"pick":{"charts":2}}}})",
-                "a pick without a seed", "seed");
-    ExpectError(R"({"format":1,"keys":["default"],"sources":{"p":)"
-                R"({"pick":{"seed":0.5,"minCover":2}}}})",
-                "a pick cover above one", "minCover");
-    ExpectError(R"({"format":1,"keys":["default"],"sources":{"p":)"
-                R"({"pick":{"seed":0.5,"charts":0}}}})",
-                "a pick of no charts", "charts");
+    const std::optional<PickLevels> levels =
+        pick ? SupportedLevels(*pick) : std::nullopt;
+    Check(pick && pick->seed == Param{0.4f} && levels && levels->geometry &&
+              levels->geometry->count == Param{2.0f} && levels->groups &&
+              levels->groups->settings.smoothing == 4 &&
+              levels->groups->areaBias == Param{1.0f} && levels->chart &&
+              levels->chart->count == Param{Ref{"countSig"}} &&
+              levels->chart->minCover == 0.1f &&
+              SourceType(*lit) == ValueType::kScalar,
+          "a pick round-trips its seed and every level's settings");
+    const LoadResult bare = ParseRecipe(
+        R"({"format":1,"keys":["default"],"sources":{"p":{"pick":{"seed":0.5}}}})",
+        "bare");
+    const auto *barePick = bare.recipe && !bare.recipe->sources.empty()
+                               ? Get<PickSource>(bare.recipe->sources[0].kind)
+                               : nullptr;
+    Check(barePick && barePick->levels == PickSource{}.levels &&
+              !bare.HasErrors(),
+          "a pick without levels picks one material group");
+    for (const auto &[json, what, fragment] :
+         {std::tuple{R"({"pick":{"levels":[{"by":"groups"}]}})",
+                     "a pick without a seed", "seed"},
+          {R"({"pick":{"seed":0.5,"levels":[{"by":"groups"},)"
+           R"({"by":"chart","minCover":2}]}})",
+           "a pick cover above one", "minCover"},
+          {R"({"pick":{"seed":0.5,"levels":[{"by":"groups"},)"
+           R"({"by":"chart","count":0}]}})",
+           "a pick of no charts", "count"},
+          {R"({"pick":{"seed":0.5,"levels":[{"by":"chart"},{"by":"groups"}]}})",
+           "charts before groups", "not supported yet"},
+          {R"({"pick":{"seed":0.5,"levels":[{"by":"geometry"}]}})",
+           "a pick without groups", "groups required"},
+          {R"({"pick":{"seed":0.5,"levels":[{"by":"part"}]}})",
+           "an unknown level", "'by'"}}) {
+      ExpectError(std::format(R"({{"format":1,"keys":["default"],)"
+                              R"("sources":{{"p":{}}}}})",
+                              json),
+                  what, fragment);
+    }
     const auto itemFieldOf = [&](std::string_view a_name) {
       const auto found = std::ranges::find(r.signals, a_name, &Signal::name);
       const ItemSignal *item =

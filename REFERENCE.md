@@ -3121,12 +3121,20 @@ The method and its prototype comparison are in
 
 ### Area pick (`mesh/AreaPick.h`, `PickSource`, `DrawClustersStep::area`)
 
-- `pick` lights an area in three steps, each from what the step before
-  left. `IsGeometryPicked`: geometry `index` of `count` lights when its
-  `ShufflePosition` under `seed` is below `geometries`. The group:
-  `PickCluster` with `HashUnit(seed, 1 + index)` and `areaBias`. The charts:
-  `CandidateCharts`, then each candidate lights when its `ShufflePosition`
-  under `HashUnit(seed, 4096 + 16 × index + group)` is below `charts`. Every
+- `pick` lights an area level by level (`levels`, `PickLevel`), each from
+  what the level before left. `SupportedLevels` accepts geometry, then
+  groups, then chart, each at most once, with groups required; validation
+  refuses any other list ("not supported yet"). The list form leaves room
+  for other id levels (part, partition) without a format change. Absent
+  `levels` means one material group on every geometry.
+- `IsGeometryPicked`: geometry `index` of `count` lights when its
+  `ShufflePosition` under `seed` is below the geometry level's `count`;
+  with no geometry level, `geometries` is `kEveryGeometryCount` and every
+  geometry lights. The group: `PickCluster` with `HashUnit(seed, 1 +
+  index)` and `areaBias`. The charts: `CandidateCharts`, then each
+  candidate lights when its `ShufflePosition` under `HashUnit(seed, 4096 +
+  16 × index + group)` is below the chart level's `count`; with no chart
+  level the whole group lights and the draw has no chart filter. Every
   count rounds and clamps to 1..what is available.
 - `ChartCoversOf` writes the cover table at grouping time: for each chart
   and group, the group's share of the chart's labelled texels in the 256 px

@@ -157,6 +157,11 @@ static_assert([] {
   }
   return true;
 }());
+inline constexpr Named<PickLevelId> kPickLevelWords[]{
+    {PickLevelId::kGeometry, "geometry"},
+    {PickLevelId::kGroups, "groups"},
+    {PickLevelId::kChart, "chart"}};
+static_assert(Complete(kPickLevelWords, kPickLevelCount));
 struct RetiredWord {
   std::string_view word;
   std::string_view replacement;

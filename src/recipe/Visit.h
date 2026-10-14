@@ -203,9 +203,19 @@ void VisitSourceParams(SourceKind &a_kind, Visitor &a_visit) {
       },
       [&](PickSource &s) {
         VisitParam(s.seed, std::nullopt, a_visit, "seed");
-        VisitParam(s.geometries, std::nullopt, a_visit, "geometries");
-        VisitParam(s.charts, std::nullopt, a_visit, "charts");
-        VisitParam(s.areaBias, std::nullopt, a_visit, "areaBias");
+        for (PickLevel &level : s.levels) {
+          Match(
+              level,
+              [&](GeometryLevel &g) {
+                VisitParam(g.count, std::nullopt, a_visit, "count");
+              },
+              [&](GroupLevel &g) {
+                VisitParam(g.areaBias, std::nullopt, a_visit, "areaBias");
+              },
+              [&](ChartLevel &c) {
+                VisitParam(c.count, std::nullopt, a_visit, "count");
+              });
+        }
       },
       [](MaterialSource &) {}, [](MeshSource &) {}, [](DistanceSource &) {});
 }

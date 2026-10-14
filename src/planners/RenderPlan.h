@@ -76,11 +76,15 @@ struct SubmitMaterialSampleStep {
   [[nodiscard]] bool
   operator==(const SubmitMaterialSampleStep &) const = default;
 };
-struct AreaPickInputs {
-  RenderValueRef chartIds;
-  RenderValueRef seed, geometries, charts, areaBias;
-  RenderValueRef geometryIndex, geometryCount;
+struct ChartPickInputs {
+  RenderValueRef chartIds, count;
   float minCover = kDefaultMinCover;
+  [[nodiscard]] bool operator==(const ChartPickInputs &) const = default;
+};
+struct AreaPickInputs {
+  RenderValueRef seed, geometries, areaBias;
+  RenderValueRef geometryIndex, geometryCount;
+  std::optional<ChartPickInputs> charts;
   [[nodiscard]] bool operator==(const AreaPickInputs &) const = default;
 };
 struct DrawClustersStep {

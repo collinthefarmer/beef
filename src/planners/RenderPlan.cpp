@@ -138,9 +138,12 @@ std::vector<RenderValueRef> InputsOf(const RenderStepKind &step) {
         }
         if (k.area) {
           inputs.insert(inputs.end(),
-                        {k.area->chartIds, k.area->seed, k.area->geometries,
-                         k.area->charts, k.area->areaBias,
+                        {k.area->seed, k.area->geometries, k.area->areaBias,
                          k.area->geometryIndex, k.area->geometryCount});
+          if (k.area->charts) {
+            inputs.insert(inputs.end(),
+                          {k.area->charts->chartIds, k.area->charts->count});
+          }
         }
         return inputs;
       },
@@ -339,13 +342,18 @@ ValidateBuildBakeBuffersStep(const RenderPlan &plan,
 }
 std::expected<void, std::string> ValidateAreaPick(const RenderPlan &plan,
                                                   const AreaPickInputs &area) {
-  if (std::expected<void, std::string> charts =
-          RequireType(plan, area.chartIds, RenderResourceType::kTexture);
-      !charts)
-    return charts;
-  for (const RenderValueRef scalar :
-       {area.seed, area.geometries, area.charts, area.areaBias,
-        area.geometryIndex, area.geometryCount}) {
+  if (area.charts) {
+    if (std::expected<void, std::string> charts = RequireType(
+            plan, area.charts->chartIds, RenderResourceType::kTexture);
+        !charts)
+      return charts;
+    if (std::expected<void, std::string> count =
+            RequireType(plan, area.charts->count, ValueType::kScalar);
+        !count)
+      return count;
+  }
+  for (const RenderValueRef scalar : {area.seed, area.geometries, area.areaBias,
+                                      area.geometryIndex, area.geometryCount}) {
     if (std::expected<void, std::string> checked =
             RequireType(plan, scalar, ValueType::kScalar);
         !checked)

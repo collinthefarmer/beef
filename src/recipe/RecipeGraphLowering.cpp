@@ -411,21 +411,30 @@ struct RecipeGraphLowering {
           }
           return operation;
         },
-        [&](const PickSource &k) -> NodeKind {
-          return PickOperation{Material(),
-                               Geometry(),
-                               Uv(),
-                               k.settings,
-                               Parameter(k.seed),
-                               Parameter(k.geometries),
-                               Parameter(k.charts),
-                               Parameter(k.areaBias),
-                               Shared(ItemInput{ItemField::kGeometryIndex},
-                                      ValueType::kScalar, "geometry index"),
-                               Shared(ItemInput{ItemField::kGeometryCount},
-                                      ValueType::kScalar, "geometry count"),
-                               k.minCover};
-        });
+        [&](const PickSource &k) -> NodeKind { return Pick(k); });
+  }
+  NodeKind Pick(const PickSource &a_pick) {
+    const PickLevels levels = SupportedLevels(a_pick).value_or(PickLevels{});
+    const GroupLevel groups = levels.groups ? *levels.groups : GroupLevel{};
+    PickOperation operation{Material(),
+                            Geometry(),
+                            Uv(),
+                            groups.settings,
+                            Parameter(a_pick.seed),
+                            Parameter(levels.geometry
+                                          ? levels.geometry->count
+                                          : Param{kEveryGeometryCount}),
+                            Parameter(groups.areaBias),
+                            Shared(ItemInput{ItemField::kGeometryIndex},
+                                   ValueType::kScalar, "geometry index"),
+                            Shared(ItemInput{ItemField::kGeometryCount},
+                                   ValueType::kScalar, "geometry count"),
+                            std::nullopt};
+    if (levels.chart) {
+      operation.charts = ChartPickOperands{Parameter(levels.chart->count),
+                                           levels.chart->minCover};
+    }
+    return operation;
   }
   void Functions() {
     functions.resize(graph.declarations_.size());

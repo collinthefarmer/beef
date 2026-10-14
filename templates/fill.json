@@ -304,7 +304,18 @@
     "lit": {
       "pick": {
         "seed": "@pickSeed",
-        "charts": "@chartLit"
+        "levels": [
+          {
+            "by": "geometry"
+          },
+          {
+            "by": "groups"
+          },
+          {
+            "by": "chart",
+            "count": "@chartLit"
+          }
+        ]
       }
     },
     "swellWave": {

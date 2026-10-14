@@ -174,12 +174,14 @@ struct MaterialGroupsSourceRow {
 
 struct PickSourceRow {
   std::string seed;
+  bool geometryLevel = false;
   std::string geometries = "1";
-  std::string charts = "1";
-  std::string minCover = "0.05";
   std::string areaBias = "1";
   std::string merge = "0.3";
   std::string smoothing = "8";
+  bool chartLevel = false;
+  std::string charts = "1";
+  std::string minCover = "0.05";
 };
 
 using SourceRowKind =
