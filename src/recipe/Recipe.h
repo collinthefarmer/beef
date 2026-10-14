@@ -504,49 +504,19 @@ struct RippleSource {
   [[nodiscard]] bool operator==(const RippleSource &) const = default;
 };
 inline constexpr std::uint8_t kMaxMaterialClusters = 8;
-inline constexpr std::uint32_t kMaxClusterIterations = 256;
-inline constexpr float kMaxChannelWeight = 10.0f;
+inline constexpr std::uint32_t kMaxClusterSmoothing = 32;
 inline constexpr float kMaxAreaBias = 8.0f;
-struct ChannelWeights {
-  float roughness = 1.0f;
-  float metallic = 1.0f;
-  float occlusion = 0.5f;
-  float reflectance = 0.5f;
-  float luma = 1.0f;
-  float chroma = 1.0f;
-  float detail = 1.0f;
-  [[nodiscard]] bool operator==(const ChannelWeights &) const = default;
-};
 struct ClusterSettings {
-  std::uint8_t clusters = 4;
-  ChannelWeights weights;
-  std::uint32_t seed = 1;
-  std::uint32_t iterations = 32;
+  float merge = 0.3f;
+  std::uint32_t smoothing = 8;
   [[nodiscard]] bool operator==(const ClusterSettings &) const = default;
 };
 struct MaterialClustersSource {
   ClusterSettings settings;
   std::optional<Param> pick;
   Param areaBias = 1.0f;
-  bool guess = false;
   bool palette = false;
   [[nodiscard]] bool operator==(const MaterialClustersSource &) const = default;
-};
-
-inline constexpr std::string_view kLegacyColorWeight = "color";
-
-struct ClusterWeightField {
-  const char *name;
-  float ChannelWeights::*member;
-};
-inline constexpr ClusterWeightField kClusterWeightFields[]{
-    {"roughness", &ChannelWeights::roughness},
-    {"metallic", &ChannelWeights::metallic},
-    {"occlusion", &ChannelWeights::occlusion},
-    {"reflectance", &ChannelWeights::reflectance},
-    {"luma", &ChannelWeights::luma},
-    {"chroma", &ChannelWeights::chroma},
-    {"detail", &ChannelWeights::detail},
 };
 
 using SourceKind =

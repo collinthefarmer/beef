@@ -1,5 +1,6 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #include "render/Compositor.h"
+#include "render/MaterialGrouper.h"
 
 #include "SettingsFile.h"
 #include "render/MeshCache.h"
@@ -47,10 +48,30 @@ Compositor::MaterialKeyOf(const MaterialInputs &a_material) {
           TextureIdentity(a_material.diffuse)};
 }
 
+namespace {
+void Settle(Compositor::MaterialRecord &a_record) {
+  if (!a_record.key || a_record.grouping || !a_record.problem.empty()) {
+    return;
+  }
+  std::optional<GroupingResult> result =
+      MaterialGrouper::GetSingleton().Find(*a_record.key);
+  if (!result) {
+    return;
+  }
+  if (*result) {
+    a_record.grouping = **result;
+  } else {
+    a_record.problem = result->error();
+  }
+}
+}
+
 const Compositor::MaterialRecord &
-Compositor::AnalyseMaterial(const MaterialInputs &a_material) {
+Compositor::AnalyseMaterial(const MaterialInputs &a_material,
+                            const std::shared_ptr<MeshEntry> &a_mesh) {
   auto &record = materials_.Get(MaterialKeyOf(a_material), nowMS_);
-  if (record.sample || !record.problem.empty()) {
+  Settle(record);
+  if (record.key || !record.problem.empty()) {
     return record;
   }
   if (!RealTexture(a_material.rmaos) || !RealTexture(a_material.diffuse)) {
@@ -58,12 +79,6 @@ Compositor::AnalyseMaterial(const MaterialInputs &a_material) {
         std::format("RMAOS {}; diffuse {}", DescribeTexture(a_material.rmaos),
                     DescribeTexture(a_material.diffuse));
     return record;
-  }
-  const bool verbose = GetSettings().verboseLogging;
-  if (verbose) {
-    logger::info("material '{}': sampling", a_material.rmaos->name.c_str()
-                                                ? a_material.rmaos->name.c_str()
-                                                : "?");
   }
   TextureLab *lab = TextureLab::GetSingleton();
   if (!lab) {
@@ -77,22 +92,37 @@ Compositor::AnalyseMaterial(const MaterialInputs &a_material) {
     record.problem = "the maps could not be read back";
     return record;
   }
-  record.sample = std::make_shared<const MaterialSample>(std::move(*sample));
-  record.analysis = std::make_shared<const MaterialAnalysis>(
-      ClusterMaterial(*record.sample, GuessClusterSettings(*record.sample)));
-  if (verbose) {
-    logger::info("material '{}': sampled {}x{}, {} clusters",
+  GroupingJob job;
+  job.settings = ClusterSettings{};
+  if (a_mesh) {
+    job.mesh = a_mesh->mesh;
+    job.analysis = a_mesh->analysis;
+  }
+  job.key = GroupingKeyOf(*sample, a_mesh ? a_mesh->hash : 0, job.settings);
+  job.sample = std::move(*sample);
+  const std::uint64_t key = job.key;
+  if (!MaterialGrouper::GetSingleton().Request(std::move(job))) {
+    record.problem = "the grouping worker refused the material";
+    return record;
+  }
+  record.key = key;
+  if (GetSettings().verboseLogging) {
+    logger::info("material '{}': sampled, grouping on the worker",
                  a_material.rmaos->name.c_str() ? a_material.rmaos->name.c_str()
-                                                : "?",
-                 record.sample->width, record.sample->height,
-                 record.analysis->clusters.size());
+                                                : "?");
   }
   return record;
 }
 
 const Compositor::MaterialRecord *
-Compositor::CachedMaterial(const MaterialInputs &a_material) const {
-  return materials_.Find(MaterialKeyOf(a_material));
+Compositor::CachedMaterial(const MaterialInputs &a_material) {
+  const MaterialKey key = MaterialKeyOf(a_material);
+  if (!materials_.Find(key)) {
+    return nullptr;
+  }
+  MaterialRecord &record = materials_.Get(key, nowMS_);
+  Settle(record);
+  return &record;
 }
 
 void Compositor::SweepMaterials(std::uint32_t a_nowMS,

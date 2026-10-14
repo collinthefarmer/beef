@@ -125,10 +125,11 @@ std::vector<RenderValueRef> InputsOf(const RenderStepKind &step) {
       },
       [](const BakeMeshStep &k) { return std::vector{k.buffers}; },
       [](const NormalSlopeStep &k) { return std::vector{k.material}; },
-      [](const SubmitMaterialSampleStep &k) { return std::vector{k.material}; },
-      [](const ClusterMaterialStep &k) { return std::vector{k.sample}; },
+      [](const SubmitMaterialSampleStep &k) {
+        return std::vector{k.material, k.mesh};
+      },
       [](const DrawClustersStep &k) {
-        std::vector inputs{k.material, k.analysis};
+        std::vector inputs{k.material, k.groups};
         if (k.pick) {
           inputs.push_back(*k.pick);
         }
@@ -224,9 +225,6 @@ RenderValueType OutputType(const RenderStepKind &step) {
       [](const SubmitMaterialSampleStep &) -> RenderValueType {
         return RenderResourceType::kSubmission;
       },
-      [](const ClusterMaterialStep &) -> RenderValueType {
-        return RenderResourceType::kMaterialAnalysis;
-      },
       [](const SubmitReductionStep &) -> RenderValueType {
         return RenderResourceType::kSubmission;
       },
@@ -263,12 +261,12 @@ RenderValueType OutputType(const RenderStepKind &step) {
 }
 namespace {
 inline constexpr std::array<std::string_view, kRenderStepKindCount>
-    kStepKindNames{"Unavailable",     "Constant",      "BuildBakeBuffers",
-                   "BakeMesh",        "NormalSlope",   "SubmitMaterialSample",
-                   "ClusterMaterial", "DrawClusters",  "SampleField",
-                   "SubmitReduction", "BuildLookup",   "EvaluateValue",
-                   "EvaluateProgram", "MapField",      "ComposeVector",
-                   "DrawRipple",      "CompositeStack"};
+    kStepKindNames{"Unavailable",   "Constant",      "BuildBakeBuffers",
+                   "BakeMesh",      "NormalSlope",   "SubmitMaterialSample",
+                   "DrawClusters",  "SampleField",   "SubmitReduction",
+                   "BuildLookup",   "EvaluateValue", "EvaluateProgram",
+                   "MapField",      "ComposeVector", "DrawRipple",
+                   "CompositeStack"};
 }
 static_assert(std::ranges::none_of(kStepKindNames, &std::string_view::empty));
 std::string_view StepKindNameAt(std::size_t index) {
@@ -526,16 +524,16 @@ std::expected<void, std::string> ValidateStepKind(const RenderPlan &plan,
         return RequireType(plan, k.material, RenderResourceType::kMaterial);
       },
       [&](const SubmitMaterialSampleStep &k) -> Validation {
-        return RequireType(plan, k.material, RenderResourceType::kMaterial);
-      },
-      [&](const ClusterMaterialStep &k) -> Validation {
-        return RequireType(plan, k.sample, RenderResourceType::kMaterialSample);
+        return RequireType(plan, k.material, RenderResourceType::kMaterial)
+            .and_then([&] {
+              return RequireType(plan, k.mesh, RenderResourceType::kMesh);
+            });
       },
       [&](const DrawClustersStep &k) -> Validation {
         return RequireType(plan, k.material, RenderResourceType::kMaterial)
             .and_then([&] {
-              return RequireType(plan, k.analysis,
-                                 RenderResourceType::kMaterialAnalysis);
+              return RequireType(plan, k.groups,
+                                 RenderResourceType::kMaterialGroups);
             })
             .and_then([&]() -> Validation {
               if (!k.pick)
@@ -620,7 +618,7 @@ ValidateReadbackInputs(const RenderPlan &plan) {
     const bool valid =
         (reduction && input.type == RenderValueType{reduction->type}) ||
         (submission && Is<SubmitMaterialSampleStep>(*submission) &&
-         input.type == RenderValueType{RenderResourceType::kMaterialSample});
+         input.type == RenderValueType{RenderResourceType::kMaterialGroups});
     if (!valid)
       return std::unexpected("invalid readback input");
   }

@@ -62,14 +62,15 @@ struct alignas(16) RippleConstants {
   float direction[4];
 };
 
-struct alignas(16) ClusterConstants {
-  float centroidRmaos[kMaxMaterialClusters][4];
-  float centroidLuma[kMaxMaterialClusters][4];
-  float centroidChroma[kMaxMaterialClusters][4];
-  float weights[4];
+inline constexpr std::size_t kGroupWhiteningRows = 9;
+struct alignas(16) GroupConstants {
+  float centre[2][4];
+  float spread[2][4];
+  float mean[kMaxMaterialClusters * 2][4];
+  float whitening[kMaxMaterialClusters * kGroupWhiteningRows][4];
+  float info[kMaxMaterialClusters][4];
   float misc[4];
   float palette[kMaxMaterialClusters][4];
-  float mode[4];
   float levels[4];
   float detail[4];
 };
@@ -78,7 +79,7 @@ struct alignas(16) DiffuseDetailConstants {
   float levels[4];
   float normal[4];
 };
-static_assert(kMaxMaterialClusters == 8 && sizeof(ClusterConstants) % 16 == 0);
+static_assert(kMaxMaterialClusters == 8 && sizeof(GroupConstants) % 16 == 0);
 
 struct alignas(16) ReductionConstants {
   std::uint32_t shape[4];

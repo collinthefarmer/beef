@@ -25,7 +25,6 @@ constexpr float kHoverRadius = 8.0f;
 constexpr float kHistogramReach = 0.42f;
 constexpr std::uint32_t kAxisInk = 0x80A0A0A0U;
 constexpr std::uint32_t kLabelInk = 0xFFD0D0D0U;
-constexpr std::uint32_t kWeightInk = 0xFF909090U;
 
 struct ChartArea {
   ImGui::ImVec2 origin;
@@ -72,15 +71,6 @@ std::uint32_t ClusterInk(std::uint8_t a_cluster,
          (static_cast<std::uint32_t>(a_alpha) << 24);
 }
 
-bool GuessButton(bool a_matchesGuess) {
-  bool clicked = false;
-  Disabled(a_matchesGuess, [&] { clicked = ImGui::Button("Best guess"); });
-  Tooltip(a_matchesGuess ? "These settings are the guess for this material."
-                         : "Set the cluster count, weights and seed from this "
-                           "material's sample.");
-  return clicked;
-}
-
 void DrawMaterialDump(const Frame &a_frame) {
   if (!a_frame.piece || !a_frame.geometry || !a_frame.intents ||
       !a_frame.snapshot) {
@@ -108,14 +98,18 @@ void DrawMaterialDump(const Frame &a_frame) {
 std::optional<std::uint8_t> DrawClusterExplorer(const ClusterSubject &a_subject,
                                                 Studio::ClusterMemo &a_memo,
                                                 float a_scale) {
-  const Studio::ClusterView *view = Studio::ClustersOf(
-      a_memo, a_subject.geometry.materialSample, a_subject.settings);
+  const Studio::ClusterView *view =
+      Studio::ClustersOf(a_memo, a_subject.geometry.grouping);
   if (!view) {
-    Dim("The material of this geometry has not been sampled.");
+    Dim("The material of this geometry has not been grouped yet.");
     return std::nullopt;
   }
   Dim(std::format("{} clusters on {}", view->analysis.clusters.size(),
                   a_subject.geometry.name));
+  if (a_subject.settings != ClusterSettings{}) {
+    Dim("The chart shows the default merge and smoothing; the piece shows "
+        "this source's.");
+  }
   const std::optional<std::uint8_t> nearest =
       a_subject.picked ? Studio::NearestOther(view->chart, *a_subject.picked)
                        : std::nullopt;
@@ -212,15 +206,10 @@ void DrawAxes(ImGui::ImDrawList *a_draw, const ChartArea &a_area,
     ImGui::ImDrawListManager::AddLine(a_draw, {x, a_area.top},
                                       {x, a_area.bottom}, kAxisInk, 1.0f);
     const std::string name{Studio::kClusterAxes[i].name};
-    const std::string weight = std::format("w{:.1f}", a_chart.weights[i]);
     const float nameWidth = ImGui::CalcTextSize(name.c_str()).x;
-    const float weightWidth = ImGui::CalcTextSize(weight.c_str()).x;
     ImGui::ImDrawListManager::AddText(a_draw,
                                       {x - nameWidth / 2.0f, a_area.origin.y},
                                       kLabelInk, name.c_str());
-    ImGui::ImDrawListManager::AddText(
-        a_draw, {x - weightWidth / 2.0f, a_area.bottom + line * 0.4f},
-        kWeightInk, weight.c_str());
   }
 }
 
@@ -316,9 +305,7 @@ void DrawSeparation(const Studio::ClusterChart &a_chart, ChartFocus a_focus) {
   }
   auto table = Table::Begin("cluster-separation",
                             {{"axis", Studio::Width::Fit("rough")},
-                             {"separation", Studio::Width::Fit("separation")},
-                             {"weight", Studio::Width::Fit("weight")},
-                             {"advice", Studio::Width::Fill()}},
+                             {"separation", Studio::Width::Fill()}},
                             Studio::kColumnsTable);
   if (!table.Open()) {
     return;
@@ -330,10 +317,6 @@ void DrawSeparation(const Studio::ClusterChart &a_chart, ChartFocus a_focus) {
                                .c_str());
     table.Cell();
     ImGui::TextUnformatted(std::format("{:.1f}", axis.separation).c_str());
-    table.Cell();
-    ImGui::TextUnformatted(std::format("{:.1f}", axis.weight).c_str());
-    table.Cell();
-    Warn(Studio::AdviceText(axis.advice));
   }
   table.End();
 }

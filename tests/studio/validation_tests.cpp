@@ -53,8 +53,8 @@ int main() {
   image.mip = -1.0f;
   Refused(recipe, SetSource{"image", image}, "negative mip");
   MaterialClustersSource clusters;
-  clusters.settings.iterations = kMaxClusterIterations + 1;
-  Refused(recipe, SetSource{"image", clusters}, "excessive cluster iterations");
+  clusters.settings.smoothing = kMaxClusterSmoothing + 1;
+  Refused(recipe, SetSource{"image", clusters}, "excessive cluster smoothing");
   Refused(recipe, SetShellAlphaTest{2.0f}, "alpha test out of range");
   Refused(recipe, SetShellAlphaTest{std::numeric_limits<float>::quiet_NaN()},
           "nonfinite alpha test");

@@ -23,103 +23,11 @@ MaterialTexel Texel(float a_roughness, float a_metallic, float a_occlusion,
   texel.luma = a_luma;
   return texel;
 }
-
-MaterialSample TwoGroups() {
-  MaterialSample sample;
-  sample.width = 10;
-  sample.height = 10;
-  for (std::size_t i = 0; i < 50; ++i) {
-    const float jitter = static_cast<float>(i) * 0.001f;
-    sample.texels.push_back(
-        Texel(0.12f + jitter, 0.10f, 0.30f, 0.20f, 0.15f + jitter));
-    sample.texels.push_back(
-        Texel(0.88f - jitter, 0.90f, 0.70f, 0.80f, 0.85f - jitter));
-  }
-  return sample;
-}
-
-float ShareSum(const MaterialAnalysis &a_analysis) {
-  float sum = 0.0f;
-  for (const MaterialCluster &cluster : a_analysis.clusters) {
-    sum += cluster.share;
-  }
-  return sum;
-}
 }
 
 int main() {
   Check(kMaxMaterialClusters == 8, "at most eight clusters");
-  Check(kMaxSampleTexels == 64 * 64, "the sample caps at 64 by 64 texels");
-
-  ClusterSettings settings;
-  settings.clusters = 2;
-  settings.seed = 1;
-
-  const MaterialSample sample = TwoGroups();
-  const MaterialAnalysis analysis = ClusterMaterial(sample, settings);
-
-  Check(analysis.clusters.size() == 2,
-        "two separated groups yield two clusters");
-  Check(Near(ShareSum(analysis), 1.0f),
-        "every texel is owned, so the shares sum to one");
-  Check(analysis.settings == settings,
-        "the analysis echoes the settings it ran under");
-
-  const MaterialTexel low = Texel(0.12f, 0.10f, 0.30f, 0.20f, 0.15f);
-  const MaterialTexel high = Texel(0.88f, 0.90f, 0.70f, 0.80f, 0.85f);
-  const std::uint8_t lowId = NearestCluster(low, analysis);
-  const std::uint8_t highId = NearestCluster(high, analysis);
-  Check(lowId != highId,
-        "a low-material and a high-material texel fall in different clusters");
-  Check(lowId < analysis.clusters.size() && highId < analysis.clusters.size(),
-        "nearest ids index a real cluster");
-
-  const MaterialAnalysis again = ClusterMaterial(sample, settings);
-  Check(again == analysis, "the same seed reproduces the clustering exactly");
-
-  ClusterSettings otherSeed = settings;
-  otherSeed.seed = 999;
-  const MaterialAnalysis third = ClusterMaterial(sample, otherSeed);
-  Check(third.clusters.size() == 2,
-        "a different seed still resolves the two groups");
-  Check(Near(ShareSum(third), 1.0f),
-        "the shares still sum to one under another seed");
-
-  ClusterSettings zero = settings;
-  zero.clusters = 0;
-  const MaterialAnalysis clampedLow = ClusterMaterial(sample, zero);
-  Check(clampedLow.clusters.size() == 1,
-        "a request for zero clusters is clamped up to one");
-
-  ClusterSettings tooMany = settings;
-  tooMany.clusters = 200;
-  const MaterialAnalysis clampedHigh = ClusterMaterial(sample, tooMany);
-  Check(clampedHigh.clusters.size() <= kMaxMaterialClusters,
-        "a request beyond the cap is clamped down");
-
-  MaterialSample empty;
-  const MaterialAnalysis emptyAnalysis = ClusterMaterial(empty, settings);
-  Check(emptyAnalysis.clusters.empty(), "an empty sample produces no clusters");
-  Check(NearestCluster(low, emptyAnalysis) == 0,
-        "nearest of an empty analysis is a defined zero");
-
-  MaterialSample oversize;
-  oversize.width = 128;
-  oversize.height = 128;
-  for (std::size_t i = 0; i < kMaxSampleTexels + 37; ++i) {
-    oversize.texels.push_back(Texel(0.2f, 0.2f, 0.2f, 0.2f, 0.2f));
-  }
-  const MaterialAnalysis oversizeAnalysis = ClusterMaterial(oversize, settings);
-  Check(!oversizeAnalysis.clusters.empty(),
-        "a sample larger than the cap still clusters");
-  Check(Near(ShareSum(oversizeAnalysis), 1.0f),
-        "the share denominator is the capped texel count");
-
-  ClusterSettings runaway = settings;
-  runaway.iterations = 1000000;
-  const MaterialAnalysis bounded = ClusterMaterial(sample, runaway);
-  Check(bounded.clusters.size() == 2,
-        "an unbounded iteration count is capped and still terminates");
+  Check(kMaxSampleTexels == 256 * 256, "the sample caps at 256 by 256 texels");
 
   Check(DescribeTexel(Texel(0.1f, 0.1f, 0.3f, 0.2f, 0.1f)) ==
             "polished dark non-metal",
@@ -134,30 +42,6 @@ int main() {
   Check(DescribeTexel(Texel(2.0f, -1.0f, 0.5f, 0.5f, 0.5f)) ==
             "rough mid non-metal",
         "out-of-range channels are clamped to [0,1] before description");
-
-  const MaterialClustersSource source{ClusterSettings{
-      5, ChannelWeights{2.0f, 0.25f, 0.75f, 0.5f, 1.5f}, 7, 64}};
-  Check(source.settings ==
-            ClusterSettings{5, ChannelWeights{2.0f, 0.25f, 0.75f, 0.5f, 1.5f},
-                            7, 64},
-        "the source carries its analysis settings directly");
-
-  MaterialTexel red = low;
-  MaterialTexel green = low;
-  red.diffuse = Vec3{1, 0, 0};
-  green.diffuse = Vec3{0, 0.2126f / 0.7152f, 0};
-  red.luma = green.luma = 0.2126f;
-  MaterialSample colors;
-  colors.texels = {red, green, red, green};
-  const auto colored = ClusterMaterial(colors, settings);
-  Check(colored.clusters.size() == 2 &&
-            NearestCluster(red, colored) != NearestCluster(green, colored),
-        "equal-brightness diffuse colors separate in analysis and nearest "
-        "lookup");
-  ClusterSettings noColor = settings;
-  noColor.weights.chroma = 0;
-  Check(ClusterMaterial(colors, noColor).clusters.size() == 1,
-        "zero color weight restores brightness-only clustering");
 
   MaterialAnalysis ranked;
   for (std::uint8_t id = 0; id < 3; ++id) {
@@ -195,42 +79,17 @@ int main() {
           "every pick lands on an existing cluster and is stable");
   }
 
-  for (const MaterialCluster &cluster : analysis.clusters) {
+  for (const MaterialCluster &cluster : ranked.clusters) {
     for (const float bias : {0.0f, 1.0f, 2.5f}) {
-      const std::optional<float> pick = PickValueOf(analysis, cluster.id, bias);
-      Check(pick && PickCluster(analysis, *pick, bias) == cluster.id,
+      const std::optional<float> pick = PickValueOf(ranked, cluster.id, bias);
+      Check(pick && PickCluster(ranked, *pick, bias) == cluster.id,
             "the pick value of a cluster picks that cluster");
     }
   }
-  Check(!PickValueOf(analysis, 9, 1.0f).has_value(),
+  Check(!PickValueOf(ranked, 9, 1.0f).has_value(),
         "a cluster the analysis lacks has no pick value");
   Check(!PickValueOf(MaterialAnalysis{}, 0, 1.0f).has_value(),
         "an empty analysis has no pick value");
-
-  MaterialSample metalSplit;
-  metalSplit.width = 10;
-  metalSplit.height = 10;
-  for (std::size_t i = 0; i < 100; ++i) {
-    const float jitter = static_cast<float>(i % 7) * 0.01f;
-    MaterialTexel texel =
-        Texel(0.45f + jitter, i % 2 == 0 ? 0.0f : 1.0f, 0.5f, 0.5f, 0.5f);
-    texel.diffuse = Vec3{0.4f, 0.4f, 0.4f};
-    metalSplit.texels.push_back(texel);
-  }
-  const ClusterSettings guessed = GuessClusterSettings(metalSplit);
-  Check(guessed.clusters == 2,
-        "the guess finds two clusters where two groups differ");
-  Check(guessed.weights.metallic > 0.0f && guessed.weights.occlusion == 0.0f &&
-            guessed.weights.chroma == 0.0f &&
-            guessed.weights.metallic > guessed.weights.roughness,
-        "the guess weights the axis that splits the groups and drops flat "
-        "ones");
-  const MaterialAnalysis guessedAnalysis = ClusterMaterial(metalSplit, guessed);
-  Check(guessedAnalysis.clusters.size() == 2 &&
-            std::abs(guessedAnalysis.clusters[0].share - 0.5f) < 0.01f,
-        "the guessed settings separate the two groups");
-  Check(GuessClusterSettings(MaterialSample{}) == ClusterSettings{},
-        "an empty sample keeps the default settings");
 
   MaterialTexel brightRed;
   brightRed.diffuse = Vec3{0.9f, 0.2f, 0.2f};
@@ -247,32 +106,6 @@ int main() {
             darkGrey.greenMagenta == lightGrey.greenMagenta,
         "greys of any brightness share one chroma, so brightness is counted "
         "only by luma");
-
-  MaterialSample boneAndLeather;
-  boneAndLeather.width = 32;
-  boneAndLeather.height = 32;
-  std::uint32_t noise = 12345;
-  const auto jitter = [&noise]() {
-    noise = noise * 1664525u + 1013904223u;
-    return (static_cast<float>(noise >> 8) / 16777216.0f - 0.5f) * 0.12f;
-  };
-  for (std::size_t i = 0; i < 1024; ++i) {
-    const bool bone = i % 3 != 0;
-    MaterialTexel texel = Texel(0.6f + jitter(), 0.02f, 0.7f + jitter(),
-                                0.3f + jitter(), bone ? 0.62f : 0.38f);
-    texel.diffuse =
-        bone ? Vec3{0.72f + jitter(), 0.66f + jitter(), 0.55f + jitter()}
-             : Vec3{0.42f + jitter(), 0.27f + jitter(), 0.16f + jitter()};
-    boneAndLeather.texels.push_back(texel);
-  }
-  const ClusterSettings realistic = GuessClusterSettings(boneAndLeather);
-  Check(realistic.weights != ChannelWeights{},
-        "a noisy two-material sample gets its own weights, not the defaults");
-  const ChannelWeights &w = realistic.weights;
-  Check(w.luma > w.roughness && w.luma > w.occlusion &&
-            w.luma > w.reflectance && w.luma > w.chroma,
-        "the axis that separates the materials outweighs the noisy ones");
-  Check(realistic.weights.metallic == 0.0f, "a flat metallic axis drops out");
 
   return test::Finish("materialclusters");
 }

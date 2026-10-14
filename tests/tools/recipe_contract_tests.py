@@ -61,12 +61,9 @@ class RecipeContractTests(unittest.TestCase):
 
     def test_cluster_defaults_and_bounds(self):
         cases = [({}, True)]
-        cases += [({'clusters': value}, 1 <= value <= 8) for value in (0, 1, 8, 9)]
-        cases += [({'iterations': value}, 1 <= value <= 256) for value in (0, 1, 256, 257)]
-        cases += [({'seed': value}, 0 <= value <= 2147483647)
-                  for value in (-1, 0, 2147483647, 2147483648, 4294967297)]
-        cases += [({'weights': {'roughness': value}}, 0 <= value <= 10)
-                  for value in (-0.1, 0, 10, 10.1)]
+        cases += [({'merge': value}, 0 <= value <= 1) for value in (-0.1, 0, 1, 1.1)]
+        cases += [({'smoothing': value}, 0 <= value <= 32) for value in (-1, 0, 32, 33)]
+        cases += [({retired: 1}, False) for retired in ('clusters', 'weights', 'seed', 'iterations', 'guess')]
         cases += [({'pick': value}, 0 <= value <= 1) for value in (-0.1, 0, 1, 1.1)]
         cases += [({'pick': 0.5, 'areaBias': value}, 0 <= value <= 8)
                   for value in (-0.1, 0, 8, 8.1)]

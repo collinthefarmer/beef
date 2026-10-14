@@ -1,5 +1,5 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
-#include "engine/JobQueue.h"
+#include "planners/JobQueue.h"
 #include "test_support.h"
 
 #include <atomic>
@@ -161,5 +161,5 @@ int main() {
   ACancelledJobNeverRuns();
   TimingsAreReported();
   DestroyingTheQueueLeavesARunningJobSafe();
-  return test::Finish("engine_jobqueue");
+  return test::Finish("planners_jobqueue");
 }

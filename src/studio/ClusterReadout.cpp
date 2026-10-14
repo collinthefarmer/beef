@@ -10,8 +10,6 @@ constexpr float kLowPercentile = 0.1f;
 constexpr float kHighPercentile = 0.9f;
 constexpr float kSpreadFloor = 0.02f;
 constexpr float kClearSeparation = 1.0f;
-constexpr float kWeakSeparation = 0.3f;
-constexpr float kLowWeight = 0.5f;
 
 using AxisValues = std::array<float, kClusterAxisCount>;
 
@@ -21,23 +19,17 @@ ClusterProfile ProfileFrom(const MaterialCluster &a_cluster,
                            std::vector<AxisValues> a_members);
 AxisBand BandOf(std::vector<float> &a_values, float a_centre);
 AxisHistogram HistogramOf(const std::vector<float> &a_values);
-WeightAdvice AdviceFor(float a_separation, float a_weight) noexcept;
 }
 
 const ClusterView *
 ClustersOf(ClusterMemo &a_memo,
-           const std::shared_ptr<const MaterialSample> &a_sample,
-           const ClusterSettings &a_settings) {
-  if (!a_sample) {
+           const std::shared_ptr<const MaterialGrouping> &a_grouping) {
+  if (!a_grouping) {
     return nullptr;
   }
-  if (a_memo.sample != a_sample || a_memo.settings != a_settings) {
-    MaterialAnalysis analysis = ClusterMaterial(*a_sample, a_settings);
-    ClusterChart chart = ChartOf(*a_sample, analysis);
-    a_memo = {a_sample,
-              a_settings,
-              {std::move(analysis), std::move(chart)},
-              std::nullopt};
+  if (a_memo.grouping != a_grouping) {
+    a_memo = {
+        a_grouping, {a_grouping->analysis, ChartOf(*a_grouping)}, std::nullopt};
   }
   return &a_memo.view;
 }
@@ -56,21 +48,20 @@ LargestFirst(const MaterialAnalysis &a_analysis) {
   return rows;
 }
 
-ClusterChart ChartOf(const MaterialSample &a_sample,
-                     const MaterialAnalysis &a_analysis) {
+ClusterChart ChartOf(const MaterialGrouping &a_grouping) {
+  const MaterialAnalysis &a_analysis = a_grouping.analysis;
+  const std::vector<MaterialTexel> &texels = a_grouping.raster.texels;
   ClusterChart chart;
-  for (std::size_t i = 0; i < kClusterAxisCount; ++i) {
-    const float weight = a_analysis.settings.weights.*kClusterAxes[i].weight;
-    chart.weights[i] = std::isfinite(weight) ? std::max(weight, 0.0f) : 0.0f;
-  }
   std::vector<std::vector<AxisValues>> members(a_analysis.clusters.size());
-  const std::size_t count = std::min(a_sample.texels.size(), kMaxSampleTexels);
+  const std::size_t count = std::min(texels.size(), a_grouping.labels.size());
   for (std::size_t t = 0; t < count; ++t) {
-    const MaterialTexel &texel = a_sample.texels[t];
-    const std::uint8_t id = NearestCluster(texel, a_analysis);
+    const std::int16_t id = a_grouping.labels[t];
+    if (id == kNoGroup) {
+      continue;
+    }
     for (std::size_t c = 0; c < a_analysis.clusters.size(); ++c) {
       if (a_analysis.clusters[c].id == id) {
-        members[c].push_back(AxisValuesOf(texel));
+        members[c].push_back(AxisValuesOf(texels[t]));
         break;
       }
     }
@@ -104,7 +95,7 @@ std::optional<std::uint8_t> NearestOther(const ClusterChart &a_chart,
     float distance = 0.0f;
     for (std::size_t i = 0; i < kClusterAxisCount; ++i) {
       const float d = from->bands[i].centre - other.bands[i].centre;
-      distance += a_chart.weights[i] * d * d;
+      distance += d * d;
     }
     if (!nearest || distance < best) {
       nearest = other.id;
@@ -129,8 +120,7 @@ std::vector<AxisSeparation> SeparationOf(const ClusterChart &a_chart,
     const float spread =
         (l.high - l.low) / 2.0f + (r.high - r.low) / 2.0f + kSpreadFloor;
     const float separation = std::abs(l.centre - r.centre) / spread;
-    axes.push_back({kClusterAxes[i].axis, separation, a_chart.weights[i],
-                    AdviceFor(separation, a_chart.weights[i])});
+    axes.push_back({kClusterAxes[i].axis, separation});
   }
   std::ranges::stable_sort(
       axes, [](const AxisSeparation &a_first, const AxisSeparation &a_second) {
@@ -143,18 +133,6 @@ bool CanSeparate(std::span<const AxisSeparation> a_axes) noexcept {
   return std::ranges::any_of(a_axes, [](const AxisSeparation &a_axis) {
     return a_axis.separation >= kClearSeparation;
   });
-}
-
-std::string_view AdviceText(WeightAdvice a_advice) noexcept {
-  switch (a_advice) {
-  case WeightAdvice::kRaise:
-    return "raise weight";
-  case WeightAdvice::kLower:
-    return "lower weight";
-  case WeightAdvice::kKeep:
-    return "";
-  }
-  return "";
 }
 
 namespace {
@@ -217,16 +195,6 @@ AxisHistogram HistogramOf(const std::vector<float> &a_values) {
     bin /= total;
   }
   return histogram;
-}
-
-WeightAdvice AdviceFor(float a_separation, float a_weight) noexcept {
-  if (a_separation >= kClearSeparation && a_weight < kLowWeight) {
-    return WeightAdvice::kRaise;
-  }
-  if (a_separation < kWeakSeparation && a_weight >= kLowWeight) {
-    return WeightAdvice::kLower;
-  }
-  return WeightAdvice::kKeep;
 }
 }
 }

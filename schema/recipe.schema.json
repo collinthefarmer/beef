@@ -191,22 +191,12 @@
               "direction": { "$ref": "#/$defs/vec3", "description": "A worldspace vector the wave travels along; the front is a plane sweeping from the anchor. Absent or zero radiates as a ring or disc from the anchor point. Animatable, so a signal (e.g. a payload carrying a hit direction) can steer it." } } } } },
         { "required": ["materialClusters"], "properties": { "materialClusters": {
             "type": "object", "additionalProperties": false,
-            "description": "The material's cluster map: each texel the id / 255 of the nearest cluster under these settings, rendered once per geometry. Every field has a default.",
+            "description": "The material's cluster map: the material split into groups of similar texels (regions inside the mesh's UV charts, grouped by a Gaussian mixture), each texel the id / 255 of its group, rendered once per geometry. Every field has a default.",
             "properties": {
-              "clusters": { "type": "integer", "minimum": 1, "maximum": 8, "default": 4 },
-              "weights": { "type": "object", "additionalProperties": false, "description": "How much each channel counts in the distance between texels.",
-                "properties": {
-                  "roughness": { "$ref": "#/$defs/number", "minimum": 0, "maximum": 10, "default": 1 }, "metallic": { "$ref": "#/$defs/number", "minimum": 0, "maximum": 10, "default": 1 },
-                  "occlusion": { "$ref": "#/$defs/number", "minimum": 0, "maximum": 10, "default": 0.5 }, "reflectance": { "$ref": "#/$defs/number", "minimum": 0, "maximum": 10, "default": 0.5 },
-                  "luma": { "$ref": "#/$defs/number", "minimum": 0, "maximum": 10, "default": 1 },
-                  "chroma": { "$ref": "#/$defs/number", "minimum": 0, "maximum": 10, "default": 1, "description": "Diffuse hue and saturation (YCoCg Co and Cg), separate from brightness." },
-                  "detail": { "$ref": "#/$defs/number", "minimum": 0, "maximum": 10, "default": 1, "description": "How strongly the normal map varies at the sample's scale." },
-                  "color": { "$ref": "#/$defs/number", "minimum": 0, "maximum": 10, "deprecated": true, "description": "Read as chroma; written as chroma." } } },
-              "seed": { "type": "integer", "minimum": 0, "maximum": 2147483647, "default": 1, "description": "The same seed and sample give the same clusters." },
-              "iterations": { "type": "integer", "minimum": 1, "maximum": 256, "default": 32, "description": "The k-means cap." },
+              "merge": { "$ref": "#/$defs/number", "minimum": 0, "maximum": 1, "default": 0.3, "description": "Two groups merge while more than this share of one group's texels would be labelled as the other. Lower merges more." },
+              "smoothing": { "type": "integer", "minimum": 0, "maximum": 32, "default": 8, "description": "Radius in texels of the 256-texel analysis over which a texel's group follows its neighbours of similar colour; 0 labels every texel on its own." },
               "pick": { "oneOf": [{ "$ref": "#/$defs/number", "minimum": 0, "maximum": 1 }, { "$ref": "#/$defs/ref" }], "description": "Pick one cluster with this 0..1 value (for example @enchantment idHash): the source is then 1 on the picked cluster's texels and 0 elsewhere. Absent, the source is the id map." },
               "areaBias": { "oneOf": [{ "$ref": "#/$defs/number", "minimum": 0, "maximum": 8 }, { "$ref": "#/$defs/ref" }], "default": 1, "description": "How a pick favours large clusters: each cluster weighs its share of the texels to this power, so 0 picks every cluster equally, 1 in proportion to area, and more favours the largest." },
-              "guess": { "type": "boolean", "default": false, "description": "Use each material's best-guess cluster count, weights and seed instead of the settings above." },
               "palette": { "type": "boolean", "default": false, "description": "Colour every cluster from a fixed palette; the source is then a colour. Excludes pick." } } } } },
         { "required": ["piece"], "properties": { "piece": { "enum": ["itemHash", "chartCount"], "description": "A per-piece fact, one value for the whole piece. itemHash is a stable 0..1 hash of the worn item's form, the same on every texel of that piece and for every copy of the item; two pieces sharing one enchantment still read their own values. chartCount is how many UV charts the piece's mesh has." } } }
       ]

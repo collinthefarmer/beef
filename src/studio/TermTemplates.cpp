@@ -514,51 +514,25 @@ std::vector<TermField> ClusterForm(const ClusterTerm &a_term) {
   std::vector<TermField> form;
   form.push_back(Setting<ClusterTerm>(
       a_term,
-      Tuned(TextEntryField({.name = "clusters",
+      Tuned(TextEntryField({.name = "merge",
                             .kind = FieldKind::kScalar,
-                            .text = std::to_string(a_term.settings.clusters),
+                            .text = NumberText(a_term.settings.merge),
                             .bind = {}}),
-            {1.0f, static_cast<float>(kMaxMaterialClusters)}, true),
+            {0.0f, 1.0f}, false),
       Set{[](ClusterTerm &t, const std::string &a_text) {
-        const auto count = ReadWhole(a_text, kMaxMaterialClusters);
-        if (!count || *count < 1) {
-          return false;
-        }
-        t.settings.clusters = static_cast<std::uint8_t>(*count);
-        return true;
+        const auto merge = NumberIn(a_text, 0.0f, 1.0f);
+        return merge ? (t.settings.merge = *merge, true) : false;
       }}));
-  const auto weight = [&](const char *a_name, float ChannelWeights::*a_member) {
-    form.push_back(Setting<ClusterTerm>(
-        a_term,
-        Tuned(TextEntryField(
-                  {.name = a_name,
-                   .kind = FieldKind::kScalar,
-                   .text = NumberText(a_term.settings.weights.*a_member),
-                   .bind = {}}),
-              {0.0f, kMaxChannelWeight}, false),
-        Set{[a_member](ClusterTerm &t, const std::string &a_text) {
-          const auto number = NumberIn(a_text, 0.0f, kMaxChannelWeight);
-          return number ? (t.settings.weights.*a_member = *number, true)
-                        : false;
-        }}));
-  };
-  weight("roughness", &ChannelWeights::roughness);
-  weight("metallic", &ChannelWeights::metallic);
-  weight("occlusion", &ChannelWeights::occlusion);
-  weight("reflectance", &ChannelWeights::reflectance);
-  weight("luma", &ChannelWeights::luma);
-  weight("chroma", &ChannelWeights::chroma);
-  weight("detail", &ChannelWeights::detail);
   form.push_back(Setting<ClusterTerm>(
       a_term,
-      TextEntryField({.name = "seed",
-                      .kind = FieldKind::kScalar,
-                      .text = std::to_string(a_term.settings.seed),
-                      .bind = {}}),
+      Tuned(TextEntryField({.name = "smoothing",
+                            .kind = FieldKind::kScalar,
+                            .text = std::to_string(a_term.settings.smoothing),
+                            .bind = {}}),
+            {0.0f, static_cast<float>(kMaxClusterSmoothing)}, true),
       Set{[](ClusterTerm &t, const std::string &a_text) {
-        const auto seed =
-            ReadWhole(a_text, std::numeric_limits<std::uint32_t>::max());
-        return seed ? (t.settings.seed = *seed, true) : false;
+        const auto smoothing = ReadWhole(a_text, kMaxClusterSmoothing);
+        return smoothing ? (t.settings.smoothing = *smoothing, true) : false;
       }}));
   return form;
 }
@@ -725,12 +699,12 @@ void AppendMaterialOffers(std::vector<TermOffer> &a_offers,
   if (a_geometry.clusters.empty()) {
     a_offers.push_back(Unavailable(OfferGroup::kMaterials,
                                    std::string{kNoClusters},
-                                   ClusterTerm{a_geometry.clusterGuess, 0}));
+                                   ClusterTerm{ClusterSettings{}, 0}));
   }
   for (const MaterialCluster &cluster : a_geometry.clusters) {
-    a_offers.push_back(Offer(
-        OfferGroup::kMaterials, std::format("material {}", cluster.id),
-        cluster.description, ClusterTerm{a_geometry.clusterGuess, cluster.id}));
+    a_offers.push_back(
+        Offer(OfferGroup::kMaterials, std::format("material {}", cluster.id),
+              cluster.description, ClusterTerm{ClusterSettings{}, cluster.id}));
     a_offers.back().coverage = cluster.share;
   }
 }
@@ -976,9 +950,7 @@ std::string TermDetailOf(const Term &a_term,
         }
         return detail;
       },
-      [&](const ClusterTerm &t) {
-        return std::format("cluster {} of {}", t.id, t.settings.clusters);
-      },
+      [&](const ClusterTerm &t) { return std::format("cluster {}", t.id); },
       [&](const IslandTerm &t) {
         return std::format("{} {}", PlainIslandSourceName(t.source), t.id);
       },

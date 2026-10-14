@@ -268,9 +268,9 @@ int main() {
   }
 
   MaterialClustersSource bad;
-  bad.settings.clusters = 0;
+  bad.settings.merge = 1.5f;
   Refused(base, AddSource{"badClusters", bad},
-          "AddSource with zero clusters (loader parity)");
+          "AddSource with a merge share past one (loader parity)");
 
   Refused(base,
           SetScalar{0, ScalarField::kStrength, Param{Ref{"noSuchSignal"}}},

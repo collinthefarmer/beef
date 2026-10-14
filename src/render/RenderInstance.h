@@ -20,12 +20,18 @@ using RenderValue =
     std::variant<Value, TextureView, std::shared_ptr<MeshEntry>, MaterialInputs,
                  RenderTransform, RenderFirings,
                  std::shared_ptr<const BakeBuffers>,
-                 std::shared_ptr<const MaterialSample>,
-                 std::shared_ptr<const MaterialAnalysis>,
+                 std::shared_ptr<const MaterialGrouping>,
                  std::shared_ptr<TextureLab::Lookup>, LayerFilter, StackResult>;
 struct LayerFieldPack {
   std::vector<std::size_t> fields;
   PackedLayerFields packed;
+};
+struct GroupingRequest {
+  std::shared_ptr<const MeshData> mesh;
+  MeshAnalysis analysis;
+  std::uint64_t meshHash = 0;
+  ClusterSettings settings;
+  std::optional<std::uint64_t> key;
 };
 struct RenderScratch {
   std::weak_ptr<TextureLab::RenderTarget> target;
@@ -33,6 +39,7 @@ struct RenderScratch {
   bool holdsEmptyRipple = false;
   TextureLab::ReductionReadback reduction;
   TextureLab::MaterialReadback material;
+  GroupingRequest grouping;
   std::optional<LayerFieldPack> layerFieldPack;
 };
 class RenderInstance {
@@ -74,6 +81,7 @@ private:
   Demand(RenderValueRef output);
   void CollectReadbacks();
   void CollectReadback(RenderInputId input);
+  void CollectGrouping(RenderInputId input, RenderScratch &scratch);
   [[nodiscard]] bool AwaitingFirstReadback() const;
 
   std::vector<std::shared_ptr<const RecipeGraph>> graphs_;

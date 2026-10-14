@@ -219,21 +219,20 @@ DistanceFromOf(const std::string &a_text) {
   return a_text.empty() ? std::nullopt : std::optional{a_text};
 }
 
-[[nodiscard]] std::optional<std::uint8_t>
-ClusterCountOf(const std::string &a_text) {
-  const auto count = WholeNumber(a_text, kMaxMaterialClusters);
-  return count && *count >= 1 ? std::optional{static_cast<std::uint8_t>(*count)}
-                              : std::nullopt;
+[[nodiscard]] std::optional<float> MergeShareOf(const std::string &a_text) {
+  const auto param = ParseParam(a_text);
+  const auto *value = param ? Get<float>(*param) : nullptr;
+  return value && *value >= 0.0f && *value <= 1.0f ? std::optional{*value}
+                                                   : std::nullopt;
+}
+
+[[nodiscard]] std::optional<std::uint32_t>
+SmoothingOf(const std::string &a_text) {
+  return WholeNumber(a_text, kMaxClusterSmoothing);
 }
 
 [[nodiscard]] std::optional<std::uint32_t> SeedOf(const std::string &a_text) {
   return WholeNumber(a_text, std::numeric_limits<std::uint32_t>::max());
-}
-
-[[nodiscard]] std::optional<std::uint32_t>
-IterationsOf(const std::string &a_text) {
-  const auto count = WholeNumber(a_text, kMaxClusterIterations);
-  return count && *count >= 1 ? count : std::nullopt;
 }
 
 template <class Row, std::size_t N>
@@ -494,16 +493,12 @@ BindEventFilterBound(std::string a_signal, SignalKind a_record,
   };
 }
 
-[[nodiscard]] FieldBinding
-BindSourceKindChoice(std::string a_name, ClusterSettings a_clusterGuess) {
-  return [name = std::move(a_name), a_clusterGuess](
+[[nodiscard]] FieldBinding BindSourceKindChoice(std::string a_name) {
+  return [name = std::move(a_name)](
              const std::string &a_text) -> std::optional<RecipeEdit> {
     std::optional<SourceKind> kind = DefaultSourceKind(a_text);
     if (!kind) {
       return std::nullopt;
-    }
-    if (auto *clusters = Get<MaterialClustersSource>(*kind)) {
-      clusters->settings = a_clusterGuess;
     }
     return SetSource{name, *kind};
   };
@@ -571,24 +566,6 @@ BindImageMirror(std::string a_name, SourceKind a_record, std::size_t a_axis) {
       return std::nullopt;
     }
     geometry->geometry = a_text;
-    return SetSource{name, kind};
-  };
-}
-
-[[nodiscard]] FieldBinding BindClusterWeight(std::string a_name,
-                                             SourceKind a_record,
-                                             float ChannelWeights::*a_member) {
-  return [name = std::move(a_name), record = std::move(a_record),
-          a_member](const std::string &a_text) -> std::optional<RecipeEdit> {
-    SourceKind kind = record;
-    auto *clusters = Get<MaterialClustersSource>(kind);
-    const auto param = ParseParam(a_text);
-    const auto *value = param ? Get<float>(*param) : nullptr;
-    if (!clusters || !value || !(*value >= 0.0f) ||
-        *value > kMaxChannelWeight) {
-      return std::nullopt;
-    }
-    clusters->settings.weights.*a_member = *value;
     return SetSource{name, kind};
   };
 }
@@ -1530,54 +1507,29 @@ void ClustersFields(std::vector<FormField> &a_form, const SourceContext &a_ctx,
   const SourceKind &record = a_ctx.record;
   const MaterialClustersSourceRow &source = a_source;
   a_form.push_back(ToggleField(
-      "guess", source.guess,
-      BindSourceMember(name, record, &MaterialClustersSource::guess, OnOff)));
-  a_form.push_back(ToggleField(
       "palette", source.palette,
       BindSourceMember(name, record, &MaterialClustersSource::palette, OnOff)));
-  FormField clusters = ParamField(
-      {.name = "clusters",
+  FormField merge = ParamField(
+      {.name = "merge",
        .kind = FieldKind::kScalar,
-       .text = source.clusters,
+       .text = source.merge,
        .names = {},
        .bind = BindSourceMember(name, record, &MaterialClustersSource::settings,
-                                &ClusterSettings::clusters, ClusterCountOf)});
-  clusters.range = std::pair{1.0f, static_cast<float>(kMaxMaterialClusters)};
-  clusters.workingRange = clusters.range;
-  clusters.integral = true;
-  a_form.push_back(std::move(clusters));
-  if (const auto *current = Get<MaterialClustersSource>(record)) {
-    for (const ClusterWeightField &weight : kClusterWeightFields) {
-      FormField field = ParamField(
-          {.name = weight.name,
-           .kind = FieldKind::kScalar,
-           .text = ParamText(current->settings.weights.*weight.member),
-           .names = {},
-           .bind = BindClusterWeight(name, record, weight.member)});
-      field.range = std::pair{0.0f, kMaxChannelWeight};
-      field.workingRange = field.range;
-      a_form.push_back(std::move(field));
-    }
-  }
-  a_form.push_back(ParamField(
-      {.name = "seed",
+                                &ClusterSettings::merge, MergeShareOf)});
+  merge.range = std::pair{0.0f, 1.0f};
+  merge.workingRange = merge.range;
+  a_form.push_back(std::move(merge));
+  FormField smoothing = ParamField(
+      {.name = "smoothing",
        .kind = FieldKind::kScalar,
-       .text = source.seed,
+       .text = source.smoothing,
        .names = {},
        .bind = BindSourceMember(name, record, &MaterialClustersSource::settings,
-                                &ClusterSettings::seed, SeedOf),
-       .integral = true}));
-  FormField iterations = ParamField(
-      {.name = "iterations",
-       .kind = FieldKind::kScalar,
-       .text = source.iterations,
-       .names = {},
-       .bind = BindSourceMember(name, record, &MaterialClustersSource::settings,
-                                &ClusterSettings::iterations, IterationsOf)});
-  iterations.range = std::pair{1.0f, static_cast<float>(kMaxClusterIterations)};
-  iterations.workingRange = iterations.range;
-  iterations.integral = true;
-  a_form.push_back(std::move(iterations));
+                                &ClusterSettings::smoothing, SmoothingOf)});
+  smoothing.range = std::pair{0.0f, static_cast<float>(kMaxClusterSmoothing)};
+  smoothing.workingRange = smoothing.range;
+  smoothing.integral = true;
+  a_form.push_back(std::move(smoothing));
   FormField pick = ParamField(
       {.name = "pick",
        .kind = FieldKind::kScalar,
@@ -1604,14 +1556,13 @@ void ClustersFields(std::vector<FormField> &a_form, const SourceContext &a_ctx,
 
 std::vector<FormField> SourceForm(const SourceRow &a_source,
                                   const SignalNames &a_names,
-                                  const ClusterSettings &a_clusterGuess,
                                   std::span<const std::string> a_geometries) {
   std::vector<FormField> form;
   const std::string &name = a_source.name;
   form.push_back(ChoiceField(
       "kind",
       std::string{NameOf(kSourceKindWords, SourceRowKindId(a_source.kind))},
-      WordsOf(kSourceKindWords), BindSourceKindChoice(name, a_clusterGuess)));
+      WordsOf(kSourceKindWords), BindSourceKindChoice(name)));
   const std::optional<SourceKind> record = SourceKindOf(a_source);
   if (!record) {
     return form;

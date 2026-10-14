@@ -8,7 +8,7 @@ A **render** is everything the plugin draws for one actor: the plan, the render 
 
 1. Something marks the actor stale: an equip, a 3D rebuild, a studio edit (`ChangeAndRebuildActors`), a view toggle or a setting.
 2. The tick core's `Change` (`orchestration/Sync.cpp`) issues `Retire{actor}` and then `Install{actor}`. The retire throws away the whole render.
-3. `RenderPlanFor` (`engine/ManagerApply.cpp`) looks up the actor's plan in the plan cache. On a miss it submits a **plan job** to the plan worker: one thread, no cancel, 16 slots (`engine/JobQueue.h`, `kPlanJobCapacity`).
+3. `RenderPlanFor` (`engine/ManagerApply.cpp`) looks up the actor's plan in the plan cache. On a miss it submits a **plan job** to the plan worker: one thread, no cancel, 16 slots (`planners/JobQueue.h`, `kPlanJobCapacity`).
 4. While the job runs, the actor's phase is `Planning`. `TickActorFor` (`orchestration/Lifecycle.cpp`) conceals the slots and hides the shells, so the armor shows the vanilla look.
 5. The plan arrives. The **first draw** prerenders every stack within the per-frame budget, and then the effect is published.
 

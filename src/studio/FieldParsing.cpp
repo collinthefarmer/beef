@@ -28,30 +28,6 @@ bool IsWholeReference(std::string_view a_text) noexcept {
   return value;
 }
 
-[[nodiscard]] std::optional<std::array<float, 5>>
-FiveNumbers(std::string_view a_text) {
-  std::array<float, 5> out{};
-  std::size_t count = 0;
-  std::size_t at = 0;
-  while (at <= a_text.size()) {
-    const auto comma = a_text.find(',', at);
-    const auto part = a_text.substr(at, comma == std::string_view::npos
-                                            ? std::string_view::npos
-                                            : comma - at);
-    const auto param = ParseParam(part);
-    const float *number = param ? Get<float>(*param) : nullptr;
-    if (number == nullptr || count >= out.size()) {
-      return std::nullopt;
-    }
-    out[count++] = *number;
-    if (comma == std::string_view::npos) {
-      break;
-    }
-    at = comma + 1;
-  }
-  return count == out.size() ? std::optional{out} : std::nullopt;
-}
-
 [[nodiscard]] std::vector<std::string> SplitNames(std::string_view a_text) {
   std::vector<std::string> names;
   std::size_t at = 0;

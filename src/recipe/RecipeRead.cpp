@@ -676,75 +676,34 @@ ParseSourceAlternative<RippleSource>(const json &a_v, const Reporter &a_ctx) {
   return k;
 }
 
-bool ClusterWeightsFrom(Reader &a_r, MaterialClustersSource &a_k,
-                        const Reporter &a_ctx) {
-  const auto *w = a_r.Child("weights");
-  if (!w) {
-    return true;
-  }
-  if (!w->is_object()) {
-    a_ctx.Error("'weights' is an object of roughness, metallic, occlusion, "
-                "reflectance, luma, chroma and detail");
-    return false;
-  }
-  bool ok = true;
-  Reader wr(*w, a_ctx);
-  if (auto legacy = wr.Number(kLegacyColorWeight)) {
-    if (*legacy < 0.0f || *legacy > kMaxChannelWeight) {
-      a_ctx.Error(std::format("'weights.{}' is 0..{}", kLegacyColorWeight,
-                              kMaxChannelWeight));
-      ok = false;
-    } else {
-      a_k.settings.weights.chroma = *legacy;
-    }
-  }
-  for (const ClusterWeightField &field : kClusterWeightFields) {
-    if (auto x = wr.Number(field.name)) {
-      if (*x < 0.0f || *x > kMaxChannelWeight) {
-        a_ctx.Error(std::format("'weights.{}' is 0..{}", field.name,
-                                kMaxChannelWeight));
-        ok = false;
-      } else {
-        a_k.settings.weights.*field.member = *x;
-      }
-    }
-  }
-  wr.Finish();
-  return ok;
-}
-
 template <>
 std::optional<MaterialClustersSource>
 ParseSourceAlternative<MaterialClustersSource>(const json &a_v,
                                                const Reporter &a_ctx) {
   if (!a_v.is_object()) {
-    a_ctx.Error("'materialClusters' takes an object with 'clusters', "
-                "'weights', 'seed', 'iterations', 'pick', 'areaBias', "
-                "'guess' and 'palette'");
+    a_ctx.Error("'materialClusters' takes an object with 'merge', "
+                "'smoothing', 'pick', 'areaBias' and 'palette'");
     return std::nullopt;
   }
   MaterialClustersSource k;
   Reader r(a_v, a_ctx);
   bool ok = true;
-  ok &= r.IntRange("clusters", 1, kMaxMaterialClusters, k.settings.clusters);
-  ok &= ClusterWeightsFrom(r, k, a_ctx);
-  if (auto n = r.Integer("seed")) {
-    if (*n < 0) {
-      a_ctx.Error("'seed' is a whole number");
+  if (auto merge = r.Number("merge")) {
+    if (*merge < 0.0f || *merge > 1.0f) {
+      a_ctx.Error("'merge' is 0..1");
       ok = false;
     } else {
-      k.settings.seed = static_cast<std::uint32_t>(*n);
+      k.settings.merge = *merge;
     }
   }
-  ok &= r.IntRange("iterations", 1, static_cast<int>(kMaxClusterIterations),
-                   k.settings.iterations);
+  ok &= r.IntRange("smoothing", 0, static_cast<int>(kMaxClusterSmoothing),
+                   k.settings.smoothing);
   if (r.Has("pick")) {
     Param pick = 0.0f;
     r.Read("pick", pick);
     k.pick = pick;
   }
   r.Read("areaBias", k.areaBias);
-  r.Read("guess", k.guess);
   r.Read("palette", k.palette);
   r.Finish();
   if (!ok) {

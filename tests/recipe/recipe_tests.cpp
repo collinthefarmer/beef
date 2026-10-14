@@ -377,8 +377,8 @@ int main() {
     "chartsSrc": { "piece": "chartCount" },
     "distNode": { "distance": "NPC Root [Root]" },
     "ripSrc":   { "ripple": { "trigger": "@trig", "speed": 90.0, "width": 8.0, "decay": 1.2, "shape": "disc" } },
-    "clusters": { "materialClusters": { "clusters": 3, "weights": { "roughness": 2.0, "luma": 0.5, "color": 2.5 }, "seed": 9, "iterations": 64 } },
-    "debugClusters": { "materialClusters": { "guess": true, "palette": true } }
+    "clusters": { "materialClusters": { "merge": 0.45, "smoothing": 3 } },
+    "debugClusters": { "materialClusters": { "palette": true } }
   }
 })";
     const Recipe r =
@@ -387,9 +387,9 @@ int main() {
     const auto *debugKind =
         debugClusters ? Get<MaterialClustersSource>(debugClusters->kind)
                       : nullptr;
-    Check(debugKind && debugKind->guess && debugKind->palette &&
+    Check(debugKind && debugKind->palette &&
               SourceType(*debugClusters) == ValueType::kVec3,
-          "a guessing palette cluster source round-trips as a colour");
+          "a palette cluster source round-trips as a colour");
     MaterialClustersSource picked;
     picked.pick = Param{0.5f};
     Check(SourceHoldsIds(SourceKind{MaterialClustersSource{}}) &&
@@ -402,9 +402,10 @@ int main() {
     const Source *legacy = r.FindSource("clusters");
     const auto *legacyKind =
         legacy ? Get<MaterialClustersSource>(legacy->kind) : nullptr;
-    Check(legacyKind && legacyKind->settings.weights.chroma == 2.5f &&
-              !legacyKind->guess && SourceType(*legacy) == ValueType::kScalar,
-          "a color weight reads as chroma and a plain cluster source is a "
+    Check(legacyKind && legacyKind->settings.merge == 0.45f &&
+              legacyKind->settings.smoothing == 3 &&
+              SourceType(*legacy) == ValueType::kScalar,
+          "merge and smoothing round-trip and a plain cluster source is a "
           "scalar");
 
     std::array<bool, kSignalKindCount> signalSeen{};

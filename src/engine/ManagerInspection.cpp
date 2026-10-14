@@ -28,14 +28,14 @@ void ReportMeshProblems(const LiveGeometry &a_bound) {
   if (!compositor) {
     return;
   }
-  if (const std::expected<std::shared_ptr<MeshEntry>, std::string> mesh =
-          compositor->MeshOf(a_bound.geometry.get(), MeshUse::kSummary);
-      !mesh) {
+  const std::expected<std::shared_ptr<MeshEntry>, std::string> mesh =
+      compositor->MeshOf(a_bound.geometry.get(), MeshUse::kData);
+  if (!mesh) {
     logger::warn("mesh '{}': {}", a_bound.name, mesh.error());
   }
-  if (const Compositor::MaterialRecord &material =
-          compositor->AnalyseMaterial(a_bound.inputs.material);
-      !material.sample) {
+  if (const Compositor::MaterialRecord &material = compositor->AnalyseMaterial(
+          a_bound.inputs.material, mesh ? *mesh : nullptr);
+      !material.problem.empty()) {
     logger::warn("material of '{}': {}", a_bound.name, material.problem);
   }
 }

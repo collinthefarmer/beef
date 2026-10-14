@@ -2,6 +2,8 @@
 #include "mesh/MaterialRegions.h"
 #include "test_support.h"
 
+#include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -208,6 +210,89 @@ int main() {
         "regions that do not match the raster are refused");
   Check(LabelTexels(raster, MaterialGroups{}).size() == raster.texels.size(),
         "labelling with no groups still returns one label per texel");
+
+  MeshData mesh;
+  MeshPartition quad;
+  const auto vertex = [](float a_u, float a_v) {
+    MeshVertex v;
+    v.uv = Vec2{a_u, a_v};
+    return v;
+  };
+  quad.vertices = {vertex(0.0f, 0.0f),   vertex(0.5f, 0.0f),
+                   vertex(0.5f, 1.0f),   vertex(0.0f, 1.0f),
+                   vertex(0.75f, 0.25f), vertex(1.0f, 0.25f),
+                   vertex(1.0f, 0.5f)};
+  quad.triangles = {{0, 1, 2}, {0, 2, 3}, {4, 5, 6}, {0, 1, 99}};
+  mesh.partitions.push_back(quad);
+  MeshAnalysis analysis;
+  analysis.chartOf = {0, 0, 0, 0, 5, 5, 5};
+  const std::vector<std::uint16_t> charts = ChartRasterOf(mesh, analysis, 16);
+  Equal(charts.size(), std::size_t{256}, "a chart raster has one id per texel");
+  Equal(charts[8 * 16 + 2], std::uint16_t{0},
+        "the left half belongs to chart 0");
+  Equal(charts[5 * 16 + 14], std::uint16_t{5},
+        "the small triangle belongs to chart 5");
+  Equal(charts[12 * 16 + 12], kNoChart,
+        "texels outside every triangle have no chart");
+  Check(ChartRasterOf(mesh, analysis, 4).empty(),
+        "a raster side below the minimum is refused");
+  MeshAnalysis shortAnalysis;
+  Check(std::ranges::all_of(ChartRasterOf(mesh, shortAnalysis, 16),
+                            [](std::uint16_t a_c) { return a_c == kNoChart; }),
+        "vertices without a chart leave the raster empty");
+
+  const std::vector<GroupScoring> scoring = ScoringOf(*groups);
+  Equal(scoring.size(), groups->groups.size(),
+        "every group gets shader scoring");
+  bool scoresAgree = true;
+  for (std::size_t g = 0; g < scoring.size(); ++g) {
+    const PreparedGaussian prepared = *Prepare(groups->groups[g].gaussian);
+    for (std::size_t i = 0; i < raster.texels.size(); i += 97) {
+      const TexelAxes axes = AxesOfTexel(raster.texels[i]);
+      std::array<double, kTexelAxes> z{};
+      for (std::size_t a = 0; a < kTexelAxes; ++a) {
+        z[a] = (axes[a] - groups->standardisation.centre[a]) /
+               groups->standardisation.spread[a];
+      }
+      const double exact = LogDensity(prepared, z);
+      const float packed =
+          ScoreOf(scoring[g], groups->standardisation, raster.texels[i]);
+      scoresAgree = scoresAgree &&
+                    std::abs(exact - packed) <= 1e-3 * (1.0 + std::abs(exact));
+    }
+  }
+  Check(scoresAgree, "the packed whitening scores as the exact density does");
+
+  MaterialRaster speckled = raster;
+  Jitter jitter;
+  const std::size_t fleck = 20 * kSide + 10;
+  MaterialTexel fleckTexel = Leather(jitter);
+  fleckTexel.diffuse = speckled.texels[fleck].diffuse;
+  fleckTexel.luma = speckled.texels[fleck].luma;
+  speckled.texels[fleck] = fleckTexel;
+  const auto speckledGroups = GroupRegions(speckled, regions, GroupSettings{});
+  const auto argmaxAt = [](const GroupProbabilities &a_p, std::size_t a_i) {
+    const auto &row = a_p.ofTexel[a_i];
+    return static_cast<std::size_t>(std::max_element(row.begin(), row.end()) -
+                                    row.begin());
+  };
+  const GroupProbabilities raw =
+      SmoothedProbabilities(speckled, *speckledGroups, 0);
+  const GroupProbabilities smooth =
+      SmoothedProbabilities(speckled, *speckledGroups, 4);
+  Check(argmaxAt(raw, fleck) != argmaxAt(raw, fleck + 3),
+        "without smoothing a lone leather-like texel keeps its own group");
+  Check(
+      argmaxAt(smooth, fleck) == argmaxAt(smooth, fleck + 3),
+      "smoothing gives a lone texel of the same colour its neighbours' group");
+  int total = 0;
+  for (std::uint8_t v : smooth.ofTexel[fleck]) {
+    total += v;
+  }
+  Check(total >= 250 && total <= 260,
+        "smoothed probabilities sum to about 255");
+  Check(SmoothedProbabilities(speckled, MaterialGroups{}, 4).ofTexel.empty(),
+        "no groups give no probabilities");
 
   return test::Finish("materialregions");
 }

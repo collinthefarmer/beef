@@ -23,8 +23,7 @@ enum class RenderResourceType {
   kTransform,
   kFirings,
   kBakeBuffers,
-  kMaterialSample,
-  kMaterialAnalysis,
+  kMaterialGroups,
   kLookup,
   kVisibility,
   kStack,
@@ -72,18 +71,13 @@ struct NormalSlopeStep {
   [[nodiscard]] bool operator==(const NormalSlopeStep &) const = default;
 };
 struct SubmitMaterialSampleStep {
-  RenderValueRef material;
+  RenderValueRef material, mesh;
+  ClusterSettings settings;
   [[nodiscard]] bool
   operator==(const SubmitMaterialSampleStep &) const = default;
 };
-struct ClusterMaterialStep {
-  RenderValueRef sample;
-  ClusterSettings settings;
-  bool guess = false;
-  [[nodiscard]] bool operator==(const ClusterMaterialStep &) const = default;
-};
 struct DrawClustersStep {
-  RenderValueRef material, analysis;
+  RenderValueRef material, groups;
   TextureRequirements requirements;
   std::optional<RenderValueRef> pick;
   std::optional<RenderValueRef> areaBias;
@@ -180,10 +174,10 @@ struct CompositeStackStep {
 using RenderStepKind =
     std::variant<UnavailableStep, ConstantRenderStep, BuildBakeBuffersStep,
                  BakeMeshStep, NormalSlopeStep, SubmitMaterialSampleStep,
-                 ClusterMaterialStep, DrawClustersStep, SampleFieldStep,
-                 SubmitReductionStep, BuildLookupStep, EvaluateValueStep,
-                 EvaluateProgramStep, MapFieldStep, ComposeVectorStep,
-                 DrawRippleStep, CompositeStackStep>;
+                 DrawClustersStep, SampleFieldStep, SubmitReductionStep,
+                 BuildLookupStep, EvaluateValueStep, EvaluateProgramStep,
+                 MapFieldStep, ComposeVectorStep, DrawRippleStep,
+                 CompositeStackStep>;
 inline constexpr std::size_t kRenderStepKindCount =
     std::variant_size_v<RenderStepKind>;
 struct RenderStep {

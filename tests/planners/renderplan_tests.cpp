@@ -23,7 +23,7 @@ RenderBindingResolver Bindings() {
 int main() {
   Check(StepKindNameAt(kRenderStepKindCount - 1) == "CompositeStack",
         "the last step kind is named");
-  Check(StepKindNameAt(15) == "DrawRipple",
+  Check(StepKindNameAt(14) == "DrawRipple",
         "a step kind is named by its index");
   Check(StepKindNameAt(kRenderStepKindCount) == "Unknown",
         "an index past the kinds is unknown");
@@ -260,8 +260,8 @@ int main() {
   if (clusterPlan) {
     bool readsSample = false;
     for (const auto &step : clusterPlan->steps)
-      if (const auto *analysis = Get<ClusterMaterialStep>(step.kind)) {
-        const auto *ref = Get<RenderInputRef>(analysis->sample);
+      if (const auto *draw = Get<DrawClustersStep>(step.kind)) {
+        const auto *ref = Get<RenderInputRef>(draw->groups);
         const auto *readback =
             ref && ref->input < clusterPlan->inputs.size()
                 ? Get<ReadbackBinding>(clusterPlan->inputs[ref->input].binding)
@@ -271,8 +271,16 @@ int main() {
                       Is<SubmitMaterialSampleStep>(
                           clusterPlan->steps[readback->submission].kind);
       }
-    Check(readsSample, "cluster analysis reads its material sample through a "
+    Check(readsSample, "the cluster draw reads its groups through a "
                        "readback of a sample submission");
+    Check(std::ranges::any_of(clusterPlan->steps,
+                              [](const RenderStep &step) {
+                                const auto *submit =
+                                    Get<SubmitMaterialSampleStep>(step.kind);
+                                return submit &&
+                                       submit->settings == ClusterSettings{};
+                              }),
+          "the sample submission carries the source's cluster settings");
   }
   Recipe pickRecipe;
   MaterialClustersSource pickSource;

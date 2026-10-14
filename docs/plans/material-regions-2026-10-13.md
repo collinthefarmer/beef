@@ -1,4 +1,4 @@
-Status: active (2026-10-13) on branch `pure-tick`. The user approved the route on 2026-10-13. Steps 0–2 are done as a Python prototype; on 2026-10-13 the user chose hybrid + merge (misclassification criterion) over the CRF, jump-flood and k-means variants. Next: the port below, waiting for the user's approval of D1–D3.
+Status: active (2026-10-13) on branch `pure-tick`. Hybrid + merge is ported: P1 (c37ba33) and P2–P5 with D1–D3 as recommended (the user said continue) are built and wait for an in-game run. Open: the Temple seven-group gap, a studio chart that shows default settings only.
 
 # Material regions: segment first, then group
 
@@ -81,7 +81,7 @@ The prototype (`proto.py`, `hybrid.py`) compares three methods on nine dumps: to
 | P1 | `mesh/MaterialRegions` (engine-free) | SLIC inside the coverage mask, region descriptors, Gaussian mixture with BIC (k 2–8), group Gaussians from texels, misclassification merge. Native tests read the dumps under `tests/` and compare group counts and shares with the prototype. |
 | P2 | `TextureLab` | The material sample grows from 64 px to 256 px and carries the coverage mask rasterised from the mesh UVs. The fit runs once per geometry on the CPU, off the render thread. |
 | P3 | Cluster shader | `PSClusters` scores each texel against the group Gaussians (mean and inverse covariance per group in a constant buffer, 8 groups × 8 axes) instead of the weighted nearest centre. |
-| P4 | New passes | Guided filter over the per-group scores at the smoothing radius, highest score wins, then a jump-flood fill of the UV padding so filtering and mips do not pull in empty texels. The id map is baked once per geometry. |
+| P4 | CPU + shader | Built differently from this row: the guided filter runs on the CPU over the 256-texel group probabilities, and the shader adds their log to each texel's own density (one CRF-style pass). The shader scores the padded material maps, so no padding fill is needed. |
 | P5 | Studio | The cluster chart shows group means; weights sliders and Best guess go; merge share and smoothing radius take their place. |
 
 ## Decisions for the user

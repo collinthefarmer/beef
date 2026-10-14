@@ -3,6 +3,7 @@
 
 #include "Core.h"
 #include "mesh/MaterialClusters.h"
+#include "mesh/MaterialRegions.h"
 #include "recipe/Recipe.h"
 
 #include <array>
@@ -30,17 +31,12 @@ inline constexpr std::size_t kClusterAxisCount = 8;
 struct ClusterAxisSpec {
   ClusterAxis axis;
   std::string_view name;
-  float ChannelWeights::*weight;
 };
 inline constexpr ClusterAxisSpec kClusterAxes[]{
-    {ClusterAxis::kRoughness, "rough", &ChannelWeights::roughness},
-    {ClusterAxis::kMetallic, "metal", &ChannelWeights::metallic},
-    {ClusterAxis::kOcclusion, "occl", &ChannelWeights::occlusion},
-    {ClusterAxis::kReflectance, "refl", &ChannelWeights::reflectance},
-    {ClusterAxis::kLuma, "luma", &ChannelWeights::luma},
-    {ClusterAxis::kOrangeBlue, "warm", &ChannelWeights::chroma},
-    {ClusterAxis::kGreenMagenta, "green", &ChannelWeights::chroma},
-    {ClusterAxis::kDetail, "detail", &ChannelWeights::detail},
+    {ClusterAxis::kRoughness, "rough"},    {ClusterAxis::kMetallic, "metal"},
+    {ClusterAxis::kOcclusion, "occl"},     {ClusterAxis::kReflectance, "refl"},
+    {ClusterAxis::kLuma, "luma"},          {ClusterAxis::kOrangeBlue, "warm"},
+    {ClusterAxis::kGreenMagenta, "green"}, {ClusterAxis::kDetail, "detail"},
 };
 static_assert(std::size(kClusterAxes) == kClusterAxisCount);
 
@@ -62,17 +58,12 @@ struct ClusterProfile {
 };
 
 struct ClusterChart {
-  std::array<float, kClusterAxisCount> weights{};
   std::vector<ClusterProfile> clusters;
 };
-
-enum class WeightAdvice : std::uint8_t { kKeep, kRaise, kLower };
 
 struct AxisSeparation {
   ClusterAxis axis = ClusterAxis::kRoughness;
   float separation = 0.0f;
-  float weight = 0.0f;
-  WeightAdvice advice = WeightAdvice::kKeep;
 };
 
 struct ClusterView {
@@ -81,21 +72,18 @@ struct ClusterView {
 };
 
 struct ClusterMemo {
-  std::shared_ptr<const MaterialSample> sample;
-  ClusterSettings settings;
+  std::shared_ptr<const MaterialGrouping> grouping;
   ClusterView view;
   std::optional<std::uint8_t> compared;
 };
 
 [[nodiscard]] const ClusterView *
 ClustersOf(ClusterMemo &a_memo,
-           const std::shared_ptr<const MaterialSample> &a_sample,
-           const ClusterSettings &a_settings);
+           const std::shared_ptr<const MaterialGrouping> &a_grouping);
 [[nodiscard]] std::vector<const MaterialCluster *>
 LargestFirst(const MaterialAnalysis &a_analysis);
 
-[[nodiscard]] ClusterChart ChartOf(const MaterialSample &a_sample,
-                                   const MaterialAnalysis &a_analysis);
+[[nodiscard]] ClusterChart ChartOf(const MaterialGrouping &a_grouping);
 [[nodiscard]] const ClusterProfile *ProfileOf(const ClusterChart &a_chart,
                                               std::uint8_t a_id) noexcept;
 [[nodiscard]] std::optional<std::uint8_t>
@@ -104,5 +92,4 @@ NearestOther(const ClusterChart &a_chart, std::uint8_t a_id) noexcept;
 SeparationOf(const ClusterChart &a_chart, std::uint8_t a_left,
              std::uint8_t a_right);
 [[nodiscard]] bool CanSeparate(std::span<const AxisSeparation> a_axes) noexcept;
-[[nodiscard]] std::string_view AdviceText(WeightAdvice a_advice) noexcept;
 }

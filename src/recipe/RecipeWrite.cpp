@@ -49,22 +49,10 @@ std::string DescribeBakeSource(const BakeSource &a_source) {
 
 std::string
 DescribeMaterialClustersSource(const MaterialClustersSource &a_source) {
-  const ClusterSettings defaults;
   const ClusterSettings &settings = a_source.settings;
   std::string text =
-      std::format("materialClusters, {} clusters", settings.clusters);
-  for (const ClusterWeightField &field : kClusterWeightFields) {
-    const float weight = settings.weights.*field.member;
-    if (weight != defaults.weights.*field.member) {
-      text += std::format(", {} {}", field.name, weight);
-    }
-  }
-  if (settings.seed != defaults.seed) {
-    text += std::format(", seed {}", settings.seed);
-  }
-  if (settings.iterations != defaults.iterations) {
-    text += std::format(", {} iterations", settings.iterations);
-  }
+      std::format("materialClusters, merge above {:.0f}%, smoothing {}",
+                  settings.merge * 100.0f, settings.smoothing);
   if (a_source.pick) {
     text += std::format(", pick {}, area bias {}", ParamText(*a_source.pick),
                         ParamText(a_source.areaBias));
@@ -347,23 +335,12 @@ json MaterialClustersToJson(const MaterialClustersSource &k) {
   const ClusterSettings &s = k.settings;
   json o = json::object();
   Writer w{o};
-  w.WriteIf("clusters", static_cast<std::uint32_t>(s.clusters),
-            static_cast<std::uint32_t>(defaults.clusters));
-  json weights = json::object();
-  Writer ww{weights};
-  for (const ClusterWeightField &field : kClusterWeightFields) {
-    ww.WriteNumberIf(field.name, s.weights.*field.member,
-                     defaults.weights.*field.member);
-  }
-  if (!weights.empty())
-    o["weights"] = std::move(weights);
-  w.WriteIf("seed", s.seed, defaults.seed);
-  w.WriteIf("iterations", s.iterations, defaults.iterations);
+  w.WriteNumberIf("merge", s.merge, defaults.merge);
+  w.WriteIf("smoothing", s.smoothing, defaults.smoothing);
   if (k.pick) {
     w.Write("pick", *k.pick);
   }
   w.WriteIf("areaBias", k.areaBias, Param{1.0f});
-  w.WriteIf("guess", k.guess, false);
   w.WriteIf("palette", k.palette, false);
   return o;
 }

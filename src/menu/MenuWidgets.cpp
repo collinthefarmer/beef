@@ -967,7 +967,8 @@ std::string SourceValueText(const SourceKind &a_kind) {
                            s.trigger.name);
       },
       [](const MaterialClustersSource &s) {
-        return std::format("{} clusters", s.settings.clusters);
+        return std::format("clusters, merge above {:.0f}%",
+                           s.settings.merge * 100.0f);
       });
 }
 

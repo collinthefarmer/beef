@@ -236,20 +236,14 @@ int main() {
 
   const auto clusterForm =
       TermForm(TermKind{ClusterTerm{ClusterSettings{}, 0}}, presets, geometry);
-  const TermField *clusters = FieldNamed(clusterForm, "clusters");
-  const TermField *roughnessWeight = FieldNamed(clusterForm, "roughness");
-  const TermField *seed = FieldNamed(clusterForm, "seed");
-  Check(clusters && clusters->field.integral && clusters->field.workingRange,
-        "the cluster count is tunable and integral");
-  Check(roughnessWeight && roughnessWeight->field.workingRange &&
-            !roughnessWeight->field.integral,
-        "a cluster weight is tunable and continuous");
-  Check(seed && !seed->field.range && !seed->field.workingRange,
-        "the seed has no tuning range and stays a plain entry");
+  const TermField *merge = FieldNamed(clusterForm, "merge");
+  const TermField *smoothing = FieldNamed(clusterForm, "smoothing");
+  Check(merge && merge->field.workingRange && !merge->field.integral,
+        "the merge share is tunable and continuous");
+  Check(smoothing && smoothing->field.workingRange && smoothing->field.integral,
+        "the smoothing radius is tunable and integral");
 
-  GeometryRow guessed = geometry;
-  guessed.clusterGuess.clusters = 3;
-  guessed.clusterGuess.weights.metallic = 4.0f;
+  const GeometryRow guessed = geometry;
   const auto guessedOffers = OffersOf(presets, RecipeRow{}, guessed, "");
   const auto materialOffer =
       std::ranges::find_if(guessedOffers, [](const TermOffer &offer) {
@@ -259,8 +253,8 @@ int main() {
       materialOffer != guessedOffers.end()
           ? std::get_if<ClusterTerm>(&materialOffer->kind)
           : nullptr;
-  Check(offeredCluster && offeredCluster->settings == guessed.clusterGuess,
-        "a material offer carries the geometry's guessed settings");
+  Check(offeredCluster && offeredCluster->settings == ClusterSettings{},
+        "a material offer starts from the default cluster settings");
 
   RecipeRow repeated;
   repeated.geometries = {geometry, geometry};

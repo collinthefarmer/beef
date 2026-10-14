@@ -84,18 +84,10 @@ DistanceRowOf(const DistanceSource &a_distance) {
 ClustersRowOf(const MaterialClustersSource &a_clusters) {
   const ClusterSettings &s = a_clusters.settings;
   MaterialClustersSourceRow clusters;
-  clusters.clusters = std::to_string(s.clusters);
-  clusters.weights =
-      std::format("{}, {}, {}, {}, {}", ParamText(s.weights.roughness),
-                  ParamText(s.weights.metallic), ParamText(s.weights.occlusion),
-                  ParamText(s.weights.reflectance), ParamText(s.weights.luma));
-  clusters.seed = std::to_string(s.seed);
-  clusters.iterations = std::to_string(s.iterations);
-  clusters.chromaWeight = ParamText(s.weights.chroma);
-  clusters.detailWeight = ParamText(s.weights.detail);
+  clusters.merge = ParamText(s.merge);
+  clusters.smoothing = std::to_string(s.smoothing);
   clusters.pick = a_clusters.pick ? ParamText(*a_clusters.pick) : "";
   clusters.areaBias = ParamText(a_clusters.areaBias);
-  clusters.guess = a_clusters.guess;
   clusters.palette = a_clusters.palette;
   return clusters;
 }
@@ -242,36 +234,18 @@ RippleKindOf(const RippleSourceRow &a_row) {
   return SourceKind{ripple};
 }
 
-[[nodiscard]] std::optional<float> WeightOf(const std::string &a_text) {
-  const auto param = ParseParam(a_text);
-  const auto *value = param ? Get<float>(*param) : nullptr;
-  if (!value || !(*value >= 0.0f) || *value > kMaxChannelWeight) {
-    return std::nullopt;
-  }
-  return *value;
-}
-
 [[nodiscard]] std::optional<SourceKind>
 ClustersKindOf(const MaterialClustersSourceRow &a_row) {
   MaterialClustersSource clusters;
-  const auto count = WholeNumber(a_row.clusters, kMaxMaterialClusters);
-  const auto weights = FiveNumbers(a_row.weights);
-  const std::optional<float> chroma = WeightOf(a_row.chromaWeight);
-  const std::optional<float> detail = WeightOf(a_row.detailWeight);
-  const auto seed =
-      WholeNumber(a_row.seed, std::numeric_limits<std::uint32_t>::max());
-  const auto iterations = WholeNumber(a_row.iterations, kMaxClusterIterations);
-  if (!count || *count < 1 || !weights || !chroma || !detail || !seed ||
-      !iterations || *iterations < 1) {
+  const auto merge = ParseParam(a_row.merge);
+  const auto *mergeValue = merge ? Get<float>(*merge) : nullptr;
+  const auto smoothing = WholeNumber(a_row.smoothing, kMaxClusterSmoothing);
+  if (!mergeValue || !(*mergeValue >= 0.0f) || *mergeValue > 1.0f ||
+      !smoothing) {
     return std::nullopt;
   }
-  clusters.settings.clusters = static_cast<std::uint8_t>(*count);
-  clusters.settings.weights =
-      ChannelWeights{(*weights)[0], (*weights)[1], (*weights)[2], (*weights)[3],
-                     (*weights)[4], *chroma,       *detail};
-  clusters.settings.seed = *seed;
-  clusters.settings.iterations = *iterations;
-  clusters.guess = a_row.guess;
+  clusters.settings.merge = *mergeValue;
+  clusters.settings.smoothing = *smoothing;
   clusters.palette = a_row.palette;
   const auto bias = ParseParam(a_row.areaBias);
   const auto *biasValue = bias ? Get<float>(*bias) : nullptr;

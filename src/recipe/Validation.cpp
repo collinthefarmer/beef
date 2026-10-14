@@ -178,7 +178,6 @@ struct SourceFields {
     Vector(report, s.direction, "direction");
   }
   void operator()(const MaterialClustersSource &s) const {
-    Integer(report, s.settings.seed, 0, "seed");
     if (s.pick) {
       Scalar(report, *s.pick, "pick");
       if (const float *pick = Get<float>(*s.pick);
@@ -198,20 +197,12 @@ struct SourceFields {
     if (!s.pick && s.areaBias != Param{MaterialClustersSource{}.areaBias}) {
       report.Warn("'areaBias' has no effect without 'pick'");
     }
-    if (s.settings.clusters < 1 || s.settings.clusters > kMaxMaterialClusters) {
-      report.Error(std::format("'clusters' is 1..{}", kMaxMaterialClusters));
+    Number(report, s.settings.merge, "merge");
+    if (s.settings.merge < 0.0f || s.settings.merge > 1.0f) {
+      report.Error("'merge' is 0..1");
     }
-    if (s.settings.iterations < 1 ||
-        s.settings.iterations > kMaxClusterIterations) {
-      report.Error(std::format("'iterations' is 1..{}", kMaxClusterIterations));
-    }
-    for (const ClusterWeightField &field : kClusterWeightFields) {
-      const float weight = s.settings.weights.*field.member;
-      Number(report, weight, field.name);
-      if (weight < 0.0f || weight > kMaxChannelWeight) {
-        report.Error(std::format("'weights.{}' is 0..{}", field.name,
-                                 kMaxChannelWeight));
-      }
+    if (s.settings.smoothing > kMaxClusterSmoothing) {
+      report.Error(std::format("'smoothing' is 0..{}", kMaxClusterSmoothing));
     }
   }
   void operator()(const MaterialSource &) const {}

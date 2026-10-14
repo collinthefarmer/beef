@@ -567,16 +567,27 @@ tick and shared by that source's live firings; the recipe side normalises
 it and a zero vector falls back to radial. A pooled target keeps its last
 content, so a pass with no firings paints it black.
 
-Classify pass: `centroidRmaos[8]` per cluster in analysis order (roughness,
-metallic, occlusion, reflectance); `centroidLuma[8]` x luma, y id;
-`centroidDiffuse[8]` RGB diffuse color; `clusterWeights` the four RMAOS
-weights; `clusterMisc` x luma weight, y cluster count, z color weight / 3;
-`clusterLevels` x the RMAOS mip, y the diffuse mip. The RMAOS and diffuse maps at the mesh UV go to the nearest
-centroid by the distance `NearestCluster` (`mesh/MaterialClusters.cpp`) uses, the sum over
-eight axes of weight x (texel - centroid)^2, the first of equals winning;
-the CPU function is the reference and the shader must agree with it on a
-texel. The id is written as id / 255 grey. A weight that is not finite or
-not positive counts as zero on both sides.
+Group pass (`PSClusters`, cbuffer `GroupParams` b3, `GroupConstants`):
+
+| Field | Holds |
+|---|---|
+| `groupCentre[2]`, `groupSpread[2]` | The texel standardisation: each of the eight axes minus its centre, divided by its spread. |
+| `groupMean[16]` | Two float4 per group: the group's mean in standardised axes. |
+| `groupWhitening[72]` | Nine float4 per group: the 36 entries of the inverse Cholesky factor, row by row, lower triangle. |
+| `groupInfo[8]` | x the group id, y the log weight minus half the log determinant and the normaliser. |
+| `groupMisc` | x the group count, y the picked id + 1 (0 draws ids), z palette on, w the weight of the smoothed odds (1 with smoothing, 0 without). |
+| `groupLevels`, `groupDetail` | The RMAOS and diffuse read mips, and the normal-detail levels. |
+
+- A texel's score for a group is the group's log density at its own eight
+  axes plus w times the log of the group's smoothed odds. The highest score
+  wins. The first of equal scores wins.
+- The smoothed odds are two RGBA8 textures (`t4`, `t5`) of the 256-texel
+  analysis, one channel per group id. `TextureLab::CreateGroupOdds` makes
+  them immutable for each draw. A sampled odds value below 1/512 counts as
+  1/512.
+- `ScoreOf` (`mesh/MaterialRegions.cpp`) is the CPU reference for the density
+  part. A test checks it against the exact density.
+- The id is written as id / 255 grey.
 
 A cluster source with `pick` draws membership instead of ids: 1 on the
 texels of one cluster, 0 elsewhere. `PickCluster` (`mesh/MaterialClusters.cpp`)
@@ -588,8 +599,8 @@ outside 0..1 is clamped, a non-finite pick takes the largest cluster, and a
 non-finite bias counts as 1. Without a `pick` the lowering ignores
 `areaBias`, so validation warns when `areaBias` is set to anything but its
 default of 1 and `pick` is absent. The draw passes the picked id + 1 in
-`clusterMisc.w` (0 draws the id map), so a changed pick redraws one pass and
-never repeats the k-means. The enchantment signal fields `idHash` and
+`groupMisc.y` (0 draws the id map), so a changed pick redraws one pass and
+never repeats the grouping. The enchantment signal fields `idHash` and
 `effectHash` give a stable 0..1 value for this: `UnitHash` (FNV-1a over the
 form key's text, top 24 bits) of the enchantment, and of the magic effect
 the instance was matched on. Form keys name the plugin and local id, so the
@@ -1661,7 +1672,7 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
   current = max - damage; `damage` is the damage modifier negated; `max` is
   permanent plus the temporary modifier.
 
-### Plan builds on a worker thread (`engine/JobQueue.h`, `engine/PlanJobs.*`, `planners/RenderPlanJob.*`, `planners/IdentityFacts.*`)
+### Plan builds on a worker thread (`planners/JobQueue.h`, `engine/PlanJobs.*`, `planners/RenderPlanJob.*`, `planners/IdentityFacts.*`)
 
 - On 2026-10-08, with five Vigilants of Stendarr spawning, each plan cache
   miss cost 36 to 100 ms on the main thread inside the install. Of that,
@@ -2009,10 +2020,10 @@ builds the new one beside it, as a resize does.
 - The frozen `Analysis` module is split in two that share no type, function
   or test: `Islands.h` holds the connected-component and UV-chart
   segmentation (`MeshAnalysis`, `AnalyseMesh`, `BuildIslandBake`),
-  `MaterialClusters.h` holds the k-means++ material segmentation
-  (`MaterialSample`, `ClusterMaterial`, `NearestCluster`, `DescribeTexel`).
-  `MaterialClusters.h` does not include `Mesh.h`; it works on a
-  `MaterialSample`, not a `MeshData`.
+  `MaterialClusters.h` holds the material sample and the summary the studio
+  and the pick read (`MaterialSample`, `MaterialAnalysis`, `PickCluster`,
+  `DescribeTexel`). `MaterialRegions.h` holds the material grouping, which
+  reads the mesh only through `ChartRasterOf`.
 - Decode is a `mesh/` boundary, not the engine's: the engine reader fetches
   raw bytes only, and `DecodePartition(const RawPartition&)` turns raw
   vertex and index bytes into the trusted `MeshData`. `RawPartition` carries
@@ -2129,11 +2140,7 @@ builds the new one beside it, as a resize does.
   the same way; past `kMaxIslands` the rest are `kNoIsland` so a bake never
   overflows a byte. A component and a chart are twins when they hold
   exactly the same vertices, and the offers list the two as one.
-- Material clustering uses a linear congruential generator so the same
-  seed gives the same picks on every platform; k-means++ seeding stops
-  early when every texel already sits on a centroid, since a duplicate
-  centroid would only make an empty cluster; an empty cluster keeps its
-  centroid. `DescribeTexel`'s words read low to high with a value at a cut
+- `DescribeTexel`'s words read low to high with a value at a cut
   going to the word above, except metallic, which reads "greater than" so a
   value at the cut stays non-metal. The description's word order is
   "{finish} {tone} {metal}".
@@ -2944,32 +2951,26 @@ cancel by the user instead of the load.
 
 ### Cluster chart (`studio/ClusterReadout.h`, `menu/ClusterChart.cpp`)
 
-- The chart re-clusters the geometry's cached material sample with the
-  term's own settings. The offer list clusters with `ClusterSettings{}`, so
-  the chart and the offer list name different clusters once a setting
-  changes. `ClusterMemo` holds one result and recomputes it only when the
-  sample or the settings change.
-- The eight axes are the eight dimensions `ClusterMaterial` measures, in its
-  order. R, G and B share the `color` weight; the clustering divides it by 3
-  per channel, and the chart shows the undivided weight the user tunes.
-- A band spans the 10th to the 90th percentile of the cluster's texels on
-  that axis. Each histogram has 16 bins over 0..1.
+- The chart reads the geometry's grouping from the snapshot
+  (`GeometryRow::grouping`). The compositor groups each material once, with
+  `ClusterSettings{}`, on the grouping worker. A source or term with other
+  settings shows a note that the chart uses the defaults.
+- `ClusterMemo` holds one chart and rebuilds it only when the grouping
+  pointer changes. A new grouping clears the chosen comparison.
+- The eight axes are the eight `AxesOfTexel` axes, in their order.
+- A band spans the 10th to the 90th percentile of the group's texels on that
+  axis. Each histogram has 16 bins over 0..1. A texel belongs to the group
+  `LabelTexels` gives it.
 - **Separation** on an axis is the centre difference divided by the sum of
   the two half-band widths plus 0.02. The 0.02 keeps a single-valued band
-  from dividing by zero.
-- The advice thresholds: a separation of 1.0 or more means the bands do not
-  overlap, so an axis at that separation with a weight under 0.5 is advised
-  higher. A separation under 0.3 means the bands mostly overlap, so an axis
-  there with a weight of 0.5 or more is advised lower. `CanSeparate` is true
-  when any axis reaches 1.0.
-- With no chosen comparison, the chart compares the picked cluster with its
-  nearest cluster by weighted centre distance, the one it is most easily
-  confused with. A new clustering clears the chosen comparison.
+  from dividing by zero. `CanSeparate` is true when any axis reaches 1.0.
+- With no chosen comparison, the chart compares the picked group with its
+  nearest group by centre distance over the eight axes.
 
 ### Material dump (`mesh/MaterialDump.h`, `engine/MaterialDump.cpp`, `TextureLab::CopyMapPixels`)
 
-- The **Dump material** button sits beside **Best guess** in the cluster
-  term pane and the `materialClusters` source inspector. It writes one
+- The **Dump material** button sits in the cluster term pane and the
+  `materialClusters` source inspector. It writes one
   folder under `Data/SKSE/Plugins/<plugin>/dumps/`. The folder name is
   `<armor>_<geometry>-<UTC stamp>`, with `-2` to `-9` added when the name
   exists. `SanitisedName` keeps only ASCII letters, digits, `-` and `_`, so
@@ -3061,6 +3062,22 @@ The method and its prototype comparison are in
 - **Known gap.** On the Temple Priest robes dump the port settles on seven
   groups and the prototype on four or five, because the ICL values for four
   to seven groups lie close together.
+- **Engine flow.** `SubmitMaterialSampleStep` copies the RMAOS and diffuse
+  maps into a 256-texel sample (`kSampleSide`) and keeps the mesh and the
+  settings in its scratch. When the readback arrives, `CollectGrouping`
+  sends a `GroupingJob` to `MaterialGrouper`. The worker rasterises the
+  charts (`ChartRasterOf`) and runs `GroupMaterial`. The readback input
+  stays pending while the job runs, so the stack waits and does not fail.
+- `ChartRasterOf` gives a texel the chart of the first triangle that covers
+  its centre, with the triangle's chart taken from its first vertex. A mesh
+  that is missing, or that covers no texel, counts the whole sample as one
+  chart.
+- `MaterialGrouper` keys a result by the sample's bytes, the mesh hash and
+  the settings, so actors that wear the same piece share one grouping. It
+  keeps the last 32 results and takes 8 jobs at a time.
+- The studio's grouping (`Compositor::AnalyseMaterial`) is keyed by the
+  material's maps only. Two geometries that share maps share the first
+  geometry's charts in the studio chart.
 
 ## Build and tools
 
@@ -4381,6 +4398,8 @@ cache identity all carry color. Existing recipes that omit color now use it and
 may receive different cluster IDs; this is an intentional pre-alpha behavior
 change. The five-value source weights field retains its order, with a separate
 color field, while term tuning exposes all six weights individually.
+On 2026-10-13 material regions (`mesh/MaterialRegions.h`) replaced the
+k-means clustering, and its weights, seed, count and guess left the format.
 
 ## Unified recipe graph and signal execution
 

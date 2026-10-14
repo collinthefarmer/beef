@@ -567,17 +567,17 @@ float4 PSStack(VSOut i) : SV_Target
 	return below;
 }
 
-cbuffer ClusterParams : register(b3)
+cbuffer GroupParams : register(b3)
 {
-	float4 centroidRmaos[8];
-	float4 centroidLuma[8];
-	float4 centroidChroma[8];
-	float4 clusterWeights;
-	float4 clusterMisc;
-	float4 clusterPalette[8];
-	float4 clusterMode;
-	float4 clusterLevels;
-	float4 clusterDetail;
+	float4 groupCentre[2];
+	float4 groupSpread[2];
+	float4 groupMean[16];
+	float4 groupWhitening[72];
+	float4 groupInfo[8];
+	float4 groupMisc;
+	float4 groupPalette[8];
+	float4 groupLevels;
+	float4 groupDetail;
 };
 
 float NormalDetailAt(float2 uv, float4 detail)
@@ -610,30 +610,47 @@ float4 PSDiffuseDetail(VSOut i) : SV_Target
 
 float4 PSClusters(VSOut i) : SV_Target
 {
-	float4 m = saturate(armor.SampleLevel(samp, i.uv, clusterLevels.x));
-	float3 d = saturate(src.SampleLevel(samp, i.uv, clusterLevels.y).rgb);
-	float  luma = saturate(dot(d, float3(0.2126, 0.7152, 0.0722)));
-	float2 chroma = saturate(float2(0.5 + d.r - d.b, 0.5 + d.g - 0.5 * (d.r + d.b)));
-	float  detail = NormalDetailAt(i.uv, clusterDetail);
-	int    n = clamp((int)clusterMisc.y, 0, 8);
-	float  id = 0;
-	float  best = 0;
+	float4 m = saturate(armor.SampleLevel(samp, i.uv, groupLevels.x));
+	float3 d = saturate(src.SampleLevel(samp, i.uv, groupLevels.y).rgb);
+	float axes[8];
+	axes[0] = m.r;
+	axes[1] = m.g;
+	axes[2] = m.b;
+	axes[3] = m.a;
+	axes[4] = saturate(dot(d, float3(0.2126, 0.7152, 0.0722)));
+	axes[5] = saturate(0.5 + d.r - d.b);
+	axes[6] = saturate(0.5 + d.g - 0.5 * (d.r + d.b));
+	axes[7] = NormalDetailAt(i.uv, groupDetail);
+	float z[8];
+	[unroll] for (int a = 0; a < 8; ++a)
+		z[a] = (axes[a] - groupCentre[a >> 2][a & 3]) / groupSpread[a >> 2][a & 3];
+	float4 odds0 = tex4.SampleLevel(samp, i.uv, 0);
+	float4 odds1 = tex5.SampleLevel(samp, i.uv, 0);
+	int n = clamp((int)groupMisc.x, 0, 8);
+	float id = 0;
+	float best = 0;
 	[loop] for (int k = 0; k < n; ++k) {
-		float4 dm = m - centroidRmaos[k];
-		float  dl = luma - centroidLuma[k].x;
-		float2 dc = chroma - centroidChroma[k].xy;
-		float  dd = detail - centroidLuma[k].z;
-		float  dist = dot(clusterWeights, dm * dm) + clusterMisc.x * dl * dl
-		              + clusterMisc.z * dot(dc, dc) + clusterDetail.w * dd * dd;
-		if (k == 0 || dist < best) {
-			best = dist;
-			id = centroidLuma[k].y;
+		float sum = 0;
+		[unroll] for (int r = 0; r < 8; ++r) {
+			float row = 0;
+			[unroll] for (int c = 0; c <= r; ++c) {
+				int w = k * 36 + r * (r + 1) / 2 + c;
+				row += groupWhitening[w >> 2][w & 3] * (z[c] - groupMean[k * 2 + (c >> 2)][c & 3]);
+			}
+			sum += row * row;
+		}
+		int g = clamp((int)groupInfo[k].x, 0, 7);
+		float odds = g < 4 ? odds0[g] : odds1[g - 4];
+		float score = groupInfo[k].y - 0.5 * sum + groupMisc.w * log(max(odds, 1.0 / 512.0));
+		if (k == 0 || score > best) {
+			best = score;
+			id = groupInfo[k].x;
 		}
 	}
-	if (clusterMode.x > 0.5)
-		return float4(clusterPalette[(uint)id % 8].rgb, 1);
-	float v = clusterMisc.w > 0.5
-	              ? (abs(id - (clusterMisc.w - 1.0)) < 0.5 ? 1.0 : 0.0)
+	if (groupMisc.z > 0.5)
+		return float4(groupPalette[(uint)id % 8].rgb, 1);
+	float v = groupMisc.y > 0.5
+	              ? (abs(id - (groupMisc.y - 1.0)) < 0.5 ? 1.0 : 0.0)
 	              : id / 255.0;
 	return float4(v, v, v, 1);
 }

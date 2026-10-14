@@ -53,7 +53,7 @@ Three read-only audits of the edges between components, after the studio-edit bl
 | View changes (mute, layer isolation, solo piece, isolate, pin, recipe set) | `RecipeEditor::UpdateView` and friends | Mute, layer isolation and solo piece are already applied per tick (`HiddenLayers`, `PieceShown` in `ManagerTick.cpp`) and need no rebuild. |
 | Seven settings with `reapply=true`, and the Reload INI and Re-apply buttons | `ReapplyAll` (`ManagerApply.cpp`) | The buttons reapply without checking `SettingsDiffer`. |
 
-**Plan worker queue.** One worker thread, no cancel, 16 slots (`engine/JobQueue.h`, `kPlanJobCapacity`).
+**Plan worker queue.** One worker thread, no cancel, 16 slots (`planners/JobQueue.h`, `kPlanJobCapacity`).
 
 - A superseded plan job keeps running. During one drag, revisions 4493 to 4507 submitted jobs 23 to 33 at 100 to 150 ms intervals; jobs 22 to 35 ran 2.5 to 3.0 s each and were dropped stale; job 36, the wanted plan, attached 37.5 s after submission.
 - A gesture applies every 100 ms (`kGestureApplyInterval`), and each step is a full reinstall and plan.

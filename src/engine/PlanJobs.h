@@ -1,9 +1,9 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #pragma once
 
-#include "engine/JobQueue.h"
 #include "orchestration/Facts.h"
 #include "orchestration/RenderPhase.h"
+#include "planners/JobQueue.h"
 #include "planners/RenderPlanJob.h"
 #include "planners/RenderPlanKey.h"
 #include "recipe/RecipeGraph.h"

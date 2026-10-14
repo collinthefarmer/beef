@@ -406,7 +406,6 @@ struct RecipeGraphLowering {
         [&](const MaterialClustersSource &k) -> NodeKind {
           MaterialClustersOperation operation{Material(), Geometry(), Uv(),
                                               k.settings};
-          operation.guess = k.guess;
           operation.palette = k.palette;
           if (k.pick) {
             operation.pick = Parameter(*k.pick);

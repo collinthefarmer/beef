@@ -1309,7 +1309,7 @@ TextureLab::CopyMapPixels(RE::NiSourceTexture *a_map, std::uint32_t a_maxSide) {
 
 bool TextureLab::RenderClusters(RenderTarget &a_target,
                                 const MaterialMaps &a_maps,
-                                const MaterialAnalysis &a_analysis,
+                                const MaterialGrouping &a_grouping,
                                 std::optional<std::uint8_t> a_picked,
                                 bool a_palette) {
   auto *renderer = RE::BSGraphics::Renderer::GetSingleton();
@@ -1317,55 +1317,54 @@ bool TextureLab::RenderClusters(RenderTarget &a_target,
       !gpu_->clusters.has_value()) {
     return false;
   }
-  const PixelPipeline &pipeline = *gpu_->clusters;
-  const RenderPass pass{*renderer, *borrowedContext_, CaptureBatch()};
-  RE::NiSourceTexture *a_rmaos = a_maps.rmaos;
-  RE::NiSourceTexture *a_diffuse = a_maps.diffuse;
-  const auto *rmaosData = DataOf(a_rmaos);
-  const auto *diffuseData = DataOf(a_diffuse);
+  const auto *rmaosData = DataOf(a_maps.rmaos);
+  const auto *diffuseData = DataOf(a_maps.diffuse);
+  const std::vector<GroupScoring> &scoring = a_grouping.scoring;
   if (!rmaosData || !rmaosData->resourceView || !diffuseData ||
-      !diffuseData->resourceView ||
-      a_analysis.clusters.size() > kMaxMaterialClusters) {
+      !diffuseData->resourceView || scoring.empty() ||
+      scoring.size() > kMaxMaterialClusters) {
     return false;
   }
-  const auto scale = [](float a_weight) {
-    return std::isfinite(a_weight) && a_weight > 0.0f ? a_weight : 0.0f;
-  };
-  ClusterConstants constants{};
-  for (std::size_t k = 0; k < a_analysis.clusters.size(); ++k) {
-    const auto &cluster = a_analysis.clusters[k];
-    constants.centroidRmaos[k][0] = cluster.centroid.roughness;
-    constants.centroidRmaos[k][1] = cluster.centroid.metallic;
-    constants.centroidRmaos[k][2] = cluster.centroid.occlusion;
-    constants.centroidRmaos[k][3] = cluster.centroid.reflectance;
-    const Chroma chroma = ChromaOf(cluster.centroid.diffuse);
-    constants.centroidChroma[k][0] = chroma.orangeBlue;
-    constants.centroidChroma[k][1] = chroma.greenMagenta;
-    constants.centroidLuma[k][0] = cluster.centroid.luma;
-    constants.centroidLuma[k][1] = static_cast<float>(cluster.id);
-    constants.centroidLuma[k][2] = cluster.centroid.detail;
+  const std::optional<GroupOdds> odds = CreateGroupOdds(a_grouping.smoothed);
+  if (!odds) {
+    return false;
   }
-  const auto &w = a_analysis.settings.weights;
-  constants.weights[0] = scale(w.roughness);
-  constants.weights[1] = scale(w.metallic);
-  constants.weights[2] = scale(w.occlusion);
-  constants.weights[3] = scale(w.reflectance);
-  constants.misc[0] = scale(w.luma);
-  constants.misc[2] = scale(w.chroma);
-  constants.misc[1] = static_cast<float>(a_analysis.clusters.size());
-  constants.misc[3] = a_picked ? static_cast<float>(*a_picked) + 1.0f : 0.0f;
-  constants.mode[0] = a_palette ? 1.0f : 0.0f;
+  const PixelPipeline &pipeline = *gpu_->clusters;
+  const RenderPass pass{*renderer, *borrowedContext_, CaptureBatch()};
+  GroupConstants constants{};
+  const Standardisation &standard = a_grouping.groups.standardisation;
+  for (std::size_t axis = 0; axis < kTexelAxes; ++axis) {
+    constants.centre[axis / 4][axis % 4] =
+        static_cast<float>(standard.centre[axis]);
+    constants.spread[axis / 4][axis % 4] =
+        static_cast<float>(standard.spread[axis]);
+  }
+  for (std::size_t k = 0; k < scoring.size(); ++k) {
+    const GroupScoring &group = scoring[k];
+    for (std::size_t axis = 0; axis < kTexelAxes; ++axis) {
+      constants.mean[k * 2 + axis / 4][axis % 4] = group.mean[axis];
+    }
+    for (std::size_t w = 0; w < kWhiteningFloats; ++w) {
+      const std::size_t at = k * kWhiteningFloats + w;
+      constants.whitening[at / 4][at % 4] = group.whitening[w];
+    }
+    constants.info[k][0] = static_cast<float>(group.id);
+    constants.info[k][1] = group.logScale;
+  }
+  constants.misc[0] = static_cast<float>(scoring.size());
+  constants.misc[1] = a_picked ? static_cast<float>(*a_picked) + 1.0f : 0.0f;
+  constants.misc[2] = a_palette ? 1.0f : 0.0f;
+  constants.misc[3] = a_grouping.settings.smoothing > 0 ? 1.0f : 0.0f;
   for (std::size_t k = 0; k < kClusterPalette.size(); ++k) {
     constants.palette[k][0] = kClusterPalette[k].x;
     constants.palette[k][1] = kClusterPalette[k].y;
     constants.palette[k][2] = kClusterPalette[k].z;
     constants.palette[k][3] = 1.0f;
   }
-  constants.levels[0] = WholeReadMip(a_rmaos, a_target.size);
-  constants.levels[1] = WholeReadMip(a_diffuse, a_target.size);
+  constants.levels[0] = WholeReadMip(a_maps.rmaos, a_target.size);
+  constants.levels[1] = WholeReadMip(a_maps.diffuse, a_target.size);
   const std::array<float, 4> detail = NormalDetailLevels(a_maps.normal);
   std::ranges::copy(detail, constants.detail);
-  constants.detail[3] = scale(w.detail);
 
   pass.Context().UpdateSubresource(pipeline.constants.Get(), 0, nullptr,
                                    &constants, 0, 0);
@@ -1374,11 +1373,51 @@ bool TextureLab::RenderClusters(RenderTarget &a_target,
           diffuseData->resourceView),
       reinterpret_cast<REX::W32::ID3D11ShaderResourceView *>(
           rmaosData->resourceView),
-      NormalView(a_maps.normal)};
+      NormalView(a_maps.normal),
+      nullptr,
+      (*odds)[0].Get(),
+      (*odds)[1].Get()};
   REX::W32::ID3D11Buffer *cbs[4]{nullptr, nullptr, nullptr,
                                  pipeline.constants.Get()};
   DrawFullScreen(pass, a_target, {pipeline.shader.Get(), srvs, cbs});
   return true;
+}
+
+std::optional<TextureLab::GroupOdds>
+TextureLab::CreateGroupOdds(const GroupProbabilities &a_odds) {
+  const std::size_t texels =
+      static_cast<std::size_t>(a_odds.side) * a_odds.side;
+  if (!borrowedDevice_ || a_odds.side == 0 || a_odds.ofTexel.size() != texels) {
+    return std::nullopt;
+  }
+  GroupOdds out;
+  for (std::size_t half = 0; half < out.size(); ++half) {
+    std::vector<std::uint8_t> pixels(texels * 4);
+    for (std::size_t i = 0; i < texels; ++i) {
+      for (std::size_t c = 0; c < 4; ++c) {
+        pixels[i * 4 + c] = a_odds.ofTexel[i][half * 4 + c];
+      }
+    }
+    D3D11_TEXTURE2D_DESC desc{};
+    desc.width = a_odds.side;
+    desc.height = a_odds.side;
+    desc.mipLevels = 1;
+    desc.arraySize = 1;
+    desc.format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    desc.sampleDesc.count = 1;
+    desc.usage = D3D11_USAGE_IMMUTABLE;
+    desc.bindFlags = D3D11_BIND_SHADER_RESOURCE;
+    D3D11_SUBRESOURCE_DATA data{pixels.data(), a_odds.side * 4, 0};
+    REX::W32::ComPtr<REX::W32::ID3D11Texture2D> texture;
+    if (Failed(borrowedDevice_->CreateTexture2D(&desc, &data,
+                                                texture.GetAddressOf())) ||
+        Failed(borrowedDevice_->CreateShaderResourceView(
+            texture.Get(), nullptr, out[half].GetAddressOf()))) {
+      logger::error("TextureLab: could not create the group odds textures");
+      return std::nullopt;
+    }
+  }
+  return out;
 }
 
 TextureLab::ReductionLevel *

@@ -339,10 +339,9 @@ struct GeometrySnapshotBuilder {
     }
     if (const Compositor::MaterialRecord *material =
             compositor->CachedMaterial(bound.inputs.material);
-        material && material->analysis) {
-      row.clusters = material->analysis->clusters;
-      row.materialSample = material->sample;
-      row.clusterGuess = material->analysis->settings;
+        material && material->grouping) {
+      row.clusters = material->grouping->analysis.clusters;
+      row.grouping = material->grouping;
     }
     row.materialSlots = bound.material ? SlotRows(*bound.material)
                                        : std::vector<Studio::SlotRow>{};

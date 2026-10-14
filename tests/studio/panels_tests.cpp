@@ -154,17 +154,12 @@ void TestSourceForm() {
             std::holds_alternative<SetSource>(*path->bind("textures/a.dds")),
         "editing an image field emits a source edit");
 
-  ClusterSettings guess;
-  guess.clusters = 3;
-  guess.weights.metallic = 4.0f;
-  const std::vector<FormField> guessed = SourceForm(row, SignalNames{}, guess);
-  const std::optional<RecipeEdit> switched =
-      guessed[0].bind("materialClusters");
+  const std::optional<RecipeEdit> switched = form[0].bind("materialClusters");
   const auto *set = switched ? std::get_if<SetSource>(&*switched) : nullptr;
   const auto *clusters =
       set ? std::get_if<MaterialClustersSource>(&set->kind) : nullptr;
-  Check(clusters && clusters->settings == guess,
-        "switching a source to material clusters starts from the guess");
+  Check(clusters && clusters->settings == ClusterSettings{},
+        "switching a source to material clusters starts from the defaults");
 }
 
 void TestEffectShaderImageForm() {
@@ -612,46 +607,34 @@ void TestOptionalFieldRefusals() {
 
 void TestClusterColor() {
   MaterialClustersSource clusters;
-  clusters.settings.weights.chroma = 2.5f;
+  clusters.settings.merge = 0.4f;
+  clusters.settings.smoothing = 5;
   const SourceRow row = SourceRowOf(Source{"clusters", clusters}, 0);
   const auto restored = SourceKindOf(row);
   Check(restored && *restored == SourceKind{clusters},
-        "cluster source rows preserve diffuse color weight");
+        "cluster source rows preserve merge and smoothing");
   const auto form = SourceForm(row, SignalNames{});
-  const auto *color = Field(form, "chroma");
-  Check(color && color->bind, "cluster sources expose color weighting");
-  if (color && color->bind) {
-    const auto edit = color->bind("0");
+  const auto *merge = Field(form, "merge");
+  Check(merge && merge->bind && merge->workingRange,
+        "cluster sources expose a tunable merge share");
+  if (merge && merge->bind) {
+    const auto edit = merge->bind("0.2");
     const auto *set = edit ? Get<SetSource>(*edit) : nullptr;
     const auto *value = set ? Get<MaterialClustersSource>(set->kind) : nullptr;
-    Check(value && value->settings.weights.chroma == 0,
-          "color weighting can be disabled independently");
-    Check(!color->bind("11"), "color weight refuses out-of-range values");
+    Check(value && value->settings.merge == 0.2f &&
+              value->settings.smoothing == 5,
+          "editing the merge share keeps the smoothing");
+    Check(!merge->bind("1.5"), "the merge share refuses values past one");
   }
+  const auto *smoothing = Field(form, "smoothing");
+  Check(smoothing && smoothing->integral && smoothing->bind &&
+            !smoothing->bind("33"),
+        "smoothing is a whole number up to its bound");
   const auto *palette = Field(form, "palette");
-  const auto *guess = Field(form, "guess");
-  Check(palette && guess && palette->kind == FieldKind::kToggle &&
-            guess->kind == FieldKind::kToggle,
-        "a cluster source offers guess and palette toggles");
-  if (palette && palette->bind) {
-    const auto edit = palette->bind("on");
-    const auto *set = edit ? Get<SetSource>(*edit) : nullptr;
-    const auto *value = set ? Get<MaterialClustersSource>(set->kind) : nullptr;
-    Check(value && value->palette && !value->guess,
-          "turning palette on leaves guess alone");
-  }
-  const auto *metallic = Field(form, "metallic");
-  Check(metallic && metallic->bind && metallic->workingRange &&
-            metallic->kind == FieldKind::kScalar,
-        "each channel weight is its own tunable field");
-  if (metallic && metallic->bind) {
-    const auto edit = metallic->bind("3");
-    const auto *set = edit ? Get<SetSource>(*edit) : nullptr;
-    const auto *value = set ? Get<MaterialClustersSource>(set->kind) : nullptr;
-    Check(value && value->settings.weights.metallic == 3.0f &&
-              value->settings.weights.chroma == 2.5f,
-          "editing one channel weight keeps the others");
-  }
+  Check(palette && palette->kind == FieldKind::kToggle,
+        "a cluster source offers a palette toggle");
+  Check(Field(form, "guess") == nullptr && Field(form, "metallic") == nullptr,
+        "a cluster source has no guess or channel weights");
 }
 
 void TestHelpers() {

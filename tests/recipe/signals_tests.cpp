@@ -543,9 +543,9 @@ int main() {
     const RowTypes rows{recipe, graph};
 
     Source bad{"k", MaterialClustersSource{}};
-    Get<MaterialClustersSource>(bad.kind)->settings.clusters = 0;
-    Check(HasMessage(CheckSource(rows, bad), "clusters"),
-          "CheckSource rejects a zero cluster count");
+    Get<MaterialClustersSource>(bad.kind)->settings.merge = 2.0f;
+    Check(HasMessage(CheckSource(rows, bad), "merge"),
+          "CheckSource rejects a merge share past one");
 
     Source both{"k3", MaterialClustersSource{}};
     Get<MaterialClustersSource>(both.kind)->palette = true;
@@ -555,12 +555,13 @@ int main() {
 
     Recipe broken;
     Source zero{"zero", MaterialClustersSource{}};
-    Get<MaterialClustersSource>(zero.kind)->settings.clusters = 0;
+    Get<MaterialClustersSource>(zero.kind)->settings.smoothing =
+        kMaxClusterSmoothing + 1;
     broken.sources = {zero};
     const auto diagnostics = Validate(broken, {});
     Check(std::ranges::count_if(diagnostics,
                                 [](const Diagnostic &d) {
-                                  return d.message.find("'clusters'") !=
+                                  return d.message.find("'smoothing'") !=
                                          std::string::npos;
                                 }) == 1,
           "a source's field error is reported once by validation");

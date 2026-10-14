@@ -4,6 +4,7 @@
 #include "Core.h"
 #include "mesh/Islands.h"
 #include "mesh/MaterialClusters.h"
+#include "mesh/MaterialRegions.h"
 #include "mesh/MeshFacts.h"
 #include "recipe/Recipe.h"
 #include "studio/ApplicationRecord.h"
@@ -116,8 +117,7 @@ struct GeometryRow {
   std::vector<BoneCoverage> bones;
   std::vector<MeshIsland> islands;
   std::vector<MaterialCluster> clusters;
-  std::shared_ptr<const MaterialSample> materialSample;
-  ClusterSettings clusterGuess;
+  std::shared_ptr<const MaterialGrouping> grouping;
   std::string shell;
   std::vector<SlotRow> materialSlots;
   std::vector<SlotRow> shellSlots;
@@ -168,13 +168,8 @@ struct RippleSourceRow {
 };
 
 struct MaterialClustersSourceRow {
-  std::string clusters;
-  std::string weights;
-  std::string seed;
-  std::string iterations;
-  std::string chromaWeight = "1";
-  std::string detailWeight = "1";
-  bool guess = false;
+  std::string merge = "0.3";
+  std::string smoothing = "8";
   bool palette = false;
   std::string pick;
   std::string areaBias = "1";

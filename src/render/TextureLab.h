@@ -7,6 +7,7 @@
 #include "diagnostics/Trace.h"
 #include "mesh/MaterialClusters.h"
 #include "mesh/MaterialDump.h"
+#include "mesh/MaterialRegions.h"
 #include "mesh/Mesh.h"
 #include "mesh/TextureSize.h"
 #include "planners/ConsumptionLeases.h"
@@ -296,7 +297,7 @@ public:
   [[nodiscard]] bool Timing() const noexcept;
   [[nodiscard]] GpuTiming::Totals DrainTimings();
 
-  inline static constexpr std::uint32_t kSampleSide = 64;
+  inline static constexpr std::uint32_t kSampleSide = 256;
   struct MaterialReadback {
     REX::W32::ComPtr<REX::W32::ID3D11Texture2D> rmaos;
     REX::W32::ComPtr<REX::W32::ID3D11Texture2D> diffuse;
@@ -327,7 +328,7 @@ public:
                                               std::uint32_t a_maxSide);
 
   bool RenderClusters(RenderTarget &a_target, const MaterialMaps &a_maps,
-                      const MaterialAnalysis &a_analysis,
+                      const MaterialGrouping &a_grouping,
                       std::optional<std::uint8_t> a_picked, bool a_palette);
   [[nodiscard]] bool ClustersAvailable() const noexcept;
   [[nodiscard]] bool BakingAvailable() const noexcept;
@@ -465,6 +466,10 @@ private:
   ReductionLevel *ReductionLevelFor(ReductionExtent a_extent);
   bool EnsureReductionStaging(ReductionReadback &a_readback);
   bool EnsureSampleStaging(MaterialReadback &a_readback);
+  using GroupOdds =
+      std::array<REX::W32::ComPtr<REX::W32::ID3D11ShaderResourceView>, 2>;
+  [[nodiscard]] std::optional<GroupOdds>
+  CreateGroupOdds(const GroupProbabilities &a_odds);
   bool EnsureStaging(REX::W32::ComPtr<REX::W32::ID3D11Texture2D> &a_staging,
                      std::uint32_t a_side);
   [[nodiscard]] bool CopyMap(RenderTarget &a_target, RE::NiSourceTexture *a_map,

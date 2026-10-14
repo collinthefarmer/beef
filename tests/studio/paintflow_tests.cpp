@@ -81,9 +81,9 @@ void RetunedSources() {
   flow.Ready();
   flow.Offer(ClusterTerm{});
   flow.DispatchFrame();
-  for (std::uint32_t seed = 1; seed <= 8; ++seed) {
+  for (std::uint32_t smoothing = 0; smoothing < 8; ++smoothing) {
     ClusterTerm term;
-    term.settings.seed = seed;
+    term.settings.smoothing = smoothing;
     const auto built = BuildTerm(term, MaskPresets{},
                                  PaintSources(flow.state, flow.published, {}));
     Reduce(flow.state,
@@ -120,7 +120,7 @@ void RetunedSources() {
           ? nullptr
           : Get<MaterialClustersSource>(flow.paint.sources.front().kind);
   Check(flow.paint.sources.size() == 1 && restored &&
-            restored->settings.seed == 7,
+            restored->settings.smoothing == 6,
         "undo restores the prior generated source without retaining the "
         "replaced one");
   Reduce(flow.state, MuteTerm{0, true});

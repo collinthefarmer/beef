@@ -560,17 +560,17 @@ struct PlanBuilder {
     const std::string &label = site.node.displayName;
     const RenderValueRef material =
         BuildOperand(operation.material, request, depth);
+    const RenderValueRef mesh =
+        BuildOperand(operation.geometry, request, depth);
     const RenderValueRef submission =
-        Step(SubmitMaterialSampleStep{material}, label + " samples");
+        Step(SubmitMaterialSampleStep{material, mesh, operation.settings},
+             label + " samples");
     const auto *submitted = Get<StepOutputRef>(submission);
     if (!submitted)
       return submission;
-    const RenderValueRef sample =
-        Readback(*submitted, RenderResourceType::kMaterialSample);
-    const RenderValueRef analysis =
-        Step(ClusterMaterialStep{sample, operation.settings, operation.guess},
-             label + " analysis");
-    DrawClustersStep draw{material, analysis, request.requirements};
+    const RenderValueRef groups =
+        Readback(*submitted, RenderResourceType::kMaterialGroups);
+    DrawClustersStep draw{material, groups, request.requirements};
     draw.palette = operation.palette;
     if (operation.pick) {
       draw.pick = BuildOperand(*operation.pick, request, depth);

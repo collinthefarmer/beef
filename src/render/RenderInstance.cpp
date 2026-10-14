@@ -4,6 +4,7 @@
 #include "diagnostics/Metrics.h"
 #include "diagnostics/Trace.h"
 
+#include "render/MaterialGrouper.h"
 #include "render/MeshReader.h"
 #include "render/SourceSampling.h"
 #include <algorithm>
@@ -94,10 +95,6 @@ bool SameImport(const LayerFilter &a, const LayerFilter &b) { return a == b; }
 bool SameImport(const StackResult &a, const StackResult &b) {
   return SameTexture(a.texture, b.texture) &&
          a.contentVersion == b.contentVersion;
-}
-bool SameImport(const std::shared_ptr<const MaterialSample> &a,
-                const std::shared_ptr<const MaterialSample> &b) {
-  return a == b || (a && b && *a == *b);
 }
 template <class T>
 bool SameImport(const std::shared_ptr<T> &a, const std::shared_ptr<T> &b) {
@@ -489,33 +486,29 @@ StepResult ExecuteSubmitMaterialSampleStep(const SubmitMaterialSampleStep &step,
       execution.arguments.Find<MaterialInputs>(step.material);
   if (!material)
     return std::unexpected("material is unavailable");
+  const auto *mesh =
+      execution.arguments.Find<std::shared_ptr<MeshEntry>>(step.mesh);
+  GroupingRequest &grouping = execution.scratch.grouping;
+  grouping = GroupingRequest{};
+  grouping.settings = step.settings;
+  if (mesh && *mesh) {
+    grouping.mesh = (*mesh)->mesh;
+    grouping.analysis = (*mesh)->analysis;
+    grouping.meshHash = (*mesh)->hash;
+  }
   if (!execution.lab.SubmitMaterialSample(MapsOf(*material),
                                           execution.scratch.material))
     return std::unexpected("material sampling failed");
   return RenderValue{Value{0.0f}};
 }
-StepResult ExecuteClusterMaterialStep(const ClusterMaterialStep &step,
-                                      StepExecution &execution) {
-  const auto *sample =
-      execution.arguments.Find<std::shared_ptr<const MaterialSample>>(
-          step.sample);
-  if (!sample || !*sample)
-    return std::unexpected("material sample is unavailable");
-  const ClusterSettings settings =
-      step.guess ? GuessClusterSettings(**sample) : step.settings;
-  auto analysis = ClusterMaterial(**sample, settings);
-  if (analysis.clusters.empty())
-    return std::unexpected("material analysis has no clusters");
-  return std::make_shared<const MaterialAnalysis>(std::move(analysis));
-}
 StepResult ExecuteDrawClustersStep(const DrawClustersStep &step,
                                    StepExecution &execution) {
   const auto *material =
       execution.arguments.Find<MaterialInputs>(step.material);
-  const auto *analysis =
-      execution.arguments.Find<std::shared_ptr<const MaterialAnalysis>>(
-          step.analysis);
-  if (!material || !analysis || !*analysis)
+  const auto *grouping =
+      execution.arguments.Find<std::shared_ptr<const MaterialGrouping>>(
+          step.groups);
+  if (!material || !grouping || !*grouping)
     return std::unexpected("cluster draw failed");
   std::optional<std::uint8_t> picked;
   if (step.pick) {
@@ -525,8 +518,8 @@ StepResult ExecuteDrawClustersStep(const DrawClustersStep &step,
                            : nullptr;
     if (!pick)
       return std::unexpected("cluster pick is unavailable");
-    picked =
-        PickCluster(**analysis, AsScalar(*pick), bias ? AsScalar(*bias) : 1.0f);
+    picked = PickCluster((*grouping)->analysis, AsScalar(*pick),
+                         bias ? AsScalar(*bias) : 1.0f);
     if (!picked)
       return std::unexpected("the material has no cluster to pick");
   }
@@ -534,7 +527,7 @@ StepResult ExecuteDrawClustersStep(const DrawClustersStep &step,
       AcquireStepTarget(execution, step.requirements,
                         TextureLab::MipsFor(step.requirements.mipPolicy));
   if (!target ||
-      !execution.lab.RenderClusters(*target, MapsOf(*material), **analysis,
+      !execution.lab.RenderClusters(*target, MapsOf(*material), **grouping,
                                     picked, step.palette))
     return std::unexpected("cluster draw failed");
   auto view = View(target);
@@ -1021,9 +1014,6 @@ StepResult ExecuteStep(const RenderStep &step,
       [&](const SubmitMaterialSampleStep &k) {
         return ExecuteSubmitMaterialSampleStep(k, execution);
       },
-      [&](const ClusterMaterialStep &k) {
-        return ExecuteClusterMaterialStep(k, execution);
-      },
       [&](const DrawClustersStep &k) {
         return ExecuteDrawClustersStep(k, execution);
       },
@@ -1254,11 +1244,8 @@ RenderInstance::UpdateInput(RenderInputId input, RenderValue value) {
       [](const std::shared_ptr<const BakeBuffers> &) -> RenderValueType {
         return RenderResourceType::kBakeBuffers;
       },
-      [](const std::shared_ptr<const MaterialSample> &) -> RenderValueType {
-        return RenderResourceType::kMaterialSample;
-      },
-      [](const std::shared_ptr<const MaterialAnalysis> &) -> RenderValueType {
-        return RenderResourceType::kMaterialAnalysis;
+      [](const std::shared_ptr<const MaterialGrouping> &) -> RenderValueType {
+        return RenderResourceType::kMaterialGroups;
       },
       [](const std::shared_ptr<TextureLab::Lookup> &) -> RenderValueType {
         return RenderResourceType::kLookup;
@@ -1399,11 +1386,47 @@ void RenderInstance::CollectReadback(RenderInputId input) {
                                  scratch->reduction),
            [](Value value) { return RenderValue{value}; });
   else if (Is<SubmitMaterialSampleStep>(kind))
-    import(lab->CollectMaterialSample(scratch->material),
-           [](MaterialSample sample) {
-             return RenderValue{
-                 std::make_shared<const MaterialSample>(std::move(sample))};
-           });
+    CollectGrouping(input, *scratch);
+}
+void RenderInstance::CollectGrouping(RenderInputId input,
+                                     RenderScratch &scratch) {
+  auto *lab = TextureLab::GetSingleton();
+  MaterialGrouper &grouper = MaterialGrouper::GetSingleton();
+  GroupingRequest &request = scratch.grouping;
+  if (!request.key) {
+    if (!lab)
+      return;
+    auto collected = lab->CollectMaterialSample(scratch.material);
+    if (!collected)
+      return;
+    if (!*collected) {
+      logger::warn("material grouping: {}", collected->error());
+      execution_.UnsetInput(input);
+      return;
+    }
+    GroupingJob job{
+        GroupingKeyOf(**collected, request.meshHash, request.settings),
+        std::move(**collected), request.mesh, request.analysis,
+        request.settings};
+    request.key = job.key;
+    if (!grouper.Request(std::move(job))) {
+      logger::warn("material grouping: the grouping worker refused the job");
+      request.key.reset();
+      execution_.UnsetInput(input);
+      return;
+    }
+  }
+  std::optional<GroupingResult> result = grouper.Find(*request.key);
+  if (!result)
+    return;
+  request.key.reset();
+  if (!*result) {
+    logger::warn("material grouping: {}", result->error());
+    execution_.UnsetInput(input);
+    return;
+  }
+  if (!UpdateInput(input, RenderValue{**result}))
+    execution_.UnsetInput(input);
 }
 void RenderInstance::CollectReadbacks() {
   for (RenderInputId input = 0; input < Plan().inputs.size(); ++input)
@@ -1418,7 +1441,7 @@ bool RenderInstance::AwaitingFirstReadback() const {
       continue;
     const auto &scratch = execution_.Steps()[binding->submission].scratch;
     if (!PendingNewestFirst(scratch.reduction.ring).empty() ||
-        scratch.material.pending)
+        scratch.material.pending || scratch.grouping.key)
       return true;
   }
   return false;

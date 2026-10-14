@@ -169,14 +169,15 @@ public:
   static constexpr std::uint32_t kMaterialMaxAgeMS = 30000;
   static constexpr std::size_t kMaxUnusedMaterials = 64;
   struct MaterialRecord {
-    std::shared_ptr<const MaterialSample> sample;
-    std::shared_ptr<const MaterialAnalysis> analysis;
+    std::optional<std::uint64_t> key;
+    std::shared_ptr<const MaterialGrouping> grouping;
     std::string problem;
   };
   [[nodiscard]] const MaterialRecord &
-  AnalyseMaterial(const MaterialInputs &a_material);
+  AnalyseMaterial(const MaterialInputs &a_material,
+                  const std::shared_ptr<MeshEntry> &a_mesh);
   [[nodiscard]] const MaterialRecord *
-  CachedMaterial(const MaterialInputs &a_material) const;
+  CachedMaterial(const MaterialInputs &a_material);
   void ClearMaterials() noexcept;
   void SweepMaterials(std::uint32_t a_nowMS,
                       std::span<const MaterialKey> a_keep);

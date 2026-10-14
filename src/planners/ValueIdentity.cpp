@@ -59,18 +59,9 @@ void EncodeMaterialClustersOperation(
     Encoding &out, const MaterialClustersOperation &operation) {
   const ClusterSettings &s = operation.settings;
   out.Number(operation.pick.has_value());
-  out.Number(operation.guess);
   out.Number(operation.palette);
-  out.Number(s.clusters);
-  out.Number(s.seed);
-  out.Number(s.iterations);
-  out.Number(s.weights.roughness);
-  out.Number(s.weights.metallic);
-  out.Number(s.weights.occlusion);
-  out.Number(s.weights.reflectance);
-  out.Number(s.weights.luma);
-  out.Number(s.weights.chroma);
-  out.Number(s.weights.detail);
+  out.Number(s.merge);
+  out.Number(s.smoothing);
 }
 void EncodeSettings(Encoding &out, const NodeKind &kind) {
   Match(

@@ -34,7 +34,7 @@ inline constexpr std::array<Vec3, kMaxMaterialClusters> kClusterPalette{
     Vec3{0.96f, 0.55f, 0.37f}, Vec3{0.37f, 0.88f, 0.96f},
     Vec3{0.69f, 0.69f, 0.69f}, Vec3{0.91f, 0.31f, 0.31f}};
 
-inline constexpr std::size_t kMaxSampleTexels = 64 * 64;
+inline constexpr std::size_t kMaxSampleTexels = 256 * 256;
 struct MaterialSample {
   std::uint32_t width = 0;
   std::uint32_t height = 0;
@@ -51,19 +51,10 @@ struct MaterialCluster {
 };
 
 struct MaterialAnalysis {
-  ClusterSettings settings;
   std::vector<MaterialCluster> clusters;
   [[nodiscard]] bool operator==(const MaterialAnalysis &) const = default;
 };
 
-[[nodiscard]] MaterialAnalysis
-ClusterMaterial(const MaterialSample &a_sample,
-                const ClusterSettings &a_settings);
-[[nodiscard]] ClusterSettings
-GuessClusterSettings(const MaterialSample &a_sample);
-[[nodiscard]] std::uint8_t
-NearestCluster(const MaterialTexel &a_texel,
-               const MaterialAnalysis &a_analysis) noexcept;
 [[nodiscard]] std::string DescribeTexel(const MaterialTexel &a_texel);
 [[nodiscard]] std::optional<std::uint8_t>
 PickCluster(const MaterialAnalysis &a_analysis, float a_pick,

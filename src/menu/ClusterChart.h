@@ -29,7 +29,6 @@ struct ClusterSubject {
 
 [[nodiscard]] std::uint32_t ClusterInk(std::uint8_t a_cluster,
                                        std::uint8_t a_alpha) noexcept;
-[[nodiscard]] bool GuessButton(bool a_matchesGuess);
 void DrawMaterialDump(const Frame &a_frame);
 [[nodiscard]] std::optional<std::uint8_t>
 DrawClusterExplorer(const ClusterSubject &a_subject,
