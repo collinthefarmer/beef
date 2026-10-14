@@ -1,4 +1,5 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
+#include "planners/ShaderSource.h"
 #include "render/TextureLab.h"
 
 #include "Identity.h"
@@ -16,8 +17,6 @@
 
 namespace BetterEnchantmentEffects {
 using namespace REX::W32;
-
-extern const char *const kShaderSource;
 
 namespace {
 ComPtr<ID3DBlob> CompileEntry(const char *a_entry, const char *a_target) {

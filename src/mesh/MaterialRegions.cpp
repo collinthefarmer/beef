@@ -1422,16 +1422,21 @@ ChartCoversOf(const MaterialRaster &a_raster,
     ++totals[chart];
     ++counts[chart][static_cast<std::size_t>(group)];
   }
+  std::size_t covered = 0;
+  for (const std::size_t total : totals) {
+    covered += total;
+  }
   std::vector<ChartCover> covers;
   for (std::size_t chart = 0; chart < kCharts; ++chart) {
     for (std::size_t group = 0; group < kMaxGroups; ++group) {
       if (counts[chart][group] == 0) {
         continue;
       }
-      covers.push_back({static_cast<std::uint8_t>(group),
-                        static_cast<std::uint16_t>(chart),
-                        static_cast<float>(counts[chart][group]) /
-                            static_cast<float>(totals[chart])});
+      covers.push_back(
+          {static_cast<std::uint8_t>(group), static_cast<std::uint16_t>(chart),
+           static_cast<float>(counts[chart][group]) /
+               static_cast<float>(totals[chart]),
+           static_cast<float>(totals[chart]) / static_cast<float>(covered)});
     }
   }
   return covers;

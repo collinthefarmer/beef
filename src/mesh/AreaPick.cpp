@@ -16,6 +16,8 @@ std::size_t CountOf(float a_wanted, std::size_t a_available) noexcept;
 std::vector<ChartCover> CoversOfGroup(std::span<const ChartCover> a_covers,
                                       std::uint8_t a_group);
 float ChartSeedOf(float a_seed, GeometryPlace a_place, std::uint8_t a_group);
+float LitShareOf(std::span<const ChartCover> a_covers,
+                 const PickedArea &a_picked);
 }
 
 std::optional<PickedArea> PickArea(const AreaPickSettings &a_settings,
@@ -48,8 +50,10 @@ std::optional<PickedArea> PickArea(const AreaPickSettings &a_settings,
     if (position < static_cast<float>(lit) &&
         candidates[k] < picked.charts.size()) {
       picked.charts[candidates[k]] = true;
+      ++picked.litCharts;
     }
   }
+  picked.share = LitShareOf(a_covers, picked);
   return picked;
 }
 
@@ -123,6 +127,18 @@ float ChartSeedOf(float a_seed, GeometryPlace a_place, std::uint8_t a_group) {
   const float salt = kChartSalt + static_cast<float>(a_place.index) * 16.0f +
                      static_cast<float>(a_group);
   return HashUnit(a_seed, salt);
+}
+
+float LitShareOf(std::span<const ChartCover> a_covers,
+                 const PickedArea &a_picked) {
+  float share = 0.0f;
+  for (const ChartCover &cover : a_covers) {
+    if (cover.group == a_picked.group && cover.chart < a_picked.charts.size() &&
+        a_picked.charts[cover.chart]) {
+      share += cover.cover * cover.chartShare;
+    }
+  }
+  return share;
 }
 }
 }

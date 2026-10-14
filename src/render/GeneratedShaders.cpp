@@ -1,5 +1,6 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #include "render/GeneratedShaders.h"
+#include "planners/ShaderSource.h"
 
 #include "Identity.h"
 #include "planners/ProgramShader.h"
@@ -12,8 +13,6 @@
 
 namespace BetterEnchantmentEffects {
 using namespace REX::W32;
-
-extern const char *const kShaderSource;
 
 namespace {
 CompiledShader CompileGeneratedShader(ID3D11Device *a_device,

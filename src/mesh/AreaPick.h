@@ -29,6 +29,8 @@ struct GeometryPlace {
 struct PickedArea {
   std::uint8_t group = 0;
   std::array<bool, kChartSlots> charts{};
+  std::size_t litCharts = 0;
+  float share = 0.0f;
 };
 
 [[nodiscard]] bool IsGeometryPicked(const AreaPickSettings &a_settings,

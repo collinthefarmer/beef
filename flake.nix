@@ -141,6 +141,7 @@
             pkgs.ninja
             (pkgs.python3.withPackages (ps: [ ps.numpy ps.pillow ]))
             pkgs.check-jsonschema
+            pkgs.directx-shader-compiler
             pkgs.rsync
             (searchDeps pkgs)
           ];

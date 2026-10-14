@@ -1,7 +1,8 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
-#include "render/TextureLab.h"
+#include "planners/ShaderSource.h"
 
 #include "mesh/MaterialClusters.h"
+#include "planners/FieldProgram.h"
 #include "planners/ProgramShader.h"
 
 #include <format>

@@ -23,9 +23,10 @@ MaterialAnalysis TwoGroups(float a_metalShare) {
 }
 
 std::vector<ChartCover> Covers() {
-  return {{kMetal, 0, 0.9f},    {kMetal, 1, 0.5f},   {kMetal, 2, 0.02f},
-          {kMetal, 7, 0.3f},    {kLeather, 0, 0.1f}, {kLeather, 1, 0.5f},
-          {kLeather, 2, 0.98f}, {kMetal, 300, 1.0f}};
+  return {{kMetal, 0, 0.9f, 0.4f},    {kMetal, 1, 0.5f, 0.2f},
+          {kMetal, 2, 0.02f, 0.3f},   {kMetal, 7, 0.3f, 0.1f},
+          {kLeather, 0, 0.1f, 0.4f},  {kLeather, 1, 0.5f, 0.2f},
+          {kLeather, 2, 0.98f, 0.3f}, {kMetal, 300, 1.0f, 0.0f}};
 }
 
 std::size_t LitCount(const PickedArea &a_area) {
@@ -55,6 +56,12 @@ void ChartCoversCountEachChartsTexels() {
     return found != covers.end() ? found->cover : -1.0f;
   };
   Check(covers.size() == 3, "only charted, labelled texels make a cover");
+  Check(std::ranges::all_of(covers,
+                            [](const ChartCover &c) {
+                              return test::Near(c.chartShare,
+                                                c.chart == 0 ? 0.75f : 0.25f);
+                            }),
+        "a chart's share is its part of the charted, labelled texels");
   Check(test::Near(coverOf(0, 0), 2.0f / 3.0f) &&
             test::Near(coverOf(1, 0), 1.0f / 3.0f) &&
             test::Near(coverOf(1, 1), 1.0f),
@@ -131,6 +138,21 @@ void PickAreaLightsChartsOfOneGroup() {
   Check(consistent, "a pick lights the asked charts among the group's "
                     "candidates, and never an empty area");
   Check(varied, "different seeds pick different groups");
+
+  AreaPickSettings everyChart;
+  everyChart.charts = 9.0f;
+  everyChart.minCover = 0.0f;
+  bool sums = true;
+  for (int seed = 0; seed < 20; ++seed) {
+    everyChart.seed = static_cast<float>(seed) / 20.0f;
+    const auto area = PickArea(everyChart, {0, 1}, analysis, covers);
+    const float expected =
+        area && area->group == kMetal
+            ? 0.9f * 0.4f + 0.5f * 0.2f + 0.02f * 0.3f + 0.3f * 0.1f
+            : 0.1f * 0.4f + 0.5f * 0.2f + 0.98f * 0.3f;
+    sums = sums && area && test::Near(area->share, expected);
+  }
+  Check(sums, "the lit share sums each lit chart's cover times its share");
 
   settings.seed = 0.25f;
   Check(PickArea(settings, {0, 1}, analysis, covers).has_value() &&

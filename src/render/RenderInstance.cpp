@@ -532,9 +532,15 @@ ChartFilterOf(const AreaPickInputs &area, const MaterialGrouping &grouping,
   const std::optional<PickedArea> picked =
       PickArea(settings, place, grouping.analysis, grouping.covers);
   if (!picked) {
+    logger::info("area pick: geometry {} of {} is not picked", place.index + 1,
+                 place.count);
     out.picked = kNoPickedGroup;
     return out;
   }
+  logger::info("area pick: geometry {} of {} lights material group {} on {} "
+               "chart(s), {:.1f}% of the geometry",
+               place.index + 1, place.count, picked->group, picked->litCharts,
+               picked->share * 100.0f);
   out.picked = picked->group;
   out.filter.lit = picked->charts;
   return out;

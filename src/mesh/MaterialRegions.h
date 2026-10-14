@@ -111,6 +111,7 @@ struct ChartCover {
   std::uint8_t group = 0;
   std::uint16_t chart = 0;
   float cover = 0.0f;
+  float chartShare = 0.0f;
   [[nodiscard]] bool operator==(const ChartCover &) const = default;
 };
 
