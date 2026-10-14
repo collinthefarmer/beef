@@ -120,7 +120,7 @@ std::vector<SignalRow> SignalRowsWith(const RecipeRowInput &a_input,
   for (const Signal &signal : recipe.signals) {
     SignalRow signalRow = SignalRowOf(
         signal, rows, RefCount(a_input.references.signals, signal.name));
-    if (a_input.signals) {
+    if (a_input.signals && !signalRow.perGeometry) {
       signalRow.value = a_input.signals->ValueOf(signal.name);
       signalRow.live = true;
     }

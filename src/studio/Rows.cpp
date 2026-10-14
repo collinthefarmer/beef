@@ -89,6 +89,7 @@ SignalRow SignalRowOf(const Signal &a_signal, const RowTypes &a_rows,
           a_rows.graph.FindNodeIndex(a_signal.name)) {
     row.inert = a_rows.graph.IsDisabled(*index);
   }
+  row.perGeometry = a_rows.graph.IsPerGeometry(a_signal.name);
   row.definition = a_signal.kind;
   if (const ConstantSignal *constant = Get<ConstantSignal>(a_signal.kind)) {
     row.constant = constant->value;

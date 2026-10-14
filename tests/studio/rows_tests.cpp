@@ -19,6 +19,7 @@ Recipe MakeRecipe() {
       Signal{"hit",
              TriggerSignal{EventOrigin{"HitEvent", EventFilter{}}, 1.0f, 4},
              std::nullopt},
+      Signal{"index", ItemSignal{ItemField::kGeometryIndex}, std::nullopt},
   };
   recipe.curves = {Curve{"ramp", "0,0 1,1"}};
   recipe.masks = {Mask{"edge", "@glow"}};
@@ -74,6 +75,9 @@ int main() {
   const SignalRow expr = SignalRowOf(recipe.signals[1], rows, 0);
   Check(expr.kind == SignalKindId::kExpr, "expression signal kind");
   Check(expr.text == "glow * 2", "expression signal carries its text");
+  Check(!expr.perGeometry &&
+            SignalRowOf(recipe.signals[3], rows, 0).perGeometry,
+        "a signal that reads an item fact is marked per geometry");
 
   const SignalRow trigger = SignalRowOf(recipe.signals[2], rows, 1);
   Check(trigger.kind == SignalKindId::kTrigger, "trigger signal kind");

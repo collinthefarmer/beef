@@ -37,6 +37,7 @@ struct SignalRow {
   ValueType type = ValueType::kScalar;
   Value value;
   bool inert = false;
+  bool perGeometry = false;
   std::optional<Value> constant;
   std::string text;
   std::string curve;

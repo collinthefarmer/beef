@@ -306,8 +306,10 @@ void DrawSignalRows(Table &a_table, const Frame &a_frame,
         signal.constant.has_value()    ? signal.constant
         : signal.live && !signal.inert ? std::optional<Value>{signal.value}
                                        : std::nullopt;
-    const std::string_view placeholder =
-        signal.live && signal.inert ? "(inactive)" : "-";
+    const std::string_view placeholder = signal.perGeometry ? "per geometry"
+                                         : signal.live && signal.inert
+                                             ? "(inactive)"
+                                             : "-";
     ResourceRow(a_table,
                 {.name = signal.name,
                  .subject = Studio::SignalSubject{signal.name},

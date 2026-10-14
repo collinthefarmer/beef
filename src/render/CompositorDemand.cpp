@@ -11,7 +11,17 @@
 #include <memory>
 
 namespace BetterEnchantmentEffects {
-std::optional<float> ChartCountOf(const GeometryInputs &inputs) {
+std::optional<float> ItemFactOf(const GeometryInputs &inputs, ItemField field) {
+  switch (field) {
+  case ItemField::kItemHash:
+    return inputs.itemHash;
+  case ItemField::kGeometryIndex:
+    return static_cast<float>(inputs.geometryIndex);
+  case ItemField::kGeometryCount:
+    return static_cast<float>(inputs.geometryCount);
+  case ItemField::kChartCount:
+    break;
+  }
   auto *compositor = Compositor::GetSingleton();
   const auto mesh =
       compositor ? compositor->MeshOf(inputs.geometry.get(), MeshUse::kSummary)
@@ -20,12 +30,6 @@ std::optional<float> ChartCountOf(const GeometryInputs &inputs) {
     return std::nullopt;
   }
   return static_cast<float>((*mesh)->analysis.charts);
-}
-
-ItemFacts ItemFactsOf(const GeometryInputs &inputs) {
-  return ItemFacts{inputs.itemHash, ChartCountOf(inputs).value_or(0.0f),
-                   static_cast<float>(inputs.geometryIndex),
-                   static_cast<float>(inputs.geometryCount)};
 }
 
 IdentityFacts IdentityFactsOf(const RecipeGraph &graph,

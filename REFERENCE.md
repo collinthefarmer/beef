@@ -2099,15 +2099,12 @@ builds the new one beside it, as a resize does.
   item fact, directly or through other signals, is not in the tick order.
   `RecipeGraph::IsPerGeometry` names such a signal. Masks, sources and layer
   parameters read it through the render plan, which builds per geometry.
-- The CPU consumers (output scalars in `ResolveOutput`, shell parameters in
-  `PoseShell`, the snapshot) resolve a per-geometry signal with
-  `SignalState::Resolve(param, ItemFacts)`. The resolver evaluates only
-  constants, item facts, vectors, expressions, calls and map functions; every
-  other node kind takes its ticked value. `kMaxPerGeometryDepth` (64) bounds
-  the walk.
-- A light spans every geometry of the piece, so validation refuses a light
-  parameter (offset, colour, intensity, size, cutoff) that reads a
-  per-geometry signal.
+- Output scalars, shell parameters and light parameters resolve on the CPU
+  once per recipe instance (`ResolveOutput`, `PoseShell`, `ResolveLight`), so
+  validation refuses a per-geometry signal there. A mask that reads the fact
+  gives the same result for any scalar that scales texels. The studio shows
+  "per geometry" in place of such a signal's value, because the signal state
+  holds no value for it.
 - `itemHash` is `UnitHash` of the worn armor form's key (0 when the form is
   gone). It is per geometry, not per recipe instance: one instance covers
   every piece that carries its enchantment, and vanilla reuses enchantment

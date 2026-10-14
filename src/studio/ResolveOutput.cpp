@@ -14,8 +14,7 @@ bool ResolvedOutput::IsNamed(ScalarField a_field) const noexcept {
 }
 
 ResolvedOutput ResolveOutput(const SurfaceOutput &a_output,
-                             const SignalState &a_signals,
-                             const ItemFacts &a_facts) {
+                             const SignalState &a_signals) {
   ResolvedOutput resolved;
   const float colorFallback = ScalarFallback(ScalarField::kColor);
   resolved.color = Vec3{colorFallback, colorFallback, colorFallback};
@@ -26,19 +25,19 @@ ResolvedOutput ResolveOutput(const SurfaceOutput &a_output,
     const std::size_t index = IndexOf(field);
     if (field == ScalarField::kColor) {
       if (a_output.scalars.color) {
-        resolved.color = a_signals.Resolve(*a_output.scalars.color, a_facts);
+        resolved.color = a_signals.Resolve(*a_output.scalars.color);
         resolved.named[index] = true;
       }
     } else if (const std::optional<Param> *param =
                    ScalarOf(a_output.scalars, field);
                param && *param) {
-      resolved.scalars[index] = a_signals.Resolve(**param, a_facts);
+      resolved.scalars[index] = a_signals.Resolve(**param);
       resolved.named[index] = true;
     }
   }
   resolved.opacities.reserve(a_output.stack.size());
   for (const Layer &layer : a_output.stack) {
-    resolved.opacities.push_back(a_signals.Resolve(layer.opacity, a_facts));
+    resolved.opacities.push_back(a_signals.Resolve(layer.opacity));
   }
   return resolved;
 }

@@ -45,7 +45,7 @@ int main() {
   state.Tick(environment, TickInputs{0.0f, 0.0f});
 
   const SurfaceOutput fuzz = MakeFuzz();
-  const ResolvedOutput resolved = ResolveOutput(fuzz, state, ItemFacts{});
+  const ResolvedOutput resolved = ResolveOutput(fuzz, state);
 
   Check(resolved.IsNamed(ScalarField::kColor),
         "the set colour scalar is named");
@@ -71,7 +71,7 @@ int main() {
 
   SurfaceOutput bare;
   bare.slot = Slot::kFuzz;
-  const ResolvedOutput empty = ResolveOutput(bare, state, ItemFacts{});
+  const ResolvedOutput empty = ResolveOutput(bare, state);
   Check(!empty.IsNamed(ScalarField::kColor) &&
             !empty.IsNamed(ScalarField::kWeight),
         "an output that sets no scalar names none");

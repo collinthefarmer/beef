@@ -1064,13 +1064,10 @@ std::optional<RenderValue> NumberValueOf(const BoundTextureValue &bound,
                                          ValueType type) {
   if (const auto *item =
           bound.external ? Get<ItemInput>(bound.external->source) : nullptr) {
-    if (item->field == ItemField::kChartCount) {
-      const std::optional<float> charts = ChartCountOf(bound.geometry);
-      if (!charts)
-        return std::nullopt;
-      return Value{*charts};
-    }
-    return Value{ItemFactOf(ItemFactsOf(bound.geometry), item->field)};
+    const std::optional<float> fact = ItemFactOf(bound.geometry, item->field);
+    if (!fact)
+      return std::nullopt;
+    return Value{*fact};
   }
   const auto *position =
       bound.external ? Get<NodePositionInput>(bound.external->source) : nullptr;

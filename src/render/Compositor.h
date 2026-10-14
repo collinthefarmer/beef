@@ -207,8 +207,8 @@ private:
   std::uint32_t lastSweepMS_ = 0;
 };
 
-[[nodiscard]] std::optional<float> ChartCountOf(const GeometryInputs &inputs);
-[[nodiscard]] ItemFacts ItemFactsOf(const GeometryInputs &inputs);
+[[nodiscard]] std::optional<float> ItemFactOf(const GeometryInputs &inputs,
+                                              ItemField field);
 [[nodiscard]] IdentityFacts IdentityFactsOf(const RecipeGraph &graph,
                                             const GeometryInputs &inputs);
 [[nodiscard]] ValueBindings TextureValueBindings(const RecipeGraph &graph,

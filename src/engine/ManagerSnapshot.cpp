@@ -262,8 +262,7 @@ struct GeometrySnapshotBuilder {
           continue;
         }
         if (scalarIndex < row.scalars.size()) {
-          row.scalars[scalarIndex].value =
-              signals->Resolve(*scalars.color, ItemFactsOf(bound.inputs));
+          row.scalars[scalarIndex].value = signals->Resolve(*scalars.color);
         }
       } else {
         const std::optional<Param> *param = ScalarOf(scalars, field);
@@ -271,8 +270,7 @@ struct GeometrySnapshotBuilder {
           continue;
         }
         if (scalarIndex < row.scalars.size()) {
-          row.scalars[scalarIndex].value =
-              signals->Resolve(**param, ItemFactsOf(bound.inputs));
+          row.scalars[scalarIndex].value = signals->Resolve(**param);
         }
       }
       ++scalarIndex;
@@ -283,8 +281,7 @@ struct GeometrySnapshotBuilder {
                      const PlacedOutput &output) const {
     for (std::size_t i = 0; i < material.stack.size() && i < row.layers.size();
          ++i) {
-      row.layers[i].opacity = signals->Resolve(material.stack[i].opacity,
-                                               ItemFactsOf(bound.inputs));
+      row.layers[i].opacity = signals->Resolve(material.stack[i].opacity);
     }
     if (!output.stack) {
       return;

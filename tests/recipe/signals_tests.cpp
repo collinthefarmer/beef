@@ -1081,22 +1081,18 @@ int main() {
         Signal{"lit", ExprSignal{"@charts * 2 + @index + @power"},
                std::nullopt}};
     const auto graph = CompileSignals(signals);
-    SignalState state{graph};
-    FakeEnvironment environment;
-    environment.enchantment = 10.0f;
-    state.Tick(environment, TickInputs{0.0f, 0.0f});
-    const ItemFacts facts{0.5f, 3.0f, 1.0f, 2.0f};
     Check(graph.IsPerGeometry("charts") && graph.IsPerGeometry("lit") &&
               !graph.IsPerGeometry("power"),
           "a signal that reads an item fact is per geometry, others are not");
-    Check(Near(state.Resolve(Param{Ref{"lit"}}, facts), 17.0f),
-          "a per-geometry signal resolves with the geometry's facts");
-    Check(Near(state.Resolve(Param{Ref{"power"}}, facts), 10.0f),
-          "a per-instance signal resolves to its ticked value");
-    Check(Near(state.Resolve(Param{Ref{"lit"}},
-                             ItemFacts{0.5f, 1.0f, 0.0f, 2.0f}),
-               12.0f),
-          "another geometry's facts give another value");
+
+    const auto refusals = [&](const Recipe &a_recipe,
+                              std::string_view a_where) {
+      return std::ranges::count_if(
+          Validate(a_recipe, {}), [&](const Diagnostic &d) {
+            return d.where == a_where &&
+                   d.message.find("differs per geometry") != std::string::npos;
+          });
+    };
 
     Recipe recipe;
     recipe.signals = signals;
@@ -1104,26 +1100,27 @@ int main() {
     light.intensity = Param{Ref{"lit"}};
     recipe.outputs.push_back(light);
     SurfaceOutput surface;
-    surface.scalars.strength = Param{Ref{"lit"}};
+    surface.scalars.strength = Param{Ref{"power"}};
     Layer layer;
     layer.source = Vec3{1.0f, 1.0f, 1.0f};
     layer.opacity = Param{Ref{"lit"}};
     surface.stack.push_back(layer);
     recipe.outputs.push_back(surface);
-    const auto diagnostics = Validate(recipe, {});
-    Check(std::ranges::any_of(diagnostics,
-                              [](const Diagnostic &d) {
-                                return d.message.find("a light spans the whole "
-                                                      "piece") !=
-                                       std::string::npos;
-                              }),
+    Check(refusals(recipe, "output 0") == 1,
           "a light refuses a per-geometry value");
-    Check(std::ranges::none_of(diagnostics,
-                               [](const Diagnostic &d) {
-                                 return d.where.find("output 1") !=
-                                        std::string::npos;
-                               }),
+    Check(refusals(recipe, "output 1 layer 0") == 0,
           "a layer opacity accepts a per-geometry value");
+
+    Recipe scalars = recipe;
+    surface.scalars.strength = Param{Ref{"lit"}};
+    scalars.outputs[1] = surface;
+    scalars.shell.emissive = Param{Ref{"index"}};
+    scalars.shell.pose.spin = Param{Ref{"lit"}};
+    Check(refusals(scalars, "output 1") == 1,
+          "an output scalar refuses a per-geometry value");
+    Check(refusals(scalars, "shell") == 1 &&
+              refusals(scalars, "shell pose") == 1,
+          "a shell parameter refuses a per-geometry value");
   }
 
   return test::Finish("signals");

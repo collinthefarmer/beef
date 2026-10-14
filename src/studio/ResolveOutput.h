@@ -20,8 +20,7 @@ struct ResolvedOutput {
 };
 
 [[nodiscard]] ResolvedOutput ResolveOutput(const SurfaceOutput &a_output,
-                                           const SignalState &a_signals,
-                                           const ItemFacts &a_facts);
+                                           const SignalState &a_signals);
 
 struct ResolvedLight {
   Vec3 color{1.0f, 1.0f, 1.0f};
