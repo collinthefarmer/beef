@@ -1,7 +1,7 @@
 {
   "format": 1,
   "name": "Fill import template",
-  "description": "The baseline import template for an effect shader with a fill texture. A pick lights a few texture charts of one material group on one of the piece's geometries. There the material glows in the shader's colour, turned in hue by the effect, takes a roughness and metallic chosen by the enchantment, and sinks into a relief; a shell copy of the piece covers it, with DarkSwirls holes through which the glow shows. The holes pulse gently in size and grow with the enchantment's magnitude; the glow pulses very slightly and scales with magnitude, as do the relief, how many charts light and the least share of the geometry they cover. The shell carries a fuzz sheen coloured by the mesh normals, a halo at grazing angles. The enchantment, its effect and the worn item fix which geometry, material group and charts glow, always at least one chart.",
+  "description": "The baseline import template for an effect shader with a fill texture. A pick lights a few texture charts of one material group on one of the piece's geometries. There the material glows in the shader's colour, turned in hue by the effect, takes a roughness and metallic chosen by the enchantment, and sinks into a relief; a shell copy of the piece covers it, with DarkSwirls holes through which the glow shows. The holes pulse gently in size and grow with the enchantment's magnitude; the glow pulses very slightly and scales with magnitude, as do the relief, how many charts light and the least share of the geometry they cover. Under the shell the picked area also carries a fuzz sheen in the glow's hue, slightly brightened, a halo at grazing angles. The enchantment, its effect and the worn item fix which geometry, material group and charts glow, always at least one chart.",
   "keys": [
     {
       "effectShader": "ImportedEffectShader"
@@ -182,6 +182,12 @@
     },
     "haloWeight": {
       "expr": "saturate(@haloWeightBase * max(@magnitudeFloor, 1 + @haloMagnitudeWeight * (2 * @magnitudeLevel - 1)))"
+    },
+    "haloValue": {
+      "constant": 1.15
+    },
+    "haloColor": {
+      "expr": "saturate(@glowColor * @haloValue)"
     }
   },
   "sources": {
@@ -221,9 +227,6 @@
         "scroll": "@swirlFlowB",
         "transpose": true
       }
-    },
-    "normalBake": {
-      "mesh": "normal"
     }
   },
   "masks": {
@@ -291,6 +294,29 @@
       ]
     },
     {
+      "target": "material",
+      "slot": "fuzz",
+      "color": "@haloColor",
+      "weight": "@haloWeight",
+      "resolution": "half",
+      "stack": [
+        {
+          "source": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "opacity": 1.0,
+          "channels": "rgb"
+        },
+        {
+          "source": "@lit",
+          "opacity": 1.0,
+          "channels": "a"
+        }
+      ]
+    },
+    {
       "target": "shell",
       "slot": "diffuse",
       "stack": [
@@ -300,29 +326,6 @@
           "channels": "a"
         }
       ]
-    },
-    {
-      "target": "shell",
-      "slot": "fuzz",
-      "color": [
-        1.0,
-        1.0,
-        1.0
-      ],
-      "weight": "@haloWeight",
-      "stack": [
-        {
-          "source": "@normalBake",
-          "opacity": 1.0,
-          "channels": "rgb"
-        },
-        {
-          "source": "@shellCover",
-          "opacity": 1.0,
-          "channels": "a"
-        }
-      ],
-      "resolution": "half"
     }
   ],
   "shell": {
