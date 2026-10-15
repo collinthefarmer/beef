@@ -2224,10 +2224,19 @@ builds the new one beside it, as a resize does.
   skin partition (NOTES 47); the reader takes the CPU copy when the engine
   kept one, else reads the GPU back through the lab.
 - `skinToBone` maps skin space into the bone; its inverse puts the bone's
-  origin in skin space. A node's bind-pose position comes from the skin
-  data when the node is one of the geometry's bones, else from the node's
-  current position relative to the actor's root, which is bind-pose skin
-  space for a standing actor.
+  origin in skin space. A node's bind-pose position (`NodeBindPosition`)
+  comes from the first of: the geometry's own skin data, when the node is
+  one of its bones; the skin data of any other skinned geometry under the
+  actor's root that has the node as a bone (`ActorSkinBindPosition`; a body
+  or cuirass mesh carries the spine bones that gloves and boots lack); the
+  node's current position relative to the actor's root. The first two read
+  the same bind-pose skin space. `RenderInstance::Update` reads a node
+  position once per instance and keeps it, like a stable resource, so a
+  distance bake runs once per equip. Before 2026-10-15 a node outside the
+  piece's skin was read from the current pose on every frame, so every idle
+  animation re-baked the fill template's `fromCore` distance: in run
+  20261015T212625-1 (12 mannequins) `BakeMesh` took 79% of the plugin's GPU
+  time.
 - Bake frames: `position` maps -kPositionFrame..kPositionFrame per axis to
   0..1 in one frame shared by every geometry (the skeleton root is the
   origin, z up, so a standing body spans about 0.5 to 1 in z). The

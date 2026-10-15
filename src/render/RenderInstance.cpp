@@ -1408,6 +1408,9 @@ RenderInstance::Update(const RecipeGraph &graph, std::size_t instance,
     if (ImportsResource(input.type) && StableResource(external) &&
         execution_.Inputs()[i].value)
       continue;
+    if (external && Is<NodePositionInput>(external->source) &&
+        execution_.Inputs()[i].value)
+      continue;
     const BoundTextureValue bound{graph,   *binding, *geometry,
                                   signals, shader,   external};
     std::optional<RenderValue> value = ImportedValueOf(bound, input.type);

@@ -206,6 +206,24 @@ std::optional<Vec3> SkinBindPosition(const RE::NiSkinInstance *a_skin,
   return std::nullopt;
 }
 
+std::optional<Vec3> ActorSkinBindPosition(RE::NiAVObject *a_root,
+                                          std::string_view a_node) {
+  if (!a_root) {
+    return std::nullopt;
+  }
+  std::optional<Vec3> found;
+  RE::BSVisit::TraverseScenegraphGeometries(
+      a_root, [&](RE::BSGeometry *a_geometry) {
+        const RE::NiSkinInstance *skin =
+            a_geometry ? a_geometry->GetGeometryRuntimeData().skinInstance.get()
+                       : nullptr;
+        found = SkinBindPosition(skin, a_node);
+        return found ? RE::BSVisit::BSVisitControl::kStop
+                     : RE::BSVisit::BSVisitControl::kContinue;
+      });
+  return found;
+}
+
 std::optional<Vec3> RootNodePosition(RE::NiAVObject *a_root,
                                      std::string_view a_node) {
   if (!a_root) {
@@ -328,6 +346,9 @@ std::optional<Vec3> NodeBindPosition(RE::BSGeometry *a_geometry,
       a_geometry ? a_geometry->GetGeometryRuntimeData().skinInstance.get()
                  : nullptr;
   if (const std::optional<Vec3> bind = SkinBindPosition(skin, a_node)) {
+    return bind;
+  }
+  if (const std::optional<Vec3> bind = ActorSkinBindPosition(a_root, a_node)) {
     return bind;
   }
   return RootNodePosition(a_root, a_node);
