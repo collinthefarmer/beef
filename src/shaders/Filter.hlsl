@@ -30,12 +30,12 @@ float4 FilterRead(int2 at, bool vertical)
 	return vertical ? s : s.xxxx;
 }
 
-float4 FilterFinish(float4 pass, uint operation)
+float4 FilterFinish(float4 sweep, uint operation)
 {
-	if (operation == kFilterGrow) return float4(pass.zzz, 1);
-	if (operation == kFilterShrink) return float4(pass.yyy, 1);
-	if (operation == kFilterEdge) { float e = pass.z - pass.y; return float4(e, e, e, 1); }
-	return float4(pass.xxx, 1);
+	if (operation == kFilterGrow) return float4(sweep.zzz, 1);
+	if (operation == kFilterShrink) return float4(sweep.yyy, 1);
+	if (operation == kFilterEdge) { float e = sweep.z - sweep.y; return float4(e, e, e, 1); }
+	return float4(sweep.xxx, 1);
 }
 
 float4 PSFilter(VSOut i) : SV_Target
@@ -60,6 +60,6 @@ float4 PSFilter(VSOut i) : SV_Target
 		lowest = min(lowest, v.y);
 		highest = max(highest, v.z);
 	}
-	float4 pass = float4(weight > 0 ? sum / weight : own.x, lowest, highest, 1);
-	return vertical ? FilterFinish(pass, filterOperation) : pass;
+	float4 sweep = float4(weight > 0 ? sum / weight : own.x, lowest, highest, 1);
+	return vertical ? FilterFinish(sweep, filterOperation) : sweep;
 }

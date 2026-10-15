@@ -8,6 +8,8 @@
 #include "recipe/RecipeGraph.h"
 #include "test_support.h"
 
+#include <algorithm>
+#include <cctype>
 #include <charconv>
 #include <cstddef>
 #include <cstdlib>
@@ -545,6 +547,70 @@ std::set<GeneratedShader> GeneratedShadersOf(const RenderPlan &a_plan) {
   return shaders;
 }
 
+constexpr std::string_view kEffectKeywords[]{
+    "asm",
+    "asm_fragment",
+    "compile",
+    "compile_fragment",
+    "decl",
+    "pass",
+    "pixelfragment",
+    "pixelshader",
+    "sampler_state",
+    "stateblock",
+    "stateblock_state",
+    "string",
+    "technique",
+    "technique10",
+    "technique11",
+    "texture",
+    "vertexfragment",
+    "vertexshader",
+};
+
+bool IsWordCharacter(char a_c) {
+  return std::isalnum(static_cast<unsigned char>(a_c)) != 0 || a_c == '_';
+}
+
+std::set<std::string> ReservedWordsIn(std::string_view a_text) {
+  std::set<std::string> found;
+  std::size_t at = 0;
+  while (at < a_text.size()) {
+    if (!IsWordCharacter(a_text[at])) {
+      ++at;
+      continue;
+    }
+    const std::size_t start = at;
+    while (at < a_text.size() && IsWordCharacter(a_text[at])) {
+      ++at;
+    }
+    std::string word{a_text.substr(start, at - start)};
+    std::ranges::transform(word, word.begin(), [](char a_c) {
+      return static_cast<char>(std::tolower(static_cast<unsigned char>(a_c)));
+    });
+    if (std::ranges::find(kEffectKeywords, word) !=
+        std::ranges::end(kEffectKeywords)) {
+      found.insert(std::move(word));
+    }
+  }
+  return found;
+}
+
+std::string Joined(const std::set<std::string> &a_words) {
+  std::string text;
+  for (const std::string &word : a_words) {
+    text += (text.empty() ? "" : ", ") + word;
+  }
+  return text;
+}
+
+void NoReservedWordIsUsed(std::string_view a_name, std::string_view a_text) {
+  const std::set<std::string> found = ReservedWordsIn(a_text);
+  Check(found.empty(),
+        std::format("{} uses no word D3DCompile reserves (found: {})", a_name,
+                    Joined(found)));
+}
+
 std::optional<std::string> Compiles(const std::filesystem::path &a_scratch,
                                     std::string_view a_name,
                                     std::string_view a_entry,
@@ -590,6 +656,7 @@ void GeneratedShadersCompile() {
             .has_value();
     Check(compiled,
           std::format("{} ({}) compiles with dxc", name, shader.entry));
+    NoReservedWordIsUsed(name, shader.text);
     (shader.entry == kGeneratedStackEntry ? stacks : programs) += 1;
   }
   std::printf("compiled %zu program and %zu stack shaders\n", programs, stacks);
@@ -698,6 +765,7 @@ void EveryShaderFileIsJoined() {
 
 int main() {
   EveryShaderFileIsJoined();
+  NoReservedWordIsUsed("the shader source", kShaderSource);
   ConstantBuffersMatchTheirStructs(EveryEntryPointCompiles());
   GeneratedShadersCompile();
   return test::Finish("shadersource");
