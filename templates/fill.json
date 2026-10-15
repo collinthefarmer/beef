@@ -195,6 +195,15 @@
     "holeSoftness": {
       "constant": 0.04
     },
+    "holeDepthRange": {
+      "constant": 0.08
+    },
+    "rimHeight": {
+      "constant": 0.1
+    },
+    "rimRadius": {
+      "constant": 2
+    },
     "surfaceIndex": {
       "expr": "floor(@enchantmentHash * 4)"
     },
@@ -332,6 +341,12 @@
           "stretch": "@noiseStretch"
         }
       }
+    },
+    "holeRim": {
+      "filter": {
+        "of": "@glowArea",
+        "edge": "@rimRadius"
+      }
     }
   },
   "masks": {
@@ -344,6 +359,7 @@
     "holeLevel": "@holeThreshold * lerp(@extremityCore, @extremityTip, @extremity)",
     "holes": "1 - smoothstep(@holeLevel + @noiseShift, @holeLevel + @noiseShift + @holeSoftness, @holeField)",
     "glowArea": "@holes * @lit",
+    "holeDepth": "saturate((@holeLevel + @noiseShift - @holeField) / @holeDepthRange) * @lit",
     "shellCover": "@lit * (1 - @holes)"
   },
   "outputs": [
@@ -391,17 +407,14 @@
       "resolution": "half",
       "stack": [
         {
-          "source": [
-            0.5,
-            0.5,
-            0.5
-          ],
-          "opacity": 1.0
-        },
-        {
-          "source": "@glowArea",
+          "source": "@holeDepth",
           "blend": "subtract",
           "opacity": 0.5
+        },
+        {
+          "source": "@holeRim",
+          "blend": "add",
+          "opacity": "@rimHeight"
         }
       ]
     },
