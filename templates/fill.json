@@ -166,24 +166,11 @@
     "flareDepth": {
       "constant": -1.0
     },
-    "flareInflate": {
-      "constant": 0.05
-    },
     "flareOpacityScaled": {
       "expr": "saturate(@flareOpacity * @flareMagnitude)"
     },
     "flareLiftScaled": {
       "expr": "@flareLift * @flareMagnitude"
-    },
-    "flareInflateAxes": {
-      "constant": [
-        1.0,
-        1.0,
-        0.0
-      ]
-    },
-    "flareInflation": {
-      "expr": "@flareInflateAxes * @flareInflate * @flareMagnitude"
     },
     "flareTint": {
       "constant": 0.5
@@ -523,9 +510,6 @@
     }
   ],
   "shell": {
-    "blend": "alpha",
-    "pose": {
-      "inflate": "@flareInflation"
-    }
+    "blend": "alpha"
   }
 }
