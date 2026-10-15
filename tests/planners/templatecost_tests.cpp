@@ -211,12 +211,11 @@ TargetCost CheckedCost(const Wearers &a_wearers, std::uint32_t a_base) {
             stacks.bytes <= held.bytes,
         std::format("at base {} a plan holds its stacks among its targets",
                     a_base));
-  Check(
-      released.targets == stacks.targets + 2 * stacks.targetsBySize.size() &&
-          stacks.bytes < released.bytes && released.bytes < held.bytes,
-      std::format(
-          "at base {} a release keeps the stacks and two bakes per stack side",
-          a_base));
+  Check(released.targets > stacks.targets && released.targets < held.targets &&
+            stacks.bytes < released.bytes && released.bytes < held.bytes,
+        std::format("at base {} a release keeps the stacks and their static "
+                    "bakes and frees the animated intermediates",
+                    a_base));
   Check(twoSame.bytes <= twoOther.bytes && twoOther.bytes <= 2 * held.bytes,
         std::format("at base {} a second wearer of one item shares at least "
                     "as much as a wearer of another item",
