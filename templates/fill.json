@@ -135,20 +135,17 @@
     "colourStrength": {
       "expr": "saturate(@magnitudeLevel / @colourFullLevel)"
     },
-    "colourDeepenWeak": {
-      "constant": 1.5
+    "colourDepthWeak": {
+      "constant": 2.2
     },
     "colourValueWeak": {
-      "constant": 0.7
+      "constant": 0.55
     },
-    "colourDeepen": {
-      "expr": "lerp(@colourDeepenWeak, 1, @colourStrength)"
-    },
-    "colourLuma": {
-      "expr": "dot(@colourHue, [0.2126, 0.7152, 0.0722])"
+    "colourDepth": {
+      "expr": "lerp(@colourDepthWeak, 1, @colourStrength)"
     },
     "deepColour": {
-      "expr": "saturate(@colourLuma * [1, 1, 1] + (@colourHue - @colourLuma * [1, 1, 1]) * @colourDeepen)"
+      "expr": "pow(@colourHue, @colourDepth * [1, 1, 1])"
     },
     "deepBrightest": {
       "expr": "max(max(dot(@deepColour, [1, 0, 0]), dot(@deepColour, [0, 1, 0])), dot(@deepColour, [0, 0, 1]))"
