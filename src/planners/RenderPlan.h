@@ -251,6 +251,7 @@ struct SlotChainRequest {
   Surface surface = Surface::kMaterial;
   Slot slot = Slot::kEmissive;
   std::vector<ChainLink> links;
+  [[nodiscard]] bool operator==(const SlotChainRequest &) const = default;
 };
 struct MergedChainBinding {
   GeometryId geometry{};
@@ -304,6 +305,7 @@ DownstreamStepsOf(const RenderPlan &plan);
 [[nodiscard]] std::vector<RenderValueRef>
 StepDependencies(const RenderPlan &plan, RenderStepId step);
 [[nodiscard]] std::vector<bool> ChangingSteps(const RenderPlan &plan);
+[[nodiscard]] std::vector<bool> NodePositionSteps(const RenderPlan &plan);
 [[nodiscard]] RenderPlan MarkContentKeyedSteps(RenderPlan plan);
 [[nodiscard]] RenderPlan MarkDirectSamples(RenderPlan plan);
 [[nodiscard]] std::vector<bool> AnimatedSteps(const RenderPlan &plan);

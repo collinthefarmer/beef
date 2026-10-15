@@ -608,6 +608,13 @@ std::vector<Trace::Field> Appended(std::vector<Trace::Field> a_head,
   return a_head;
 }
 
+std::size_t RequestCountOf(const PlanDestination &a_destination) {
+  return Match(
+      a_destination,
+      [](const RenderPlanKey &a_key) { return a_key.stacks.size(); },
+      [](const PlanBuildInput &a_input) { return a_input.requests.size(); });
+}
+
 std::vector<Trace::Field> TimingFields(const JobTiming &a_timing) {
   return {{"wait_us", std::to_string(a_timing.waitUs)},
           {"worker_us", std::to_string(a_timing.workUs)}};
@@ -667,6 +674,7 @@ struct RenderStores {
   WarningHistory &warnings;
   PlanQueue &queue;
   PlanJobBook &jobs;
+  std::vector<HandedPlan> &handed;
 };
 
 using PlanOrJob = std::variant<RenderPlan, Orchestration::PlanAwaited>;
@@ -679,13 +687,22 @@ OutcomeOf(std::expected<RenderPlan, std::string> a_plan) {
   return std::move(*a_plan);
 }
 
+std::vector<std::shared_ptr<const RecipeGraph>>
+GraphsOf(const LiveActor &a_state, const PlanDestination &a_destination) {
+  const auto *key = Get<RenderPlanKey>(a_destination);
+  return key ? GraphsNamedBy(*key, LiveGraphs(a_state))
+             : std::vector<std::shared_ptr<const RecipeGraph>>{};
+}
+
 std::optional<JobId> SubmitPlanJob(const LiveActor &a_state,
                                    const ActorRenderRequest &a_request,
-                                   const RenderPlanKey &a_key,
+                                   std::optional<RenderPlanKey> a_key,
                                    RenderStores a_stores) {
   const Metrics::Stopwatch watch;
   PlanBuildInput input = PlanInputOf(a_request);
   const std::uint64_t inputsUs = watch.Micros();
+  PlanDestination destination =
+      a_key ? PlanDestination{std::move(*a_key)} : PlanDestination{input};
   const std::expected<JobId, JobRefusal> job =
       a_stores.queue.Submit(std::move(input));
   if (!job) {
@@ -693,12 +710,14 @@ std::optional<JobId> SubmitPlanJob(const LiveActor &a_state,
                  {{"reason", std::string{RefusalName(job.error())}}});
     return std::nullopt;
   }
+  std::vector<std::shared_ptr<const RecipeGraph>> graphs =
+      GraphsOf(a_state, destination);
   a_stores.jobs =
-      Opened(std::move(a_stores.jobs),
-             {*job, a_key, GraphsNamedBy(a_key, LiveGraphs(a_state)),
-              a_request.actor});
+      Opened(std::move(a_stores.jobs), {*job, std::move(destination),
+                                        std::move(graphs), a_request.actor});
   TracePlanJob("submitted", *job, a_request.actor,
                {{"shared", "false"},
+                {"keyed", a_key ? "true" : "false"},
                 {"requests", std::to_string(a_request.build.stacks.size())},
                 {"inputs_us", std::to_string(inputsUs)},
                 {"unfinished", std::to_string(a_stores.queue.Unfinished())}});
@@ -744,9 +763,24 @@ Orchestration::PlanAwaited AwaitedJob(const ActorRenderRequest &a_request,
   return Orchestration::PlanAwaited{PlanJobIdOf(a_job)};
 }
 
+std::optional<RenderPlan> HandedPlanFor(const ActorRenderRequest &a_request,
+                                        RenderStores a_stores) {
+  if (!AwaitsHandOver(a_stores.handed, a_request.actor))
+    return std::nullopt;
+  HandOverTaken taken = TakeHandedPlan(std::move(a_stores.handed),
+                                       a_request.actor, PlanInputOf(a_request));
+  a_stores.handed = std::move(taken.handed);
+  TraceRenderPlanCache(a_request.actor,
+                       taken.plan ? "handed_over" : "handed_over_stale",
+                       a_stores.plans.Size());
+  return std::move(taken.plan);
+}
+
 std::expected<PlanOrJob, std::string>
 RenderPlanFor(const LiveActor &a_state, const ActorRenderRequest &a_request,
               const Settings &a_settings, RenderStores a_stores) {
+  if (std::optional<RenderPlan> handed = HandedPlanFor(a_request, a_stores))
+    return std::move(*handed);
   std::optional<RenderPlanKey> key =
       a_settings.renderPlanCache ? PlanKeyOf(a_request) : std::nullopt;
   const RenderPlan *cached = key ? a_stores.plans.Find(*key) : nullptr;
@@ -787,6 +821,15 @@ RenderPlanFor(const LiveActor &a_state, const ActorRenderRequest &a_request,
       return AwaitedJob(a_request, *job, a_stores);
     }
     break;
+  case PlanRoute::kSubmitUnkeyed:
+    if (const std::optional<JobId> job =
+            SubmitPlanJob(a_state, a_request, std::nullopt, a_stores)) {
+      TraceRenderPlanCache(a_request.actor, "uncacheable_job",
+                           a_stores.plans.Size());
+      return Orchestration::PlanAwaited{PlanJobIdOf(*job)};
+    }
+    TraceRenderPlanCache(a_request.actor, "uncacheable", a_stores.plans.Size());
+    return OutcomeOf(FreshRenderPlan(a_request, a_stores.warnings));
   case PlanRoute::kFreshStored:
     break;
   }
@@ -1234,7 +1277,8 @@ PlacedRender Manager::PlaceInstances(LiveActor &a_state, RE::FormID a_actorID,
   RenderOutcome built = phases.Measure("render_us", [&] {
     return BuildRequestedRender(
         a_state, request, a_settings,
-        {renderPlans_, warningHistory_, planQueue_, planJobs_}, a_bounds);
+        {renderPlans_, warningHistory_, planQueue_, planJobs_, handedPlans_},
+        a_bounds);
   });
   phases.Add("geometries", std::to_string(geometries));
   phases.Add("level", LevelText(built));
@@ -1367,7 +1411,8 @@ Orchestration::RenderEvent Manager::BuildAwaitedRender(
                       a_settings);
   const RenderOutcome built = BuildRequestedRender(
       a_state, request, a_settings,
-      {renderPlans_, warningHistory_, planQueue_, planJobs_}, a_bounds);
+      {renderPlans_, warningHistory_, planQueue_, planJobs_, handedPlans_},
+      a_bounds);
   const std::vector<GeometrySlot> unpublished = UnpublishedSlotsOf(request);
   KeepRender(a_state, built, unpublished);
   if (TextureLab *lab = TextureLab::GetSingleton()) {
@@ -1415,7 +1460,8 @@ Manager::Restaged(RE::Actor &a_actor, LiveActor &a_published,
       RenderRequestOf(staged, actorID, std::move(plan), bound, settings);
   const RenderOutcome built = BuildRequestedRender(
       staged, request, settings,
-      {renderPlans_, warningHistory_, planQueue_, planJobs_}, a_command.bounds);
+      {renderPlans_, warningHistory_, planQueue_, planJobs_, handedPlans_},
+      a_command.bounds);
   const std::vector<GeometrySlot> unpublished = UnpublishedSlotsOf(request);
   KeepRender(staged, built, unpublished);
   Orchestration::RenderEvent event = RenderEventOf(built, unpublished.size());
@@ -1490,16 +1536,21 @@ std::vector<Orchestration::PlanJobDone> Manager::DrainPlanJobs() {
           Appended({{"problem", ProblemOf(done)}}, TimingFields(done.timing)));
       continue;
     }
-    EmitPlanBuild(submitter, "worker", closed.job->key.stacks.size(),
+    EmitPlanBuild(submitter, "worker", RequestCountOf(closed.job->destination),
                   *done.result);
     TracePlanJob(
         "done", done.id, submitter,
         Appended(TimingFields(done.timing),
                  {{"steps", std::to_string(done.result->plan->steps.size())},
                   {"unfinished", std::to_string(planQueue_.Unfinished())}}));
-    renderPlans_.Store(std::move(closed.job->key),
-                       std::move(*done.result->plan),
-                       std::move(closed.job->graphs));
+    if (auto *key = Get<RenderPlanKey>(closed.job->destination)) {
+      renderPlans_.Store(std::move(*key), std::move(*done.result->plan),
+                         std::move(closed.job->graphs));
+    } else if (auto *input = Get<PlanBuildInput>(closed.job->destination)) {
+      handedPlans_ =
+          HandedOver(std::move(handedPlans_), {submitter, std::move(*input),
+                                               std::move(*done.result->plan)});
+    }
   }
   return finished;
 }

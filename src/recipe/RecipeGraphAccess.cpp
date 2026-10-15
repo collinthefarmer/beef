@@ -172,6 +172,28 @@ bool ReadsNodePositions(const RecipeGraph &a_graph) {
     return external && Is<NodePositionInput>(external->source);
   });
 }
+bool DependsOnNodePosition(const RecipeGraph &a_graph, NodeId a_node) {
+  const std::span<const RecipeNode> nodes = a_graph.Nodes();
+  std::vector<bool> seen(nodes.size(), false);
+  std::vector<NodeId> pending{a_node};
+  while (!pending.empty()) {
+    const NodeId node = pending.back();
+    pending.pop_back();
+    if (node >= nodes.size() || seen[node]) {
+      continue;
+    }
+    seen[node] = true;
+    const auto *external = Get<ExternalInput>(nodes[node].kind);
+    if (external && Is<NodePositionInput>(external->source)) {
+      return true;
+    }
+    for (const OutputRef &input : InputsOf(nodes[node].kind)) {
+      pending.push_back(input.node);
+    }
+  }
+  return false;
+}
+
 std::vector<ExternalSource> StaticExternalSources(const RecipeGraph &a_graph) {
   std::vector<ExternalSource> sources;
   const std::span<const RecipeNode> nodes = a_graph.Nodes();

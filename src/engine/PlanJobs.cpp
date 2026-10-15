@@ -11,7 +11,11 @@ std::size_t FreePlanSlots(std::size_t a_unfinished) noexcept {
 
 std::optional<JobId> OpenJobFor(const PlanJobBook &a_book,
                                 const RenderPlanKey &a_key) {
-  const auto found = std::ranges::find(a_book.open, a_key, &OpenPlanJob::key);
+  const auto found =
+      std::ranges::find_if(a_book.open, [&](const OpenPlanJob &a_job) {
+        const auto *key = Get<RenderPlanKey>(a_job.destination);
+        return key && *key == a_key;
+      });
   if (found == a_book.open.end()) {
     return std::nullopt;
   }
@@ -31,6 +35,38 @@ BookAfterClose Closed(PlanJobBook a_book, JobId a_job) {
   std::optional<OpenPlanJob> closed{std::move(*found)};
   a_book.open.erase(found);
   return {std::move(a_book), std::move(closed)};
+}
+
+std::vector<HandedPlan> HandedOver(std::vector<HandedPlan> a_handed,
+                                   HandedPlan a_plan) {
+  std::erase_if(a_handed, [&](const HandedPlan &a_held) {
+    return a_held.actor == a_plan.actor;
+  });
+  if (a_handed.size() >= kHandedPlanCapacity) {
+    a_handed.erase(a_handed.begin());
+  }
+  a_handed.push_back(std::move(a_plan));
+  return a_handed;
+}
+
+bool AwaitsHandOver(std::span<const HandedPlan> a_handed,
+                    std::uint32_t a_actor) noexcept {
+  return std::ranges::contains(a_handed, a_actor, &HandedPlan::actor);
+}
+
+HandOverTaken TakeHandedPlan(std::vector<HandedPlan> a_handed,
+                             std::uint32_t a_actor,
+                             const PlanBuildInput &a_current) {
+  const auto found = std::ranges::find(a_handed, a_actor, &HandedPlan::actor);
+  if (found == a_handed.end()) {
+    return {std::move(a_handed), std::nullopt};
+  }
+  std::optional<RenderPlan> plan;
+  if (SameBuildInput(found->input, a_current)) {
+    plan = std::move(found->plan);
+  }
+  a_handed.erase(found);
+  return {std::move(a_handed), std::move(plan)};
 }
 
 Orchestration::PlanJobId PlanJobIdOf(JobId a_job) noexcept {

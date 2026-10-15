@@ -210,8 +210,19 @@ void MatchedShaderSeparatesKeys() {
 void UncacheableRequestsGiveNoKey() {
   const RecipeGraph distance = RecipeGraph::Compile(DistanceRecipe());
   Check(ReadsNodePositions(distance), "the distance recipe reads a node");
-  Check(!KeyOf(Request(distance, "item:1")),
-        "a graph that reads a node position gives no key");
+  StackKeyRequest first = Request(distance, "item:1");
+  StackKeyRequest second = Request(distance, "item:1");
+  const auto skeleton = [](std::string a_root) {
+    return [a_root = std::move(a_root)](const ExternalSource &a_source)
+               -> std::expected<std::string, std::string> {
+      return Is<NodePositionInput>(a_source) ? a_root : std::string{"static"};
+    };
+  };
+  first.bindings.external = skeleton("0x10:0x20:NPC Head [Head]");
+  second.bindings.external = skeleton("0x30:0x40:NPC Head [Head]");
+  const auto firstKey = KeyOf(first);
+  Check(firstKey && firstKey == KeyOf(second),
+        "a node position keys by its name, not by the actor's skeleton");
   const RecipeGraph graph = RecipeGraph::Compile(MaterialRecipe());
   StackKeyRequest unhashed = Request(graph, "item:1");
   unhashed.meshHash.reset();

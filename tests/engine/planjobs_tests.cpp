@@ -43,8 +43,9 @@ void OneJobPerKey() {
 void ClosingFreesTheKey() {
   PlanJobBook book = Opened({}, JobOf(1, 1));
   BookAfterClose closed = Closed(std::move(book), JobId{1});
-  Check(closed.job.has_value() && closed.job->key == KeyNamed(1),
-        "closing an open job returns its key");
+  const auto *key =
+      closed.job ? Get<RenderPlanKey>(closed.job->destination) : nullptr;
+  Check(key && *key == KeyNamed(1), "closing an open job returns its key");
   Check(!OpenJobFor(closed.book, KeyNamed(1)).has_value(),
         "a closed job no longer takes awaiters");
   BookAfterClose again = Closed(std::move(closed.book), JobId{1});
@@ -126,6 +127,43 @@ void BookHoldsGraphsUntilClosed() {
 }
 }
 
+PlanBuildInput InputFor(std::size_t a_output) {
+  PlanBuildInput input;
+  PlanStackRequest request;
+  request.outputIndex = a_output;
+  request.identity = std::make_shared<const IdentityFacts>();
+  input.requests.push_back(std::move(request));
+  return input;
+}
+
+RenderPlan PlanNamed(std::string a_name) {
+  RenderPlan plan;
+  plan.steps.push_back({ConstantRenderStep{1.0f}, std::move(a_name)});
+  return plan;
+}
+
+void HandedPlansReachOnlyTheirOwnRequest() {
+  std::vector<HandedPlan> handed;
+  Check(!AwaitsHandOver(handed, 0x14), "no plan waits at first");
+  handed = HandedOver(std::move(handed), {0x14, InputFor(1), PlanNamed("a")});
+  Check(AwaitsHandOver(handed, 0x14) && !AwaitsHandOver(handed, 0x15),
+        "a handed plan waits for its own actor");
+  HandOverTaken changed = TakeHandedPlan(handed, 0x14, InputFor(2));
+  Check(!changed.plan && changed.handed.empty(),
+        "a plan built for another request is dropped, not used");
+  HandOverTaken same = TakeHandedPlan(handed, 0x14, InputFor(1));
+  Check(same.plan && same.plan->steps.front().displayName == "a" &&
+            same.handed.empty(),
+        "a plan built for the same request is taken once");
+  handed = HandedOver(std::move(handed), {0x14, InputFor(1), PlanNamed("b")});
+  Equal(handed.size(), std::size_t{1},
+        "a newer plan replaces the actor's older one");
+  for (std::uint32_t actor = 0; actor < kHandedPlanCapacity + 2; ++actor) {
+    handed = HandedOver(std::move(handed), {actor + 0x100, InputFor(1), {}});
+  }
+  Equal(handed.size(), kHandedPlanCapacity, "the hand-over list is bounded");
+}
+
 void FreeSlotsCountDownToZero() {
   Equal(FreePlanSlots(0), kPlanJobCapacity, "an idle queue has every slot");
   Equal(FreePlanSlots(kPlanJobCapacity - 1), std::size_t{1},
@@ -144,5 +182,6 @@ int main() {
   JobIdsConvertBothWays();
   DoneJobsBecomeCoreFacts();
   FreeSlotsCountDownToZero();
+  HandedPlansReachOnlyTheirOwnRequest();
   return test::Finish("engine_planjobs");
 }

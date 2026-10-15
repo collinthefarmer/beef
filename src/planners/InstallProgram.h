@@ -145,6 +145,7 @@ enum class PlanRoute {
   kShareJob,
   kSubmitJob,
   kFreshStored,
+  kSubmitUnkeyed,
 };
 
 struct PlanRouteFacts {

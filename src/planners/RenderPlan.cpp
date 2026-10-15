@@ -963,14 +963,15 @@ RenderPlan MergeSlotChains(RenderPlan plan,
 
 RenderPlan MarkContentKeyedSteps(RenderPlan plan) {
   const std::vector<bool> changing = ChangingSteps(plan);
+  const std::vector<bool> positioned = NodePositionSteps(plan);
   for (std::size_t i = 0; i < plan.steps.size() && i < changing.size(); ++i) {
     RenderStep &step = plan.steps[i];
     const std::optional<TextureRequirements> requirements =
         RequirementsOf(step.kind);
     const bool texture =
         OutputType(step.kind) == RenderValueType{RenderResourceType::kTexture};
-    const bool shareable = !changing[i] && texture && requirements &&
-                           step.producedKey &&
+    const bool shareable = !changing[i] && !positioned[i] && texture &&
+                           requirements && step.producedKey &&
                            !Is<CompositeStackStep>(step.kind);
     step.contentKey =
         shareable ? ContentKeyOf(*step.producedKey, step.kind, *requirements)
@@ -998,6 +999,29 @@ std::vector<bool> StepsChangingWith(const RenderPlan &plan,
               });
   return changing;
 }
+}
+
+std::vector<bool> NodePositionSteps(const RenderPlan &plan) {
+  std::vector<bool> positioned(plan.steps.size(), false);
+  const auto readsPosition = [&](RenderInputId a_id) {
+    const auto *value = Get<TextureValue>(plan.inputs[a_id].binding);
+    return value && value->graph &&
+           DependsOnNodePosition(*value->graph, value->output.node);
+  };
+  for (std::size_t step = 0; step < plan.steps.size(); ++step)
+    for (const auto &operand : StepDependencies(plan, step))
+      positioned[step] =
+          positioned[step] ||
+          Match(
+              operand,
+              [&](RenderInputRef input) {
+                return input.input < plan.inputs.size() &&
+                       readsPosition(input.input);
+              },
+              [&](StepOutputRef output) {
+                return output.step < step && positioned[output.step];
+              });
+  return positioned;
 }
 
 std::vector<bool> ChangingSteps(const RenderPlan &plan) {

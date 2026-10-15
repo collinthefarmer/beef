@@ -1298,10 +1298,18 @@ takes their identities from the same `ValueBindings` the content keys use and
 a new input kind needs no edit here. Before 2026-10-06 the key was a
 hand-kept list; it missed the item hash input (`item:<hash>`), so an actor in a
 different item with the same mesh reused another item's static outputs.
-A plan is never cached (`uncacheable` in the trace) when a graph reads a node
-position (`ReadsNodePositions`: a distance bake from an actor's skeleton, whose
-identity is the geometry and root pointers) or when a mesh has no hash yet (the
-identity would be a pointer nothing holds). `SameStructure` compares only
+A plan has no key (`uncacheable` in the trace) when a mesh has no hash yet
+(the identity would be a pointer nothing holds) or when a static input's
+identity fails. Such a plan builds in a job and is handed to its actor
+(`uncacheable_job`). A node position keys by its name (`node:<name>`), not by
+its value identity (geometry and root pointers): `MarkContentKeyedSteps` gives
+no content key to a step that depends on a node position (`NodePositionSteps`,
+via `DependsOnNodePosition` on the graph), so no output that depends on an
+actor's skeleton is shared between actors, and a reused plan carries no
+content key from the storing actor's skeleton. Each actor's instance reads its
+own node positions (`NumberValueOf`). Before 2026-10-15 a graph that read a
+node position made its plan uncacheable, so the fill template (its `fromCore`
+distance source) lowered on the main thread on every equip. `SameStructure` compares only
 whether a step has a content key, because legitimate keys differ between
 actors. An entry holds the `RecipeGraph`s its key names (`GraphsNamedBy`), so
 a graph cannot be freed or its address reused while the plan lives. No rebuild
@@ -1310,8 +1318,8 @@ gives its plans new keys and the old entries age out; it holds 64 entries and
 evicts the least recently used. A load keeps it because every key part
 survives a load: a texture identity is its address, generation and file name,
 so an address reused for another texture only matches with the same name, which
-is the same file; a mesh identity is its content hash; and a graph that reads
-node positions is never cached. On 2026-10-12 the five loads of trace
+is the same file; a mesh identity is its content hash; and a node position
+keys by its name. On 2026-10-12 the five loads of trace
 `...-1791770642202300.jsonl` gave 16 misses, all right after a load. `VerifyRenderPlanCache`, or a run
 file's `verifyRenderPlans`, builds every reused plan again and logs, traces
 and replaces one that differs. On 2026-10-03 (runs 20261003T175431 and
@@ -1951,8 +1959,9 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
   failed.
 - `Planning` has no target level (`TargetLevel`), so the screen level
   step skips the actor. It has no instance to resize.
-- `VerifyRenderPlanCache`, a run file's `verifyRenderPlans`, a disabled plan
-  cache and an uncacheable key keep the synchronous build (`PlanRouteOf`).
+- `VerifyRenderPlanCache`, a run file's `verifyRenderPlans` and a disabled
+  plan cache keep the synchronous build (`PlanRouteOf`). An unkeyed request
+  builds in a job.
   Verification compares a reused plan with a fresh build in the same executor
   call.
 - The first draw advances only while the actor is in view, because the core
@@ -4543,11 +4552,22 @@ once per tick. "The engine runs the core" below says how.
 - The executor copies the `GeometryInputs` for the `RenderInstance` after it
   clears each geometry's render. A copy that held the new render would keep
   the instance alive through its own inputs.
-- **Plan route.** `PlanRouteOf` chooses one of seven routes from the cache
+- **Plan route.** `PlanRouteOf` chooses one of eight routes from the cache
   setting, the key, a cached plan, verification and an open job: `kFresh`
-  (the cache is off), `kUncacheable`, `kCached`, `kVerifyCached`,
-  `kShareJob`, `kSubmitJob` and `kFreshStored` (a verifying miss). A refused
-  submission builds a fresh plan and stores it.
+  (the cache is off), `kUncacheable` (no key, verifying), `kSubmitUnkeyed`
+  (no key), `kCached`, `kVerifyCached`, `kShareJob`, `kSubmitJob` and
+  `kFreshStored` (a verifying miss). A refused keyed submission builds a
+  fresh plan and stores it; a refused unkeyed submission builds a fresh plan
+  on the main thread.
+- A job's `PlanDestination` is its plan key or, for an unkeyed job, the
+  `PlanBuildInput` it was submitted with. `DrainPlanJobs` stores a keyed
+  result in the cache. It hands an unkeyed result to its actor
+  (`HandedOver`; one plan per actor, at most `kHandedPlanCapacity`). The
+  actor's next `RenderPlanFor` takes it (`TakeHandedPlan`) only when the
+  actor's current input equals the submitted one (`SameBuildInput`: graph
+  and output pointers, recipe, output index, placement, geometry, context,
+  side, identity facts and chains). A plan built for an older input is
+  dropped (`handed_over_stale` in the trace) and the request routes again.
 - The plan cache and the job book stay in the engine. They are mutable state
   that actors share, which the boundary rule gives to the core. They are an
   exception because they change when a plan is ready, not which plan an actor

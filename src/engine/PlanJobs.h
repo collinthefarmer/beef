@@ -13,7 +13,9 @@
 #include <expected>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
+#include <variant>
 #include <vector>
 
 namespace BetterEnchantmentEffects {
@@ -21,11 +23,26 @@ using PlanQueue = JobQueue<PlanBuildInput, PlanBuildOutput>;
 
 inline constexpr std::size_t kPlanJobCapacity = 16;
 
+using PlanDestination = std::variant<RenderPlanKey, PlanBuildInput>;
+
 struct OpenPlanJob {
   JobId job{};
-  RenderPlanKey key;
+  PlanDestination destination;
   std::vector<std::shared_ptr<const RecipeGraph>> graphs;
   std::uint32_t actor = 0;
+};
+
+struct HandedPlan {
+  std::uint32_t actor = 0;
+  PlanBuildInput input;
+  RenderPlan plan;
+};
+
+inline constexpr std::size_t kHandedPlanCapacity = kPlanJobCapacity;
+
+struct HandOverTaken {
+  std::vector<HandedPlan> handed;
+  std::optional<RenderPlan> plan;
 };
 
 struct PlanJobBook {
@@ -42,6 +59,13 @@ struct BookAfterClose {
                                               const RenderPlanKey &a_key);
 [[nodiscard]] PlanJobBook Opened(PlanJobBook a_book, OpenPlanJob a_job);
 [[nodiscard]] BookAfterClose Closed(PlanJobBook a_book, JobId a_job);
+[[nodiscard]] std::vector<HandedPlan>
+HandedOver(std::vector<HandedPlan> a_handed, HandedPlan a_plan);
+[[nodiscard]] bool AwaitsHandOver(std::span<const HandedPlan> a_handed,
+                                  std::uint32_t a_actor) noexcept;
+[[nodiscard]] HandOverTaken TakeHandedPlan(std::vector<HandedPlan> a_handed,
+                                           std::uint32_t a_actor,
+                                           const PlanBuildInput &a_current);
 [[nodiscard]] Orchestration::PlanJobId PlanJobIdOf(JobId a_job) noexcept;
 [[nodiscard]] JobId JobIdOf(Orchestration::PlanJobId a_job) noexcept;
 [[nodiscard]] Orchestration::PlanJobDone

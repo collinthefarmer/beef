@@ -1,6 +1,7 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #include "planners/RenderPlanJob.h"
 
+#include <algorithm>
 #include <chrono>
 #include <format>
 #include <utility>
@@ -112,5 +113,30 @@ PlanBuildOutput BuildPlanFrom(const PlanBuildInput &a_input) {
                                 ResolverOf(a_input), a_input.chains);
   output.phases.lowerUs = MicrosSince(lowerStart);
   return output;
+}
+
+namespace {
+bool SameIdentity(
+    const std::shared_ptr<const IdentityFacts> &a_left,
+    const std::shared_ptr<const IdentityFacts> &a_right) noexcept {
+  return a_left == a_right || (a_left && a_right && *a_left == *a_right);
+}
+
+bool SameRequest(const PlanStackRequest &a_left,
+                 const PlanStackRequest &a_right) noexcept {
+  return a_left.graph == a_right.graph && a_left.output == a_right.output &&
+         a_left.recipe == a_right.recipe &&
+         a_left.outputIndex == a_right.outputIndex &&
+         a_left.placement == a_right.placement &&
+         a_left.geometry == a_right.geometry &&
+         a_left.context == a_right.context && a_left.side == a_right.side &&
+         SameIdentity(a_left.identity, a_right.identity);
+}
+}
+
+bool SameBuildInput(const PlanBuildInput &a_left,
+                    const PlanBuildInput &a_right) noexcept {
+  return a_left.chains == a_right.chains &&
+         std::ranges::equal(a_left.requests, a_right.requests, SameRequest);
 }
 }

@@ -119,6 +119,7 @@ void Manager::Clear() {
   heartbeatDue_ = false;
   disagreements_.clear();
   planJobs_ = {};
+  handedPlans_ = {};
   (void)planQueue_.DropQueued();
   editor_.CancelFileOperationsForLoad();
   SweepRetiredMaterialTextures();

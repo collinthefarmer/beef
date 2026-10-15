@@ -376,6 +376,7 @@ private:
   CarriedInstances carriedInstances_;
   RenderPlanCache renderPlans_;
   PlanJobBook planJobs_;
+  std::vector<HandedPlan> handedPlans_;
   PlanQueue planQueue_{BuildPlanFrom, kPlanJobCapacity};
 
   std::optional<IdleCameraHold> menuIdleHold_;

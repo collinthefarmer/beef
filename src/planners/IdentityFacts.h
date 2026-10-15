@@ -30,6 +30,7 @@ struct IdentityFacts {
   std::string geometryName;
   std::uint32_t geometryIndex = 0;
   std::uint32_t geometryCount = 1;
+  [[nodiscard]] bool operator==(const IdentityFacts &) const = default;
 };
 
 [[nodiscard]] const std::string &

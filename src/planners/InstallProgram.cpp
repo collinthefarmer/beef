@@ -388,7 +388,8 @@ PlanRoute PlanRouteOf(const PlanRouteFacts &a_facts) noexcept {
     return PlanRoute::kFresh;
   }
   if (!a_facts.keyed) {
-    return PlanRoute::kUncacheable;
+    return a_facts.verifies ? PlanRoute::kUncacheable
+                            : PlanRoute::kSubmitUnkeyed;
   }
   if (a_facts.cached) {
     return a_facts.verifies ? PlanRoute::kVerifyCached : PlanRoute::kCached;

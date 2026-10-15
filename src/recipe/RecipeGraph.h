@@ -93,6 +93,8 @@ private:
 [[nodiscard]] bool IsAnimated(const RecipeGraph &a_graph,
                               const Output &a_output);
 [[nodiscard]] bool ReadsNodePositions(const RecipeGraph &a_graph);
+[[nodiscard]] bool DependsOnNodePosition(const RecipeGraph &a_graph,
+                                         NodeId a_node);
 [[nodiscard]] std::vector<ExternalSource>
 StaticExternalSources(const RecipeGraph &a_graph);
 [[nodiscard]] std::vector<GeometryBake>

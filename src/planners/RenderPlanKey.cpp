@@ -22,6 +22,10 @@ StaticInputIdentities(const RecipeGraph &a_graph,
                       const ValueBindings &a_bindings) {
   std::vector<std::string> identities;
   for (const ExternalSource &source : StaticExternalSources(a_graph)) {
+    if (const auto *position = Get<NodePositionInput>(source)) {
+      identities.push_back("node:" + position->name);
+      continue;
+    }
     if (!a_bindings.external) {
       return std::nullopt;
     }
@@ -40,8 +44,7 @@ StaticInputIdentities(const RecipeGraph &a_graph,
 }
 
 std::optional<StackKey> StackKeyOf(const StackKeyRequest &a_request) {
-  if (!a_request.graph || !a_request.meshHash ||
-      ReadsNodePositions(*a_request.graph)) {
+  if (!a_request.graph || !a_request.meshHash) {
     return std::nullopt;
   }
   std::optional<std::vector<std::string>> inputs =

@@ -46,4 +46,6 @@ struct PlanBuildOutput {
 };
 
 [[nodiscard]] PlanBuildOutput BuildPlanFrom(const PlanBuildInput &a_input);
+[[nodiscard]] bool SameBuildInput(const PlanBuildInput &a_left,
+                                  const PlanBuildInput &a_right) noexcept;
 }

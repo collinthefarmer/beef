@@ -393,8 +393,11 @@ void ThePlanRouteFollowsTheCache() {
   Check(PlanRouteOf({false, true, true, false, true}) == PlanRoute::kFresh,
         "a disabled cache builds a fresh plan");
   Check(PlanRouteOf({true, false, false, false, false}) ==
+            PlanRoute::kSubmitUnkeyed,
+        "a request without a key builds in a job that hands the plan back");
+  Check(PlanRouteOf({true, false, false, true, false}) ==
             PlanRoute::kUncacheable,
-        "a request without a key builds a fresh plan");
+        "a verifying run builds a request without a key at once");
   Check(PlanRouteOf({true, true, true, false, false}) == PlanRoute::kCached,
         "a cached plan is reused");
   Check(PlanRouteOf({true, true, true, true, false}) ==

@@ -209,6 +209,43 @@ Recipe RippleBeforePositionBake() {
   return recipe;
 }
 
+Recipe DistanceBesideBake() {
+  Recipe recipe;
+  recipe.sources = {{"near", DistanceSource{"NPC Head [Head]"}},
+                    {"position", MeshSource{PositionBake{}}}};
+  SurfaceOutput surface;
+  Layer near;
+  near.source = Ref{"near"};
+  Layer position;
+  position.source = Ref{"position"};
+  surface.stack = {near, position};
+  recipe.outputs.push_back(surface);
+  return recipe;
+}
+
+void NodePositionStepsAreNeverShared() {
+  const Recipe recipe = DistanceBesideBake();
+  const RecipeGraph graph = RecipeGraph::Compile(recipe);
+  const std::optional<RenderPlan> plan = SingleStackPlan(recipe, graph);
+  if (!plan)
+    return;
+  const std::vector<bool> positioned = NodePositionSteps(*plan);
+  bool anyPositioned = false;
+  bool positionedUnkeyed = true;
+  bool otherKeyed = false;
+  for (std::size_t i = 0; i < plan->steps.size(); ++i) {
+    const RenderStep &step = plan->steps[i];
+    anyPositioned = anyPositioned || positioned[i];
+    positionedUnkeyed =
+        positionedUnkeyed && (!positioned[i] || !step.contentKey);
+    otherKeyed = otherKeyed || (!positioned[i] && step.contentKey);
+  }
+  Check(anyPositioned, "the distance bake depends on a node position");
+  Check(positionedUnkeyed,
+        "a step that depends on a node position carries no content key");
+  Check(otherKeyed, "the position bake beside it keeps its content key");
+}
+
 Recipe ImageOverBake() {
   Recipe recipe;
   ImageSource image;
@@ -652,6 +689,7 @@ int main() {
   }
   GeometryBakesLowerByName();
   ContentKeysMarkOnlyStaticTextureSteps(recipes);
+  NodePositionStepsAreNeverShared();
   TextureReadsAreSampledDirectly(recipes);
   ImagesReadOnlyBySamplingAreDirect();
   SlotChainsMergeIntoOnePass();
