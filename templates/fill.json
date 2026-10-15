@@ -1,7 +1,7 @@
 {
   "format": 1,
   "name": "Fill import template",
-  "description": "The baseline import template for an effect shader with a fill texture. A pick lights a few texture charts of one material group on one of the piece's geometries. There the material glows in the shader's colour (or, when that colour is nearly white, its edge colour or a hue seeded by the effect), turned in hue by the effect and deeper and darker at weak magnitudes, takes a roughness and metallic chosen by the enchantment, and sinks into a relief; a shell copy of the piece covers it, with DarkSwirls holes through which the glow shows. Weak enchantments show faintly: the glow and the sheen scale with a presence that eases in up to 0.6 magnitude level, so light only peeks through the holes. The holes pulse gently in size, grow with the enchantment's magnitude and with distance from the spine, so the effect gathers at the extremities; the glow pulses very slightly and scales with magnitude, as do the relief (flat at weak magnitudes), how many charts light and the least share of the geometry they cover. Under the shell the picked area also carries a fuzz sheen in the glow's hue, slightly brightened, a halo at grazing angles. The enchantment, its effect and the worn item fix which geometry, material group and charts glow, always at least one chart.",
+  "description": "The baseline import template for an effect shader with a fill texture. A pick lights a few texture charts of one material group on one of the piece's geometries. There the material glows in the shader's colour (or, when that colour is nearly white, its edge colour or a hue seeded by the effect), turned in hue by the effect and deeper and darker at weak magnitudes, takes a roughness and metallic chosen by the enchantment, and sinks into a relief; a shell copy of the piece covers it, with holes cut by baked noise over the piece's bind-pose position, seamless across its UV charts and drifting as three noise fields cross-fade, through which the glow shows. Weak enchantments show faintly: the glow and the sheen scale with a presence that eases in up to 0.6 magnitude level, so light only peeks through the holes. The holes pulse gently in size, grow with the enchantment's magnitude and with distance from the spine, so the effect gathers at the extremities; the glow pulses very slightly and scales with magnitude, as do the relief (flat at weak magnitudes), how many charts light and the least share of the geometry they cover. Under the shell the picked area also carries a fuzz sheen in the glow's hue, slightly brightened, a halo at grazing angles. The enchantment, its effect and the worn item fix which geometry, material group and charts glow, always at least one chart.",
   "keys": [
     {
       "effectShader": "ImportedEffectShader"
@@ -165,33 +165,6 @@
     "glowColor": {
       "expr": "@deepColour / max(@deepBrightest, 0.001) * lerp(@colourValueWeak, 1, @colourStrength)"
     },
-    "swirlSize": {
-      "constant": 1.0
-    },
-    "swirlSizeMin": {
-      "constant": 0.2
-    },
-    "swirlTileA": {
-      "expr": "[3, 3] / (@swirlSize * lerp(@swirlSizeMin, 1, rand()))"
-    },
-    "swirlTileB": {
-      "expr": "[5, 5] / (@swirlSize * lerp(@swirlSizeMin, 1, rand()))"
-    },
-    "swirlSpeedBase": {
-      "constant": 1.0
-    },
-    "swirlSpeedVariation": {
-      "constant": 0.5
-    },
-    "swirlSpeed": {
-      "expr": "@swirlSpeedBase * lerp(1 - @swirlSpeedVariation, 1 + @swirlSpeedVariation, rand())"
-    },
-    "swirlFlowA": {
-      "expr": "time * [0.03, -0.02] * @swirlSpeed"
-    },
-    "swirlFlowB": {
-      "expr": "time * [-0.01, 0.025] * @swirlSpeed"
-    },
     "holeBase": {
       "constant": 0.12
     },
@@ -251,6 +224,18 @@
     },
     "extremityTip": {
       "constant": 1.6
+    },
+    "noiseFlowPeriod": {
+      "constant": 9.0
+    },
+    "noisePhase": {
+      "expr": "time * 6.2832 / @noiseFlowPeriod + @effectHash * 6.2832"
+    },
+    "noiseWeights": {
+      "expr": "([1, 1, 1] + [cos(@noisePhase), cos(@noisePhase - 2.0944), cos(@noisePhase - 4.1888)]) / 3"
+    },
+    "noiseShift": {
+      "constant": 0.25
     }
   },
   "sources": {
@@ -272,34 +257,23 @@
         ]
       }
     },
-    "swirlA": {
-      "image": {
-        "path": "Effects\\DarkSwirls.dds",
-        "channel": "luma",
-        "space": "tiled",
-        "tile": "@swirlTileA",
-        "scroll": "@swirlFlowA"
-      }
-    },
-    "swirlB": {
-      "image": {
-        "path": "Effects\\DarkSwirls.dds",
-        "channel": "luma",
-        "space": "tiled",
-        "tile": "@swirlTileB",
-        "scroll": "@swirlFlowB",
-        "transpose": true
-      }
-    },
     "fromCore": {
       "distance": "NPC Spine1 [Spn1]"
+    },
+    "noise": {
+      "mesh": {
+        "noise": {
+          "cell": 7,
+          "octaves": 2
+        }
+      }
     }
   },
   "masks": {
-    "swirl": "@swirlA * @swirlB",
+    "holeNoise": "0.5 + (dot(@noise, @noiseWeights) - 0.5) * 1.4142",
     "extremity": "smoothstep(@extremityNear, @extremityFar, @fromCore)",
     "holeLevel": "@holeThreshold * lerp(@extremityCore, @extremityTip, @extremity)",
-    "holes": "1 - smoothstep(@holeLevel, @holeLevel + @holeSoftness, @swirl)",
+    "holes": "1 - smoothstep(@holeLevel + @noiseShift, @holeLevel + @noiseShift + @holeSoftness, @holeNoise)",
     "glowArea": "@holes * @lit",
     "shellCover": "@lit * (1 - @holes)"
   },

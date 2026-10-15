@@ -400,6 +400,68 @@ float4 BakePS(BakeOut i) : SV_Target
 	return float4(i.value, 1);
 }
 
+cbuffer BakeNoiseParams : register(b7)
+{
+	uint4 bakeNoise;
+};
+
+uint LatticeHash(int3 c, uint seed)
+{
+	uint h = asuint(c.x) * 73856093u ^ asuint(c.y) * 19349663u ^ asuint(c.z) * 83492791u ^ seed * 2654435761u;
+	h ^= h >> 16;
+	h *= 0x7feb352du;
+	h ^= h >> 15;
+	h *= 0x846ca68bu;
+	h ^= h >> 16;
+	return h;
+}
+
+float LatticeValue(int3 c, uint seed)
+{
+	return (float)(LatticeHash(c, seed) >> 8) * (1.0 / 16777216.0);
+}
+
+float ValueNoise(float3 p, uint seed)
+{
+	float3 cell = floor(p);
+	int3 c = int3(cell);
+	float3 f = p - cell;
+	float3 u = f * f * (3.0 - 2.0 * f);
+	float y0z0 = lerp(LatticeValue(c, seed), LatticeValue(c + int3(1, 0, 0), seed), u.x);
+	float y1z0 = lerp(LatticeValue(c + int3(0, 1, 0), seed), LatticeValue(c + int3(1, 1, 0), seed), u.x);
+	float y0z1 = lerp(LatticeValue(c + int3(0, 0, 1), seed), LatticeValue(c + int3(1, 0, 1), seed), u.x);
+	float y1z1 = lerp(LatticeValue(c + int3(0, 1, 1), seed), LatticeValue(c + int3(1, 1, 1), seed), u.x);
+	return lerp(lerp(y0z0, y1z0, u.y), lerp(y0z1, y1z1, u.y), u.z);
+}
+
+float FractalNoise(float3 p, uint octaves, uint seed)
+{
+	float sum = 0;
+	float total = 0;
+	float amplitude = 1;
+	float frequency = 1;
+	[unroll] for (uint o = 0; o < 4; ++o) {
+		if (o < octaves) {
+			sum += amplitude * ValueNoise(p * frequency, seed + o * 7919u);
+			total += amplitude;
+		}
+		amplitude *= 0.5;
+		frequency *= 2.0;
+	}
+	return sum / total;
+}
+
+float4 BakeNoisePS(BakeOut i) : SV_Target
+{
+	uint octaves = clamp(bakeNoise.x, 1u, 4u);
+	uint seed = bakeNoise.y;
+	return float4(
+		FractalNoise(i.value, octaves, seed),
+		FractalNoise(i.value + float3(17.3, 5.9, 31.1), octaves, seed + 101u),
+		FractalNoise(i.value + float3(41.7, 23.3, 11.9), octaves, seed + 202u),
+		1);
+}
+
 float4 DilatePS(VSOut i) : SV_Target
 {
 	int3 at = int3(int2(i.pos.xy), 0);

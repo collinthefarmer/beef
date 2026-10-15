@@ -149,6 +149,9 @@ struct MeshSourceRow {
   std::string partition;
   std::string bones;
   std::string geometry;
+  std::string noiseCell = "7";
+  std::string noiseOctaves = "2";
+  std::string noiseSeed = "0";
 };
 
 struct DistanceSourceRow {

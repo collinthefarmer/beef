@@ -479,9 +479,19 @@ struct GeometryBake {
   std::string geometry;
   [[nodiscard]] bool operator==(const GeometryBake &) const = default;
 };
+inline constexpr float kMinNoiseCell = 0.25f;
+inline constexpr float kMaxNoiseCell = 256.0f;
+inline constexpr std::uint32_t kMaxNoiseOctaves = 4;
+inline constexpr std::uint32_t kMaxNoiseSeed = 1u << 24;
+struct NoiseBake {
+  float cell = 7.0f;
+  std::uint32_t octaves = 2;
+  std::uint32_t seed = 0;
+  [[nodiscard]] bool operator==(const NoiseBake &) const = default;
+};
 using BakeKind = std::variant<PositionBake, LocalPositionBake, NormalBake,
                               UvBake, PartitionBake, BoneWeightBake, PartBake,
-                              ChartBake, GeometryBake>;
+                              ChartBake, GeometryBake, NoiseBake>;
 struct MeshSource {
   BakeKind bake = PositionBake{};
   [[nodiscard]] bool operator==(const MeshSource &) const = default;

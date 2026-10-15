@@ -605,6 +605,26 @@ std::optional<BakeKind> GeometryBakeFrom(const json &a_v,
   return GeometryBake{a_v.get<std::string>()};
 }
 
+std::optional<BakeKind> NoiseBakeFrom(const json &a_v, const Reporter &a_ctx) {
+  if (!a_v.is_object()) {
+    a_ctx.Error("'noise' takes an object with 'cell', 'octaves' and 'seed'");
+    return std::nullopt;
+  }
+  NoiseBake noise;
+  Reader r(a_v, a_ctx);
+  if (auto cell = r.Number("cell")) {
+    noise.cell = *cell;
+  }
+  bool ok = r.IntRange("octaves", 1, static_cast<int>(kMaxNoiseOctaves),
+                       noise.octaves);
+  ok &= r.IntRange("seed", 0, static_cast<int>(kMaxNoiseSeed), noise.seed);
+  r.Finish();
+  if (!ok) {
+    return std::nullopt;
+  }
+  return noise;
+}
+
 bool IsParameterisedBake(const BakeKind &a_kind) {
   return Is<PartitionBake>(a_kind) || Is<BoneWeightBake>(a_kind) ||
          Is<GeometryBake>(a_kind);
@@ -618,8 +638,9 @@ ParseSourceAlternative<MeshSource>(const json &a_v, const Reporter &a_ctx) {
     const auto bare = DefaultBakeKind(a_v.get<std::string>());
     if (!bare || IsParameterisedBake(*bare)) {
       a_ctx.Error(std::format("'mesh' is one of {}, or {{\"partition\": "
-                              "slot}}, {{\"boneWeight\": [bones]}} or "
-                              "{{\"geometry\": name}}",
+                              "slot}}, {{\"boneWeight\": [bones]}}, "
+                              "{{\"geometry\": name}} or {{\"noise\": "
+                              "{{…}}}}",
                               Choices(kBakeKindWords)));
       return std::nullopt;
     }
@@ -637,6 +658,8 @@ ParseSourceAlternative<MeshSource>(const json &a_v, const Reporter &a_ctx) {
     bake = BoneWeightBakeFrom(*inner->value, a_ctx);
   } else if (inner->key == "geometry") {
     bake = GeometryBakeFrom(*inner->value, a_ctx);
+  } else if (inner->key == "noise") {
+    bake = NoiseBakeFrom(*inner->value, a_ctx);
   } else {
     a_ctx.Error(std::format("unknown mesh fact '{}'", inner->key));
     return std::nullopt;

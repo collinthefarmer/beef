@@ -122,7 +122,7 @@ order, and the asserts in `Words.h` keep `kSourceKindWords` in the same order.
 |---|---|---|
 | `ImageSource` | `image` | A texture sampled per texel: one `ImageChannel` in tiled or mesh `ImageSpace`, with optional scroll, tile, mirror, transpose, and mip. Its `ImageTexture` is an `ImageFile` (`path`) or an `EffectShaderImage` (`effectShader`: the fill or membrane texture of the matched effect's shader). |
 | `MaterialSource` | `material` | One `MaterialChannel` of the piece's own material, such as diffuseRgb, roughness, or relief. |
-| `MeshSource` | `mesh` | One `BakeKind` computed from the mesh: position, localPosition, normal, uv, partition, boneWeight, part, chart, or geometry. |
+| `MeshSource` | `mesh` | One `BakeKind` computed from the mesh: position, localPosition, normal, uv, partition, boneWeight, part, chart, geometry, or noise (`NoiseBake`: three value-noise fields over the bind-pose position). |
 | `DistanceSource` | `distance` | The texel's distance from a named skeleton node. |
 | `RippleSource` | `ripple` | A ring or disc (`RippleShape`) that spreads from a trigger firing at `speed`, `width` wide, fading at `decay`. A nonzero `direction` turns it into a plane sweep. |
 | `MaterialGroupsSource` | `material` → `groups` | The id of each texel's material group under `ClusterSettings`, or 1 on one picked group, or a palette colour. |

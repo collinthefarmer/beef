@@ -1061,12 +1061,16 @@ bool TextureLab::BakeMesh(RenderTarget &a_target, const BakeBuffers &a_bake) {
           : Acquire(TextureSize{a_target.size}, "bake coverage",
                     FormatFor(false, a_target.format), TargetMips::kNone);
   RenderTarget &drawn = coverage ? *coverage : a_target;
-  DrawBakeTriangles(pass, drawn, *buffers);
+  if (a_bake.noise &&
+      (!gpu_->bake->noisePixel.Get() || !gpu_->bake->noiseConstants.Get())) {
+    return false;
+  }
+  DrawBakeTriangles(pass, drawn, *buffers, a_bake.noise);
   if (DilateInto(pass, drawn, a_target)) {
     return true;
   }
   if (coverage) {
-    DrawBakeTriangles(pass, a_target, *buffers);
+    DrawBakeTriangles(pass, a_target, *buffers, a_bake.noise);
   }
   if (a_target.mips == TargetMips::kGeneratedOnDraw) {
     GenerateMips(pass, a_target);
@@ -1076,7 +1080,8 @@ bool TextureLab::BakeMesh(RenderTarget &a_target, const BakeBuffers &a_bake) {
 
 void TextureLab::DrawBakeTriangles(const RenderPass &a_pass,
                                    RenderTarget &a_target,
-                                   const UploadedBakeBuffers &a_buffers) {
+                                   const UploadedBakeBuffers &a_buffers,
+                                   const std::optional<NoiseShading> &a_noise) {
   if (!gpu_ || !gpu_->bake.has_value()) {
     return;
   }
@@ -1095,7 +1100,16 @@ void TextureLab::DrawBakeTriangles(const RenderPass &a_pass,
   a_pass.Context().IASetPrimitiveTopology(
       D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
   a_pass.Context().VSSetShader(pipeline.vertex.Get(), nullptr, 0);
-  a_pass.Context().PSSetShader(pipeline.pixel.Get(), nullptr, 0);
+  if (a_noise && pipeline.noisePixel.Get() && pipeline.noiseConstants.Get()) {
+    const BakeNoiseConstants constants{{a_noise->octaves, a_noise->seed, 0, 0}};
+    a_pass.Context().UpdateSubresource(pipeline.noiseConstants.Get(), 0,
+                                       nullptr, &constants, 0, 0);
+    REX::W32::ID3D11Buffer *noiseBuffer = pipeline.noiseConstants.Get();
+    a_pass.Context().PSSetConstantBuffers(kBakeNoiseSlot, 1, &noiseBuffer);
+    a_pass.Context().PSSetShader(pipeline.noisePixel.Get(), nullptr, 0);
+  } else {
+    a_pass.Context().PSSetShader(pipeline.pixel.Get(), nullptr, 0);
+  }
   REX::W32::ID3D11ShaderResourceView *noSrvs[kPassSrvs]{};
   a_pass.Context().PSSetShaderResources(0, kPassSrvs, noSrvs);
   a_pass.Context().DrawIndexed(a_buffers.indexCount, 0, 0);

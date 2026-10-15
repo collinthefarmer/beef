@@ -294,7 +294,7 @@ ValueType SourceType(const Source &a_source) noexcept {
           return ValueType::kVec2;
         }
         return Is<PositionBake>(s.bake) || Is<LocalPositionBake>(s.bake) ||
-                       Is<NormalBake>(s.bake)
+                       Is<NormalBake>(s.bake) || Is<NoiseBake>(s.bake)
                    ? ValueType::kVec3
                    : ValueType::kScalar;
       },

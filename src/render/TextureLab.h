@@ -433,6 +433,8 @@ private:
     REX::W32::ComPtr<REX::W32::ID3D11VertexShader> vertex;
     REX::W32::ComPtr<REX::W32::ID3D11PixelShader> pixel;
     REX::W32::ComPtr<REX::W32::ID3D11InputLayout> layout;
+    REX::W32::ComPtr<REX::W32::ID3D11PixelShader> noisePixel;
+    REX::W32::ComPtr<REX::W32::ID3D11Buffer> noiseConstants;
   };
   struct GpuResources {
     REX::W32::ComPtr<REX::W32::ID3D11VertexShader> vertex;
@@ -463,7 +465,8 @@ private:
   void BindTarget(const RenderPass &a_pass, RenderTarget &a_target);
   void UnbindTarget(const RenderPass &a_pass, std::uint32_t a_srvCount);
   void DrawBakeTriangles(const RenderPass &a_pass, RenderTarget &a_target,
-                         const UploadedBakeBuffers &a_buffers);
+                         const UploadedBakeBuffers &a_buffers,
+                         const std::optional<NoiseShading> &a_noise);
   bool DilateInto(const RenderPass &a_pass, RenderTarget &a_source,
                   RenderTarget &a_destination);
 

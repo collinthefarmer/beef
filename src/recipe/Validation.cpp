@@ -180,6 +180,13 @@ struct SourceFields {
         geometry && geometry->geometry.empty()) {
       report.Error("'geometry' names a geometry or a glob");
     }
+    if (const auto *noise = Get<NoiseBake>(s.bake)) {
+      Number(report, noise->cell, "cell");
+      if (!(noise->cell >= kMinNoiseCell) || noise->cell > kMaxNoiseCell) {
+        report.Error(std::format("'cell' is {}..{} units", kMinNoiseCell,
+                                 kMaxNoiseCell));
+      }
+    }
   }
   void operator()(const RippleSource &s) const {
     Scalar(report, s.speed, "speed");

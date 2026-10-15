@@ -226,6 +226,14 @@ int main() {
             Near(positionBake.vertices[1].u, 1.0f),
         "the bake carries the uv");
 
+  const auto noiseBake = BuildBake(mesh, NoiseBake{4.0f, 3, 11});
+  Check(noiseBake.vector && noiseBake.noise && noiseBake.noise->octaves == 3 &&
+            noiseBake.noise->seed == 11 && !positionBake.noise,
+        "a noise bake is a vector bake shaded as noise");
+  Check(Near(noiseBake.vertices[1].value[0],
+             mesh.partitions[0].vertices[1].position.x / 4.0f),
+        "a noise bake carries the raw position in cells");
+
   const auto localBake = BuildBake(mesh, LocalPositionBake{});
   Check(localBake.vector &&
             localBake.problem == "the mesh has no bound to map positions into",

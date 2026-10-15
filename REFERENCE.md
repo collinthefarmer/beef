@@ -2094,6 +2094,21 @@ builds the new one beside it, as a resize does.
   is the summed weight of the named bones (sorted, so two orders of one set
   share a key); `part` and `chart` carry island id / 255 in x with
   `kNoIsland` vertices at 1 and need the analysis, not the mesh alone.
+- `{"mesh": {"noise": {cell, octaves, seed}}}` (`NoiseBake`, 2026-10-15) is
+  three fractal value-noise fields (r, g, b) over the bind-pose position.
+  `BuildBake` writes each vertex's raw position divided by `cell` and marks
+  the buffers `noise`; the bake pass draws them with `BakeNoisePS`, which
+  evaluates the noise per pixel from the interpolated position, so the input
+  has full float precision (the `position` bake stores 8 bits over 256
+  units, about one unit per step) and the pattern is continuous across UV
+  seams. The constants (`BakeNoiseParams`, b7) carry octaves and seed.
+  `mesh/Noise.h` is the CPU reference: the same lattice hash, smoothstep
+  fade, trilinear blend, octave seeds (`+7919` per octave) and field
+  offsets and seeds (`+101` per field). Its tests pin range, continuity and
+  seeding; the shader is checked by the dxc suite, not compared texel by
+  texel. A mask animates the fields by cross-fading channels: weights
+  `(1 + cos(φ − k·120°)) / 3` sum to 1 and their squares to 0.5, so
+  `0.5 + (blend − 0.5) × √2` keeps the spread of a single field.
 - `{"mesh": {"geometry": glob}}` (`GeometryBake`) is the mesh coverage (1 on
   every triangle, all partitions) when the rendered geometry's name matches
   the glob (`IsNamedBy`, the selector clause's `GlobMatch`), else 0

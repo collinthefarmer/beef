@@ -1432,6 +1432,77 @@ void MaterialFields(std::vector<FormField> &a_form, const SourceContext &a_ctx,
                        ParseMaterialChannel)));
 }
 
+template <class M, class Parse>
+[[nodiscard]] FieldBinding
+BindNoiseMember(std::string a_name, SourceKind a_record, M NoiseBake::*a_member,
+                Parse a_parse) {
+  return [name = std::move(a_name), record = std::move(a_record), a_member,
+          a_parse](const std::string &a_text) -> std::optional<RecipeEdit> {
+    SourceKind kind = record;
+    MeshSource *mesh = Get<MeshSource>(kind);
+    NoiseBake *noise = mesh ? Get<NoiseBake>(mesh->bake) : nullptr;
+    const auto value = a_parse(a_text);
+    if (noise == nullptr || !value) {
+      return std::nullopt;
+    }
+    noise->*a_member = *value;
+    return SetSource{name, kind};
+  };
+}
+
+[[nodiscard]] std::optional<float> NoiseCellOf(const std::string &a_text) {
+  const auto param = ParseParam(a_text);
+  const auto *value = param ? Get<float>(*param) : nullptr;
+  return value && *value >= kMinNoiseCell && *value <= kMaxNoiseCell
+             ? std::optional{*value}
+             : std::nullopt;
+}
+
+[[nodiscard]] std::optional<std::uint32_t>
+NoiseOctavesOf(const std::string &a_text) {
+  const auto octaves = WholeNumber(a_text, kMaxNoiseOctaves);
+  return octaves && *octaves > 0 ? octaves : std::nullopt;
+}
+
+[[nodiscard]] std::optional<std::uint32_t>
+NoiseSeedOf(const std::string &a_text) {
+  return WholeNumber(a_text, kMaxNoiseSeed);
+}
+
+void NoiseFields(std::vector<FormField> &a_form, const SourceContext &a_ctx,
+                 const MeshSourceRow &a_source) {
+  const std::string &name = a_ctx.name;
+  const SourceKind &record = a_ctx.record;
+  FormField cell = ParamField(
+      {.name = "cell",
+       .kind = FieldKind::kScalar,
+       .text = a_source.noiseCell,
+       .names = {},
+       .bind = BindNoiseMember(name, record, &NoiseBake::cell, NoiseCellOf)});
+  cell.range = std::pair{kMinNoiseCell, kMaxNoiseCell};
+  cell.workingRange = std::pair{1.0f, 32.0f};
+  a_form.push_back(std::move(cell));
+  FormField octaves =
+      ParamField({.name = "octaves",
+                  .kind = FieldKind::kScalar,
+                  .text = a_source.noiseOctaves,
+                  .names = {},
+                  .bind = BindNoiseMember(name, record, &NoiseBake::octaves,
+                                          NoiseOctavesOf)});
+  octaves.range = std::pair{1.0f, static_cast<float>(kMaxNoiseOctaves)};
+  octaves.workingRange = octaves.range;
+  octaves.integral = true;
+  a_form.push_back(std::move(octaves));
+  FormField seed = ParamField(
+      {.name = "seed",
+       .kind = FieldKind::kScalar,
+       .text = a_source.noiseSeed,
+       .names = {},
+       .bind = BindNoiseMember(name, record, &NoiseBake::seed, NoiseSeedOf)});
+  seed.integral = true;
+  a_form.push_back(std::move(seed));
+}
+
 void BakeFields(std::vector<FormField> &a_form, const SourceContext &a_ctx,
                 const MeshSourceRow &a_source) {
   const std::string &name = a_ctx.name;
@@ -1459,6 +1530,8 @@ void BakeFields(std::vector<FormField> &a_form, const SourceContext &a_ctx,
                         .bind = BindBakeGeometry(name, record)});
     geometry.names.assign(a_ctx.geometries.begin(), a_ctx.geometries.end());
     a_form.push_back(std::move(geometry));
+  } else if (a_source.bake == "noise") {
+    NoiseFields(a_form, a_ctx, a_source);
   }
 }
 

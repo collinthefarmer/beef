@@ -52,7 +52,12 @@ void EncodeBakeOperation(Encoding &out, const BakeOperation &operation) {
       },
       [](const PositionBake &) {}, [](const LocalPositionBake &) {},
       [](const NormalBake &) {}, [](const UvBake &) {}, [](const PartBake &) {},
-      [](const ChartBake &) {}, [](const GeometryBake &) {});
+      [](const ChartBake &) {}, [](const GeometryBake &) {},
+      [&](const NoiseBake &n) {
+        out.Number(n.cell);
+        out.Number(n.octaves);
+        out.Number(n.seed);
+      });
 }
 void EncodeMaterialGroupsOperation(Encoding &out,
                                    const MaterialGroupsOperation &operation) {

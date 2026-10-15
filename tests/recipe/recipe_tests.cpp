@@ -377,6 +377,8 @@ int main() {
     "bakeBone": { "mesh": { "boneWeight": ["NPC Spine", "NPC Spine1"] } },
     "bakeGeom": { "mesh": { "geometry": "BonemoldCuirass_1" } },
     "uvSrc":    { "mesh": "uv" },
+    "noiseSrc": { "mesh": { "noise": { "cell": 5, "octaves": 3, "seed": 9 } } },
+    "noiseBare": { "mesh": "noise" },
     "distNode": { "distance": "NPC Root [Root]" },
     "ripSrc":   { "ripple": { "trigger": "@trig", "speed": 90.0, "width": 8.0, "decay": 1.2, "shape": "disc" } },
     "clusters": { "material": { "groups": { "merge": 0.45, "smoothing": 3 } } },
@@ -484,6 +486,24 @@ int main() {
               itemFieldOf("indexSig") == ItemField::kGeometryIndex &&
               itemFieldOf("countSig") == ItemField::kGeometryCount,
           "every item signal field round-trips");
+    const Source *noiseSource = r.FindSource("noiseSrc");
+    const MeshSource *noiseMesh =
+        noiseSource ? Get<MeshSource>(noiseSource->kind) : nullptr;
+    const NoiseBake *noise =
+        noiseMesh ? Get<NoiseBake>(noiseMesh->bake) : nullptr;
+    const Source *bareSource = r.FindSource("noiseBare");
+    const MeshSource *bareMesh =
+        bareSource ? Get<MeshSource>(bareSource->kind) : nullptr;
+    Check(noise && *noise == NoiseBake{5.0f, 3, 9} &&
+              SourceType(*noiseSource) == ValueType::kVec3 && bareMesh &&
+              bareMesh->bake == BakeKind{NoiseBake{}},
+          "a noise fact round-trips its cell, octaves and seed");
+    ExpectError(R"({"format":1,"keys":["default"],"sources":{"n":)"
+                R"({"mesh":{"noise":{"cell":0}}}}})",
+                "a noise cell of zero", "cell");
+    ExpectError(R"({"format":1,"keys":["default"],"sources":{"n":)"
+                R"({"mesh":{"noise":{"octaves":5}}}}})",
+                "five noise octaves", "octaves");
     const Source *geometry = r.FindSource("bakeGeom");
     const MeshSource *geometryBake =
         geometry ? Get<MeshSource>(geometry->kind) : nullptr;

@@ -248,6 +248,22 @@ std::optional<TextureLab::BakePipeline> TextureLab::CreateBakePipeline() {
     logger::error("TextureLab: bake pipeline unavailable");
     return std::nullopt;
   }
+  const ComPtr<ID3DBlob> noisePixel = CompileEntry("BakeNoisePS", "ps_5_0");
+  D3D11_BUFFER_DESC noiseDesc{};
+  noiseDesc.byteWidth = sizeof(BakeNoiseConstants);
+  noiseDesc.usage = D3D11_USAGE_DEFAULT;
+  noiseDesc.bindFlags = D3D11_BIND_CONSTANT_BUFFER;
+  if (!noisePixel.Get() ||
+      Failed(borrowedDevice_->CreatePixelShader(
+          noisePixel->GetBufferPointer(), noisePixel->GetBufferSize(), nullptr,
+          bake.noisePixel.GetAddressOf())) ||
+      Failed(borrowedDevice_->CreateBuffer(
+          &noiseDesc, nullptr, bake.noiseConstants.GetAddressOf()))) {
+    logger::error("TextureLab: noise bake unavailable; noise sources draw "
+                  "nothing");
+    bake.noisePixel = nullptr;
+    bake.noiseConstants = nullptr;
+  }
   return bake;
 }
 

@@ -43,6 +43,12 @@ std::string DescribeMeshSource(const MeshSource &a_source) {
       [](const GeometryBake &g) {
         return std::format("mesh geometry {} (1 on that geometry's mesh)",
                            g.geometry);
+      },
+      [](const NoiseBake &n) {
+        return std::format("mesh noise (three value-noise fields over the "
+                           "bind-pose position, {}-unit cells, {} octave(s), "
+                           "seed {})",
+                           n.cell, n.octaves, n.seed);
       });
 }
 
@@ -339,7 +345,19 @@ json MeshToJson(const MeshSource &k) {
       [&](const NormalBake &) { return json(BakeKindName(k.bake)); },
       [&](const UvBake &) { return json(BakeKindName(k.bake)); },
       [&](const PartBake &) { return json(BakeKindName(k.bake)); },
-      [&](const ChartBake &) { return json(BakeKindName(k.bake)); });
+      [&](const ChartBake &) { return json(BakeKindName(k.bake)); },
+      [&](const NoiseBake &n) {
+        if (n == NoiseBake{}) {
+          return json(BakeKindName(k.bake));
+        }
+        const NoiseBake defaults;
+        json o = json::object();
+        Writer w{o};
+        w.WriteNumberIf("cell", n.cell, defaults.cell);
+        w.WriteIf("octaves", n.octaves, defaults.octaves);
+        w.WriteIf("seed", n.seed, defaults.seed);
+        return json::object({{"noise", o}});
+      });
 }
 
 json MaterialGroupsToJson(const MaterialGroupsSource &k) {

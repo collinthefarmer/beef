@@ -110,10 +110,17 @@ struct BakeVertex {
   [[nodiscard]] bool operator==(const BakeVertex &) const = default;
 };
 
+struct NoiseShading {
+  std::uint32_t octaves = 2;
+  std::uint32_t seed = 0;
+  [[nodiscard]] bool operator==(const NoiseShading &) const = default;
+};
+
 struct BakeBuffers {
   std::vector<BakeVertex> vertices;
   std::vector<std::uint32_t> indices;
   bool vector = false;
+  std::optional<NoiseShading> noise;
   std::string problem;
   [[nodiscard]] bool operator==(const BakeBuffers &) const = default;
 };

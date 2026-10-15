@@ -77,6 +77,11 @@ struct alignas(16) GroupConstants {
   float charts[kChartSlots / 4][4];
 };
 
+inline constexpr std::uint32_t kBakeNoiseSlot = 7;
+struct alignas(16) BakeNoiseConstants {
+  std::uint32_t noise[4];
+};
+
 struct alignas(16) DiffuseDetailConstants {
   float levels[4];
   float normal[4];

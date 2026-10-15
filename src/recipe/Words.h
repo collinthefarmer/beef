@@ -192,8 +192,8 @@ static_assert(
                    PluginOrigin> &&
     std::is_same_v<std::variant_alternative_t<2, TriggerOrigin>, WhenOrigin>);
 inline constexpr std::string_view kBakeKindWords[]{
-    "position",   "localPosition", "normal", "uv",      "partition",
-    "boneWeight", "part",          "chart",  "geometry"};
+    "position",   "localPosition", "normal", "uv",       "partition",
+    "boneWeight", "part",          "chart",  "geometry", "noise"};
 static_assert(std::size(kBakeKindWords) == std::variant_size_v<BakeKind>);
 static_assert(
     std::is_same_v<std::variant_alternative_t<0, BakeKind>, PositionBake> &&
@@ -205,7 +205,8 @@ static_assert(
     std::is_same_v<std::variant_alternative_t<5, BakeKind>, BoneWeightBake> &&
     std::is_same_v<std::variant_alternative_t<6, BakeKind>, PartBake> &&
     std::is_same_v<std::variant_alternative_t<7, BakeKind>, ChartBake> &&
-    std::is_same_v<std::variant_alternative_t<8, BakeKind>, GeometryBake>);
+    std::is_same_v<std::variant_alternative_t<8, BakeKind>, GeometryBake> &&
+    std::is_same_v<std::variant_alternative_t<9, BakeKind>, NoiseBake>);
 
 inline constexpr BipedSlotSpec kBipedSlots[]{
     {BipedSlot{30}, "head"},     {BipedSlot{31}, "hair"},

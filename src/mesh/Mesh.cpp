@@ -229,7 +229,13 @@ std::array<float, 3> ValueOf(const MeshVertex &a_vertex,
       },
       [&](const PartBake &) { return std::array{1.0f, 1.0f, 1.0f}; },
       [&](const ChartBake &) { return std::array{1.0f, 1.0f, 1.0f}; },
-      [&](const GeometryBake &) { return std::array{1.0f, 1.0f, 1.0f}; });
+      [&](const GeometryBake &) { return std::array{1.0f, 1.0f, 1.0f}; },
+      [&](const NoiseBake &noise) {
+        const float cell = std::max(noise.cell, kMinNoiseCell);
+        return std::array{a_vertex.position.x / cell,
+                          a_vertex.position.y / cell,
+                          a_vertex.position.z / cell};
+      });
 }
 
 std::string NeedsAnalysis(const BakeKind &a_kind) {
@@ -247,7 +253,8 @@ std::string NeedsAnalysis(const BakeKind &a_kind) {
       [](const UvBake &) { return std::string{}; },
       [](const PartitionBake &) { return std::string{}; },
       [](const BoneWeightBake &) { return std::string{}; },
-      [](const GeometryBake &) { return std::string{}; });
+      [](const GeometryBake &) { return std::string{}; },
+      [](const NoiseBake &) { return std::string{}; });
 }
 
 }
@@ -257,7 +264,12 @@ BakeBuffers BuildBake(const MeshData &a_mesh, const BakeKind &a_kind) {
   out.vector = std::holds_alternative<PositionBake>(a_kind) ||
                std::holds_alternative<LocalPositionBake>(a_kind) ||
                std::holds_alternative<NormalBake>(a_kind) ||
-               std::holds_alternative<UvBake>(a_kind);
+               std::holds_alternative<UvBake>(a_kind) ||
+               std::holds_alternative<NoiseBake>(a_kind);
+  if (const auto *noise = std::get_if<NoiseBake>(&a_kind)) {
+    out.noise =
+        NoiseShading{std::min(noise->octaves, kMaxNoiseOctaves), noise->seed};
+  }
   if (std::holds_alternative<LocalPositionBake>(a_kind) &&
       a_mesh.radius <= 0.0f) {
     out.problem = "the mesh has no bound to map positions into";
@@ -405,7 +417,11 @@ std::string Definition(const BakeKind &a_kind) {
       },
       [](const PartBake &) { return std::string{"part"}; },
       [](const ChartBake &) { return std::string{"chart"}; },
-      [](const GeometryBake &) { return std::string{"geometry coverage"}; });
+      [](const GeometryBake &) { return std::string{"geometry coverage"}; },
+      [](const NoiseBake &n) {
+        return std::format("noise cell {} octaves {} seed {}", n.cell,
+                           n.octaves, n.seed);
+      });
 }
 }
 

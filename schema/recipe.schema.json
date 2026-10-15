@@ -187,10 +187,17 @@
               "areaBias": { "oneOf": [{ "$ref": "#/$defs/number", "minimum": 0, "maximum": 8 }, { "$ref": "#/$defs/ref" }], "default": 1, "description": "How a pick favours large groups: each group weighs its share of the texels to this power, so 0 picks every group equally, 1 in proportion to area, and more favours the largest." },
               "palette": { "type": "boolean", "default": false, "description": "Colour every group from a fixed palette; the source is then a colour. Excludes pick." } } } } } ] } } },
         { "required": ["mesh"], "properties": { "mesh": { "oneOf": [
-            { "enum": ["position", "localPosition", "normal", "uv", "part", "chart"], "description": "normal is the bind-pose surface normal, each axis mapped -1..1 to 0..1 (recover the vector as v * 2 - 1; dot(v, [0, 0, 1]) reads how far it points up). uv is the texel's coordinates as a vec2 (dot(v, [1, 0]) reads u, dot(v, [0, 1]) reads v). part and chart: the mesh analysis' id map for that source (connected parts, UV charts), each texel the region id / 255, rasterised once per geometry." },
+            { "enum": ["position", "localPosition", "normal", "uv", "part", "chart", "noise"], "description": "normal is the bind-pose surface normal, each axis mapped -1..1 to 0..1 (recover the vector as v * 2 - 1; dot(v, [0, 0, 1]) reads how far it points up). uv is the texel's coordinates as a vec2 (dot(v, [1, 0]) reads u, dot(v, [0, 1]) reads v). part and chart: the mesh analysis' id map for that source (connected parts, UV charts), each texel the region id / 255, rasterised once per geometry." },
             { "$ref": "#/$defs/oneKey", "required": ["partition"], "properties": { "partition": { "oneOf": [
                 { "enum": ["body", "hands", "forearms", "feet", "calves", "head", "hair", "amulet", "ring", "shield", "tail"] }, { "type": "integer", "minimum": 30, "maximum": 61 } ] } } },
             { "$ref": "#/$defs/oneKey", "required": ["boneWeight"], "properties": { "boneWeight": { "type": "array", "maxItems": 4096, "minItems": 1, "items": { "$ref": "#/$defs/node" } } } },
+            { "$ref": "#/$defs/oneKey", "required": ["noise"], "properties": { "noise": {
+                "type": "object", "additionalProperties": false,
+                "description": "Three value-noise fields (r, g, b) over the bind-pose position, computed in the bake pass at full precision, so the pattern runs seamlessly across UV charts. Static: baked once per mesh and shared. Animate by cross-fading the channels. The bare word \"noise\" takes every default.",
+                "properties": {
+                  "cell": { "$ref": "#/$defs/number", "minimum": 0.25, "maximum": 256, "default": 7, "description": "Noise cell size in game units." },
+                  "octaves": { "type": "integer", "minimum": 1, "maximum": 4, "default": 2, "description": "Octaves of fractal noise, each at twice the frequency and half the weight." },
+                  "seed": { "type": "integer", "minimum": 0, "maximum": 16777216, "default": 0 } } } } },
             { "$ref": "#/$defs/oneKey", "required": ["geometry"], "properties": { "geometry": { "$ref": "#/$defs/glob", "description": "1 where the rendered geometry's mesh covers the texture when the geometry's name matches this glob, 0 everywhere on every other geometry. Guards a mask term that only means something on one geometry." } } } ] } } },
         { "required": ["distance"], "properties": { "distance": { "$ref": "#/$defs/node", "description": "Distance from this skeleton node, bind pose, 0..256 units as 0..1. A distance from a fixed point is distance() of a mesh position in a mask." } } },
         { "required": ["ripple"], "properties": { "ripple": {

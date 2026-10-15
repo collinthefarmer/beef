@@ -61,6 +61,11 @@ MaterialRowOf(const MaterialSource &a_material) {
   if (const GeometryBake *geometry = Get<GeometryBake>(a_bake.bake)) {
     bake.geometry = geometry->geometry;
   }
+  if (const NoiseBake *noise = Get<NoiseBake>(a_bake.bake)) {
+    bake.noiseCell = ParamText(noise->cell);
+    bake.noiseOctaves = std::to_string(noise->octaves);
+    bake.noiseSeed = std::to_string(noise->seed);
+  }
   return bake;
 }
 
@@ -224,6 +229,17 @@ MaterialKindOf(const MaterialSourceRow &a_row) {
   }
   if (GeometryBake *geometry = Get<GeometryBake>(*bake)) {
     geometry->geometry = a_row.geometry;
+  }
+  if (NoiseBake *noise = Get<NoiseBake>(*bake)) {
+    const auto cell = ParseParam(a_row.noiseCell);
+    const auto *cellValue = cell ? Get<float>(*cell) : nullptr;
+    const auto octaves = WholeNumber(a_row.noiseOctaves, kMaxNoiseOctaves);
+    const auto seed = WholeNumber(a_row.noiseSeed, kMaxNoiseSeed);
+    if (!cellValue || !(*cellValue >= kMinNoiseCell) ||
+        *cellValue > kMaxNoiseCell || !octaves || *octaves == 0 || !seed) {
+      return std::nullopt;
+    }
+    *noise = NoiseBake{*cellValue, *octaves, *seed};
   }
   return SourceKind{MeshSource{*bake}};
 }
