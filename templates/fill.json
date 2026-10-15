@@ -1,7 +1,7 @@
 {
   "format": 1,
   "name": "Fill import template",
-  "description": "The baseline import template for an effect shader with a fill texture. A pick lights a few texture charts of one material group on one of the piece's geometries. There the material glows in the shader's colour (or, when that colour is nearly white, its edge colour or a hue seeded by the effect), turned in hue by the effect and deeper and darker at weak magnitudes, takes a roughness and metallic chosen by the enchantment, and sinks into a relief; a shell copy of the piece covers it, with holes cut by baked noise over the piece's bind-pose position, seamless across its UV charts and drifting as three noise fields cross-fade, through which the glow shows. Weak enchantments show faintly: the glow and the sheen scale with a presence that eases in up to 0.6 magnitude level, so light only peeks through the holes. The holes pulse gently in size, grow with the enchantment's magnitude and with distance from the spine, so the effect gathers at the extremities; the glow pulses very slightly and scales with magnitude, as do the relief (flat at weak magnitudes), how many charts light and the least share of the geometry they cover. Under the shell the picked area also carries a fuzz sheen in the glow's hue, slightly brightened, a halo at grazing angles. The enchantment, its effect and the worn item fix which geometry, material group and charts glow, always at least one chart.",
+  "description": "The baseline import template for an effect shader with a fill texture. A pick lights a few texture charts of one material group on one of the piece's geometries. There the material glows, darker and brighter in drifting patches and, at strong magnitudes, slightly varied in hue, in the shader's colour (or, when that colour is nearly white, its edge colour or a hue seeded by the effect), turned in hue by the effect and deeper and darker at weak magnitudes, takes a roughness and metallic chosen by the enchantment, and sinks into a relief; a shell copy of the piece covers it, with holes cut by baked noise over the piece's bind-pose position, seamless across its UV charts and drifting as three noise fields cross-fade, through which the glow shows. Weak enchantments show faintly: the glow and the sheen scale with a presence that eases in up to 0.6 magnitude level, so light only peeks through the holes. The holes pulse gently in size, grow with the enchantment's magnitude and with distance from the spine, so the effect gathers at the extremities; the glow pulses very slightly and scales with magnitude, as do the relief (flat at weak magnitudes), how many charts light and the least share of the geometry they cover. Under the shell the picked area also carries a fuzz sheen in the glow's hue, slightly brightened, a halo at grazing angles. The enchantment, its effect and the worn item fix which geometry, material group and charts glow, always at least one chart.",
   "keys": [
     {
       "effectShader": "ImportedEffectShader"
@@ -236,6 +236,24 @@
     },
     "noiseShift": {
       "constant": 0.25
+    },
+    "brightWeights": {
+      "expr": "([1, 1, 1] + [cos(@noisePhase + 2.0944), cos(@noisePhase + 2.0944 - 2.0944), cos(@noisePhase + 2.0944 - 4.1888)]) / 3"
+    },
+    "hueWeights": {
+      "expr": "([1, 1, 1] + [cos(@noisePhase + 4.1888), cos(@noisePhase + 4.1888 - 2.0944), cos(@noisePhase + 4.1888 - 4.1888)]) / 3"
+    },
+    "tintDark": {
+      "constant": 0.6
+    },
+    "tintBright": {
+      "constant": 1.35
+    },
+    "hueSpreadMax": {
+      "constant": 0.08
+    },
+    "hueSpread": {
+      "expr": "@hueSpreadMax * pow(@colourStrength, 2)"
     }
   },
   "sources": {
@@ -271,6 +289,9 @@
   },
   "masks": {
     "holeNoise": "0.5 + (dot(@noise, @noiseWeights) - 0.5) * 1.4142",
+    "brightNoise": "0.5 + (dot(@noise, @brightWeights) - 0.5) * 1.4142",
+    "hueNoise": "0.5 + (dot(@noise, @hueWeights) - 0.5) * 1.4142",
+    "glowTint": "hueShift(@glowColor, (@hueNoise - 0.5) * @hueSpread) * lerp(@tintDark, @tintBright, saturate(@brightNoise))",
     "extremity": "smoothstep(@extremityNear, @extremityFar, @fromCore)",
     "holeLevel": "@holeThreshold * lerp(@extremityCore, @extremityTip, @extremity)",
     "holes": "1 - smoothstep(@holeLevel + @noiseShift, @holeLevel + @noiseShift + @holeSoftness, @holeNoise)",
@@ -285,13 +306,8 @@
       "resolution": "half",
       "stack": [
         {
-          "source": [
-            1.0,
-            1.0,
-            1.0
-          ],
+          "source": "@glowTint",
           "opacity": 1.0,
-          "color": "@glowColor",
           "mask": "@lit"
         }
       ]
