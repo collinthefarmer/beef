@@ -23,7 +23,7 @@ class GeneratedShaders {
 public:
   inline static constexpr std::size_t kMaxPerCache = 256;
   [[nodiscard]] REX::W32::ID3D11PixelShader *
-  ProgramFor(REX::W32::ID3D11Device *a_device, const FieldProgram &a_program);
+  ProgramFor(REX::W32::ID3D11Device *a_device, const ProgramCode &a_code);
   [[nodiscard]] REX::W32::ID3D11PixelShader *
   StackFor(REX::W32::ID3D11Device *a_device, const StackShape &a_shape);
 

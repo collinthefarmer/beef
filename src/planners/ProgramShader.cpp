@@ -177,14 +177,18 @@ std::string InterpreterZRule() {
 }
 
 std::string GenerateProgramShader(const FieldProgram &program) {
-  std::string text = ProgramFunction("GeneratedProgram", program.Instructions(),
-                                     0, InputTextureSlots(program.Inputs()));
-  text += std::format("float4 {}(VSOut i) : SV_Target\n{{\n\tfloat3 result = "
-                      "GeneratedProgram(i.uv);\n\treturn {};\n}}\n",
-                      kGeneratedProgramEntry,
-                      program.ResultType() != ValueType::kScalar
-                          ? "float4(result, 1)"
-                          : "float4(result.xxx, 1)");
+  return GenerateProgramShader(CodeOf(program));
+}
+
+std::string GenerateProgramShader(const ProgramCode &code) {
+  std::string text = ProgramFunction("GeneratedProgram", code.instructions, 0,
+                                     InputTextureSlots(code.inputs));
+  text +=
+      std::format("float4 {}(VSOut i) : SV_Target\n{{\n\tfloat3 result = "
+                  "GeneratedProgram(i.uv);\n\treturn {};\n}}\n",
+                  kGeneratedProgramEntry,
+                  code.result != ValueType::kScalar ? "float4(result, 1)"
+                                                    : "float4(result.xxx, 1)");
   return text;
 }
 }

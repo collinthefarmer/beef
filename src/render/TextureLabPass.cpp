@@ -916,7 +916,8 @@ TextureLab::RenderFieldsToTargets(std::span<const LayerPass> a_layers,
       return std::nullopt;
     auto target = Acquire(a_size, "stack field", TextureFormat::kRgba8,
                           TargetMips::kNone);
-    if (!target || !DrawProgramPass(*target, *code, a_fields.bindings))
+    if (!target || !DrawProgramPass(*target, *code, a_fields.bindings,
+                                    GeneratedFor(*code)))
       return std::nullopt;
     auto *texture = target->Texture();
     result.targets.push_back(std::move(target));
@@ -948,10 +949,14 @@ bool TextureLab::RenderProgram(RenderTarget &a_target,
       a_bindings.textureCount != a_program.TextureCount() ||
       a_bindings.lookupCount != a_program.FunctionLookups().size())
     return false;
-  auto *shader = generatedShaders_
-                     ? generated_.ProgramFor(borrowedDevice_, a_program)
-                     : nullptr;
-  return DrawProgramPass(a_target, CodeOf(a_program), a_bindings, shader);
+  const ProgramCode code = CodeOf(a_program);
+  return DrawProgramPass(a_target, code, a_bindings, GeneratedFor(code));
+}
+
+REX::W32::ID3D11PixelShader *
+TextureLab::GeneratedFor(const ProgramCode &a_code) {
+  return generatedShaders_ ? generated_.ProgramFor(borrowedDevice_, a_code)
+                           : nullptr;
 }
 
 void TextureLab::SetGeneratedShaders(bool a_enabled) noexcept {

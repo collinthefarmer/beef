@@ -285,8 +285,11 @@ atom   := number | "[" expr "," expr ("," expr)? "]" | "(" expr ")"
   in 0…P-1 from `frac(seed·13.37)`), cycle-walked back into range: a
   position at or above the total is mapped again until it is below, which
   keeps the order a permutation and ends within P steps. The total is
-  floored and capped at 251 (`kMaxShuffleTotal`), so the prime search (gaps
-  below 16) and the walk stay bounded on the GPU. An index outside the
+  floored and capped at 251 (`kMaxShuffleTotal`), so the walk stays
+  bounded on the GPU. The CPU finds P with `PrimeAtLeast` (gaps below 16).
+  The GPU reads P from `kPrimeAtLeast`, a 252-entry table that
+  `ShaderSource.cpp` generates from `PrimeAtLeast`, so the two cannot
+  differ and no texel searches for a prime. An index outside the
   order, an empty or unreadable total, and a non-finite index all give 256
   (`kShuffleOutside`), which no `< k` with k ≤ 251 selects; a non-finite
   seed orders like seed 0. It takes scalars only. `ShufflePosition`
@@ -607,7 +610,12 @@ Mode formulas:
   (`GeneratedShaders::kMaxPerCache`). When a cache is full, the least recently used
   finished entry is evicted, and the first eviction writes one log line. A
   cache full of pending compiles starts no new compile until one finishes.
-- Layer fields drawn to targets always use the interpreter.
+- Layer fields drawn to targets (`RenderFieldsToTargets`, the per-layer
+  fallback) use a generated program shader for each segment once it has
+  compiled, through the same cache as `RenderProgram`
+  (`GeneratedShaders::ProgramFor` keys by the generated text). Until then
+  they use the interpreter. The dxc check compiles every segment shader the
+  planned recipes produce.
 - `planners/StackShader` generates one pixel shader per **stack shape**:
   whether the stack has a base, and per layer whether the source is absent,
   a texture (in mesh space or placed) or a layer field, whether the mask is

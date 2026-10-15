@@ -24,5 +24,6 @@ InputTextureSlots(std::span<const ProgramInput> inputs);
 [[nodiscard]] std::string
 ProgramFunction(std::string_view name, std::span<const ProgramInstruction> code,
                 std::size_t first, std::span<const InputTextureSlot> slots);
+[[nodiscard]] std::string GenerateProgramShader(const ProgramCode &code);
 [[nodiscard]] std::string GenerateProgramShader(const FieldProgram &program);
 }

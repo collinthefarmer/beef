@@ -457,12 +457,17 @@ std::uint32_t ChannelBitsOf(const ChannelSet &a_channels) {
          (a_channels.b ? kWriteB : 0u) | (a_channels.a ? kWriteA : 0u);
 }
 
-std::optional<StackShape> StackShapeOf(const CompositeStackStep &a_stack) {
+struct PackedStack {
+  std::vector<std::size_t> fields;
+  ProgramPack pack;
+};
+
+std::optional<PackedStack> PackedStackOf(const CompositeStackStep &a_stack) {
   std::vector<const PlannedLayer *> layers;
   for (const PlannedLayer &layer : a_stack.layers) {
     layers.push_back(&layer);
   }
-  const std::vector<std::size_t> fields = VisibleLayerFields(layers);
+  std::vector<std::size_t> fields = VisibleLayerFields(layers);
   std::vector<const LayerField *> used;
   for (const std::size_t field : fields) {
     if (field >= a_stack.fields.size()) {
@@ -470,10 +475,19 @@ std::optional<StackShape> StackShapeOf(const CompositeStackStep &a_stack) {
     }
     used.push_back(&a_stack.fields[field]);
   }
-  const auto packed = PackLayerFields(used);
+  auto packed = PackLayerFields(used);
   if (!packed) {
     return std::nullopt;
   }
+  return PackedStack{std::move(fields), std::move(packed->pack)};
+}
+
+std::optional<StackShape> StackShapeOf(const CompositeStackStep &a_stack) {
+  const std::optional<PackedStack> packed = PackedStackOf(a_stack);
+  if (!packed) {
+    return std::nullopt;
+  }
+  const std::vector<std::size_t> &fields = packed->fields;
   StackShape shape;
   shape.base = true;
   shape.code = CodeWithoutNumbers(packed->pack.code);
@@ -517,6 +531,15 @@ std::set<GeneratedShader> GeneratedShadersOf(const RenderPlan &a_plan) {
           "every stack of the plan generates a shader");
     if (text) {
       shaders.insert({std::string{kGeneratedStackEntry}, *text});
+    }
+    const std::optional<PackedStack> packed =
+        stack ? PackedStackOf(*stack) : std::nullopt;
+    for (std::uint32_t segment = 0;
+         packed && segment < packed->pack.segments.size(); ++segment) {
+      if (const auto code = SegmentCode(packed->pack, segment)) {
+        shaders.insert({std::string{kGeneratedProgramEntry},
+                        GenerateProgramShader(*code)});
+      }
     }
   }
   return shaders;

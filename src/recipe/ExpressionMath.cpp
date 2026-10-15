@@ -23,15 +23,15 @@ bool IsPrime(std::uint32_t a_n) noexcept {
   return true;
 }
 
+float Frac(float a_x) noexcept { return a_x - std::floor(a_x); }
+}
+
 std::uint32_t PrimeAtLeast(std::uint32_t a_n) noexcept {
   std::uint32_t prime = std::max(a_n, 2u);
   for (std::uint32_t gap = 0; gap < kMaxPrimeGap && !IsPrime(prime); ++gap) {
     ++prime;
   }
   return prime;
-}
-
-float Frac(float a_x) noexcept { return a_x - std::floor(a_x); }
 }
 
 float ShufflePosition(float a_index, float a_total, float a_seed) noexcept {

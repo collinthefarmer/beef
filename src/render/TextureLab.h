@@ -526,6 +526,8 @@ private:
                      std::span<const LayerPass> a_layers,
                      const BoundLayerFields &a_fields);
   [[nodiscard]] ProgramConstants &FreshProgramConstants();
+  [[nodiscard]] REX::W32::ID3D11PixelShader *
+  GeneratedFor(const ProgramCode &a_code);
   [[nodiscard]] const ProgramConstants *
   StackProgramConstants(std::span<REX::W32::ID3D11ShaderResourceView *> a_srvs,
                         const BoundLayerFields &a_fields,

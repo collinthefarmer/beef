@@ -106,11 +106,11 @@ template <class Cache> bool MakeRoom(Cache &a_cache, bool &a_logged) {
 }
 
 ID3D11PixelShader *GeneratedShaders::ProgramFor(ID3D11Device *a_device,
-                                                const FieldProgram &a_program) {
+                                                const ProgramCode &a_code) {
   if (!a_device)
     return nullptr;
   const auto use = ++uses_;
-  auto text = GenerateProgramShader(a_program);
+  auto text = GenerateProgramShader(a_code);
   if (const auto found = programs_.find(text); found != programs_.end())
     return Ready(found->second, use);
   if (!MakeRoom(programs_, fullLogged_))

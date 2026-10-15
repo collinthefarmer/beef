@@ -101,20 +101,6 @@ float3 SafePow(float3 a, float3 b)
 	return float3(PowOne(a.x, b.x), PowOne(a.y, b.y), PowOne(a.z, b.z));
 }
 
-uint PrimeAtLeast(uint n)
-{
-	uint p = max(n, 2u);
-	[loop] for (uint gap = 0; gap < 16; ++gap) {
-		bool prime = true;
-		[loop] for (uint d = 2; d * d <= p; ++d) {
-			if (p % d == 0) { prime = false; break; }
-		}
-		if (prime) break;
-		++p;
-	}
-	return p;
-}
-
 uint HashBits(float value)
 {
 	return (isfinite(value) && value != 0) ? asuint(value) : 0u;
@@ -162,12 +148,13 @@ float3 HueShift(float3 color, float turns)
 
 float Shuffle(float index, float total, float seed)
 {
-	if (!(total >= 1) || !(index >= 0) || isinf(index)) return 256;
-	float n = min(floor(total), 251);
+	float outside = (float)kShuffleOutside;
+	if (!(total >= 1) || !(index >= 0) || isinf(index)) return outside;
+	float n = min(floor(total), (float)kMaxShuffleTotal);
 	float i = floor(index);
-	if (i >= n) return 256;
+	if (i >= n) return outside;
 	uint count = (uint)n;
-	uint p = PrimeAtLeast(count);
+	uint p = kPrimeAtLeast[count];
 	float s = isfinite(seed) ? frac(seed) : 0;
 	uint scale = 1 + min((uint)floor(frac(s * 29.41) * (p - 1)), p - 2);
 	uint shift = min((uint)floor(frac(s * 13.37) * p), p - 1);

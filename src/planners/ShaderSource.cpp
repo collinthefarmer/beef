@@ -5,6 +5,7 @@
 #include "planners/ProgramShader.h"
 #include "planners/ShaderConstants.h"
 #include "planners/ShaderFiles.h"
+#include "recipe/ExpressionMath.h"
 #include "recipe/Words.h"
 
 #include <algorithm>
@@ -69,6 +70,17 @@ std::string WordsText() {
   return text;
 }
 
+std::string ShuffleText() {
+  constexpr auto kTotal = static_cast<std::uint32_t>(kMaxShuffleTotal);
+  std::string text =
+      WordLine("kMaxShuffleTotal", kTotal) +
+      WordLine("kShuffleOutside", static_cast<std::uint32_t>(kShuffleOutside));
+  text += std::format("static const uint kPrimeAtLeast[{}] = {{", kTotal + 1);
+  for (std::uint32_t n = 0; n <= kTotal; ++n)
+    text += std::format("{}{}u", n == 0 ? "" : ", ", PrimeAtLeast(n));
+  return text + "};\n";
+}
+
 std::string PaletteText() {
   std::string text = std::format("static const float3 kIdPalette[{}] = {{",
                                  kClusterPalette.size());
@@ -131,6 +143,7 @@ std::string OpcodeText() {
 
 constexpr ShaderPart kShaderParts[]{
     {"words", WordsText},
+    {"shuffle", ShuffleText},
     {"palette", PaletteText},
     {"resources", ResourcesText},
     {"switches", SwitchesText},

@@ -7,6 +7,7 @@ namespace BetterEnchantmentEffects {
 inline constexpr float kMaxShuffleTotal = 251.0f;
 inline constexpr float kShuffleOutside = 256.0f;
 
+[[nodiscard]] std::uint32_t PrimeAtLeast(std::uint32_t a_n) noexcept;
 [[nodiscard]] float ShufflePosition(float a_index, float a_total,
                                     float a_seed) noexcept;
 [[nodiscard]] float HashUnit(float a_value, float a_salt) noexcept;
