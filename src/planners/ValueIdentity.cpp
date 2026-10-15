@@ -109,6 +109,10 @@ void EncodeSettings(Encoding &out, const NodeKind &kind) {
       [&](const MaterialGroupsOperation &k) {
         EncodeMaterialGroupsOperation(out, k);
       },
+      [&](const FilterFieldOperation &k) {
+        out.Number(k.operation);
+        out.Number(k.seams);
+      },
       [&](const PickOperation &k) {
         out.Number(k.settings.merge);
         out.Number(k.settings.smoothing);

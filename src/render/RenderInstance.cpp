@@ -3,6 +3,7 @@
 
 #include "diagnostics/Metrics.h"
 #include "diagnostics/Trace.h"
+#include "mesh/FieldFilter.h"
 
 #include "planners/MaterialGrouper.h"
 #include "render/MeshReader.h"
@@ -1032,6 +1033,29 @@ StepResult ExecuteDrawRippleStep(const DrawRippleStep &step,
   scratch.holdsEmptyRipple = quiet;
   return StampedView(target, ++scratch.draws);
 }
+StepResult ExecuteFilterFieldStep(const FilterFieldStep &step,
+                                  StepExecution &execution) {
+  const auto *input = execution.arguments.Find<TextureView>(step.input);
+  const auto *radius = execution.arguments.Find<Value>(step.radius);
+  if (!input || !input->target || !radius)
+    return std::unexpected("the filter input is not a drawn field");
+  TextureLab::RenderTarget *charts = nullptr;
+  if (step.chartIds) {
+    const auto *ids = execution.arguments.Find<TextureView>(*step.chartIds);
+    if (!ids || !ids->target)
+      return std::unexpected("the chart ids are unavailable");
+    charts = ids->target.get();
+  }
+  const auto target =
+      AcquireStepTarget(execution, step.requirements,
+                        TextureLab::MipsFor(step.requirements.mipPolicy));
+  const TextureLab::FilterPass pass{
+      input->target.get(), charts, step.operation,
+      static_cast<std::uint32_t>(FilterTaps(AsScalar(*radius)))};
+  if (!target || !execution.lab.RenderFilter(*target, pass))
+    return std::unexpected("filter draw failed");
+  return StampedView(target, ++execution.scratch.draws);
+}
 StepResult ExecuteCompositeStackStep(const CompositeStackStep &step,
                                      StepExecution &execution) {
   const auto *filter = execution.arguments.Find<LayerFilter>(step.visibility);
@@ -1113,6 +1137,9 @@ StepResult ExecuteStep(const RenderStep &step,
       },
       [&](const DrawRippleStep &k) {
         return ExecuteDrawRippleStep(k, execution);
+      },
+      [&](const FilterFieldStep &k) {
+        return ExecuteFilterFieldStep(k, execution);
       },
       [&](const CompositeStackStep &k) {
         return ExecuteCompositeStackStep(k, execution);

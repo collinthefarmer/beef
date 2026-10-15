@@ -205,6 +205,11 @@ struct PickOperation {
   OutputRef geometryIndex, geometryCount;
   std::optional<ChartPickOperands> charts;
 };
+struct FilterFieldOperation {
+  OutputRef input, geometry, coordinates, radius;
+  FilterOperation operation = FilterOperation::kBlur;
+  SeamHandling seams = SeamHandling::kKeep;
+};
 struct ReductionOperation {
   ReductionKind kind = ReductionKind::kMean;
   OutputRef value;
@@ -217,7 +222,7 @@ using NodeKind = std::variant<
     AccumulateOperation, RateOperation, SmoothOperation,
     TextureCoordinatesOperation, ImageOperation, MaterialOperation,
     BakeOperation, DistanceOperation, RippleOperation, MaterialGroupsOperation,
-    PickOperation, ReductionOperation>;
+    PickOperation, FilterFieldOperation, ReductionOperation>;
 struct RecipeNode {
   std::string displayName;
   NodeKind kind;

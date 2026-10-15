@@ -1,6 +1,7 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #include "render/TextureLab.h"
 
+#include "mesh/FieldFilter.h"
 #include "render/D3DResult.h"
 #include "render/ShaderConstants.h"
 
@@ -1177,6 +1178,44 @@ bool TextureLab::RenderRipple(RenderTarget &a_target,
           positions->resourceView)};
   REX::W32::ID3D11Buffer *cbs[3]{nullptr, nullptr, pipeline.constants.Get()};
   DrawFullScreen(pass, a_target, {pipeline.shader.Get(), srvs, cbs});
+  return true;
+}
+
+bool TextureLab::RenderFilter(RenderTarget &a_target,
+                              const FilterPass &a_pass) {
+  auto *renderer = RE::BSGraphics::Renderer::GetSingleton();
+  if (!available_ || !renderer || !borrowedContext_ || !a_target.rtv.Get() ||
+      !gpu_->filter.has_value() || !a_pass.input || !a_pass.input->srv.Get() ||
+      (a_pass.charts &&
+       (!a_pass.charts->srv.Get() || a_pass.charts->size != a_target.size))) {
+    return false;
+  }
+  const std::shared_ptr<RenderTarget> across =
+      Acquire(TextureSize{a_target.size}, "filter pass",
+              TextureFormat::kRgba32Float, TargetMips::kNone);
+  if (!across || !across->rtv.Get() || across->size != a_target.size) {
+    return false;
+  }
+  const PixelPipeline &pipeline = *gpu_->filter;
+  const RenderPass pass{*renderer, *borrowedContext_, CaptureBatch()};
+  REX::W32::ID3D11ShaderResourceView *charts =
+      a_pass.charts ? a_pass.charts->srv.Get() : nullptr;
+  REX::W32::ID3D11Buffer *cbs[kFilterSlot + 1]{};
+  cbs[kFilterSlot] = pipeline.constants.Get();
+  const auto draw = [&](RenderTarget &a_into, RenderTarget &a_from,
+                        bool a_vertical) {
+    const FilterConstants constants{
+        {static_cast<std::uint32_t>(std::to_underlying(a_pass.operation)),
+         std::min(a_pass.taps, static_cast<std::uint32_t>(kMaxFilterTaps)),
+         a_vertical ? 1u : 0u, charts ? 1u : 0u},
+        {a_target.size, a_target.size, a_from.size, a_from.size}};
+    pass.Context().UpdateSubresource(pipeline.constants.Get(), 0, nullptr,
+                                     &constants, 0, 0);
+    REX::W32::ID3D11ShaderResourceView *srvs[]{a_from.srv.Get(), charts};
+    DrawFullScreen(pass, a_into, {pipeline.shader.Get(), srvs, cbs});
+  };
+  draw(*across, *a_pass.input, false);
+  draw(a_target, *across, true);
   return true;
 }
 

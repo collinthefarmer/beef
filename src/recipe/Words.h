@@ -133,7 +133,8 @@ inline constexpr Named<SourceKindId> kSourceKindWords[]{
     {SourceKindId::kDistance, "distance"},
     {SourceKindId::kRipple, "ripple"},
     {SourceKindId::kMaterialGroups, "material groups"},
-    {SourceKindId::kPick, "pick"}};
+    {SourceKindId::kPick, "pick"},
+    {SourceKindId::kFilter, "filter"}};
 static_assert(Complete(kSourceKindWords, kSourceKindCount));
 struct SourceKey {
   SourceKindId value;
@@ -147,7 +148,8 @@ inline constexpr SourceKey kSourceKeys[]{
     {SourceKindId::kDistance, "distance", {}},
     {SourceKindId::kRipple, "ripple", {}},
     {SourceKindId::kMaterialGroups, "material", "groups"},
-    {SourceKindId::kPick, "pick", {}}};
+    {SourceKindId::kPick, "pick", {}},
+    {SourceKindId::kFilter, "filter", {}}};
 static_assert(Complete(kSourceKeys, kSourceKindCount));
 static_assert([] {
   for (std::size_t i = 0; i < kSourceKindCount; ++i) {
@@ -181,7 +183,17 @@ static_assert(
     std::is_same_v<std::variant_alternative_t<4, SourceKind>, RippleSource> &&
     std::is_same_v<std::variant_alternative_t<5, SourceKind>,
                    MaterialGroupsSource> &&
-    std::is_same_v<std::variant_alternative_t<6, SourceKind>, PickSource>);
+    std::is_same_v<std::variant_alternative_t<6, SourceKind>, PickSource> &&
+    std::is_same_v<std::variant_alternative_t<7, SourceKind>, FilterSource>);
+inline constexpr Named<FilterOperation> kFilterOperations[]{
+    {FilterOperation::kBlur, "blur"},
+    {FilterOperation::kGrow, "grow"},
+    {FilterOperation::kShrink, "shrink"},
+    {FilterOperation::kEdge, "edge"}};
+static_assert(Complete(kFilterOperations, kFilterOperationCount));
+inline constexpr Named<SeamHandling> kSeamHandlings[]{
+    {SeamHandling::kKeep, "keep"}, {SeamHandling::kIgnore, "ignore"}};
+static_assert(Complete(kSeamHandlings, kSeamHandlingCount));
 inline constexpr std::string_view kTriggerOriginWords[]{"event", "plugin",
                                                         "when"};
 static_assert(std::size(kTriggerOriginWords) ==

@@ -277,6 +277,13 @@ public:
 
   bool BakeMesh(RenderTarget &a_target, const BakeBuffers &a_bake);
   bool RenderRipple(RenderTarget &a_target, const RipplePass &a_pass);
+  struct FilterPass {
+    RenderTarget *input = nullptr;
+    RenderTarget *charts = nullptr;
+    FilterOperation operation = FilterOperation::kBlur;
+    std::uint32_t taps = 0;
+  };
+  bool RenderFilter(RenderTarget &a_target, const FilterPass &a_pass);
   [[nodiscard]] bool RippleAvailable() const noexcept;
 
   class TimedSpan {
@@ -449,6 +456,7 @@ private:
     std::optional<PixelPipeline> clusters;
     std::optional<PixelPipeline> diffuseDetail;
     std::optional<PixelPipeline> dilate;
+    std::optional<PixelPipeline> filter;
     std::optional<PixelPipeline> reduce;
     std::optional<PixelPipeline> stack;
     std::optional<BakePipeline> bake;

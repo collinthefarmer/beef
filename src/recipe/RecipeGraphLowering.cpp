@@ -417,7 +417,12 @@ struct RecipeGraphLowering {
           }
           return operation;
         },
-        [&](const PickSource &k) -> NodeKind { return Pick(k); });
+        [&](const PickSource &k) -> NodeKind { return Pick(k); },
+        [&](const FilterSource &k) -> NodeKind {
+          return FilterFieldOperation{
+              Reference(k.of),     Geometry(),  Uv(),
+              Parameter(k.radius), k.operation, k.seams};
+        });
   }
   NodeKind Pick(const PickSource &a_pick) {
     const PickLevels levels = SupportedLevels(a_pick).value_or(PickLevels{});

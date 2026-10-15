@@ -102,6 +102,13 @@ struct DrawClustersStep {
   bool palette = false;
   [[nodiscard]] bool operator==(const DrawClustersStep &) const = default;
 };
+struct FilterFieldStep {
+  RenderValueRef input, radius;
+  std::optional<RenderValueRef> chartIds;
+  FilterOperation operation = FilterOperation::kBlur;
+  TextureRequirements requirements;
+  [[nodiscard]] bool operator==(const FilterFieldStep &) const = default;
+};
 struct SampleFieldStep {
   RenderValueRef texture;
   TextureValue field;
@@ -192,10 +199,10 @@ struct CompositeStackStep {
 using RenderStepKind =
     std::variant<UnavailableStep, ConstantRenderStep, BuildBakeBuffersStep,
                  BakeMeshStep, NormalSlopeStep, SubmitMaterialSampleStep,
-                 DrawClustersStep, SampleFieldStep, SubmitReductionStep,
-                 BuildLookupStep, EvaluateValueStep, EvaluateProgramStep,
-                 MapFieldStep, ComposeVectorStep, DrawRippleStep,
-                 CompositeStackStep>;
+                 DrawClustersStep, FilterFieldStep, SampleFieldStep,
+                 SubmitReductionStep, BuildLookupStep, EvaluateValueStep,
+                 EvaluateProgramStep, MapFieldStep, ComposeVectorStep,
+                 DrawRippleStep, CompositeStackStep>;
 inline constexpr std::size_t kRenderStepKindCount =
     std::variant_size_v<RenderStepKind>;
 struct RenderStep {

@@ -151,6 +151,12 @@ std::vector<RenderValueRef> InputsOf(const RenderStepKind &step) {
         }
         return inputs;
       },
+      [](const FilterFieldStep &k) {
+        std::vector<RenderValueRef> inputs{k.input, k.radius};
+        if (k.chartIds)
+          inputs.push_back(*k.chartIds);
+        return inputs;
+      },
       [](const SampleFieldStep &k) {
         auto inputs = k.coordinates;
         inputs.insert(inputs.begin(), k.texture);
@@ -256,6 +262,9 @@ RenderValueType OutputType(const RenderStepKind &step) {
       [](const DrawClustersStep &) -> RenderValueType {
         return RenderResourceType::kTexture;
       },
+      [](const FilterFieldStep &) -> RenderValueType {
+        return RenderResourceType::kTexture;
+      },
       [](const SampleFieldStep &) -> RenderValueType {
         return RenderResourceType::kTexture;
       },
@@ -274,12 +283,12 @@ RenderValueType OutputType(const RenderStepKind &step) {
 }
 namespace {
 inline constexpr std::array<std::string_view, kRenderStepKindCount>
-    kStepKindNames{"Unavailable",   "Constant",      "BuildBakeBuffers",
-                   "BakeMesh",      "NormalSlope",   "SubmitMaterialSample",
-                   "DrawClusters",  "SampleField",   "SubmitReduction",
-                   "BuildLookup",   "EvaluateValue", "EvaluateProgram",
-                   "MapField",      "ComposeVector", "DrawRipple",
-                   "CompositeStack"};
+    kStepKindNames{"Unavailable",     "Constant",      "BuildBakeBuffers",
+                   "BakeMesh",        "NormalSlope",   "SubmitMaterialSample",
+                   "DrawClusters",    "FilterField",   "SampleField",
+                   "SubmitReduction", "BuildLookup",   "EvaluateValue",
+                   "EvaluateProgram", "MapField",      "ComposeVector",
+                   "DrawRipple",      "CompositeStack"};
 }
 static_assert(std::ranges::none_of(kStepKindNames, &std::string_view::empty));
 std::string_view StepKindNameAt(std::size_t index) {
@@ -599,6 +608,17 @@ std::expected<void, std::string> ValidateStepKind(const RenderPlan &plan,
       },
       [&](const SampleFieldStep &k) -> Validation {
         return ValidateSampleFieldStep(plan, k);
+      },
+      [&](const FilterFieldStep &k) -> Validation {
+        return RequireType(plan, k.input, RenderResourceType::kTexture)
+            .and_then(
+                [&] { return RequireType(plan, k.radius, ValueType::kScalar); })
+            .and_then([&]() -> Validation {
+              if (!k.chartIds)
+                return {};
+              return RequireType(plan, *k.chartIds,
+                                 RenderResourceType::kTexture);
+            });
       },
       [&](const SubmitReductionStep &k) -> Validation {
         return ValidateSubmitReductionStep(plan, k);

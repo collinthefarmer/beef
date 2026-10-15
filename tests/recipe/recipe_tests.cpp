@@ -384,7 +384,9 @@ int main() {
     "ripSrc":   { "ripple": { "trigger": "@trig", "speed": 90.0, "width": 8.0, "decay": 1.2, "shape": "disc" } },
     "clusters": { "material": { "groups": { "merge": 0.45, "smoothing": 3 } } },
     "debugClusters": { "material": { "groups": { "palette": true } } },
-    "lit": { "pick": { "seed": 0.4, "levels": [ { "from": "geometries", "count": 2 }, { "from": "groups", "smoothing": 4 }, { "from": "charts", "count": "@countSig", "minCover": 0.1, "minShare": 0.2 } ] } }
+    "lit": { "pick": { "seed": 0.4, "levels": [ { "from": "geometries", "count": 2 }, { "from": "groups", "smoothing": 4 }, { "from": "charts", "count": "@countSig", "minCover": 0.1, "minShare": 0.2 } ] } },
+    "soft": { "filter": { "of": "@lit", "blur": 4 } },
+    "rim": { "filter": { "of": "@lit", "edge": "@countSig", "seams": "ignore" } }
   }
 })";
     const Recipe r =
@@ -432,7 +434,7 @@ int main() {
     for (const bool seen : sourceSeen) {
       allSources = allSources && seen;
     }
-    Check(allSources, "every one of the 7 source kinds round-trips");
+    Check(allSources, "every one of the 8 source kinds round-trips");
     const Source *lit = r.FindSource("lit");
     const auto *pick = lit ? Get<PickSource>(lit->kind) : nullptr;
     const std::optional<PickLevels> levels =
@@ -475,6 +477,37 @@ int main() {
                               R"("sources":{{"p":{}}}}})",
                               json),
                   what, fragment);
+    }
+    const Source *soft = r.FindSource("soft");
+    const Source *rim = r.FindSource("rim");
+    const auto *softFilter = soft ? Get<FilterSource>(soft->kind) : nullptr;
+    const auto *rimFilter = rim ? Get<FilterSource>(rim->kind) : nullptr;
+    Check(softFilter &&
+              *softFilter == FilterSource{Ref{"lit"}, FilterOperation::kBlur,
+                                          4.0f, SeamHandling::kKeep} &&
+              rimFilter &&
+              *rimFilter == FilterSource{Ref{"lit"}, FilterOperation::kEdge,
+                                         Param{Ref{"countSig"}},
+                                         SeamHandling::kIgnore} &&
+              SourceType(*soft) == ValueType::kScalar,
+          "a filter round-trips its input, operation, radius and seams");
+    for (const auto &[json, what, fragment] :
+         {std::tuple{R"({"filter":{"blur":2}})", "a filter without an input",
+                     "of"},
+          {R"({"filter":{"of":"@lit"}})", "a filter without an operation",
+           "blur"},
+          {R"({"filter":{"of":"@lit","blur":2,"grow":2}})",
+           "a filter with two operations", "blur"},
+          {R"({"filter":{"of":"@lit","blur":40}})", "a radius above 16",
+           "radius"},
+          {R"({"filter":{"of":"@lit","blur":2,"seams":"melt"}})",
+           "an unknown seam handling", "seams"}}) {
+      ExpectError(
+          std::format(
+              R"({{"format":1,"keys":["default"],)"
+              R"("sources":{{"lit":{{"pick":{{"seed":0.5}}}},"p":{}}}}})",
+              json),
+          what, fragment);
     }
     const auto itemFieldOf = [&](std::string_view a_name) {
       const auto found = std::ranges::find(r.signals, a_name, &Signal::name);

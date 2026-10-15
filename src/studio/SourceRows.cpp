@@ -110,6 +110,14 @@ ClustersRowOf(const MaterialGroupsSource &a_clusters) {
   return clusters;
 }
 
+[[nodiscard]] FilterSourceRow FilterRowOf(const FilterSource &a_filter) {
+  return FilterSourceRow{
+      a_filter.of.name.empty() ? std::string{} : "@" + a_filter.of.name,
+      std::string{NameOf(kFilterOperations, a_filter.operation)},
+      ParamText(a_filter.radius),
+      std::string{NameOf(kSeamHandlings, a_filter.seams)}};
+}
+
 [[nodiscard]] PickSourceRow PickRowOf(const PickSource &a_pick) {
   PickSourceRow pick;
   pick.seed = ParamText(a_pick.seed);
@@ -161,6 +169,9 @@ SourceRow SourceRowOf(const Source &a_source, std::size_t a_references) {
       },
       [](const PickSource &a_pick) -> SourceRowKind {
         return PickRowOf(a_pick);
+      },
+      [](const FilterSource &a_filter) -> SourceRowKind {
+        return FilterRowOf(a_filter);
       });
   return row;
 }
@@ -325,6 +336,21 @@ ClustersKindOf(const MaterialGroupsSourceRow &a_row) {
   return *value;
 }
 
+[[nodiscard]] std::optional<SourceKind>
+FilterKindOf(const FilterSourceRow &a_row) {
+  const std::string_view of = a_row.of.starts_with('@')
+                                  ? std::string_view{a_row.of}.substr(1)
+                                  : std::string_view{a_row.of};
+  const auto operation = FromName(kFilterOperations, a_row.operation);
+  const auto radius = ParseParam(a_row.radius);
+  const auto seams = FromName(kSeamHandlings, a_row.seams);
+  if (!operation || !radius || !seams) {
+    return std::nullopt;
+  }
+  return SourceKind{
+      FilterSource{Ref{std::string{of}}, *operation, *radius, *seams}};
+}
+
 [[nodiscard]] std::optional<SourceKind> PickKindOf(const PickSourceRow &a_row) {
   const auto seed = ParseParam(a_row.seed);
   const auto geometries = ParseParam(a_row.geometries);
@@ -363,7 +389,8 @@ std::optional<SourceKind> SourceKindOf(const SourceRow &a_row) {
       [](const MaterialGroupsSourceRow &a_row) {
         return ClustersKindOf(a_row);
       },
-      [](const PickSourceRow &a_row) { return PickKindOf(a_row); });
+      [](const PickSourceRow &a_row) { return PickKindOf(a_row); },
+      [](const FilterSourceRow &a_row) { return FilterKindOf(a_row); });
 }
 
 }

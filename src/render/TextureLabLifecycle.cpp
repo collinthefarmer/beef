@@ -177,6 +177,7 @@ bool TextureLab::CompileShaders(GpuResources &a_resources) {
   a_resources.diffuseDetail =
       CreatePixelPipeline("PSDiffuseDetail", sizeof(DiffuseDetailConstants));
   a_resources.dilate = CreatePixelPipeline("DilatePS", 0);
+  a_resources.filter = CreatePixelPipeline("PSFilter", sizeof(FilterConstants));
   a_resources.reduce =
       CreatePixelPipeline("PSReduce", sizeof(ReductionConstants));
   a_resources.stack = CreatePixelPipeline("PSStack", sizeof(StackConstants));

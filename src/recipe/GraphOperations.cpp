@@ -97,6 +97,9 @@ std::vector<OutputRef> InputsOf(const NodeKind &kind) {
           inputs.push_back(k.charts->minShare);
         }
       },
+      [&](const FilterFieldOperation &k) {
+        inputs = {k.input, k.geometry, k.coordinates, k.radius};
+      },
       [&](const ReductionOperation &k) { add(k.value); });
   return inputs;
 }

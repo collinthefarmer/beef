@@ -23,7 +23,7 @@ RenderBindingResolver Bindings() {
 int main() {
   Check(StepKindNameAt(kRenderStepKindCount - 1) == "CompositeStack",
         "the last step kind is named");
-  Check(StepKindNameAt(14) == "DrawRipple",
+  Check(StepKindNameAt(15) == "DrawRipple",
         "a step kind is named by its index");
   Check(StepKindNameAt(kRenderStepKindCount) == "Unknown",
         "an index past the kinds is unknown");
@@ -339,6 +339,42 @@ int main() {
         "a pick reaches the cluster draw as an area pick, not a group pick");
   Check(chartBake && chartBake->nearest,
         "the area pick reads the chart ids from a nearest-sampled bake");
+  const auto filterPlanOf = [&](SeamHandling a_seams) {
+    Recipe recipe;
+    PickSource lit;
+    lit.seed = Param{0.5f};
+    recipe.sources = {{"lit", lit},
+                      {"soft", FilterSource{Ref{"lit"}, FilterOperation::kBlur,
+                                            3.0f, a_seams}}};
+    SurfaceOutput surface;
+    Layer layer;
+    layer.source = Ref{"soft"};
+    surface.stack.push_back(layer);
+    recipe.outputs.push_back(surface);
+    const auto graph = RecipeGraph::Compile(recipe);
+    const std::array requests{RenderStackRequest{
+        &graph, &surface, 1, PlacementId{0}, 0, {SideRef{0}}}};
+    const auto plan = BuildRenderPlan({}, requests, Bindings());
+    std::optional<FilterFieldStep> filter;
+    if (plan)
+      for (const RenderStep &step : plan->steps)
+        if (const auto *found = Get<FilterFieldStep>(step.kind))
+          filter = *found;
+    const auto *chartRef = filter && filter->chartIds
+                               ? Get<StepOutputRef>(*filter->chartIds)
+                               : nullptr;
+    const bool nearestCharts =
+        chartRef && chartRef->step < plan->steps.size() &&
+        Get<BakeMeshStep>(plan->steps[chartRef->step].kind) &&
+        Get<BakeMeshStep>(plan->steps[chartRef->step].kind)->nearest;
+    return std::pair{filter, nearestCharts};
+  };
+  const auto [kept, keptCharts] = filterPlanOf(SeamHandling::kKeep);
+  const auto [ignored, ignoredCharts] = filterPlanOf(SeamHandling::kIgnore);
+  Check(kept && kept->operation == FilterOperation::kBlur && keptCharts,
+        "a filter that keeps seams reads nearest-sampled chart ids");
+  Check(ignored && !ignored->chartIds && !ignoredCharts,
+        "a filter that ignores seams bakes no chart ids");
   Recipe meanRecipe;
   PickSource meanPick;
   meanPick.seed = Param{0.5f};

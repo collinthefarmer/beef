@@ -82,6 +82,16 @@ struct alignas(16) BakeNoiseConstants {
   std::uint32_t noise[4];
 };
 
+inline constexpr std::uint32_t kFilterSlot = 8;
+struct alignas(16) FilterConstants {
+  std::uint32_t shape[4];
+  std::uint32_t size[4];
+};
+static_assert(static_cast<int>(FilterOperation::kBlur) == 0 &&
+              static_cast<int>(FilterOperation::kGrow) == 1 &&
+              static_cast<int>(FilterOperation::kShrink) == 2 &&
+              static_cast<int>(FilterOperation::kEdge) == 3);
+
 struct alignas(16) DiffuseDetailConstants {
   float levels[4];
   float normal[4];

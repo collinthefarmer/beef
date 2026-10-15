@@ -377,6 +377,24 @@ std::vector<Diagnostic> CheckSourceInputs(const RowTypes &a_rows,
               });
         }
       },
+      [&](const FilterSource &s) {
+        CheckScalar(a_rows, report, s.radius, "radius");
+        if (s.of.name.empty()) {
+          return;
+        }
+        const bool known = a_rows.recipe.FindSource(s.of.name) ||
+                           a_rows.recipe.FindMask(s.of.name);
+        const auto type = a_rows.graph.TypeOf(s.of.name);
+        if (!known) {
+          report.Error(std::format("'of' names unknown source or mask '@{}'",
+                                   s.of.name));
+        } else if (type && *type != ValueType::kScalar) {
+          report.Error(std::format(
+              "'of' names '@{}', which is not a single channel; filter one "
+              "channel of it through a mask",
+              s.of.name));
+        }
+      },
       [](const MaterialSource &) {});
   return out;
 }

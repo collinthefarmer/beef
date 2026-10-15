@@ -303,7 +303,8 @@ ValueType SourceType(const Source &a_source) noexcept {
       [](const MaterialGroupsSource &s) {
         return s.palette ? ValueType::kVec3 : ValueType::kScalar;
       },
-      [](const PickSource &) { return ValueType::kScalar; });
+      [](const PickSource &) { return ValueType::kScalar; },
+      [](const FilterSource &) { return ValueType::kScalar; });
 }
 
 std::optional<PickLevels> SupportedLevels(const PickSource &a_pick) noexcept {

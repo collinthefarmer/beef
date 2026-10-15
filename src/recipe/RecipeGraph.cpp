@@ -117,6 +117,9 @@ std::vector<std::string> Dependencies(const Source &a_source) {
     AddRef(out, ripple->decay);
     AddRef(out, ripple->direction);
   }
+  if (const auto *filter = Get<FilterSource>(a_source.kind)) {
+    AddRef(out, filter->radius);
+  }
   return out;
 }
 
@@ -308,8 +311,11 @@ struct RecipeGraphBuilder {
                                                     ? &node.expression->program
                                                     : nullptr));
       }
-      if (const auto *source = Get<Source>(node.definition))
+      if (const auto *source = Get<Source>(node.definition)) {
         BindSignals(node, Dependencies(*source));
+        if (const auto *filter = Get<FilterSource>(source->kind))
+          (void)Bind(node, filter->of.name, DeclarationCategory::kSpatial);
+      }
       BindExpression(node);
     }
   }

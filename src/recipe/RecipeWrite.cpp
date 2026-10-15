@@ -112,7 +112,13 @@ std::string DescribeSource(const SourceKind &a_kind) {
       [](const MaterialGroupsSource &s) {
         return DescribeMaterialGroupsSource(s);
       },
-      [](const PickSource &s) { return DescribePickSource(s); });
+      [](const PickSource &s) { return DescribePickSource(s); },
+      [](const FilterSource &s) {
+        return std::format(
+            "filter @{}: {} radius {} texels{}", s.of.name,
+            NameOf(kFilterOperations, s.operation), ParamText(s.radius),
+            s.seams == SeamHandling::kIgnore ? ", across UV seams" : "");
+      });
 }
 
 std::string DescribeImageTexture(const ImageTexture &a_texture) {
@@ -429,6 +435,15 @@ json PickToJson(const PickSource &k) {
   return o;
 }
 
+json FilterToJson(const FilterSource &k) {
+  json o = json::object();
+  Writer w{o};
+  w.WriteRef("of", k.of);
+  w.Write(NameOf(kFilterOperations, k.operation), k.radius);
+  w.WriteEnumIf("seams", kSeamHandlings, k.seams, SeamHandling::kKeep);
+  return o;
+}
+
 json RippleToJson(const RippleSource &k) {
   json o = json::object();
   Writer w{o};
@@ -454,7 +469,8 @@ json SourceKindToJson(const SourceKind &a_kind) {
       [](const DistanceSource &k) { return json(k.from); },
       [](const RippleSource &k) { return RippleToJson(k); },
       [](const MaterialGroupsSource &k) { return MaterialGroupsToJson(k); },
-      [](const PickSource &k) { return PickToJson(k); });
+      [](const PickSource &k) { return PickToJson(k); },
+      [](const FilterSource &k) { return FilterToJson(k); });
   const SourceKey &key = kSourceKeys[IndexOf(SourceKindIdOf(a_kind))];
   json row = json::object();
   row[std::string{key.key}] =

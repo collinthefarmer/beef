@@ -572,9 +572,22 @@ struct PickLevels {
 [[nodiscard]] std::optional<PickLevels>
 SupportedLevels(const PickSource &a_pick) noexcept;
 
+enum class FilterOperation { kBlur, kGrow, kShrink, kEdge };
+inline constexpr std::size_t kFilterOperationCount = 4;
+enum class SeamHandling { kKeep, kIgnore };
+inline constexpr std::size_t kSeamHandlingCount = 2;
+inline constexpr float kMaxFilterRadius = 16.0f;
+struct FilterSource {
+  Ref of;
+  FilterOperation operation = FilterOperation::kBlur;
+  Param radius = 2.0f;
+  SeamHandling seams = SeamHandling::kKeep;
+  [[nodiscard]] bool operator==(const FilterSource &) const = default;
+};
+
 using SourceKind =
     std::variant<ImageSource, MaterialSource, MeshSource, DistanceSource,
-                 RippleSource, MaterialGroupsSource, PickSource>;
+                 RippleSource, MaterialGroupsSource, PickSource, FilterSource>;
 enum class SourceKindId {
   kImage,
   kMaterial,
@@ -583,8 +596,9 @@ enum class SourceKindId {
   kRipple,
   kMaterialGroups,
   kPick,
+  kFilter,
 };
-inline constexpr std::size_t kSourceKindCount = 7;
+inline constexpr std::size_t kSourceKindCount = 8;
 static_assert(kSourceKindCount == std::variant_size_v<SourceKind>);
 [[nodiscard]] inline SourceKindId
 SourceKindIdOf(const SourceKind &a_kind) noexcept {

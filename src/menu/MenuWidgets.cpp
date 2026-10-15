@@ -970,6 +970,10 @@ std::string SourceValueText(const SourceKind &a_kind) {
         return std::format("groups, merge above {:.0f}%",
                            s.settings.merge * 100.0f);
       },
+      [](const FilterSource &s) {
+        return std::format("{} of @{}", NameOf(kFilterOperations, s.operation),
+                           s.of.name);
+      },
       [](const PickSource &s) {
         std::string levels;
         for (const PickLevel &level : s.levels) {

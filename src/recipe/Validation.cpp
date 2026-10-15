@@ -288,6 +288,16 @@ struct SourceFields {
       report.Error(std::format("'smoothing' is 0..{}", kMaxClusterSmoothing));
     }
   }
+  void operator()(const FilterSource &s) const {
+    if (s.of.name.empty()) {
+      report.Error("'of' names the source or mask to filter");
+    }
+    Scalar(report, s.radius, "radius");
+    if (const float *radius = Get<float>(s.radius);
+        radius && (*radius < 0.0f || *radius > kMaxFilterRadius)) {
+      report.Error(std::format("the radius is 0..{} texels", kMaxFilterRadius));
+    }
+  }
   void operator()(const MaterialSource &) const {}
   void operator()(const DistanceSource &) const {}
 };

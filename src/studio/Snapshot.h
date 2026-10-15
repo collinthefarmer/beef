@@ -190,10 +190,17 @@ struct PickSourceRow {
   std::string minShare = "0";
 };
 
+struct FilterSourceRow {
+  std::string of;
+  std::string operation = "blur";
+  std::string radius = "2";
+  std::string seams = "keep";
+};
+
 using SourceRowKind =
     std::variant<ImageSourceRow, MaterialSourceRow, MeshSourceRow,
                  DistanceSourceRow, RippleSourceRow, MaterialGroupsSourceRow,
-                 PickSourceRow>;
+                 PickSourceRow, FilterSourceRow>;
 static_assert(std::variant_size_v<SourceRowKind> == kSourceKindCount);
 static_assert(std::is_same_v<std::variant_alternative_t<0, SourceRowKind>,
                              ImageSourceRow> &&
@@ -208,7 +215,9 @@ static_assert(std::is_same_v<std::variant_alternative_t<0, SourceRowKind>,
                   std::is_same_v<std::variant_alternative_t<5, SourceRowKind>,
                                  MaterialGroupsSourceRow> &&
                   std::is_same_v<std::variant_alternative_t<6, SourceRowKind>,
-                                 PickSourceRow>,
+                                 PickSourceRow> &&
+                  std::is_same_v<std::variant_alternative_t<7, SourceRowKind>,
+                                 FilterSourceRow>,
               "SourceRowKind alternative order must match SourceKindId");
 
 [[nodiscard]] inline SourceKindId

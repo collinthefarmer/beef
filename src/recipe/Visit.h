@@ -225,6 +225,10 @@ void VisitSourceParams(SourceKind &a_kind, Visitor &a_visit) {
           VisitVector(noise->stretch, std::nullopt, a_visit, "stretch");
         }
       },
+      [&](FilterSource &s) {
+        VisitRef(s.of, a_visit, "of");
+        VisitParam(s.radius, std::nullopt, a_visit, "radius");
+      },
       [](MaterialSource &) {}, [](DistanceSource &) {});
 }
 

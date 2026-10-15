@@ -36,6 +36,7 @@ constexpr ConstantBuffer kConstantBuffers[]{
     {"GroupParams", sizeof(GroupConstants)},
     {"DiffuseDetailParams", sizeof(DiffuseDetailConstants)},
     {"BakeNoiseParams", sizeof(BakeNoiseConstants)},
+    {"FilterParams", sizeof(FilterConstants)},
 };
 
 struct EntryPoint {
@@ -50,6 +51,7 @@ constexpr EntryPoint kEntryPoints[]{
     {"DilatePS", "ps_6_0"},   {"PSReduce", "ps_6_0"},
     {"PSStack", "ps_6_0"},    {"BakeVS", "vs_6_0"},
     {"BakePS", "ps_6_0"},     {"BakeNoisePS", "ps_6_0"},
+    {"PSFilter", "ps_6_0"},
 };
 
 struct FieldType {

@@ -841,6 +841,38 @@ ParseSourceAlternative<PickSource>(const json &a_v, const Reporter &a_ctx) {
   return k;
 }
 
+template <>
+std::optional<FilterSource>
+ParseSourceAlternative<FilterSource>(const json &a_v, const Reporter &a_ctx) {
+  if (!a_v.is_object()) {
+    a_ctx.Error(std::format("'filter' takes an object with 'of' and one of {}",
+                            Choices(kFilterOperations)));
+    return std::nullopt;
+  }
+  FilterSource k;
+  Reader r(a_v, a_ctx);
+  r.Read("of", k.of);
+  if (!r.Has("of")) {
+    a_ctx.Error("'filter' needs 'of', the source or mask it filters");
+  }
+  std::size_t operations = 0;
+  for (const auto &[operation, word] : kFilterOperations) {
+    if (r.Has(word)) {
+      ++operations;
+      k.operation = operation;
+      r.Read(word, k.radius);
+    }
+  }
+  if (operations != 1) {
+    a_ctx.Error(std::format("'filter' takes exactly one of {}, each with a "
+                            "radius in texels",
+                            Choices(kFilterOperations)));
+  }
+  r.Read("seams", kSeamHandlings, k.seams);
+  r.Finish();
+  return k;
+}
+
 using SourceParser = std::optional<SourceKind> (*)(const json &,
                                                    const Reporter &);
 

@@ -227,7 +227,16 @@
                     "from": { "const": "charts" },
                     "count": { "$ref": "#/$defs/param", "default": 1, "description": "How many charts light, rounded and clamped to 1..the candidate count." },
                     "minCover": { "$ref": "#/$defs/number", "minimum": 0, "maximum": 1, "default": 0.05, "description": "The share of a chart the picked group must cover for the chart to be a candidate. With no chart above it, the group's largest chart is the one candidate." },
-                    "minShare": { "oneOf": [{ "$ref": "#/$defs/number", "minimum": 0, "maximum": 1 }, { "$ref": "#/$defs/ref" }], "default": 0, "description": "A floor on the lit share of the geometry: after 'count' charts, the pick keeps adding charts in shuffle order while the lit share is below this, until the candidates run out." } } } ] } } } } } }
+                    "minShare": { "oneOf": [{ "$ref": "#/$defs/number", "minimum": 0, "maximum": 1 }, { "$ref": "#/$defs/ref" }], "default": 0, "description": "A floor on the lit share of the geometry: after 'count' charts, the pick keeps adding charts in shuffle order while the lit share is below this, until the candidates run out." } } } ] } } } } } },
+        { "required": ["filter"], "properties": { "filter": {
+            "type": "object", "additionalProperties": false, "required": ["of"],
+            "minProperties": 2, "maxProperties": 3,
+            "description": "A scalar source or mask filtered in texture space. Give exactly one operation key; its value is the radius in texels at the output's resolution, 0..16. blur: Gaussian average. grow: largest value within the radius. shrink: smallest value within the radius. edge: grow minus shrink, high on both sides of a boundary.",
+            "properties": {
+              "of": { "$ref": "#/$defs/ref", "description": "@source or @mask with a scalar value." },
+              "blur": { "$ref": "#/$defs/param" }, "grow": { "$ref": "#/$defs/param" },
+              "shrink": { "$ref": "#/$defs/param" }, "edge": { "$ref": "#/$defs/param" },
+              "seams": { "enum": ["keep", "ignore"], "default": "keep", "description": "keep: the filter reads only texels of the same UV chart, so values do not cross a seam onto an unrelated part of the texture. ignore: the filter reads every texel in the radius." } } } } }
       ]
     },
 

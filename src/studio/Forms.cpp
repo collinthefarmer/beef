@@ -1666,6 +1666,52 @@ void ClustersFields(std::vector<FormField> &a_form, const SourceContext &a_ctx,
   a_form.push_back(std::move(areaBias));
 }
 
+[[nodiscard]] std::optional<Ref> FilterInputOf(const std::string &a_text) {
+  const std::string_view name = a_text.starts_with('@')
+                                    ? std::string_view{a_text}.substr(1)
+                                    : std::string_view{a_text};
+  return IsName(name) ? std::optional{Ref{std::string{name}}} : std::nullopt;
+}
+
+[[nodiscard]] std::optional<Param> FilterRadiusOf(const std::string &a_text) {
+  const auto param = ParseParam(a_text);
+  const auto *value = param ? Get<float>(*param) : nullptr;
+  if (!param || (value && (*value < 0.0f || *value > kMaxFilterRadius))) {
+    return std::nullopt;
+  }
+  return param;
+}
+
+void FilterFields(std::vector<FormField> &a_form, const SourceContext &a_ctx,
+                  const FilterSourceRow &a_source) {
+  const std::string &name = a_ctx.name;
+  const SourceKind &record = a_ctx.record;
+  a_form.push_back(
+      TextEntryField({.name = "of",
+                      .kind = FieldKind::kText,
+                      .text = a_source.of,
+                      .bind = BindSourceMember(name, record, &FilterSource::of,
+                                               FilterInputOf)}));
+  a_form.push_back(
+      ChoiceField("operation", a_source.operation, WordsOf(kFilterOperations),
+                  BindSourceMember(name, record, &FilterSource::operation,
+                                   WordOf(kFilterOperations))));
+  FormField radius =
+      ParamField({.name = "radius",
+                  .kind = FieldKind::kScalar,
+                  .text = a_source.radius,
+                  .names = a_ctx.names.scalar,
+                  .bind = BindSourceMember(name, record, &FilterSource::radius,
+                                           FilterRadiusOf)});
+  radius.range = std::pair{0.0f, kMaxFilterRadius};
+  radius.workingRange = radius.range;
+  a_form.push_back(std::move(radius));
+  a_form.push_back(
+      ChoiceField("seams", a_source.seams, WordsOf(kSeamHandlings),
+                  BindSourceMember(name, record, &FilterSource::seams,
+                                   WordOf(kSeamHandlings))));
+}
+
 template <class Level, class Apply>
 [[nodiscard]] FieldBinding BindPickLevel(std::string a_name,
                                          SourceKind a_record, Apply a_apply) {
@@ -1855,7 +1901,10 @@ std::vector<FormField> SourceForm(const SourceRow &a_source,
       [&](const MaterialGroupsSourceRow &a_clusters) {
         ClustersFields(form, ctx, a_clusters);
       },
-      [&](const PickSourceRow &a_pick) { PickFields(form, ctx, a_pick); });
+      [&](const PickSourceRow &a_pick) { PickFields(form, ctx, a_pick); },
+      [&](const FilterSourceRow &a_filter) {
+        FilterFields(form, ctx, a_filter);
+      });
   return form;
 }
 

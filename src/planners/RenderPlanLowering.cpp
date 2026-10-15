@@ -359,6 +359,9 @@ struct PlanBuilder {
         [&](const PickOperation &operation) -> RenderValueRef {
           return LowerPickOperation(operation, site, request, depth);
         },
+        [&](const FilterFieldOperation &operation) -> RenderValueRef {
+          return LowerFilterFieldOperation(operation, site, request, depth);
+        },
         [&](const RippleOperation &operation) -> RenderValueRef {
           return LowerRippleOperation(operation, site, request, depth);
         },
@@ -629,6 +632,28 @@ struct PlanBuilder {
         request.requirements};
     draw.area = area;
     return Step(draw, label);
+  }
+  RenderValueRef
+  LowerFilterFieldOperation(const FilterFieldOperation &operation,
+                            const LoweringSite &site,
+                            const LoweringRequest &request, std::size_t depth) {
+    const std::string &label = site.node.displayName;
+    const RenderValueRef input = BuildOperand(operation.input, request, depth);
+    const auto inputType = TypeOf(plan, input);
+    if (!inputType || !Is<RenderResourceType>(*inputType))
+      return input;
+    FilterFieldStep filter{
+        input, BuildOperand(operation.radius, request, depth), std::nullopt,
+        operation.operation, request.requirements};
+    if (operation.seams == SeamHandling::kKeep) {
+      const RenderValueRef buffers = Step(
+          BuildBakeBuffersStep{BuildOperand(operation.geometry, request, depth),
+                               BakeKind{ChartBake{}}},
+          label + " chart buffers");
+      filter.chartIds = Step(BakeMeshStep{buffers, request.requirements, true},
+                             label + " charts");
+    }
+    return Step(filter, label);
   }
   RenderValueRef LowerRippleOperation(const RippleOperation &operation,
                                       const LoweringSite &site,
