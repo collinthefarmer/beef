@@ -29,7 +29,8 @@ The directory owns four groups of decisions.
   of `ProgramInstruction`s. `ProgramShader` and `StackShader` generate HLSL
   from programs and from a **stack shape**. `ProgramReference` is the CPU
   model of the **interpreter**, the bytecode loop `RunProgram` in
-  `ShaderSource.cpp`. `ShaderConstants.h` declares the C++ side of every
+  `src/shaders/Program.hlsl`. `ShaderSource.cpp` joins the `.hlsl` files and
+  the generated parts into the one shader source. `ShaderConstants.h` declares the C++ side of every
   shader constant buffer. `GpuReduction` holds the pure half of GPU
   reductions and **readbacks**.
 - **Resource primitives.** `TargetPool`, `ConsumptionLeases`, `TextureLeases`,
@@ -429,7 +430,7 @@ into one input of a consumer.
 
 `ProgramShader.h` and `StackShader.h` turn programs into HLSL text.
 `render/GeneratedShaders` compiles that text, and `ShaderSource.cpp`
-builds the interpreter's switch from the same table. `ProgramReference.h` is
+builds the interpreter's `RunOpcode` from the same table. `ProgramReference.h` is
 the CPU model of the interpreter that the tests compare against.
 
 | Type | Declared in | Description |

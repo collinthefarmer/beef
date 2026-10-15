@@ -86,12 +86,8 @@ REX::W32::ID3D11ShaderResourceView *NormalView(RE::NiSourceTexture *a_normal) {
               : nullptr;
 }
 
-constexpr std::size_t kStackBaseSlot = 12;
 static_assert(kStackBaseSlot == TextureLab::kPassSrvs);
-constexpr std::size_t kStackSourceSlot = kStackBaseSlot + 1;
-constexpr std::size_t kStackMaskSlot = kStackSourceSlot + kMaxStackLayers;
-constexpr std::size_t kStackSrvs = kStackMaskSlot + kMaxStackLayers;
-static_assert(kStackSrvs >= TextureLab::kPassSrvs);
+constexpr std::size_t kStackSrvs = kStackSlotEnd;
 
 void BindSlot(std::span<REX::W32::ID3D11ShaderResourceView *> srvs,
               std::size_t slot, REX::W32::ID3D11ShaderResourceView *view) {
@@ -233,7 +229,8 @@ void FillProgramTextures(ProgramConstants &constants,
 void BindProgramTextures(std::span<REX::W32::ID3D11ShaderResourceView *> srvs,
                          const TextureLab::ProgramBindings &bindings) {
   for (std::size_t slot = 0; slot < BoundTextureCount(bindings); ++slot)
-    BindSlot(srvs, slot, ViewOf(bindings.textures[slot].texture));
+    BindSlot(srvs, kProgramTextureSlot + slot,
+             ViewOf(bindings.textures[slot].texture));
 }
 
 void FillProgramConstants(ProgramConstants &constants,
@@ -775,8 +772,11 @@ bool TextureLab::Render(RenderTarget &a_target, RE::NiSourceTexture *a_source,
   const PassConstants constants = PassConstantsFor(a_params, *views);
   pass.Context().UpdateSubresource(gpu_->constants.Get(), 0, nullptr,
                                    &constants, 0, 0);
-  REX::W32::ID3D11ShaderResourceView *srvs[4]{views->source, views->map,
-                                              views->previous, views->curve};
+  std::array<REX::W32::ID3D11ShaderResourceView *, kPassCurveSlot + 1> srvs{};
+  BindSlot(srvs, kPassSourceSlot, views->source);
+  BindSlot(srvs, kPassMapSlot, views->map);
+  BindSlot(srvs, kPassBelowSlot, views->previous);
+  BindSlot(srvs, kPassCurveSlot, views->curve);
   const ConstantBindings cbs =
       BindingsOf({{ConstantSlot::kPass, gpu_->constants.Get()}});
   DrawFullScreen(pass, a_target, {gpu_->pixel.Get(), srvs, cbs});
@@ -956,7 +956,7 @@ void TextureLab::FillLookups(
   const auto lookups =
       std::min<std::size_t>(a_bindings.lookupCount, kProgramLookups);
   for (std::size_t c = 0; c < lookups; ++c) {
-    const auto slot = kProgramTextures + c;
+    const auto slot = kProgramLookupSlot + c;
     if (slot < a_srvs.size())
       a_srvs[slot] =
           a_bindings.lookups[c] ? a_bindings.lookups[c]->srv.Get() : nullptr;
@@ -1168,9 +1168,10 @@ bool TextureLab::RenderRipple(RenderTarget &a_target,
 
   pass.Context().UpdateSubresource(pipeline.constants.Get(), 0, nullptr,
                                    &constants, 0, 0);
-  REX::W32::ID3D11ShaderResourceView *srvs[kPassSrvs]{
-      reinterpret_cast<REX::W32::ID3D11ShaderResourceView *>(
-          positions->resourceView)};
+  std::array<REX::W32::ID3D11ShaderResourceView *, kPassSrvs> srvs{};
+  BindSlot(srvs, kSingleSourceSlot,
+           reinterpret_cast<REX::W32::ID3D11ShaderResourceView *>(
+               positions->resourceView));
   const ConstantBindings cbs =
       BindingsOf({{ConstantSlot::kRipple, pipeline.constants.Get()}});
   DrawFullScreen(pass, a_target, {pipeline.shader.Get(), srvs, cbs});
@@ -1211,7 +1212,10 @@ bool TextureLab::RenderFilter(RenderTarget &a_target,
         .filterInputSize = {a_from.size, a_from.size}};
     pass.Context().UpdateSubresource(pipeline.constants.Get(), 0, nullptr,
                                      &constants, 0, 0);
-    REX::W32::ID3D11ShaderResourceView *srvs[]{a_from.srv.Get(), charts};
+    std::array<REX::W32::ID3D11ShaderResourceView *, kFilterChartsSlot + 1>
+        srvs{};
+    BindSlot(srvs, kFilterInputSlot, a_from.srv.Get());
+    BindSlot(srvs, kFilterChartsSlot, charts);
     DrawFullScreen(pass, a_into, {pipeline.shader.Get(), srvs, cbs});
   };
   draw(*across, *a_pass.input, false);
@@ -1295,10 +1299,11 @@ bool TextureLab::DrawDiffuseDetail(RenderTarget &a_target,
                                          .diffuseDetailMip = a_diffuseMip};
   pass.Context().UpdateSubresource(pipeline.constants.Get(), 0, nullptr,
                                    &constants, 0, 0);
-  REX::W32::ID3D11ShaderResourceView *srvs[kPassSrvs]{
-      reinterpret_cast<REX::W32::ID3D11ShaderResourceView *>(
-          diffuseData->resourceView),
-      nullptr, NormalView(a_maps.normal)};
+  std::array<REX::W32::ID3D11ShaderResourceView *, kPassSrvs> srvs{};
+  BindSlot(srvs, kMaterialDiffuseSlot,
+           reinterpret_cast<REX::W32::ID3D11ShaderResourceView *>(
+               diffuseData->resourceView));
+  BindSlot(srvs, kMaterialNormalSlot, NormalView(a_maps.normal));
   const ConstantBindings cbs =
       BindingsOf({{ConstantSlot::kDiffuseDetail, pipeline.constants.Get()}});
   DrawFullScreen(pass, a_target, {pipeline.shader.Get(), srvs, cbs});
@@ -1465,15 +1470,17 @@ bool TextureLab::RenderClusters(
 
   pass.Context().UpdateSubresource(pipeline.constants.Get(), 0, nullptr,
                                    &constants, 0, 0);
-  REX::W32::ID3D11ShaderResourceView *srvs[kPassSrvs]{
-      reinterpret_cast<REX::W32::ID3D11ShaderResourceView *>(
-          diffuseData->resourceView),
-      reinterpret_cast<REX::W32::ID3D11ShaderResourceView *>(
-          rmaosData->resourceView),
-      NormalView(a_maps.normal),
-      chartIds,
-      (*odds)[0].Get(),
-      (*odds)[1].Get()};
+  std::array<REX::W32::ID3D11ShaderResourceView *, kPassSrvs> srvs{};
+  BindSlot(srvs, kMaterialDiffuseSlot,
+           reinterpret_cast<REX::W32::ID3D11ShaderResourceView *>(
+               diffuseData->resourceView));
+  BindSlot(srvs, kMaterialRmaosSlot,
+           reinterpret_cast<REX::W32::ID3D11ShaderResourceView *>(
+               rmaosData->resourceView));
+  BindSlot(srvs, kMaterialNormalSlot, NormalView(a_maps.normal));
+  BindSlot(srvs, kGroupChartIdsSlot, chartIds);
+  BindSlot(srvs, kGroupOddsLowSlot, (*odds)[0].Get());
+  BindSlot(srvs, kGroupOddsHighSlot, (*odds)[1].Get());
   const ConstantBindings cbs =
       BindingsOf({{ConstantSlot::kGroup, pipeline.constants.Get()}});
   DrawFullScreen(pass, a_target, {pipeline.shader.Get(), srvs, cbs});

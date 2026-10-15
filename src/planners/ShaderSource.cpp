@@ -2,997 +2,171 @@
 #include "planners/ShaderSource.h"
 
 #include "mesh/MaterialClusters.h"
-#include "planners/FieldProgram.h"
 #include "planners/ProgramShader.h"
 #include "planners/ShaderConstants.h"
+#include "planners/ShaderFiles.h"
+#include "recipe/Words.h"
 
+#include <algorithm>
+#include <cctype>
 #include <format>
 #include <string>
+#include <string_view>
 
 namespace BetterEnchantmentEffects {
 namespace {
-constexpr const char *kShaderSourceHead = R"(
-struct TextureRead
-{
-	float2 offset;
-	float2 tile;
-	float  mip;
-	float  normalize;
-	uint   channel;
-	uint   options;
+using GeneratedText = std::string (*)();
+
+struct ShaderPart {
+  std::string_view file;
+  GeneratedText generated = nullptr;
 };
 
-struct LayerMix
-{
-	float3 color;
-	float  opacity;
-	uint   blend;
-	uint   writeChannels;
-	uint   maskChannel;
-	uint   options;
+struct TextureSwitch {
+  std::string_view signature;
+  std::string_view prologue;
+  std::string_view statement;
+  std::string_view epilogue;
+  std::string_view texture;
+  std::uint32_t count = 0;
 };
 
-cbuffer PassParams : register(b0)
-{
-	TextureRead passSource;
-	LayerMix    passLayer;
-	uint        passMode;
-	float       passBelowMip;
-	uint        passMapChannel;
-	uint        passMapView;
-	float       passMapMip;
-};
-Texture2D    src   : register(t0);
-Texture2D    armor : register(t1);
-Texture2D    prev  : register(t2);
-Texture2D    curve : register(t3);
-SamplerState samp  : register(s0);
-
-bool HasOption(uint options, uint option)
-{
-	return (options & option) != 0;
-}
-
-float2 PlaceUv(float2 uv, TextureRead read)
-{
-	if (HasOption(read.options, kReadTranspose)) uv = uv.yx;
-	if (HasOption(read.options, kReadMirrorU)) uv.x = 1 - uv.x;
-	if (HasOption(read.options, kReadMirrorV)) uv.y = 1 - uv.y;
-	return uv * read.tile + read.offset;
-}
-
-float2 ReadUv(TextureRead read, float2 rawUv)
-{
-	return HasOption(read.options, kReadMeshSpace) ? rawUv : PlaceUv(rawUv, read);
-}
-
-float LerpEntries(float low, float high, float position)
-{
-	return low + (high - low) * (position - floor(position));
-}
-
-float Curve(float v)
-{
-	float p = saturate(v) * 255;
-	int lo = (int)p;
-	int hi = min(lo + 1, 255);
-	return LerpEntries(curve.Load(int3(lo, 0, 0)).x, curve.Load(int3(hi, 0, 0)).x, p);
-}
-
-struct VSOut { float4 pos : SV_Position; float2 uv : TEXCOORD0; };
-
-VSOut VSMain(uint id : SV_VertexID)
-{
-	float2 uv = float2((id << 1) & 2, id & 2);
-	VSOut o;
-	o.pos = float4(uv * float2(2, -2) + float2(-1, 1), 0, 1);
-	o.uv = uv;
-	return o;
-}
-
-float NormalSlope(float2 uv)
-{
-	float2 n = armor.SampleLevel(samp, uv, 0).rg * 2 - 1;
-	return saturate(length(n));
-}
-
-float3 Pick(float4 s, uint channel)
-{
-	if (channel == 0) return s.rrr;
-	if (channel == 1) return s.ggg;
-	if (channel == 2) return s.bbb;
-	if (channel == 3) return s.aaa;
-	if (channel == 5) return dot(s.rgb, float3(0.2126, 0.7152, 0.0722)).xxx;
-	return s.rgb;
-}
-
-float3 Blend(uint mode, float3 below, float3 value)
-{
-	if (mode == 1) return below * value;
-	if (mode == 2) return below + value;
-	if (mode == 3) return below - value;
-	if (mode == 4) return 1 - (1 - below) * (1 - value);
-	if (mode == 6) {
-		float3 t = below * 2 - float3(1, 1, 0);
-		float3 u = value * float3(-2, -2, 2) + float3(1, 1, -1);
-		float3 r = t * (dot(t, u) / max(t.z, 0.001)) - u;
-		float len = length(r);
-		return (len > 0 ? r / len : float3(0, 0, 1)) * 0.5 + 0.5;
-	}
-	return value;
-}
-
-float3 LayerValue(float3 color, float normalize, bool hasSource, float4 s, uint channel)
-{
-	float3 value = color;
-	if (hasSource) value *= Pick(s, channel) * normalize;
-	return value;
-}
-
-float4 ComposeLayer(float4 below, float3 value, float opacity, bool hasMask, float4 m, uint maskChannel, uint blend, uint bits)
-{
-	float alpha = opacity;
-	if (hasMask) alpha *= Pick(m, maskChannel).x;
-	float3 mixed = lerp(below.rgb, Blend(blend, below.rgb, value), saturate(alpha));
-	float4 result = below;
-	if (bits & 1) result.r = mixed.r;
-	if (bits & 2) result.g = mixed.g;
-	if (bits & 4) result.b = mixed.b;
-	if (bits & 8) result.a = lerp(below.a, dot(value, float3(0.2126, 0.7152, 0.0722)), saturate(alpha));
-	return result;
-}
-
-float4 LayerPass(float2 rawUv)
-{
-	uint options = passLayer.options;
-	float4 below = HasOption(options, kLayerHasBelow) ? prev.SampleLevel(samp, rawUv, passBelowMip) : float4(0, 0, 0, 0);
-	bool hasSource = HasOption(options, kLayerHasSource);
-	float4 s = 0;
-	if (hasSource) s = src.SampleLevel(samp, ReadUv(passSource, rawUv), passSource.mip);
-	float3 value = LayerValue(passLayer.color, passSource.normalize, hasSource, s, passSource.channel);
-	if (HasOption(options, kLayerHasCurve)) {
-		value = float3(Curve(value.r), Curve(value.g), Curve(value.b));
-	}
-	bool hasMask = HasOption(options, kLayerHasMask);
-	float4 m = hasMask ? armor.SampleLevel(samp, rawUv, 0) : float4(0, 0, 0, 0);
-	return ComposeLayer(below, value, passLayer.opacity, hasMask, m, passLayer.maskChannel, passLayer.blend, passLayer.writeChannels);
-}
-
-float4 MapView(float2 uv)
-{
-	if (passMapView == kMapSlope) { float r = NormalSlope(uv); return float4(r, r, r, 1); }
-	if (passMapView == kMapIds) {
-		uint width, height;
-		armor.GetDimensions(width, height);
-		int2 texel = int2(uv * float2(width, height));
-		float id = round(Pick(armor.Load(int3(texel, 0)), passMapChannel).x * 255);
-		return float4(kIdPalette[(uint)id % 8], 1);
-	}
-	float4 a = armor.SampleLevel(samp, uv, passMapMip);
-	return float4(Pick(a, passMapChannel), 1);
-}
-
-float4 PSMain(VSOut i) : SV_Target
-{
-	if (passMode == 6) return LayerPass(i.uv);
-	if (passMode == 4) return MapView(i.uv);
-	float4 c = src.SampleLevel(samp, PlaceUv(i.uv, passSource), passSource.mip);
-	if (passMode == 7) return c;
-	return float4(c.rgb, 1);
-}
-struct ProgramInputRow
-{
-	float3 value;
-	uint   textureSlot;
+constexpr TextureSwitch kTextureSwitches[]{
+    {"float4 SampleProgramTexture(int slot, float2 uv, float mip)", "",
+     "return {}.SampleLevel(linearSampler, uv, mip);", "", "programTexture",
+     kProgramTextures},
+    {"float2 ProgramTextureSize(int slot)", "\tfloat w = 0, h = 0;\n",
+     "{}.GetDimensions(w, h); break;", "\treturn float2(w, h);\n",
+     "programTexture", kProgramTextures},
+    {"float LoadLookup(int slot, int at)", "",
+     "return {}.Load(int3(at, 0, 0)).x;", "", "programLookup", kProgramLookups},
+    {"float4 SampleStackSource(int slot, float2 uv, float mip)", "",
+     "return {}.SampleLevel(linearSampler, uv, mip);", "", "stackSourceTexture",
+     kMaxStackLayers},
+    {"float4 SampleStackMask(int slot, float2 uv)", "",
+     "return {}.SampleLevel(linearSampler, uv, 0);", "", "stackMaskTexture",
+     kMaxStackLayers},
 };
 
-cbuffer ProgramParams : register(b1)
-{
-	uint4           programCode[128];
-	ProgramInputRow programInputs[16];
-	TextureRead     programTextures[8];
-	uint            programCount;
-	bool            programVectorResult;
-};
-Texture2D tex0 : register(t0);
-Texture2D tex1 : register(t1);
-Texture2D tex2 : register(t2);
-Texture2D tex3 : register(t3);
-Texture2D tex4 : register(t4);
-Texture2D tex5 : register(t5);
-Texture2D tex6 : register(t6);
-Texture2D tex7 : register(t7);
-Texture2D lookup0 : register(t8);
-Texture2D lookup1 : register(t9);
-Texture2D lookup2 : register(t10);
-Texture2D lookup3 : register(t11);
-
-float4 SampleSlot(int slot, float2 uv, float mip)
-{
-	switch (slot) {
-	case 0: return tex0.SampleLevel(samp, uv, mip);
-	case 1: return tex1.SampleLevel(samp, uv, mip);
-	case 2: return tex2.SampleLevel(samp, uv, mip);
-	case 3: return tex3.SampleLevel(samp, uv, mip);
-	case 4: return tex4.SampleLevel(samp, uv, mip);
-	case 5: return tex5.SampleLevel(samp, uv, mip);
-	case 6: return tex6.SampleLevel(samp, uv, mip);
-	default: return tex7.SampleLevel(samp, uv, mip);
-	}
+std::string TitleCase(std::string_view a_word) {
+  std::string out{a_word};
+  if (!out.empty())
+    out[0] =
+        static_cast<char>(std::toupper(static_cast<unsigned char>(out[0])));
+  return out;
 }
 
-float LookupLoad(int slot, int at)
-{
-	int3 texel = int3(at, 0, 0);
-	switch (slot) {
-	case 0: return lookup0.Load(texel).x;
-	case 1: return lookup1.Load(texel).x;
-	case 2: return lookup2.Load(texel).x;
-	default: return lookup3.Load(texel).x;
-	}
+std::string WordLine(std::string_view a_name, std::uint32_t a_value) {
+  return std::format("static const uint {} = {}u;\n", a_name, a_value);
 }
 
-float LookupAt(int slot, float v)
-{
-	float p = saturate(v) * 255;
-	int lo = (int)p;
-	int hi = min(lo + 1, 255);
-	return LerpEntries(LookupLoad(slot, lo), LookupLoad(slot, hi), p);
-}
-
-float2 SlotSize(int slot)
-{
-	float w = 0, h = 0;
-	switch (slot) {
-	case 0: tex0.GetDimensions(w, h); break;
-	case 1: tex1.GetDimensions(w, h); break;
-	case 2: tex2.GetDimensions(w, h); break;
-	case 3: tex3.GetDimensions(w, h); break;
-	case 4: tex4.GetDimensions(w, h); break;
-	case 5: tex5.GetDimensions(w, h); break;
-	case 6: tex6.GetDimensions(w, h); break;
-	default: tex7.GetDimensions(w, h); break;
-	}
-	return float2(w, h);
-}
-
-float2 TexelCentre(int slot, float2 uv)
-{
-	float2 size = SlotSize(slot);
-	if (size.x < 1 || size.y < 1) return uv;
-	return (floor(uv * size) + 0.5) / size;
-}
-
-float3 ReadTexture(int slot, float2 rawUv)
-{
-	TextureRead read = programTextures[slot];
-	float2 uv = ReadUv(read, rawUv);
-	if (HasOption(read.options, kReadNearest)) uv = TexelCentre(slot, uv);
-	return Pick(SampleSlot(slot, uv, read.mip), read.channel) * read.normalize;
-}
-
-float3 ReadInput(int index, float2 uv)
-{
-	ProgramInputRow input = programInputs[index];
-	if (input.textureSlot == kNoTextureSlot) return input.value;
-	return ReadTexture((int)input.textureSlot, uv);
-}
-
-struct Instruction
-{
-	uint  op;
-	uint  components;
-	uint  pops;
-	uint  index;
-	float number;
-};
-
-uint2 InstructionWords(int k)
-{
-	uint4 row = programCode[k >> 1];
-	return (k & 1) ? row.zw : row.xy;
-}
-
-uint WordByte(uint word, uint byteIndex)
-{
-	return (word >> (byteIndex * 8)) & 0xFF;
-}
-
-Instruction InstructionAt(int k)
-{
-	uint2 words = InstructionWords(k);
-	Instruction instruction;
-	instruction.op = WordByte(words.x, kInstructionOpByte);
-	instruction.components = WordByte(words.x, kInstructionComponentsByte);
-	instruction.pops = WordByte(words.x, kInstructionPopsByte);
-	instruction.index = WordByte(words.x, kInstructionIndexByte);
-	instruction.number = asfloat(words.y);
-	return instruction;
-}
-
-float NumberAt(int k)
-{
-	return asfloat(InstructionWords(k).y);
-}
-
-float3 SafeDiv(float3 a, float3 b)
-{
-	return float3(b.x == 0 ? 0 : a.x / b.x, b.y == 0 ? 0 : a.y / b.y, b.z == 0 ? 0 : a.z / b.z);
-}
-
-float PowOne(float a, float b)
-{
-	if (b == 0 || a == 1) return 1;
-	float r = exp2(log2(abs(a)) * b);
-	if (a < 0) {
-		if (b != floor(b)) return 0;
-		if (frac(b * 0.5) != 0) r = -r;
-	}
-	return isfinite(r) ? r : 0;
-}
-
-float3 SafePow(float3 a, float3 b)
-{
-	return float3(PowOne(a.x, b.x), PowOne(a.y, b.y), PowOne(a.z, b.z));
-}
-
-uint PrimeAtLeast(uint n)
-{
-	uint p = max(n, 2u);
-	[loop] for (uint gap = 0; gap < 16; ++gap) {
-		bool prime = true;
-		[loop] for (uint d = 2; d * d <= p; ++d) {
-			if (p % d == 0) { prime = false; break; }
-		}
-		if (prime) break;
-		++p;
-	}
-	return p;
-}
-
-uint MixBits(uint x)
-{
-	x ^= x >> 16;
-	x *= 0x7feb352du;
-	x ^= x >> 15;
-	x *= 0x846ca68bu;
-	x ^= x >> 16;
-	return x;
-}
-
-uint HashBits(float value)
-{
-	return (isfinite(value) && value != 0) ? asuint(value) : 0u;
-}
-
-float Hash(float value, float salt)
-{
-	uint mixed = MixBits(HashBits(value) ^ MixBits(HashBits(salt) + 0x9e3779b9u));
-	return (float)(mixed >> 8) * (1.0 / 16777216.0);
-}
-
-float RandRange(float start, float stop, float seed)
-{
-	if (!isfinite(start)) return 0;
-	float lo = floor(start);
-	float hi = isfinite(stop) ? floor(stop) : lo;
-	if (!(hi > lo)) return lo;
-	float s = isfinite(seed) ? clamp(seed, 0, 1) : 0;
-	float span = hi - lo;
-	return lo + min(floor(s * span), span - 1);
-}
-
-float WheelChannel(float turns, float offset)
-{
-	return saturate(abs(frac(turns + offset) * 6 - 3) - 1);
-}
-
-float3 Hue(float turns)
-{
-	float t = isfinite(turns) ? turns : 0;
-	return float3(WheelChannel(t, 0), WheelChannel(t, 2.0 / 3.0), WheelChannel(t, 1.0 / 3.0));
-}
-
-float3 HueShift(float3 color, float turns)
-{
-	float angle = (isfinite(turns) ? turns : 0) * 6.28318530718;
-	float c = cos(angle);
-	float s = sin(angle);
-	float k = 0.57735026919;
-	float along = k * (color.x + color.y + color.z) * (1 - c);
-	float3 across = k * float3(color.z - color.y, color.x - color.z, color.y - color.x);
-	float3 shifted = color * c + across * s + k * along;
-	return isfinite(shifted) ? saturate(shifted) : 0;
-}
-
-float Shuffle(float index, float total, float seed)
-{
-	if (!(total >= 1) || !(index >= 0) || isinf(index)) return 256;
-	float n = min(floor(total), 251);
-	float i = floor(index);
-	if (i >= n) return 256;
-	uint count = (uint)n;
-	uint p = PrimeAtLeast(count);
-	float s = isfinite(seed) ? frac(seed) : 0;
-	uint scale = 1 + min((uint)floor(frac(s * 29.41) * (p - 1)), p - 2);
-	uint shift = min((uint)floor(frac(s * 13.37) * p), p - 1);
-	uint x = (uint)i;
-	[loop] for (uint k = 0; k < p; ++k) {
-		x = (scale * x + shift) % p;
-		if (x < count) break;
-	}
-	return (float)x;
-}
-
-float3 RunProgram(int first, int count, float2 uv)
-{
-	float3 st[)";
-
-constexpr const char *kShaderSourceMid = R"(];
-	int    sp = 0;
-	int    end = min(first + count, 256);
-	[loop] for (int k = max(first, 0); k < end; ++k) {
-		Instruction instruction = InstructionAt(k);
-		int    op = (int)instruction.op;
-		int    idx = (int)instruction.index;
-		int    components = (int)instruction.components;
-		int    pops = (int)instruction.pops;
-		float  number = instruction.number;
-		float3 a = 0, b = 0, d = 0;
-		if (pops >= 1) { if (sp > 0) { --sp; a = st[sp]; } }
-		if (pops >= 2) { if (sp > 0) { --sp; b = st[sp]; } }
-		if (pops >= 3) { if (sp > 0) { --sp; d = st[sp]; } }
-		float3 r = 0;
-)";
-
-constexpr const char *kShaderSourceAfterZRule = R"(
-		if (sp < )";
-
-constexpr const char *kShaderSourceTail = R"() { st[sp] = r; ++sp; }
-	}
-	return sp > 0 ? st[sp - 1] : float3(0, 0, 0);
-}
-
-float4 PSProgram(VSOut i) : SV_Target
-{
-	float3 result = RunProgram(0, (int)programCount, i.uv);
-	return programVectorResult ? float4(result, 1) : float4(result.xxx, 1);
-}
-
-struct BakeIn  { float2 uv : TEXCOORD0; float3 value : COLOR0; };
-struct BakeOut { float4 pos : SV_Position; float3 value : COLOR0; };
-
-BakeOut BakeVS(BakeIn i)
-{
-	BakeOut o;
-	o.pos = float4(i.uv.x * 2 - 1, 1 - i.uv.y * 2, 0, 1);
-	o.value = i.value;
-	return o;
-}
-
-float4 BakePS(BakeOut i) : SV_Target
-{
-	return float4(i.value, 1);
-}
-
-cbuffer BakeNoiseParams : register(b7)
-{
-	uint noiseOctaves;
-	uint noiseSeed;
-	uint noiseStyle;
-};
-
-uint LatticeHash(int3 c, uint seed)
-{
-	uint h = asuint(c.x) * 73856093u ^ asuint(c.y) * 19349663u ^ asuint(c.z) * 83492791u ^ seed * 2654435761u;
-	h ^= h >> 16;
-	h *= 0x7feb352du;
-	h ^= h >> 15;
-	h *= 0x846ca68bu;
-	h ^= h >> 16;
-	return h;
-}
-
-float LatticeValue(int3 c, uint seed)
-{
-	return (float)(LatticeHash(c, seed) >> 8) * (1.0 / 16777216.0);
-}
-
-float ValueNoise(float3 p, uint seed)
-{
-	float3 cell = floor(p);
-	int3 c = int3(cell);
-	float3 f = p - cell;
-	float3 u = f * f * (3.0 - 2.0 * f);
-	float y0z0 = lerp(LatticeValue(c, seed), LatticeValue(c + int3(1, 0, 0), seed), u.x);
-	float y1z0 = lerp(LatticeValue(c + int3(0, 1, 0), seed), LatticeValue(c + int3(1, 1, 0), seed), u.x);
-	float y0z1 = lerp(LatticeValue(c + int3(0, 0, 1), seed), LatticeValue(c + int3(1, 0, 1), seed), u.x);
-	float y1z1 = lerp(LatticeValue(c + int3(0, 1, 1), seed), LatticeValue(c + int3(1, 1, 1), seed), u.x);
-	return lerp(lerp(y0z0, y1z0, u.y), lerp(y0z1, y1z1, u.y), u.z);
-}
-
-float FractalNoise(float3 p, uint octaves, uint seed)
-{
-	float sum = 0;
-	float total = 0;
-	float amplitude = 1;
-	float frequency = 1;
-	[unroll] for (uint o = 0; o < 4; ++o) {
-		if (o < octaves) {
-			sum += amplitude * ValueNoise(p * frequency, seed + o * 7919u);
-			total += amplitude;
-		}
-		amplitude *= 0.5;
-		frequency *= 2.0;
-	}
-	return sum / total;
-}
-
-float CellularEdge(float3 p, uint seed)
-{
-	float3 cell = floor(p);
-	int3 c = int3(cell);
-	float nearest = 8.0;
-	float second = 8.0;
-	[unroll] for (int dz = -1; dz <= 1; ++dz)
-	[unroll] for (int dy = -1; dy <= 1; ++dy)
-	[unroll] for (int dx = -1; dx <= 1; ++dx) {
-		int3 n = c + int3(dx, dy, dz);
-		float3 feature = float3(n) + float3(
-			LatticeValue(n, seed + 1013u),
-			LatticeValue(n, seed + 2026u),
-			LatticeValue(n, seed + 3039u));
-		float d = length(feature - p);
-		if (d < nearest) {
-			second = nearest;
-			nearest = d;
-		} else if (d < second) {
-			second = d;
-		}
-	}
-	return saturate(second - nearest);
-}
-
-float CellularNoise(float3 p, uint octaves, uint seed)
-{
-	float sum = 0;
-	float total = 0;
-	float amplitude = 1;
-	float frequency = 1;
-	[loop] for (uint o = 0; o < 4; ++o) {
-		if (o < octaves) {
-			sum += amplitude * CellularEdge(p * frequency, seed + o * 7919u);
-			total += amplitude;
-		}
-		amplitude *= 0.5;
-		frequency *= 2.0;
-	}
-	return sum / total;
-}
-
-float StyledNoise(float3 p, uint octaves, uint seed, uint style)
-{
-	if (style == 2u)
-		return CellularNoise(p, octaves, seed);
-	float n = FractalNoise(p, octaves, seed);
-	return style == 1u ? abs(2.0 * n - 1.0) : n;
-}
-
-float4 BakeNoisePS(BakeOut i) : SV_Target
-{
-	uint octaves = clamp(noiseOctaves, 1u, 4u);
-	uint seed = noiseSeed;
-	uint style = min(noiseStyle, 2u);
-	return float4(
-		StyledNoise(i.value, octaves, seed, style),
-		StyledNoise(i.value + float3(17.3, 5.9, 31.1), octaves, seed + 101u, style),
-		StyledNoise(i.value + float3(41.7, 23.3, 11.9), octaves, seed + 202u, style),
-		1);
-}
-
-float4 DilatePS(VSOut i) : SV_Target
-{
-	int3 at = int3(int2(i.pos.xy), 0);
-	float4 c = src.Load(at);
-	if (c.a > 0.5) return c;
-	float3 sum = 0;
-	float n = 0;
-	[unroll] for (int dy = -1; dy <= 1; ++dy)
-	[unroll] for (int dx = -1; dx <= 1; ++dx) {
-		float4 s = src.Load(at + int3(dx, dy, 0));
-		if (s.a > 0.5) { sum += s.rgb; n += 1; }
-	}
-	return n > 0 ? float4(sum / n, 1) : float4(0, 0, 0, 0);
-}
-
-cbuffer FilterParams : register(b8)
-{
-	uint  filterOperation;
-	uint  filterTaps;
-	bool  filterVertical;
-	bool  filterKeepSeams;
-	uint2 filterTargetSize;
-	uint2 filterInputSize;
-};
-
-Texture2D filterInput  : register(t0);
-Texture2D filterCharts : register(t1);
-
-float FilterWeight(int k, int taps)
-{
-	float sigma = max(taps * 0.5, 0.5);
-	return exp(-(k * k) / (2 * sigma * sigma));
-}
-
-float4 FilterRead(int2 at, bool vertical)
-{
-	int2 target = int2(max(filterTargetSize, 1u));
-	int2 input = int2(max(filterInputSize, 1u));
-	int2 from = clamp(at * input / target, 0, input - 1);
-	float4 s = filterInput.Load(int3(from, 0));
-	return vertical ? s : s.xxxx;
-}
-
-float4 FilterFinish(float4 pass, uint operation)
-{
-	if (operation == 1) return float4(pass.zzz, 1);
-	if (operation == 2) return float4(pass.yyy, 1);
-	if (operation == 3) { float e = pass.z - pass.y; return float4(e, e, e, 1); }
-	return float4(pass.xxx, 1);
-}
-
-float4 PSFilter(VSOut i) : SV_Target
-{
-	int taps = (int)min(filterTaps, 16u);
-	bool vertical = filterVertical;
-	bool keepSeams = filterKeepSeams;
-	int2 target = int2(max(filterTargetSize, 1u));
-	int2 at = int2(i.pos.xy);
-	int2 step = vertical ? int2(0, 1) : int2(1, 0);
-	float chart = keepSeams ? filterCharts.Load(int3(at, 0)).r : 0;
-	float4 own = FilterRead(at, vertical);
-	float sum = 0, weight = 0;
-	float lowest = own.y, highest = own.z;
-	[loop] for (int k = -taps; k <= taps; ++k) {
-		int2 near = clamp(at + step * k, 0, target - 1);
-		if (keepSeams && filterCharts.Load(int3(near, 0)).r != chart) continue;
-		float4 v = FilterRead(near, vertical);
-		float wk = FilterWeight(k, taps);
-		sum += v.x * wk;
-		weight += wk;
-		lowest = min(lowest, v.y);
-		highest = max(highest, v.z);
-	}
-	float4 pass = float4(weight > 0 ? sum / weight : own.x, lowest, highest, 1);
-	return vertical ? FilterFinish(pass, filterOperation) : pass;
-}
-
-cbuffer ReduceParams : register(b4)
-{
-	uint  reduceKind;
-	uint  reduceComponents;
-	uint2 reduceExtent;
-	bool  reduceReadsField;
-};
-
-float4 ReductionSample(float4 s, uint components)
-{
-	float3 v = float3(s.x, components > 1 ? s.y : 0, components > 2 ? s.z : 0);
-	bool3 special = (asuint(v) & 0x7f800000) == 0x7f800000;
-	return any(special) ? float4(0, 0, 0, 1) : float4(v, 0);
-}
-
-float4 PSReduce(VSOut i) : SV_Target
-{
-	int2 origin = int2(i.pos.xy) * 4;
-	int2 extent = int2(reduceExtent);
-	float4 result = 0;
-	bool seen = false;
-	[unroll] for (int dy = 0; dy < 4; ++dy)
-	[unroll] for (int dx = 0; dx < 4; ++dx) {
-		int2 at = origin + int2(dx, dy);
-		if (at.x < extent.x && at.y < extent.y) {
-			float4 s = src.Load(int3(at, 0));
-			if (reduceReadsField) s = ReductionSample(s, reduceComponents);
-			if (!seen) result = s;
-			else if (reduceKind == 2) result = float4(min(result.xyz, s.xyz), max(result.w, s.w));
-			else if (reduceKind == 3) result = float4(max(result.xyz, s.xyz), max(result.w, s.w));
-			else result = float4(result.xyz + s.xyz, max(result.w, s.w));
-			seen = true;
-		}
-	}
-	return result;
-}
-
-struct RippleFiringRow
-{
-	float3 origin;
-	float  age;
-};
-
-cbuffer RippleParams : register(b2)
-{
-	RippleFiringRow rippleFirings[8];
-	float3          rippleDirection;
-	uint            rippleFiringCount;
-	float           rippleSpeed;
-	float           rippleWidth;
-	float           rippleDecay;
-	float           rippleFrame;
-	bool            rippleDisc;
-	bool            rippleDirectional;
-};
-
-float4 PSRipple(VSOut i) : SV_Target
-{
-	float3 pos = (src.SampleLevel(samp, i.uv, 0).rgb * 2 - 1) * rippleFrame;
-	float  v = 0;
-	int    n = (int)min(rippleFiringCount, 8u);
-	float  width = max(rippleWidth, 0.01);
-	bool   directional = rippleDirectional;
-	[loop] for (int k = 0; k < n; ++k) {
-		RippleFiringRow firing = rippleFirings[k];
-		float3 offset = pos - firing.origin;
-		float  d = directional ? dot(offset, rippleDirection) : length(offset);
-		float  r = firing.age * rippleSpeed;
-		float  f;
-		if (rippleDisc) {
-			float lead = 1 - smoothstep(r - width, r, d);
-			float trail = directional ? smoothstep(-width, 0, d) : 1;
-			f = lead * trail;
-		} else {
-			float x = (d - r) / width;
-			f = exp(-x * x * 4);
-		}
-		v = max(v, f * exp(-rippleDecay * firing.age));
-	}
-	return float4(v, v, v, 1);
-}
-
-struct StackLayer
-{
-	TextureRead source;
-	LayerMix    mix;
-	uint2       sourceCode;
-	uint2       maskCode;
-};
-
-cbuffer StackParams : register(b5)
-{
-	StackLayer stackLayers[8];
-	uint       stackLayerCount;
-	bool       stackHasBase;
-	float      stackBaseMip;
-};
-Texture2D stackBase : register(t12);
-Texture2D stackSourceTexture0 : register(t13);
-Texture2D stackSourceTexture1 : register(t14);
-Texture2D stackSourceTexture2 : register(t15);
-Texture2D stackSourceTexture3 : register(t16);
-Texture2D stackSourceTexture4 : register(t17);
-Texture2D stackSourceTexture5 : register(t18);
-Texture2D stackSourceTexture6 : register(t19);
-Texture2D stackSourceTexture7 : register(t20);
-Texture2D stackMaskTexture0 : register(t21);
-Texture2D stackMaskTexture1 : register(t22);
-Texture2D stackMaskTexture2 : register(t23);
-Texture2D stackMaskTexture3 : register(t24);
-Texture2D stackMaskTexture4 : register(t25);
-Texture2D stackMaskTexture5 : register(t26);
-Texture2D stackMaskTexture6 : register(t27);
-Texture2D stackMaskTexture7 : register(t28);
-
-float4 SampleStackSource(int k, float2 uv, float mip)
-{
-	switch (k) {
-	case 0: return stackSourceTexture0.SampleLevel(samp, uv, mip);
-	case 1: return stackSourceTexture1.SampleLevel(samp, uv, mip);
-	case 2: return stackSourceTexture2.SampleLevel(samp, uv, mip);
-	case 3: return stackSourceTexture3.SampleLevel(samp, uv, mip);
-	case 4: return stackSourceTexture4.SampleLevel(samp, uv, mip);
-	case 5: return stackSourceTexture5.SampleLevel(samp, uv, mip);
-	case 6: return stackSourceTexture6.SampleLevel(samp, uv, mip);
-	default: return stackSourceTexture7.SampleLevel(samp, uv, mip);
-	}
-}
-
-float4 SampleStackMask(int k, float2 uv)
-{
-	switch (k) {
-	case 0: return stackMaskTexture0.SampleLevel(samp, uv, 0);
-	case 1: return stackMaskTexture1.SampleLevel(samp, uv, 0);
-	case 2: return stackMaskTexture2.SampleLevel(samp, uv, 0);
-	case 3: return stackMaskTexture3.SampleLevel(samp, uv, 0);
-	case 4: return stackMaskTexture4.SampleLevel(samp, uv, 0);
-	case 5: return stackMaskTexture5.SampleLevel(samp, uv, 0);
-	case 6: return stackMaskTexture6.SampleLevel(samp, uv, 0);
-	default: return stackMaskTexture7.SampleLevel(samp, uv, 0);
-	}
-}
-
-float4 Unorm8(float4 v)
-{
-	return round(saturate(v) * 255) / 255;
-}
-
-float4 PSStack(VSOut i) : SV_Target
-{
-	float2 rawUv = i.uv;
-	float4 below = stackHasBase ? stackBase.SampleLevel(samp, rawUv, stackBaseMip) : float4(0, 0, 0, 0);
-	int n = (int)min(stackLayerCount, 8u);
-	[loop] for (int k = 0; k < n; ++k) {
-		StackLayer layer = stackLayers[k];
-		bool hasSource = HasOption(layer.mix.options, kLayerHasSource);
-		bool hasMask = HasOption(layer.mix.options, kLayerHasMask);
-		float4 s = 0;
-		float4 m = 0;
-		if (layer.sourceCode.y > 0) s = float4(RunProgram((int)layer.sourceCode.x, (int)layer.sourceCode.y, rawUv), 1);
-		else if (hasSource) s = SampleStackSource(k, ReadUv(layer.source, rawUv), layer.source.mip);
-		float3 value = LayerValue(layer.mix.color, layer.source.normalize, hasSource, s, layer.source.channel);
-		if (layer.maskCode.y > 0) m = float4(RunProgram((int)layer.maskCode.x, (int)layer.maskCode.y, rawUv), 1);
-		else if (hasMask) m = SampleStackMask(k, rawUv);
-		float4 result = ComposeLayer(below, value, layer.mix.opacity, hasMask, m, layer.mix.maskChannel, layer.mix.blend, layer.mix.writeChannels);
-		below = k + 1 < n ? Unorm8(result) : result;
-	}
-	return below;
-}
-
-struct NormalDetail
-{
-	float fineMip;
-	float coarseMip;
-	float footprint;
-	bool  present;
-};
-
-struct GroupScore
-{
-	float4 mean[2];
-	float4 whitening[9];
-	uint   id;
-	float  logScale;
-	uint2  padding;
-};
-
-cbuffer GroupParams : register(b3)
-{
-	GroupScore   groups[8];
-	float4       groupAxisCentre[2];
-	float4       groupAxisSpread[2];
-	uint4        groupLitCharts[2];
-	NormalDetail groupDetail;
-	uint         groupCount;
-	uint         groupDraw;
-	uint         groupPicked;
-	float        groupOddsWeight;
-	float        groupRmaosMip;
-	float        groupDiffuseMip;
-	bool         groupChartFilter;
-};
-
-float Lane(float4 rows[2], int at)
-{
-	return rows[at >> 2][at & 3];
-}
-
-bool IsChartLit(uint chart)
-{
-	uint word = chart >> 5;
-	uint bits = groupLitCharts[word >> 2][word & 3];
-	return ((bits >> (chart & 31)) & 1) != 0;
-}
-
-float ChartLitAt(float2 uv)
-{
-	uint w, h;
-	tex3.GetDimensions(w, h);
-	int2 texel = min(int2(uv * float2(w, h)), int2(w, h) - 1);
-	uint chart = (uint)clamp((int)round(tex3.Load(int3(texel, 0)).r * 255.0), 0, 255);
-	return IsChartLit(chart) ? 1.0 : 0.0;
-}
-
-float NormalDetailAt(float2 uv, NormalDetail detail)
-{
-	if (!detail.present)
-		return 0;
-	float2 coarse = prev.SampleLevel(samp, uv, detail.coarseMip).xy * 2 - 1;
-	float total = 0;
-	[unroll] for (int y = 0; y < 4; ++y) {
-		[unroll] for (int x = 0; x < 4; ++x) {
-			float2 offset = (float2(x, y) - 1.5) * (detail.footprint * 0.25);
-			float2 fine = prev.SampleLevel(samp, uv + offset, detail.fineMip).xy * 2 - 1;
-			total += length(fine - coarse);
-		}
-	}
-	return saturate(total * (2.0 / 16.0));
-}
-
-cbuffer DiffuseDetailParams : register(b6)
-{
-	NormalDetail diffuseDetailNormal;
-	float        diffuseDetailMip;
-};
-
-float4 PSDiffuseDetail(VSOut i) : SV_Target
-{
-	float3 d = src.SampleLevel(samp, i.uv, diffuseDetailMip).rgb;
-	return float4(d, NormalDetailAt(i.uv, diffuseDetailNormal));
-}
-
-float4 PSClusters(VSOut i) : SV_Target
-{
-	float4 m = saturate(armor.SampleLevel(samp, i.uv, groupRmaosMip));
-	float3 d = saturate(src.SampleLevel(samp, i.uv, groupDiffuseMip).rgb);
-	float axes[8];
-	axes[0] = m.r;
-	axes[1] = m.g;
-	axes[2] = m.b;
-	axes[3] = m.a;
-	axes[4] = saturate(dot(d, float3(0.2126, 0.7152, 0.0722)));
-	axes[5] = saturate(0.5 + d.r - d.b);
-	axes[6] = saturate(0.5 + d.g - 0.5 * (d.r + d.b));
-	axes[7] = NormalDetailAt(i.uv, groupDetail);
-	float z[8];
-	[unroll] for (int a = 0; a < 8; ++a)
-		z[a] = (axes[a] - Lane(groupAxisCentre, a)) / Lane(groupAxisSpread, a);
-	float4 odds0 = tex4.SampleLevel(samp, i.uv, 0);
-	float4 odds1 = tex5.SampleLevel(samp, i.uv, 0);
-	int n = (int)min(groupCount, 8u);
-	uint id = 0;
-	float best = 0;
-	[loop] for (int k = 0; k < n; ++k) {
-		GroupScore group = groups[k];
-		float sum = 0;
-		[unroll] for (int r = 0; r < 8; ++r) {
-			float row = 0;
-			[unroll] for (int c = 0; c <= r; ++c) {
-				int w = r * (r + 1) / 2 + c;
-				row += group.whitening[w >> 2][w & 3] * (z[c] - Lane(group.mean, c));
-			}
-			sum += row * row;
-		}
-		uint g = min(group.id, 7u);
-		float odds = g < 4 ? odds0[g] : odds1[g - 4];
-		float score = group.logScale - 0.5 * sum + groupOddsWeight * log(max(odds, 1.0 / 512.0));
-		if (k == 0 || score > best) {
-			best = score;
-			id = group.id;
-		}
-	}
-	if (groupDraw == kGroupDrawPalette)
-		return float4(kIdPalette[id % 8], 1);
-	float v = groupDraw == kGroupDrawPicked
-	              ? (id == groupPicked ? 1.0 : 0.0)
-	              : id / 255.0;
-	if (groupChartFilter)
-		v *= ChartLitAt(i.uv);
-	return float4(v, v, v, 1);
-}
-)";
-
-std::string ShaderWordsSource() {
-  std::string source;
+std::string WordsText() {
+  std::string text;
   for (const ShaderWord &word : kShaderWords)
-    source +=
-        std::format("static const uint {} = {}u;\n", word.name, word.value);
-  return source;
+    text += WordLine(word.name, word.value);
+  for (const BlendSpec &blend : kBlends)
+    text += WordLine("kBlend" + TitleCase(blend.name), blend.shaderMode);
+  return text;
 }
 
-std::string IdPaletteSource() {
-  std::string source = "static const float3 kIdPalette[8] = {";
+std::string PaletteText() {
+  std::string text = std::format("static const float3 kIdPalette[{}] = {{",
+                                 kClusterPalette.size());
   for (std::size_t k = 0; k < kClusterPalette.size(); ++k) {
     const Vec3 &colour = kClusterPalette[k];
-    source += std::format("{}float3({}, {}, {})", k == 0 ? "" : ", ", colour.x,
-                          colour.y, colour.z);
+    text += std::format("{}float3({}, {}, {})", k == 0 ? "" : ", ", colour.x,
+                        colour.y, colour.z);
   }
-  return source + "};\n";
+  return text + "};\n";
 }
 
-const std::string kShaderSourceStorage =
-    ShaderWordsSource() + IdPaletteSource() + std::string(kShaderSourceHead) +
-    std::to_string(kProgramStack) + kShaderSourceMid + InterpreterSwitch() +
-    InterpreterZRule() + kShaderSourceAfterZRule +
-    std::to_string(kProgramStack) + kShaderSourceTail;
+std::string TextureName(const ShaderTexture &a_texture, std::uint32_t a_k) {
+  return a_texture.count == 1 ? std::string{a_texture.name}
+                              : std::format("{}{}", a_texture.name, a_k);
+}
+
+std::string ResourcesText() {
+  std::string text = "SamplerState linearSampler : register(s0);\n";
+  for (const ShaderTexture &texture : kShaderTextures)
+    for (std::uint32_t k = 0; k < texture.count; ++k)
+      text += std::format("Texture2D {} : register(t{});\n",
+                          TextureName(texture, k), texture.slot + k);
+  return text;
+}
+
+std::string CaseStatement(std::string_view a_statement,
+                          std::string_view a_texture) {
+  std::string text{a_statement};
+  const auto at = text.find("{}");
+  if (at != std::string::npos)
+    text.replace(at, 2, a_texture);
+  return text;
+}
+
+std::string SwitchText(const TextureSwitch &a_switch) {
+  std::string text = std::format("\n{}\n{{\n{}\tswitch (slot) {{\n",
+                                 a_switch.signature, a_switch.prologue);
+  for (std::uint32_t k = 0; k < a_switch.count; ++k) {
+    const std::string label =
+        k + 1 < a_switch.count ? std::format("case {}", k) : "default";
+    const std::string texture = std::format("{}{}", a_switch.texture, k);
+    text += std::format("\t{}: {}\n", label,
+                        CaseStatement(a_switch.statement, texture));
+  }
+  return text + "\t}\n" + std::string{a_switch.epilogue} + "}\n";
+}
+
+std::string SwitchesText() {
+  std::string text;
+  for (const TextureSwitch &textureSwitch : kTextureSwitches)
+    text += SwitchText(textureSwitch);
+  return text;
+}
+
+std::string OpcodeText() {
+  return "float3 RunOpcode(int op, float3 a, float3 b, float3 d, float number, "
+         "int idx, int components, float2 uv)\n{\n\tfloat3 r = 0;\n" +
+         InterpreterSwitch() + InterpreterZRule() + "\treturn r;\n}\n";
+}
+
+constexpr ShaderPart kShaderParts[]{
+    {"words", WordsText},
+    {"palette", PaletteText},
+    {"resources", ResourcesText},
+    {"switches", SwitchesText},
+    {"Common"},
+    {"Pass"},
+    {"ProgramOps"},
+    {"opcodes", OpcodeText},
+    {"Program"},
+    {"Bake"},
+    {"Noise"},
+    {"Dilate"},
+    {"Filter"},
+    {"Reduce"},
+    {"Ripple"},
+    {"Stack"},
+    {"Material"},
+    {"Groups"},
+};
+
+std::string_view FileText(std::string_view a_name) {
+  const std::span<const ShaderFile> files = ShaderFiles();
+  const auto found = std::ranges::find(files, a_name, &ShaderFile::name);
+  return found == files.end() ? std::string_view{} : found->text;
+}
+
+std::string JoinedSource() {
+  std::string text;
+  for (const ShaderPart &part : kShaderParts) {
+    text +=
+        part.generated ? part.generated() : std::string{FileText(part.file)};
+    text += "\n";
+  }
+  return text;
+}
+
+const std::string kShaderSourceStorage = JoinedSource();
 }
 
 extern const char *const kShaderSource = kShaderSourceStorage.c_str();

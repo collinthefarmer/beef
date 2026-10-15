@@ -15,6 +15,7 @@
 #include "planners/FieldProgram.h"
 #include "planners/GpuReduction.h"
 #include "planners/MipLevel.h"
+#include "planners/ShaderConstants.h"
 #include "planners/StackShader.h"
 #include "planners/TargetHolders.h"
 #include "planners/TextureDemand.h"
@@ -45,12 +46,7 @@ class TexturePreviews;
 
 class TextureLab {
 public:
-  enum class Mode : std::uint32_t {
-    kGlow = 0,
-    kChannel = 4,
-    kLayer = 6,
-    kCopy = 7,
-  };
+  using Mode = PassMode;
 
   enum class MapReading : std::uint32_t {
     kNone = 0,

@@ -1,11 +1,14 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #pragma once
 
+#include "Core.h"
 #include "mesh/AreaPick.h"
+#include "mesh/FieldFilter.h"
 #include "mesh/MaterialClusters.h"
 #include "mesh/MaterialRegions.h"
 #include "planners/FieldProgram.h"
 #include "planners/StackShader.h"
+#include "recipe/Recipe.h"
 #include "recipe/Reduction.h"
 
 #include <algorithm>
@@ -77,32 +80,71 @@ inline constexpr std::uint32_t kInstructionPopsByte = 2;
 inline constexpr std::uint32_t kInstructionIndexByte = 3;
 inline constexpr std::size_t kInstructionsPerRow = 2;
 
+enum class PassMode : std::uint32_t {
+  kGlow = 0,
+  kChannel = 1,
+  kLayer = 2,
+  kCopy = 3,
+};
+
+inline constexpr std::uint32_t kWriteR = 1u << 0;
+inline constexpr std::uint32_t kWriteG = 1u << 1;
+inline constexpr std::uint32_t kWriteB = 1u << 2;
+inline constexpr std::uint32_t kWriteA = 1u << 3;
+
+inline constexpr std::uint32_t kPassSourceSlot = 0;
+inline constexpr std::uint32_t kPassMapSlot = 1;
+inline constexpr std::uint32_t kPassBelowSlot = 2;
+inline constexpr std::uint32_t kPassCurveSlot = 3;
+inline constexpr std::uint32_t kProgramTextureSlot = 0;
+inline constexpr std::uint32_t kProgramLookupSlot =
+    kProgramTextureSlot + kProgramTextures;
+inline constexpr std::uint32_t kStackBaseSlot =
+    kProgramLookupSlot + kProgramLookups;
+inline constexpr std::uint32_t kStackSourceSlot = kStackBaseSlot + 1;
+inline constexpr std::uint32_t kStackMaskSlot =
+    kStackSourceSlot + kMaxStackLayers;
+inline constexpr std::uint32_t kStackSlotEnd = kStackMaskSlot + kMaxStackLayers;
+inline constexpr std::uint32_t kMaterialDiffuseSlot = 0;
+inline constexpr std::uint32_t kMaterialRmaosSlot = 1;
+inline constexpr std::uint32_t kMaterialNormalSlot = 2;
+inline constexpr std::uint32_t kGroupChartIdsSlot = 3;
+inline constexpr std::uint32_t kGroupOddsLowSlot = 4;
+inline constexpr std::uint32_t kGroupOddsHighSlot = 5;
+inline constexpr std::uint32_t kFilterInputSlot = 0;
+inline constexpr std::uint32_t kFilterChartsSlot = 1;
+inline constexpr std::uint32_t kSingleSourceSlot = 0;
+
 struct ShaderWord {
   std::string_view name;
   std::uint32_t value = 0;
 };
 
-inline constexpr ShaderWord kShaderWords[]{
-    {"kReadMirrorU", kReadMirrorU},
-    {"kReadMirrorV", kReadMirrorV},
-    {"kReadTranspose", kReadTranspose},
-    {"kReadMeshSpace", kReadMeshSpace},
-    {"kReadNearest", kReadNearest},
-    {"kLayerHasSource", kLayerHasSource},
-    {"kLayerHasMask", kLayerHasMask},
-    {"kLayerHasBelow", kLayerHasBelow},
-    {"kLayerHasCurve", kLayerHasCurve},
-    {"kMapChannel", std::to_underlying(MapView::kChannel)},
-    {"kMapSlope", std::to_underlying(MapView::kSlope)},
-    {"kMapIds", std::to_underlying(MapView::kIds)},
-    {"kGroupDrawIds", std::to_underlying(GroupDraw::kIds)},
-    {"kGroupDrawPicked", std::to_underlying(GroupDraw::kPicked)},
-    {"kGroupDrawPalette", std::to_underlying(GroupDraw::kPalette)},
-    {"kNoTextureSlot", kNoTextureSlot},
-    {"kInstructionOpByte", kInstructionOpByte},
-    {"kInstructionComponentsByte", kInstructionComponentsByte},
-    {"kInstructionPopsByte", kInstructionPopsByte},
-    {"kInstructionIndexByte", kInstructionIndexByte},
+struct ShaderTexture {
+  std::string_view name;
+  std::uint32_t slot = 0;
+  std::uint32_t count = 1;
+};
+
+inline constexpr ShaderTexture kShaderTextures[]{
+    {"passSourceTexture", kPassSourceSlot},
+    {"passMapTexture", kPassMapSlot},
+    {"passBelowTexture", kPassBelowSlot},
+    {"passCurveTexture", kPassCurveSlot},
+    {"programTexture", kProgramTextureSlot, kProgramTextures},
+    {"programLookup", kProgramLookupSlot, kProgramLookups},
+    {"stackBaseTexture", kStackBaseSlot},
+    {"stackSourceTexture", kStackSourceSlot, kMaxStackLayers},
+    {"stackMaskTexture", kStackMaskSlot, kMaxStackLayers},
+    {"materialDiffuse", kMaterialDiffuseSlot},
+    {"materialRmaos", kMaterialRmaosSlot},
+    {"materialNormal", kMaterialNormalSlot},
+    {"groupChartIds", kGroupChartIdsSlot},
+    {"groupOddsLow", kGroupOddsLowSlot},
+    {"groupOddsHigh", kGroupOddsHighSlot},
+    {"filterInput", kFilterInputSlot},
+    {"filterCharts", kFilterChartsSlot},
+    {"singleSource", kSingleSourceSlot},
 };
 
 struct TextureRead {
@@ -261,6 +303,68 @@ static_assert(static_cast<int>(ReductionKind::kMean) == 0 &&
               static_cast<int>(ReductionKind::kSum) == 1 &&
               static_cast<int>(ReductionKind::kMinimum) == 2 &&
               static_cast<int>(ReductionKind::kMaximum) == 3);
+
+inline constexpr ShaderWord kShaderWords[]{
+    {"kReadMirrorU", kReadMirrorU},
+    {"kReadMirrorV", kReadMirrorV},
+    {"kReadTranspose", kReadTranspose},
+    {"kReadMeshSpace", kReadMeshSpace},
+    {"kReadNearest", kReadNearest},
+    {"kLayerHasSource", kLayerHasSource},
+    {"kLayerHasMask", kLayerHasMask},
+    {"kLayerHasBelow", kLayerHasBelow},
+    {"kLayerHasCurve", kLayerHasCurve},
+    {"kWriteR", kWriteR},
+    {"kWriteG", kWriteG},
+    {"kWriteB", kWriteB},
+    {"kWriteA", kWriteA},
+    {"kMapChannel", std::to_underlying(MapView::kChannel)},
+    {"kMapSlope", std::to_underlying(MapView::kSlope)},
+    {"kMapIds", std::to_underlying(MapView::kIds)},
+    {"kGroupDrawIds", std::to_underlying(GroupDraw::kIds)},
+    {"kGroupDrawPicked", std::to_underlying(GroupDraw::kPicked)},
+    {"kGroupDrawPalette", std::to_underlying(GroupDraw::kPalette)},
+    {"kPassGlow", std::to_underlying(PassMode::kGlow)},
+    {"kPassChannel", std::to_underlying(PassMode::kChannel)},
+    {"kPassLayer", std::to_underlying(PassMode::kLayer)},
+    {"kPassCopy", std::to_underlying(PassMode::kCopy)},
+    {"kChannelR", std::to_underlying(ShaderChannel::kR)},
+    {"kChannelG", std::to_underlying(ShaderChannel::kG)},
+    {"kChannelB", std::to_underlying(ShaderChannel::kB)},
+    {"kChannelA", std::to_underlying(ShaderChannel::kA)},
+    {"kChannelRgb", std::to_underlying(ShaderChannel::kRgb)},
+    {"kChannelLuma", std::to_underlying(ShaderChannel::kLuma)},
+    {"kReduceMean", static_cast<std::uint32_t>(ReductionKind::kMean)},
+    {"kReduceSum", static_cast<std::uint32_t>(ReductionKind::kSum)},
+    {"kReduceMinimum", static_cast<std::uint32_t>(ReductionKind::kMinimum)},
+    {"kReduceMaximum", static_cast<std::uint32_t>(ReductionKind::kMaximum)},
+    {"kFilterBlur", static_cast<std::uint32_t>(FilterOperation::kBlur)},
+    {"kFilterGrow", static_cast<std::uint32_t>(FilterOperation::kGrow)},
+    {"kFilterShrink", static_cast<std::uint32_t>(FilterOperation::kShrink)},
+    {"kFilterEdge", static_cast<std::uint32_t>(FilterOperation::kEdge)},
+    {"kNoiseBlobs", std::to_underlying(NoiseStyle::kBlobs)},
+    {"kNoiseRidges", std::to_underlying(NoiseStyle::kRidges)},
+    {"kNoiseCracks", std::to_underlying(NoiseStyle::kCracks)},
+    {"kMaxNoiseOctaves", kMaxNoiseOctaves},
+    {"kNoTextureSlot", kNoTextureSlot},
+    {"kInstructionOpByte", kInstructionOpByte},
+    {"kInstructionComponentsByte", kInstructionComponentsByte},
+    {"kInstructionPopsByte", kInstructionPopsByte},
+    {"kInstructionIndexByte", kInstructionIndexByte},
+    {"kProgramInstructionCount", kProgramInstructions},
+    {"kProgramRowCount", kProgramInstructions / kInstructionsPerRow},
+    {"kProgramInputCount", kProgramInputs},
+    {"kProgramTextureCount", kProgramTextures},
+    {"kProgramLookupCount", kProgramLookups},
+    {"kProgramStackDepth", kProgramStack},
+    {"kStackLayerCount", kMaxStackLayers},
+    {"kGroupCount", kMaxMaterialClusters},
+    {"kTexelAxisCount", kTexelAxes},
+    {"kGroupWhiteningRows", kGroupWhiteningRows},
+    {"kLitChartRows", kLitChartRows},
+    {"kRippleFiringRows", kRippleFiringRows},
+    {"kMaxFilterTaps", static_cast<std::uint32_t>(kMaxFilterTaps)},
+};
 
 [[nodiscard]] constexpr ShaderBool ShaderBoolOf(bool a_value) noexcept {
   return a_value ? ShaderBool::kYes : ShaderBool::kNo;

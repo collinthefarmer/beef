@@ -278,8 +278,8 @@ BindLayerFields(const PackedLayerFields &packed, const Arguments &arguments) {
   return TextureLab::BoundLayerFields{packed.pack, *bindings};
 }
 std::uint32_t ChannelBits(ChannelSet channels) {
-  return (channels.r ? 1u : 0u) | (channels.g ? 2u : 0u) |
-         (channels.b ? 4u : 0u) | (channels.a ? 8u : 0u);
+  return (channels.r ? kWriteR : 0u) | (channels.g ? kWriteG : 0u) |
+         (channels.b ? kWriteB : 0u) | (channels.a ? kWriteA : 0u);
 }
 std::expected<TextureLab::LayerPass, std::string>
 LayerPassFor(const PlannedLayer &layer, const Arguments &args,

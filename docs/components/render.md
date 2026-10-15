@@ -159,7 +159,7 @@ disables only its own pass (`ProgramPassAvailable`, `RippleAvailable`,
 
 | Type | Description | Declared in |
 |---|---|---|
-| `TextureLab::Mode` | The shader path of one `Render` call: `kGlow` (0), `kChannel` (4), `kLayer` (6), `kCopy` (7). | `TextureLab.h` |
+| `TextureLab::Mode` | The shader path of one `Render` call: `kGlow`, `kChannel`, `kLayer`, `kCopy`; an alias of `PassMode` (`planners/ShaderConstants.h`). | `TextureLab.h` |
 | `TextureLab::MapReading` | How the shader decodes an input map: `kNone`, `kRmaos` or `kNormalSlope`. `InputMap` carries it with the texture. | `TextureLab.h` |
 | `TextureLab::Scroll`, `TextureLab::LayerInput` | UV offset, tiling, mirroring, transpose and source mip; and a channel with mesh-space and nearest-sampling flags plus a `Scroll`. | `TextureLab.h` |
 | `TextureLab::RipplePass`, `RippleFiring` | A ripple draw: the positions texture, up to `kRippleFirings` (8) firings with origin and age, and the wave's speed, width, decay and direction. | `TextureLab.h` |

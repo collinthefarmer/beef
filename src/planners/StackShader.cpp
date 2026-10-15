@@ -110,8 +110,7 @@ GenerateStackShader(const StackShape &shape) {
   text +=
       std::format("float4 {}(VSOut i) : SV_Target\n{{\n", kGeneratedStackEntry);
   text += "\tfloat2 rawUv = i.uv;\n";
-  text += shape.base ? "\tfloat4 below = stackBase.SampleLevel(samp, rawUv, "
-                       "stackBaseMip);\n"
+  text += shape.base ? "\tfloat4 below = SampleStackBase(rawUv);\n"
                      : "\tfloat4 below = float4(0, 0, 0, 0);\n";
   for (std::size_t k = 0; k < shape.layers.size(); ++k) {
     const auto &layer = shape.layers[k];

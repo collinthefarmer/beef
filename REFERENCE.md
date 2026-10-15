@@ -290,7 +290,7 @@ atom   := number | "[" expr "," expr ("," expr)? "]" | "(" expr ")"
   order, an empty or unreadable total, and a non-finite index all give 256
   (`kShuffleOutside`), which no `< k` with k ≤ 251 selects; a non-finite
   seed orders like seed 0. It takes scalars only. `ShufflePosition`
-  (`recipe/ExpressionMath.cpp`) and the HLSL `Shuffle` (`render/ShaderSource.cpp`)
+  (`recipe/ExpressionMath.cpp`) and the HLSL `Shuffle` (`shaders/ProgramOps.hlsl`)
   are the same arithmetic; the CPU reference calls the former.
 - `hash(value, salt)` mixes the two floats' bit patterns with Chris
   Wellons' `lowbias32` (xor-shift-multiply by 0x7feb352d and 0x846ca68b):
@@ -395,7 +395,7 @@ atom   := number | "[" expr "," expr ("," expr)? "]" | "(" expr ")"
   hard: input past them is an error, never a deep stack. `kMaxExpressionOps`
   (256) is also the interpreter's instruction capacity: `programCode` holds two
   instructions per row, so the shader declares `uint4 programCode[128]`
-  (`planners/ShaderSource.cpp`). The two must agree or a long mask overruns the
+  (`shaders/ProgramOps.hlsl`, sized by the emitted `kProgramRowCount`). The two must agree or a long mask overruns the
   constant buffer; the dxc layout check compares the declared size with
   `ProgramConstants`. The value is carried unchanged
   from the frozen `src/_old/Expression.h`; why 256 rather than another power of
@@ -410,7 +410,63 @@ atom   := number | "[" expr "," expr ("," expr)? "]" | "(" expr ")"
   but a name character or `(`; a curve reference is `@name(`.
 
 ## The lab's shaders (`render/TextureLab.h`, `TextureLabLifecycle.cpp`,
-`TextureLabPass.cpp`, `TextureLabReadback.cpp`, `ShaderSource.cpp`)
+`TextureLabPass.cpp`, `TextureLabReadback.cpp`, `planners/ShaderSource.cpp`, `src/shaders/`)
+
+The shader code lives in `src/shaders/*.hlsl`, one shared file and one file
+per pass. `cmake/EmbedShaders.cmake` writes every file into a generated
+`ShaderFiles.cpp` as a raw string, and `ShaderFiles()` returns them by name.
+`ShaderSource.cpp` joins the parts in the order of `kShaderParts` into the one
+string `kShaderSource`. The runtime compiles each entry point from that
+string, as before. The parts, in order:
+
+| Part | Kind | Holds |
+|---|---|---|
+| words | generated | `static const uint` lines from `kShaderWords` and the blend modes of `kBlends` (`kBlendMultiply`, ...). |
+| palette | generated | `kIdPalette` from `kClusterPalette`. |
+| resources | generated | The sampler `linearSampler` and every `Texture2D` from `kShaderTextures`. |
+| switches | generated | The texture switches `SampleProgramTexture`, `ProgramTextureSize`, `LoadLookup`, `SampleStackSource`, `SampleStackMask`, from `kTextureSwitches`. SM5 cannot index a texture array by a runtime value, so a switch selects the texture. |
+| `Common.hlsl` | file | `VSMain`, the records `TextureRead`, `LayerMix`, `NormalDetail`, and the layer composition: `Pick`, `Blend`, `LayerValue`, `ComposeLayer`, `LayerSourceValue`, `MixLayer`, `MixBits`. |
+| `Pass.hlsl` | file | `PSMain` and its modes. |
+| `ProgramOps.hlsl` | file | The interpreter's constants and the helpers its opcodes call. |
+| opcodes | generated | `RunOpcode`: the opcode switch and the z rule from the `ProgramShader` table. |
+| `Program.hlsl` | file | `RunProgram` and `PSProgram`. |
+| `Bake.hlsl`, `Noise.hlsl`, `Dilate.hlsl`, `Filter.hlsl`, `Reduce.hlsl`, `Ripple.hlsl`, `Stack.hlsl`, `Material.hlsl`, `Groups.hlsl` | file | One pass each. `Material.hlsl` holds `NormalDetailAt` and `PSDiffuseDetail`, which `Groups.hlsl` also uses. |
+
+A generated part comes before the first file that uses it. A file that uses
+a later part fails to compile, and the dxc check reports it.
+
+Layer composition has one implementation. `PSMain`'s layer mode and
+`PSStack` both call `LayerSourceValue` and `MixLayer`, which take the
+`TextureRead` and `LayerMix` records. A generated stack shader calls
+`LayerValue` and `ComposeLayer` directly with the layer's blend, channels and
+mask channel as literals, so the compiler can drop the branches the layer
+does not take.
+
+Texture registers (`kShaderTextures`; the C++ binding code uses the same slot
+constants):
+
+| Register | Name | Pass |
+|---|---|---|
+| t0 | `passSourceTexture` | `PSMain` |
+| t1 | `passMapTexture` (mask in the layer mode, input map in the channel mode) | `PSMain` |
+| t2 | `passBelowTexture` | `PSMain` |
+| t3 | `passCurveTexture` | `PSMain` |
+| t0..t7 | `programTexture0..7` | `PSProgram`, `PSStack`, generated shaders |
+| t8..t11 | `programLookup0..3` | `PSProgram`, `PSStack`, generated shaders |
+| t12 | `stackBaseTexture` | `PSStack`, generated stack shaders |
+| t13..t20 | `stackSourceTexture0..7` | `PSStack`, generated stack shaders |
+| t21..t28 | `stackMaskTexture0..7` | `PSStack`, generated stack shaders |
+| t0 | `materialDiffuse` | `PSClusters`, `PSDiffuseDetail` |
+| t1 | `materialRmaos` | `PSClusters` |
+| t2 | `materialNormal` | `PSClusters`, `PSDiffuseDetail` |
+| t3 | `groupChartIds` | `PSClusters` |
+| t4, t5 | `groupOddsLow`, `groupOddsHigh` | `PSClusters` |
+| t0 | `filterInput` | `PSFilter` |
+| t1 | `filterCharts` | `PSFilter` |
+| t0 | `singleSource` | `DilatePS`, `PSReduce`, `PSRipple` |
+
+Several names share a register because each pass binds its own textures
+before it draws. A pass reads only the names of its own row.
 
 One pixel shader over a full-screen triangle serves every mode of
 `TextureLab::Mode`; the interpreter, bake, ripple and classify passes are
@@ -458,10 +514,14 @@ Data rules for the constants:
 - Every `cbuffer` member name is global in HLSL, so each name carries its
   buffer's prefix (`pass`, `program`, `stack`, `ripple`, `group`,
   `diffuseDetail`, `noise`, `filter`, `reduce`).
-- The bit and enum values the shaders compare against (`kReadMirrorU`,
-  `kLayerHasMask`, `kMapSlope`, `kGroupDrawPicked`, `kNoTextureSlot`, the
-  instruction byte positions) are declared once in `kShaderWords` and
-  emitted into the shader source as `static const uint` lines.
+- Every value the shaders compare against or size an array by is declared
+  once in C++ and emitted as a `static const uint` line: option bits
+  (`kReadMirrorU`, `kLayerHasMask`), write channels (`kWriteR`), pass modes
+  (`kPassLayer`), map views, group draws, channels (`kChannelLuma`), blend
+  modes (`kBlendReorient`), reduction kinds, filter operations, noise styles,
+  the instruction byte positions and the array counts (`kProgramRowCount`,
+  `kStackLayerCount`, `kGroupCount`). `PassMode` replaced the old mode
+  numbers 0, 4, 6 and 7 with 0 to 3; `TextureLab::Mode` is an alias of it.
 
 Constant slots (`ConstantSlot`; `SavedPipeline` saves and restores all nine
 slots around a pass):
@@ -519,9 +579,9 @@ Mode formulas:
   length becomes the flat normal (0, 0, 1) instead of a NaN.
 - `planners/ProgramShader` holds one row per interpreter opcode: the HLSL
   statement and whether the opcode keeps z for two components (`length`,
-  `distance`, `dot`). `RunProgram`'s switch, its z rule
-  (`InterpreterZRule`) and the generated programs are all built from that
-  table. The table's `kNormalize` statement is the switch's `default`, as in
+  `distance`, `dot`). The generated `RunOpcode` (its switch and its z rule,
+  `InterpreterZRule`) and the generated programs are all built from that
+  table. `RunProgram` calls `RunOpcode` once per instruction. The table's `kNormalize` statement is the switch's `default`, as in
   the CPU reference.
 - A generated program declares one `float3` local per stack slot and runs
   one block per instruction. Each block reads `number` with `NumberAt(k)`
@@ -3056,7 +3116,7 @@ cancel by the user instead of the load.
   catalog adds the name to the list (`AppendName`) instead of replacing the
   text; a name already in the list is not added twice.
 
-### Material detail axis (`planners/MipLevel.h`, `render/ShaderSource.cpp` `NormalDetailAt`)
+### Material detail axis (`planners/MipLevel.h`, `shaders/Material.hlsl` `NormalDetailAt`)
 
 - **Detail** is how strongly a material's normal map varies at a fixed scale:
   the mean distance, in tangent-space XY decoded to -1..1, between 16 reads of
@@ -3250,6 +3310,8 @@ The method and its prototype comparison are in
   offset. The table in the test maps each C++ member type to its HLSL type
   name. A `cbuffer` in the source without a row in the table fails the
   check.
+- The suite checks that every `.hlsl` file under `src/shaders/` is embedded
+  and appears in `kShaderSource`, so a file left out of `kShaderParts` fails.
 - Program and stack shaders (`GeneratedShaders`) append generated text to
   this source. The suite plans the imported fill and bare templates and the
   three example recipes natively, generates each plan's program and stack

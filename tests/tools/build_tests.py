@@ -13,10 +13,14 @@ class BuildTests(unittest.TestCase):
     def test_native_graph_rebuilds_dependencies_and_skips_unchanged_links(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
-            for name in ('cmake', 'src/recipe', 'src/engine', 'src/validator', 'tests'):
+            for name in ('cmake', 'src/recipe', 'src/engine', 'src/validator', 'src/planners',
+                         'src/shaders', 'tests'):
                 (root / name).mkdir(parents=True)
             shutil.copy2(ROOT / 'CMakeLists.txt', root / 'CMakeLists.txt')
             shutil.copy2(ROOT / 'cmake/Native.cmake', root / 'cmake/Native.cmake')
+            shutil.copy2(ROOT / 'cmake/EmbedShaders.cmake', root / 'cmake/EmbedShaders.cmake')
+            shutil.copy2(ROOT / 'src/planners/ShaderFiles.h', root / 'src/planners/ShaderFiles.h')
+            (root / 'src/shaders/Common.hlsl').write_text('float4 Main() : SV_Target { return 0; }\n')
             (root / 'src/Settings.cpp').write_text('int settings() { return 0; }\n')
             header = root / 'src/recipe/Shared.h'
             header.write_text('inline constexpr int answer = 0;\n')

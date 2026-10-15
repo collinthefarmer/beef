@@ -1,6 +1,7 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #include "planners/RenderPlan.h"
 #include "planners/ShaderConstants.h"
+#include "planners/ShaderFiles.h"
 #include "planners/ShaderSource.h"
 #include "planners/StackShader.h"
 #include "recipe/Importer.h"
@@ -451,8 +452,8 @@ std::optional<RenderPlan> PlanOf(const Recipe &a_recipe,
 }
 
 std::uint32_t ChannelBitsOf(const ChannelSet &a_channels) {
-  return (a_channels.r ? 1u : 0u) | (a_channels.g ? 2u : 0u) |
-         (a_channels.b ? 4u : 0u) | (a_channels.a ? 8u : 0u);
+  return (a_channels.r ? kWriteR : 0u) | (a_channels.g ? kWriteG : 0u) |
+         (a_channels.b ? kWriteB : 0u) | (a_channels.a ? kWriteA : 0u);
 }
 
 std::optional<StackShape> StackShapeOf(const CompositeStackStep &a_stack) {
@@ -654,9 +655,25 @@ void ConstantBuffersMatchTheirStructs(
   }
   RecordsMatchTheirStructs(a_listings);
 }
+void EveryShaderFileIsJoined() {
+  std::size_t onDisk = 0;
+  for (const auto &entry : std::filesystem::directory_iterator("src/shaders")) {
+    onDisk += entry.path().extension() == ".hlsl" ? 1 : 0;
+  }
+  Check(ShaderFiles().size() == onDisk,
+        std::format("{} shader files embedded; {} on disk",
+                    ShaderFiles().size(), onDisk));
+  const std::string_view source = kShaderSource;
+  for (const ShaderFile &file : ShaderFiles()) {
+    Check(!file.text.empty() &&
+              source.find(file.text) != std::string_view::npos,
+          std::format("{}.hlsl is part of the shader source", file.name));
+  }
+}
 }
 
 int main() {
+  EveryShaderFileIsJoined();
   ConstantBuffersMatchTheirStructs(EveryEntryPointCompiles());
   GeneratedShadersCompile();
   return test::Finish("shadersource");
