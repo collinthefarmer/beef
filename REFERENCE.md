@@ -3350,6 +3350,12 @@ The method and its prototype comparison are in
   offset. The table in the test maps each C++ member type to its HLSL type
   name. A `cbuffer` in the source without a row in the table fails the
   check.
+- dxc accepts the effects-framework keywords that `D3DCompile` reserves
+  (`pass`, `technique`, `compile`, `sampler_state`, `texture`, `string` and
+  others in `kEffectKeywords`). A variable named `pass` made `D3DCompile`
+  reject the whole source in game (2026-10-15). The suite fails on any of
+  these words, compared case-insensitively, in the joined source and in every
+  generated shader.
 - The suite checks that every `.hlsl` file under `src/shaders/` is embedded
   and appears in `kShaderSource`, so a file left out of `kShaderParts` fails.
 - Program and stack shaders (`GeneratedShaders`) append generated text to
