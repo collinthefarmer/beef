@@ -1,5 +1,6 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #include "studio/Forms.h"
+#include "recipe/BusEvents.h"
 
 #include "recipe/Expression.h"
 #include "recipe/Words.h"
@@ -145,6 +146,17 @@ OptionalUnitParamOf(const std::string &a_text) {
     return std::nullopt;
   }
   return std::optional<Param>{*param};
+}
+
+[[nodiscard]] std::vector<std::string> BusEventNames() {
+  std::vector<std::string> names;
+  for (const BusEvent &event : kBusEvents) {
+    names.emplace_back(event.id);
+    if (event.carriesPosition) {
+      names.push_back(PositionEventId(event.id));
+    }
+  }
+  return names;
 }
 
 [[nodiscard]] std::optional<Param> UnitParamOf(const std::string &a_text) {
@@ -1062,8 +1074,7 @@ void TriggerOriginFields(std::vector<FormField> &a_form,
              .bind = BindTriggerMember(a_ctx.name, a_ctx.record,
                                        &EventOrigin::event, TextOf)});
         event.catalog = GameObjectKind::kAnimEvent;
-        event.names = {std::string{Studio::kHitReceivedEvent},
-                       std::string{Studio::kHitDealtEvent}};
+        event.names = BusEventNames();
         a_form.push_back(std::move(event));
         EventFilterFields(a_form, a_ctx, a_event.filter);
       },

@@ -1,5 +1,6 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #include "engine/Manager.h"
+#include "recipe/BusEvents.h"
 
 #include "diagnostics/Trace.h"
 #include "engine/GameObjectService.h"
@@ -40,7 +41,7 @@ void Manager::QueueAnimationEvent(AnimationEvent a_event) {
     }
     NoteAnimEvent(id, event.tag);
     EventRecord record;
-    record.id = "anim." + event.tag;
+    record.id = AnimEventId(event.tag);
     record.payload.arg = event.payload;
     Fire(id, record);
   });

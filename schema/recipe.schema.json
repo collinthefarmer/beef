@@ -145,7 +145,7 @@
       "oneOf": [
         { "type": "object", "required": ["event"], "additionalProperties": false,
           "properties": {
-            "event": { "$ref": "#/$defs/eventId", "description": "Id glob on the bus: built-in anim.<graph event>, equip, equip.position, hit.received, hit.received.position (the attacker's position), hit.dealt, hit.dealt.position (the struck actor's position), or a provider's ids." },
+            "event": { "$ref": "#/$defs/eventId", "description": "Id glob on the bus: built-in anim.<graph event>, equip, equip.position, hit.received, hit.received.position (the attacker's position), hit.dealt, hit.dealt.position (the struck actor's position), spell.cast.<school> (alteration, conjuration, destruction, illusion, restoration; the payload is the spell's magicka cost). A provider's ids need a plugin trigger." },
             "filter": { "type": "object", "additionalProperties": false,
               "properties": { "node": { "$ref": "#/$defs/glob" }, "arg": { "$ref": "#/$defs/glob" },
                 "value": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "oneOf": [{ "$ref": "#/$defs/number" }, { "type": "null" }] } } } },

@@ -1264,6 +1264,18 @@ layout, and so its out-of-view share, did not exist.
   `hit.dealt.position` the struck actor's, because `TESHitEvent` has no
   impact point; the other actor's centre is the best located fact the
   event offers, and it is close enough to aim a world-anchored ripple.
+- The bus vocabulary (`recipe/BusEvents.h`, 2026-10-15): `equip`,
+  `hit.received` and `hit.dealt`, each with a `.position` companion
+  (`PositionEventId`), `spell.cast.<school>` for the five schools, and
+  `anim.<tag>` (`AnimEventId`). A trigger whose event glob matches none of
+  them warns at validation (`IsKnownEventGlob`); a plugin's event needs a
+  `plugin` trigger. `spell.cast.<school>` comes from `TESSpellCastEvent`
+  (`engine/Events.cpp`): the school is the magic skill of the spell's
+  costliest effect (`GetCostliestEffectItem`, `GetMagickSkill`), and the
+  scalar payload is `CalculateMagickaCost` for the caster. A spell whose
+  costliest effect has no school (a shout, a power with no skill) publishes
+  nothing. The event names the caster, so it reaches the caster's
+  instances only.
 
 - `target` reads the wearer's current combat target, not a scan for the
   nearest hostile, because the engine maintains the former for free and
@@ -1671,9 +1683,9 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
 - `BuildActorValueSamples` emits one sample per `kActorValue` candidate in the
   catalog's order (or none, when no wearer is loaded), so a reader index-aligns
   `actorValueSamples[i]` with the catalog's candidate `i` rather than looking up
-  by name. The built-in trigger events `hit.received`/`hit.dealt` are defined
-  once in `studio/GameObjects.h` and referenced by the engine emitter, the
-  wizard, and the event picker.
+  by name. The built-in trigger events are listed once, in
+  `recipe/BusEvents.h` (`kBusEvents`): the engine emitters, the wizard, the
+  event picker and validation all read that table.
 - Actor value names resolve through the engine's table once per name; the
   environment holds handles and form ids, never engine pointers across
   ticks, and answers zero for anything it cannot reach. `av` readings:

@@ -1,9 +1,13 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #include "engine/Events.h"
 #include "diagnostics/Trace.h"
+#include "recipe/BusEvents.h"
 
 #include "engine/Manager.h"
 
+#include <algorithm>
+#include <cmath>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -28,15 +32,52 @@ void QueueHit(RE::TESObjectREFR *a_actor, RE::TESObjectREFR *a_other,
   }
   const RE::NiPoint3 &at = a_other->GetPosition();
   EventRecord carried;
-  carried.id = std::string{a_event} + ".position";
+  carried.id = PositionEventId(a_event);
   carried.payload.value = Vec3{at.x, at.y, at.z};
   manager->QueueEvent(a_actor->GetFormID(), std::move(carried));
+}
+
+struct SchoolSkill {
+  RE::ActorValue skill;
+  SpellSchool school;
+};
+
+constexpr SchoolSkill kSchoolSkills[]{
+    {RE::ActorValue::kAlteration, SpellSchool::kAlteration},
+    {RE::ActorValue::kConjuration, SpellSchool::kConjuration},
+    {RE::ActorValue::kDestruction, SpellSchool::kDestruction},
+    {RE::ActorValue::kIllusion, SpellSchool::kIllusion},
+    {RE::ActorValue::kRestoration, SpellSchool::kRestoration}};
+
+std::optional<SpellSchool> SchoolOf(const RE::MagicItem &a_spell) {
+  const RE::Effect *effect = a_spell.GetCostliestEffectItem();
+  const RE::EffectSetting *base = effect ? effect->baseEffect : nullptr;
+  if (!base) {
+    return std::nullopt;
+  }
+  const auto *found = std::ranges::find(kSchoolSkills, base->GetMagickSkill(),
+                                        &SchoolSkill::skill);
+  return found != std::ranges::end(kSchoolSkills) ? std::optional{found->school}
+                                                  : std::nullopt;
+}
+
+void QueueSpellCast(RE::Actor &a_caster, RE::MagicItem &a_spell) {
+  const std::optional<SpellSchool> school = SchoolOf(a_spell);
+  if (!school) {
+    return;
+  }
+  const float cost = a_spell.CalculateMagickaCost(&a_caster);
+  EventRecord record;
+  record.id = std::string{SpellCastEventId(*school)};
+  record.payload.value = std::isfinite(cost) ? cost : 0.0f;
+  Manager::GetSingleton()->QueueEvent(a_caster.GetFormID(), std::move(record));
 }
 
 class EventSink : public RE::BSTEventSink<RE::TESEquipEvent>,
                   public RE::BSTEventSink<RE::TESObjectLoadedEvent>,
                   public RE::BSTEventSink<SKSE::NiNodeUpdateEvent>,
-                  public RE::BSTEventSink<RE::TESHitEvent> {
+                  public RE::BSTEventSink<RE::TESHitEvent>,
+                  public RE::BSTEventSink<RE::TESSpellCastEvent> {
 public:
   static EventSink *GetSingleton() {
     static EventSink sink;
@@ -89,10 +130,22 @@ public:
     if (!a_event) {
       return kContinue;
     }
-    QueueHit(a_event->target.get(), a_event->cause.get(),
-             Studio::kHitReceivedEvent);
-    QueueHit(a_event->cause.get(), a_event->target.get(),
-             Studio::kHitDealtEvent);
+    QueueHit(a_event->target.get(), a_event->cause.get(), kHitReceivedEvent);
+    QueueHit(a_event->cause.get(), a_event->target.get(), kHitDealtEvent);
+    return kContinue;
+  }
+
+  RE::BSEventNotifyControl
+  ProcessEvent(const RE::TESSpellCastEvent *a_event,
+               RE::BSTEventSource<RE::TESSpellCastEvent> *) override {
+    RE::Actor *caster =
+        a_event && a_event->object ? a_event->object->As<RE::Actor>() : nullptr;
+    RE::TESForm *form =
+        caster ? RE::TESForm::LookupByID(a_event->spell) : nullptr;
+    RE::MagicItem *spell = form ? form->As<RE::MagicItem>() : nullptr;
+    if (spell) {
+      QueueSpellCast(*caster, *spell);
+    }
     return kContinue;
   }
 
@@ -117,13 +170,14 @@ void RegisterScriptEvents(EventSink *a_sink) {
       RE::ScriptEventSourceHolder::GetSingleton();
   if (!holder) {
     logger::error(
-        "ScriptEventSourceHolder unavailable; equip and load events will not "
-        "be seen");
+        "ScriptEventSourceHolder unavailable; equip, load, hit and spell-cast "
+        "events will not be seen");
     return;
   }
   holder->AddEventSink<RE::TESEquipEvent>(a_sink);
   holder->AddEventSink<RE::TESObjectLoadedEvent>(a_sink);
   holder->AddEventSink<RE::TESHitEvent>(a_sink);
+  holder->AddEventSink<RE::TESSpellCastEvent>(a_sink);
 }
 
 void RegisterNodeUpdates(EventSink *a_sink) {

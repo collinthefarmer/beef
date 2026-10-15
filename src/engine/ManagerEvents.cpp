@@ -1,6 +1,7 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #include "engine/LogOnce.h"
 #include "engine/Manager.h"
+#include "recipe/BusEvents.h"
 
 #include <format>
 #include <optional>
@@ -52,7 +53,7 @@ EventRecord TriggerEventOf(const Studio::FireTrigger &a_trigger) {
 EventRecord PositionEventOf(const Studio::FireTrigger &a_trigger,
                             Vec3 a_position) {
   EventRecord record;
-  record.id = a_trigger.event + ".position";
+  record.id = PositionEventId(a_trigger.event);
   record.payload.value = a_position;
   record.payload.node = a_trigger.node;
   return record;

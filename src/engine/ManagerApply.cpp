@@ -2,6 +2,7 @@
 #include "diagnostics/Metrics.h"
 #include "diagnostics/Trace.h"
 #include "engine/Manager.h"
+#include "recipe/BusEvents.h"
 
 #include "Identity.h"
 #include "SettingsFile.h"
@@ -97,7 +98,7 @@ RE::FormID EnchantmentForInstance(LiveActor &a_state, std::size_t a_instance) {
 
 EventRecord EquipEvent() {
   EventRecord record;
-  record.id = "equip";
+  record.id = std::string{kEquipEvent};
   record.payload.value = 1.0f;
   return record;
 }
@@ -109,7 +110,7 @@ EquipPositionEvent(const std::vector<LivePiece> &a_pieces) {
       if (bound.geometry) {
         const RE::NiPoint3 &c = bound.geometry->worldBound.center;
         EventRecord record;
-        record.id = "equip.position";
+        record.id = PositionEventId(kEquipEvent);
         record.payload.value = Vec3{c.x, c.y, c.z};
         return record;
       }

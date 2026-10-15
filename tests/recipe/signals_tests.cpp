@@ -160,7 +160,7 @@ int main() {
 
   {
     std::vector<Signal> signals{
-        Signal{"hit", TriggerSignal{EventOrigin{"hit", {}}, 1.0f, 4},
+        Signal{"hit", TriggerSignal{EventOrigin{"hit.received", {}}, 1.0f, 4},
                std::nullopt},
         Signal{"val", PayloadSignal{Ref{"hit"}}, std::nullopt},
         Signal{"count", CounterSignal{Ref{"hit"}, std::nullopt, std::nullopt},
@@ -172,7 +172,7 @@ int main() {
     NullEnvironment environment;
 
     EventRecord event;
-    event.id = "hit";
+    event.id = "hit.received";
     event.payload.value = 3.0f;
     state.Fire(event, 0.0f);
     state.Fire(event, 0.0f);
@@ -194,7 +194,11 @@ int main() {
         Signal{"hit", TriggerSignal{EventOrigin{"myMod.*", {}}, 1.0f, 4},
                std::nullopt}};
     const auto graph = CompileSignals(signals);
-    Check(graph.Diagnostics().empty(), "a plugin trigger compiles");
+    Check(std::ranges::none_of(graph.Diagnostics(),
+                               [](const Diagnostic &d) {
+                                 return d.severity == Severity::kError;
+                               }),
+          "a plugin trigger compiles");
     SignalState state{graph};
     EventRecord fromPlugin;
     fromPlugin.id = "myMod.charge";
@@ -231,7 +235,7 @@ int main() {
   {
     std::vector<Signal> signals{
         Signal{"impact",
-               TriggerSignal{EventOrigin{"hit.pos", {}}, 5.0f, 4,
+               TriggerSignal{EventOrigin{"hit.received.position", {}}, 5.0f, 4,
                              ValueType::kVec3},
                std::nullopt},
         Signal{"where", PayloadSignal{Ref{"impact"}}, std::nullopt}};
@@ -242,13 +246,13 @@ int main() {
     SignalState state{graph};
     NullEnvironment environment;
     EventRecord scalarEvent;
-    scalarEvent.id = "hit.pos";
+    scalarEvent.id = "hit.received.position";
     scalarEvent.payload.value = 1.0f;
     state.Fire(scalarEvent, 0.0f);
     Check(state.Firings("impact").empty() && state.Mismatched("impact") == 1,
           "a scalar firing at a vec3 trigger is dropped and counted");
     EventRecord vecEvent;
-    vecEvent.id = "hit.pos";
+    vecEvent.id = "hit.received.position";
     vecEvent.payload.value = Vec3{1.0f, 2.0f, 3.0f};
     state.Fire(vecEvent, 0.0f);
     state.Tick(environment, TickInputs{0.0f, 0.0f});
@@ -326,7 +330,7 @@ int main() {
   for (const bool conditional : {false, true}) {
     const TriggerOrigin origin =
         conditional ? TriggerOrigin{WhenOrigin{Ref{"gate"}, Ref{"gate"}}}
-                    : TriggerOrigin{EventOrigin{"hit", {}}};
+                    : TriggerOrigin{EventOrigin{"hit.received", {}}};
     const std::vector<Signal> signals{
         Signal{"gate", ActorValueSignal{"Gate", Measure::kCurrent},
                std::nullopt},
@@ -344,7 +348,7 @@ int main() {
       environment.actorValues["Gate"] = static_cast<float>(firing);
       if (!conditional) {
         EventRecord event;
-        event.id = "hit";
+        event.id = "hit.received";
         event.payload.value = static_cast<float>(firing);
         state.Fire(event, 0.0f);
       }
@@ -518,10 +522,10 @@ int main() {
         Source{"albedo", MaterialSource{MaterialChannel::kDiffuseRgb}},
         Source{"rough", MaterialSource{MaterialChannel::kRoughness}}};
     recipe.masks = {Mask{"tint", "@albedo"}};
-    recipe.signals = {Const("glow", 1.0f),
-                      Signal{"hit",
-                             TriggerSignal{EventOrigin{"hit", {}}, 1.0f, 4},
-                             std::nullopt}};
+    recipe.signals = {
+        Const("glow", 1.0f),
+        Signal{"hit", TriggerSignal{EventOrigin{"hit.received", {}}, 1.0f, 4},
+               std::nullopt}};
     const auto graph = RecipeGraph::Compile(recipe);
     const RowTypes rows{recipe, graph};
 
@@ -1027,7 +1031,8 @@ int main() {
                     WaveSignal{0.0f, 1.0f, Ref{"rate"}, 0.0f, Waveform::kSaw},
                     std::nullopt};
     };
-    const Signal hit{"hit", TriggerSignal{EventOrigin{"hit", {}}, 10.0f, 4},
+    const Signal hit{"hit",
+                     TriggerSignal{EventOrigin{"hit.received", {}}, 10.0f, 4},
                      std::nullopt};
     const Signal count{"count",
                        CounterSignal{Ref{"hit"}, std::nullopt, std::nullopt},
@@ -1039,7 +1044,7 @@ int main() {
     const auto oldGraph = CompileSignals(before);
     SignalState old{oldGraph};
     EventRecord event;
-    event.id = "hit";
+    event.id = "hit.received";
     old.Fire(event, 0.0f);
     old.Fire(event, 0.0f);
     old.Tick(environment, TickInputs{0.0f, 0.4f});
@@ -1136,6 +1141,27 @@ int main() {
                                      return d.where == SignalWhere("lit");
                                    }),
           "only expr and item signals may differ per geometry");
+
+    Recipe typo;
+    TriggerSignal misspelt;
+    misspelt.origin = EventOrigin{"hti.received", {}};
+    typo.signals.push_back(Signal{"struck", misspelt, std::nullopt});
+    TriggerSignal cast;
+    cast.origin = EventOrigin{"spell.cast.*", {}};
+    typo.signals.push_back(Signal{"cast", cast, std::nullopt});
+    const auto typoDiagnostics = Validate(typo, {});
+    Check(std::ranges::any_of(typoDiagnostics,
+                              [](const Diagnostic &d) {
+                                return d.where == SignalWhere("struck") &&
+                                       d.severity == Severity::kWarning &&
+                                       d.message.find("matches no built-in") !=
+                                           std::string::npos;
+                              }) &&
+              std::ranges::none_of(typoDiagnostics,
+                                   [](const Diagnostic &d) {
+                                     return d.where == SignalWhere("cast");
+                                   }),
+          "a trigger event that matches no built-in event warns");
 
     Check(refusals(scalars, "output 1") == 1,
           "an output scalar refuses a per-geometry value");

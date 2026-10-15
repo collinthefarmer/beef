@@ -1,5 +1,6 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #include "engine/GameObjectService.h"
+#include "recipe/BusEvents.h"
 
 #include "Core.h"
 #include "engine/EngineForms.h"
@@ -182,7 +183,7 @@ AnimEventCatalogOf(RE::FormID a_actor) {
     for (const std::string &tag : tags->second) {
       GameObjectCandidate candidate;
       candidate.display = tag;
-      candidate.value = "anim." + tag;
+      candidate.value = AnimEventId(tag);
       catalog->candidates.push_back(std::move(candidate));
     }
   }

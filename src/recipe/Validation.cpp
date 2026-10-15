@@ -1,4 +1,5 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
+#include "recipe/BusEvents.h"
 #include "recipe/Recipe.h"
 
 #include "recipe/Words.h"
@@ -105,6 +106,14 @@ struct SignalFields {
     Scalar(report, s.lifetime, "lifetime");
     Integer(report, s.max, 1, "max");
     if (const auto *event = Get<EventOrigin>(s.origin)) {
+      if (!event->event.empty() && !IsKnownEventGlob(event->event)) {
+        report.Warn(std::format(
+            "'event' '{}' matches no built-in event; built-in events are "
+            "equip, hit.received, hit.dealt (each with .position), "
+            "spell.cast.<school> and anim.<tag>, and a plugin's event needs "
+            "a plugin trigger",
+            event->event));
+      }
       if (event->filter.value.min) {
         Number(report, *event->filter.value.min, "filter.value.min");
       }

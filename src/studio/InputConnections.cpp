@@ -1,5 +1,6 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #include "studio/InputConnections.h"
+#include "recipe/BusEvents.h"
 
 #include "recipe/Words.h"
 #include "studio/GameObjects.h"

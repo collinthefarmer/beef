@@ -25,9 +25,6 @@ inline constexpr std::size_t kGameObjectKindCount = 10;
 GameObjectKindName(GameObjectKind a_kind) noexcept;
 [[nodiscard]] bool IsViewedActorKind(GameObjectKind a_kind) noexcept;
 
-inline constexpr std::string_view kHitReceivedEvent{"hit.received"};
-inline constexpr std::string_view kHitDealtEvent{"hit.dealt"};
-
 struct GameObjectCandidate {
   std::string display;
   std::string value;
