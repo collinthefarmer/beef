@@ -178,5 +178,43 @@ int main() {
   Check(shared.Evaluate(previous, produce, same, select).has_value() &&
             executed == 72,
         "shared DAG observations still reuse prior successful outputs");
+  RenderPlan paced;
+  paced.inputs.push_back({RenderResourceType::kStack, StackInputBinding{}});
+  paced.steps.push_back(
+      {GenerateMipsStep{RenderInputRef{0}, {1, kNearMipLevels}, 50}, "mips"});
+  RenderExecution<int> pacing{paced};
+  int mipRuns = 0;
+  const auto generate =
+      [&](const RenderStep &, std::span<const ResolvedRenderInput<int>> inputs,
+          std::monostate &) -> std::expected<int, std::string> {
+    ++mipRuns;
+    return inputs.front().value;
+  };
+  const StepOutputRef mips{0, 0};
+  pacing.SetClock(1000);
+  Check(pacing.SetInput(0, 1, true).has_value() &&
+            pacing.Evaluate(mips, generate, same, select).has_value() &&
+            mipRuns == 1,
+        "a paced step runs at once when it has never run");
+  pacing.SetClock(1010);
+  const auto waited = pacing.SetInput(0, 2, true).and_then([&] {
+    return pacing.Evaluate(mips, generate, same, select)
+        .transform(
+            [](const ResolvedRenderInput<int> &a_r) { return a_r.value; });
+  });
+  Check(waited == 1 && mipRuns == 1,
+        "a changed input inside the interval keeps the old output");
+  pacing.SetClock(1040);
+  Check(pacing.Evaluate(mips, generate, same, select).has_value() &&
+            mipRuns == 1,
+        "the step keeps waiting until its interval has passed");
+  pacing.SetClock(1060);
+  const auto caught = pacing.Evaluate(mips, generate, same, select);
+  Check(caught && caught->value == 2 && mipRuns == 2,
+        "after the interval the waiting change runs without a new input");
+  pacing.SetClock(1200);
+  Check(pacing.Evaluate(mips, generate, same, select).has_value() &&
+            mipRuns == 2,
+        "a caught-up step does not run again without a change");
   return test::Finish("render cache execution");
 }

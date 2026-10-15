@@ -842,6 +842,7 @@ BuildRenderPlan(std::span<const TextureDemand> demands,
       plan = std::move(trial);
     }
   }
+  plan = AttachMipSteps(std::move(plan));
   if (auto valid = ValidateRenderPlan(plan); !valid)
     return std::unexpected(valid.error());
   return plan;

@@ -196,13 +196,27 @@ struct CompositeStackStep {
   std::vector<LayerField> fields;
   [[nodiscard]] bool operator==(const CompositeStackStep &) const = default;
 };
+struct MipLevelRange {
+  std::uint32_t first = 1;
+  std::optional<std::uint32_t> count;
+  [[nodiscard]] bool operator==(const MipLevelRange &) const = default;
+};
+struct GenerateMipsStep {
+  RenderValueRef input;
+  MipLevelRange levels;
+  std::uint64_t intervalMS = 0;
+  [[nodiscard]] bool operator==(const GenerateMipsStep &) const = default;
+};
+inline constexpr std::uint32_t kNearMipLevels = 3;
+inline constexpr std::uint64_t kNearMipIntervalMS = 50;
+inline constexpr std::uint64_t kFarMipIntervalMS = 500;
 using RenderStepKind =
     std::variant<UnavailableStep, ConstantRenderStep, BuildBakeBuffersStep,
                  BakeMeshStep, NormalSlopeStep, SubmitMaterialSampleStep,
                  DrawClustersStep, FilterFieldStep, SampleFieldStep,
                  SubmitReductionStep, BuildLookupStep, EvaluateValueStep,
                  EvaluateProgramStep, MapFieldStep, ComposeVectorStep,
-                 DrawRippleStep, CompositeStackStep>;
+                 DrawRippleStep, CompositeStackStep, GenerateMipsStep>;
 inline constexpr std::size_t kRenderStepKindCount =
     std::variant_size_v<RenderStepKind>;
 struct RenderStep {
@@ -220,6 +234,7 @@ struct StackOutputBinding {
   std::size_t output = 0;
   GeometryId geometry{};
   StepOutputRef result;
+  std::optional<StepOutputRef> mips;
 };
 struct RenderValueBinding {
   TextureValue value;
@@ -245,6 +260,7 @@ struct MergedChainBinding {
   std::vector<std::size_t> layerStarts;
   std::size_t layerCount = 0;
   StepOutputRef result;
+  std::optional<StepOutputRef> mips;
 };
 struct RenderPlan {
   std::vector<RenderValueBinding> values;
@@ -293,6 +309,11 @@ StepDependencies(const RenderPlan &plan, RenderStepId step);
 [[nodiscard]] std::vector<bool> AnimatedSteps(const RenderPlan &plan);
 [[nodiscard]] std::size_t AnimatedPasses(const RenderPlan &plan);
 [[nodiscard]] std::vector<RenderStepId> RenderedRoots(const RenderPlan &plan);
+[[nodiscard]] std::optional<std::uint64_t>
+MinRunIntervalMS(const RenderStepKind &kind) noexcept;
+[[nodiscard]] RenderPlan AttachMipSteps(RenderPlan plan);
+[[nodiscard]] std::optional<StepOutputRef> MipsOf(const RenderPlan &plan,
+                                                  StepOutputRef result);
 [[nodiscard]] bool Draws(const RenderStepKind &kind);
 inline constexpr std::size_t kMaxCacheKeyBytes = 4096;
 [[nodiscard]] std::optional<std::string>

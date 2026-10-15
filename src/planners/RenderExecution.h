@@ -50,6 +50,7 @@ template <class T, class Scratch> struct StepExecutionState {
   std::string diagnostic;
   bool released = false;
   std::uint64_t lastUsed = 0;
+  std::optional<std::uint64_t> lastRun;
   bool dirty = true;
 };
 template <class T> struct ResolvedRenderInput {
@@ -264,9 +265,19 @@ private:
       state.dirty = false;
       return output.changeVersion;
     }
+    if (current && IsWaiting(id)) {
+      state.dirty = true;
+      return output.changeVersion;
+    }
     if (current && walk.stale)
       walk.stale(id, changed);
     return Execute(id, *required, walk, depth, false);
+  }
+  [[nodiscard]] bool IsWaiting(RenderStepId id) const noexcept {
+    const std::optional<std::uint64_t> interval =
+        MinRunIntervalMS(plan_.steps[id].kind);
+    const std::optional<std::uint64_t> &last = steps_[id].lastRun;
+    return interval && last && clock_ >= *last && clock_ - *last < *interval;
   }
   [[nodiscard]] Resolved Materialize(RenderValueRef ref, Walk &walk,
                                      std::size_t depth) {
@@ -319,6 +330,7 @@ private:
     state.diagnostic.clear();
     state.released = false;
     state.lastUsed = clock_;
+    state.lastRun = clock_;
     state.dirty = false;
     return output.changeVersion;
   }

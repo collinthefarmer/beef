@@ -2694,7 +2694,41 @@ them outside as separate passes.
 - Only stack results generate mips. The lowering sets `MipPolicy::kNone` on
   every value it builds, because every intermediate is read at its own size,
   where sampling uses mip 0. A stack draws its layers into targets without
-  mips and generates mips once on its final result, which the game samples.
+  mips; its final result carries a chain, which the game samples.
+- Mips of a published stack are steps of the plan. `AttachMipSteps`
+  (`BuildRenderPlan`'s last pass) adds two `GenerateMipsStep`s after every
+  published stack result (a `stackOutputs` entry not covered by a merge, and
+  every `mergedChains` result) whose requirements ask for mips:
+
+  | Step | Levels | Minimum interval | Input |
+  |---|---|---|---|
+  | near | 1 to `kNearMipLevels` (3) | `kNearMipIntervalMS` (50 ms) | the stack result |
+  | far | 4 to the last | `kFarMipIntervalMS` (500 ms) | the near step |
+
+  The binding's `mips` field names the far step. `RenderedRoots` and
+  `LiveConsumers` count it as a root, so pruning, liveness and the cost walk
+  see both steps. `RenderInstance::Render` demands the stack result first and
+  then `MipsOf` the result, so the published version still moves with every
+  stack redraw and a chained stack never waits on mips.
+- The executor paces a step whose kind has a minimum interval
+  (`MinRunIntervalMS`; only `GenerateMipsStep` has one). When its inputs
+  changed but less than the interval has passed on the render clock since its
+  last run, the step keeps its output and stays dirty, so the next pull checks
+  it again. After the interval it runs once with the newest input, even if no
+  input changed since: a stack that stops animating still gets its last
+  content into the lower levels within one interval. A step that has never run
+  runs at once.
+- `GenerateMipRange` (`TextureLab`) generates a level range with D3D11's
+  `GenerateMips` on a view whose most detailed mip is the level above the
+  range; the target caches one view per range (`RenderTarget::rangeViews_`).
+- A stack that draws into a freshly acquired target generates its whole chain
+  in the stack step, because the pool may hand it a target whose lower levels
+  hold another texture's content. A target the step already held keeps its
+  chain between draws, and the mip steps refresh it.
+- The near range covers what the game samples at normal viewing distances:
+  the resolution levels already size each target to the piece's share of the
+  screen, so the game rarely reads past level 3 of it. This is a design
+  estimate, not a measurement.
 - A target's mips are one of three states (`TextureLab::TargetMips`):
   `kNone` (one level), `kGeneratedOnDraw` (a chain the lab regenerates after
   each draw) and `kGeneratedByCaller` (a chain that its owner regenerates). A

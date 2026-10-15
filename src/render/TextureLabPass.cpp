@@ -681,6 +681,51 @@ void TextureLab::GenerateMipsFor(RenderTarget &a_target) {
   GenerateMips(pass, a_target);
 }
 
+REX::W32::ID3D11ShaderResourceView *
+TextureLab::RangeViewOf(const RenderTarget &a_target,
+                        std::uint32_t a_mostDetailed, std::uint32_t a_levels) {
+  for (const RenderTarget::RangeView &range : a_target.rangeViews_)
+    if (range.mostDetailed == a_mostDetailed && range.levels == a_levels)
+      return range.view.Get();
+  if (!borrowedDevice_ || !a_target.texture.Get())
+    return nullptr;
+  D3D11_TEXTURE2D_DESC texture{};
+  a_target.texture->GetDesc(&texture);
+  D3D11_SHADER_RESOURCE_VIEW_DESC desc{};
+  desc.format = texture.format;
+  desc.viewDimension = D3D_SRV_DIMENSION_TEXTURE2D;
+  desc.texture2D.mostDetailedMip = a_mostDetailed;
+  desc.texture2D.mipLevels = a_levels;
+  RenderTarget::RangeView range{a_mostDetailed, a_levels, {}};
+  if (Failed(borrowedDevice_->CreateShaderResourceView(
+          a_target.texture.Get(), &desc, range.view.GetAddressOf())))
+    return nullptr;
+  a_target.rangeViews_.push_back(std::move(range));
+  return a_target.rangeViews_.back().view.Get();
+}
+
+bool TextureLab::GenerateMipRange(const RenderTarget &a_target,
+                                  MipLevelRange a_levels) {
+  auto *renderer = RE::BSGraphics::Renderer::GetSingleton();
+  if (!available_ || !renderer || !borrowedContext_ ||
+      !HasChain(a_target.mips) || a_levels.first == 0)
+    return false;
+  const auto chain = static_cast<std::uint32_t>(std::bit_width(a_target.size));
+  if (a_levels.first >= chain)
+    return true;
+  const std::uint32_t source = a_levels.first - 1;
+  const std::uint32_t available = chain - source;
+  const std::uint32_t levels =
+      a_levels.count ? std::min(*a_levels.count + 1, available) : available;
+  REX::W32::ID3D11ShaderResourceView *view =
+      RangeViewOf(a_target, source, levels);
+  if (!view)
+    return false;
+  const RenderPass pass{*renderer, *borrowedContext_, CaptureBatch()};
+  pass.Context().GenerateMips(view);
+  return true;
+}
+
 namespace {
 struct LayerViews {
   REX::W32::ID3D11ShaderResourceView *source = nullptr;

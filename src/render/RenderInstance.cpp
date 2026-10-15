@@ -359,6 +359,9 @@ LayerPassesFor(std::span<const PlannedLayer *const> layers,
 constexpr std::uint64_t kReleaseAfterIdleMS = 500;
 static_assert(kRenderStepKindCount <= Metrics::kStepKindSlots);
 std::string StepSpanKey(const RenderStep &step, const PlanSizes &sizes) {
+  if (const auto *mips = Get<GenerateMipsStep>(step.kind))
+    return std::format("{} from {}", StepKindName(step.kind),
+                       mips->levels.first);
   const auto requirements = RequirementsOf(step.kind);
   if (!requirements)
     return std::string{StepKindName(step.kind)};
@@ -1077,6 +1080,7 @@ StepResult ExecuteCompositeStackStep(const CompositeStackStep &step,
   const auto bound = BindLayerFields(**packed, execution.arguments);
   if (!bound)
     return std::unexpected(bound.error());
+  const bool fresh = execution.scratch.target.expired();
   const auto target =
       AcquireStepTarget(execution, step.requirements,
                         step.requirements.mipPolicy == MipPolicy::kGenerate
@@ -1086,9 +1090,19 @@ StepResult ExecuteCompositeStackStep(const CompositeStackStep &step,
     return std::unexpected("stack target is unavailable");
   if (!execution.lab.RenderStack(*target, base->texture.get(), *passes, *bound))
     return std::unexpected("stack draw failed");
-  if (step.requirements.mipPolicy == MipPolicy::kGenerate)
+  if (fresh && step.requirements.mipPolicy == MipPolicy::kGenerate)
     execution.lab.GenerateMipsFor(*target);
   return StackResult{TextureRef{target->Texture()}};
+}
+StepResult ExecuteGenerateMipsStep(const GenerateMipsStep &step,
+                                   StepExecution &execution) {
+  const auto *stack = execution.arguments.Find<StackResult>(step.input);
+  if (!stack)
+    return std::unexpected("the mip input is not a stack");
+  const TextureLab::RenderTarget *target = stack->texture.Target();
+  if (target && !execution.lab.GenerateMipRange(*target, step.levels))
+    return std::unexpected("mip generation failed");
+  return *stack;
 }
 StepResult ExecuteStep(const RenderStep &step,
                        std::span<const ResolvedRenderInput<RenderValue>> inputs,
@@ -1137,6 +1151,9 @@ StepResult ExecuteStep(const RenderStep &step,
       },
       [&](const DrawRippleStep &k) {
         return ExecuteDrawRippleStep(k, execution);
+      },
+      [&](const GenerateMipsStep &k) {
+        return ExecuteGenerateMipsStep(k, execution);
       },
       [&](const FilterFieldStep &k) {
         return ExecuteFilterFieldStep(k, execution);
@@ -1445,6 +1462,9 @@ RenderInstance::Render(StepOutputRef output, const LayerFilter &filter,
   Metrics::CountRenderEvaluation();
   const Metrics::Stopwatch evaluateWatch;
   const auto result = Demand(output);
+  if (result)
+    if (const std::optional<StepOutputRef> mips = MipsOf(Plan(), output))
+      (void)Demand(*mips);
   Metrics::CountSection(Metrics::Section::kRenderEvaluate,
                         evaluateWatch.Micros());
   if (!result && AwaitingFirstReadback())

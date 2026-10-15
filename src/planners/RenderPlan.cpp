@@ -189,7 +189,8 @@ std::vector<RenderValueRef> InputsOf(const RenderStepKind &step) {
           std::ranges::copy(LayerOperands(k, layer),
                             std::back_inserter(inputs));
         return inputs;
-      });
+      },
+      [](const GenerateMipsStep &k) { return std::vector{k.input}; });
 }
 
 std::vector<std::vector<RenderStepId>>
@@ -279,16 +280,19 @@ RenderValueType OutputType(const RenderStepKind &step) {
       },
       [](const DrawRippleStep &) -> RenderValueType {
         return RenderResourceType::kTexture;
+      },
+      [](const GenerateMipsStep &) -> RenderValueType {
+        return RenderResourceType::kStack;
       });
 }
 namespace {
 inline constexpr std::array<std::string_view, kRenderStepKindCount>
-    kStepKindNames{"Unavailable",     "Constant",      "BuildBakeBuffers",
-                   "BakeMesh",        "NormalSlope",   "SubmitMaterialSample",
-                   "DrawClusters",    "FilterField",   "SampleField",
-                   "SubmitReduction", "BuildLookup",   "EvaluateValue",
-                   "EvaluateProgram", "MapField",      "ComposeVector",
-                   "DrawRipple",      "CompositeStack"};
+    kStepKindNames{"Unavailable",     "Constant",       "BuildBakeBuffers",
+                   "BakeMesh",        "NormalSlope",    "SubmitMaterialSample",
+                   "DrawClusters",    "FilterField",    "SampleField",
+                   "SubmitReduction", "BuildLookup",    "EvaluateValue",
+                   "EvaluateProgram", "MapField",       "ComposeVector",
+                   "DrawRipple",      "CompositeStack", "GenerateMips"};
 }
 static_assert(std::ranges::none_of(kStepKindNames, &std::string_view::empty));
 std::string_view StepKindNameAt(std::size_t index) {
@@ -646,6 +650,12 @@ std::expected<void, std::string> ValidateStepKind(const RenderPlan &plan,
       },
       [&](const CompositeStackStep &k) -> Validation {
         return ValidateCompositeStackStep(plan, k);
+      },
+      [&](const GenerateMipsStep &k) -> Validation {
+        if (k.levels.first == 0 || k.levels.count == std::uint32_t{0})
+          return std::unexpected("a mip range starts below level 1 or is "
+                                 "empty");
+        return RequireType(plan, k.input, RenderResourceType::kStack);
       });
 }
 std::expected<void, std::string> ValidateStepInputs(const RenderPlan &plan,
@@ -697,10 +707,14 @@ ValidateReadbackInputs(const RenderPlan &plan) {
 }
 std::expected<void, std::string>
 ValidateOutputBindings(const RenderPlan &plan) {
+  const auto stack = std::optional<RenderValueType>{RenderResourceType::kStack};
   for (const StackOutputBinding &output : plan.stackOutputs)
-    if (TypeOf(plan, output.result) !=
-        std::optional<RenderValueType>{RenderResourceType::kStack})
+    if (TypeOf(plan, output.result) != stack ||
+        (output.mips && TypeOf(plan, *output.mips) != stack))
       return std::unexpected("invalid stack output binding");
+  for (const MergedChainBinding &merged : plan.mergedChains)
+    if (merged.mips && TypeOf(plan, *merged.mips) != stack)
+      return std::unexpected("invalid merged chain mips binding");
   for (const TextureUseBinding &use : plan.textureUses)
     if (TypeOf(plan, use.texture) !=
         std::optional<RenderValueType>{RenderResourceType::kTexture})
@@ -1007,16 +1021,81 @@ bool CoveredByMerge(const RenderPlan &plan, const StackOutputBinding &output) {
 
 std::vector<RenderStepId> RenderedRoots(const RenderPlan &plan) {
   std::vector<RenderStepId> roots;
-  roots.reserve(plan.mergedChains.size() + plan.stackOutputs.size());
+  roots.reserve(2 * (plan.mergedChains.size() + plan.stackOutputs.size()));
+  const auto add = [&](StepOutputRef a_result,
+                       const std::optional<StepOutputRef> &a_mips) {
+    roots.push_back(a_result.step);
+    if (a_mips)
+      roots.push_back(a_mips->step);
+  };
   for (const MergedChainBinding &merged : plan.mergedChains)
-    roots.push_back(merged.result.step);
+    add(merged.result, merged.mips);
   for (const StackOutputBinding &output : plan.stackOutputs)
     if (!CoveredByMerge(plan, output))
-      roots.push_back(output.result.step);
+      add(output.result, output.mips);
   return roots;
 }
 
+std::optional<std::uint64_t>
+MinRunIntervalMS(const RenderStepKind &kind) noexcept {
+  const auto *mips = Get<GenerateMipsStep>(kind);
+  return mips ? std::optional{mips->intervalMS} : std::nullopt;
+}
+
+namespace {
+bool GeneratesMips(const RenderPlan &plan, StepOutputRef result) {
+  const auto *stack =
+      result.step < plan.steps.size()
+          ? Get<CompositeStackStep>(plan.steps[result.step].kind)
+          : nullptr;
+  return stack && stack->requirements.mipPolicy == MipPolicy::kGenerate;
+}
+
+StepOutputRef AppendMipSteps(RenderPlan &plan, StepOutputRef result) {
+  const std::string name = plan.steps[result.step].displayName;
+  const StepOutputRef near{plan.steps.size(), 0};
+  plan.steps.push_back(
+      {GenerateMipsStep{result, {1, kNearMipLevels}, kNearMipIntervalMS},
+       name + " near mips",
+       {},
+       {}});
+  const StepOutputRef far{plan.steps.size(), 0};
+  plan.steps.push_back(
+      {GenerateMipsStep{near, {kNearMipLevels + 1, {}}, kFarMipIntervalMS},
+       name + " far mips",
+       {},
+       {}});
+  return far;
+}
+}
+
+RenderPlan AttachMipSteps(RenderPlan plan) {
+  for (MergedChainBinding &merged : plan.mergedChains)
+    if (!merged.mips && GeneratesMips(plan, merged.result))
+      merged.mips = AppendMipSteps(plan, merged.result);
+  for (std::size_t i = 0; i < plan.stackOutputs.size(); ++i) {
+    const StackOutputBinding output = plan.stackOutputs[i];
+    if (!output.mips && !CoveredByMerge(plan, output) &&
+        GeneratesMips(plan, output.result))
+      plan.stackOutputs[i].mips = AppendMipSteps(plan, output.result);
+  }
+  return plan;
+}
+
+std::optional<StepOutputRef> MipsOf(const RenderPlan &plan,
+                                    StepOutputRef result) {
+  for (const MergedChainBinding &merged : plan.mergedChains)
+    if (merged.result == result)
+      return merged.mips;
+  for (const StackOutputBinding &output : plan.stackOutputs)
+    if (output.result == result && !CoveredByMerge(plan, output))
+      return output.mips;
+  return std::nullopt;
+}
+
 bool Draws(const RenderStepKind &kind) {
+  if (Is<GenerateMipsStep>(kind))
+    return false;
   if (const auto *sample = Get<SampleFieldStep>(kind))
     return !sample->direct;
   return OutputType(kind) == RenderValueType{RenderResourceType::kTexture} ||
@@ -1053,10 +1132,16 @@ std::vector<std::size_t> LiveConsumers(const RenderPlan &plan) {
       pending.push_back(result.step);
     }
   };
-  for (const auto &output : plan.stackOutputs)
+  for (const auto &output : plan.stackOutputs) {
     root(output.result);
-  for (const auto &merged : plan.mergedChains)
+    if (output.mips)
+      root(*output.mips);
+  }
+  for (const auto &merged : plan.mergedChains) {
     root(merged.result);
+    if (merged.mips)
+      root(*merged.mips);
+  }
   while (!pending.empty()) {
     const auto step = pending.back();
     pending.pop_back();
@@ -1119,14 +1204,15 @@ bool SameStructure(const RenderPlan &a_left, const RenderPlan &a_right) {
                       a_l.links == a_r.links &&
                       a_l.layerStarts == a_r.layerStarts &&
                       a_l.layerCount == a_r.layerCount &&
-                      a_l.result == a_r.result;
+                      a_l.result == a_r.result && a_l.mips == a_r.mips;
              }) &&
          SameEach(
              a_left.stackOutputs, a_right.stackOutputs,
              [](const StackOutputBinding &a_l, const StackOutputBinding &a_r) {
                return a_l.placement == a_r.placement &&
                       a_l.output == a_r.output &&
-                      a_l.geometry == a_r.geometry && a_l.result == a_r.result;
+                      a_l.geometry == a_r.geometry &&
+                      a_l.result == a_r.result && a_l.mips == a_r.mips;
              });
 }
 }

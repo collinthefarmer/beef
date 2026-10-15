@@ -21,7 +21,7 @@ RenderBindingResolver Bindings() {
 }
 }
 int main() {
-  Check(StepKindNameAt(kRenderStepKindCount - 1) == "CompositeStack",
+  Check(StepKindNameAt(kRenderStepKindCount - 1) == "GenerateMips",
         "the last step kind is named");
   Check(StepKindNameAt(15) == "DrawRipple",
         "a step kind is named by its index");
@@ -165,6 +165,27 @@ int main() {
       sharedLookups += Is<BuildLookupStep>(step.kind);
     Check(sharedLookups == 1,
           "vector components share the same measured lookup");
+    const StackOutputBinding &published = vectorPlan->stackOutputs.front();
+    const auto *far =
+        published.mips && published.mips->step < vectorPlan->steps.size()
+            ? Get<GenerateMipsStep>(
+                  vectorPlan->steps[published.mips->step].kind)
+            : nullptr;
+    const auto *near =
+        far && Get<StepOutputRef>(far->input)
+            ? Get<GenerateMipsStep>(
+                  vectorPlan->steps[Get<StepOutputRef>(far->input)->step].kind)
+            : nullptr;
+    Check(far && near && near->input == RenderValueRef{published.result} &&
+              near->levels == MipLevelRange{1, kNearMipLevels} &&
+              far->levels.first == kNearMipLevels + 1 && !far->levels.count &&
+              near->intervalMS == kNearMipIntervalMS &&
+              far->intervalMS == kFarMipIntervalMS,
+          "a published stack gets near and far mip steps after it");
+    Check(MipsOf(*vectorPlan, published.result) == published.mips &&
+              std::ranges::contains(RenderedRoots(*vectorPlan),
+                                    published.mips->step),
+          "the far mip step is a rendered root of the plan");
   }
   RenderExecution<int> execution{*plan};
   std::optional<StepOutputRef> mapped;

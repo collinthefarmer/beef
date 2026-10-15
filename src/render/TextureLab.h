@@ -15,6 +15,7 @@
 #include "planners/FieldProgram.h"
 #include "planners/GpuReduction.h"
 #include "planners/MipLevel.h"
+#include "planners/RenderPlan.h"
 #include "planners/ShaderConstants.h"
 #include "planners/StackShader.h"
 #include "planners/TargetHolders.h"
@@ -232,6 +233,12 @@ public:
     std::uint32_t size = 0;
     TextureFormat format = TextureFormat::kRgba8;
     TargetMips mips = TargetMips::kGeneratedOnDraw;
+    struct RangeView {
+      std::uint32_t mostDetailed = 0;
+      std::uint32_t levels = 0;
+      REX::W32::ComPtr<REX::W32::ID3D11ShaderResourceView> view;
+    };
+    mutable std::vector<RangeView> rangeViews_;
   };
 
   static_assert(!std::is_copy_constructible_v<RenderTarget>);
@@ -252,6 +259,7 @@ public:
           TextureFormat format = TextureFormat::kRgba8,
           TargetMips mips = TargetMips::kGeneratedOnDraw);
   void GenerateMipsFor(RenderTarget &a_target);
+  bool GenerateMipRange(const RenderTarget &a_target, MipLevelRange a_levels);
 
   bool Render(RenderTarget &a_target, RE::NiSourceTexture *a_source,
               const LayerParams &a_params);
@@ -467,6 +475,9 @@ private:
   void DrawFullScreen(const RenderPass &a_pass, RenderTarget &a_target,
                       const FullScreenDraw &a_draw);
   void GenerateMips(const RenderPass &a_pass, RenderTarget &a_target);
+  [[nodiscard]] REX::W32::ID3D11ShaderResourceView *
+  RangeViewOf(const RenderTarget &a_target, std::uint32_t a_mostDetailed,
+              std::uint32_t a_levels);
   void BindTarget(const RenderPass &a_pass, RenderTarget &a_target);
   void UnbindTarget(const RenderPass &a_pass, std::uint32_t a_srvCount);
   void DrawBakeTriangles(const RenderPass &a_pass, RenderTarget &a_target,
