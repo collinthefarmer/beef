@@ -1,7 +1,7 @@
 {
   "format": 1,
   "name": "Fill import template",
-  "description": "The baseline import template for an effect shader with a fill texture. A pick lights a few texture charts of one material group on one of the piece's geometries. There the material glows in the shader's colour (or, when that colour is nearly white, its edge colour or a hue seeded by the effect), turned in hue by the effect and deeper and darker at weak magnitudes, takes a roughness and metallic chosen by the enchantment, and sinks into a relief; a shell copy of the piece covers it, with DarkSwirls holes through which the glow shows. The holes pulse gently in size, grow with the enchantment's magnitude and with distance from the spine, so the effect gathers at the extremities; the glow pulses very slightly and scales with magnitude, as do the relief (flat at weak magnitudes), how many charts light and the least share of the geometry they cover. Under the shell the picked area also carries a fuzz sheen in the glow's hue, slightly brightened, a halo at grazing angles. The enchantment, its effect and the worn item fix which geometry, material group and charts glow, always at least one chart.",
+  "description": "The baseline import template for an effect shader with a fill texture. A pick lights a few texture charts of one material group on one of the piece's geometries. There the material glows in the shader's colour (or, when that colour is nearly white, its edge colour or a hue seeded by the effect), turned in hue by the effect and deeper and darker at weak magnitudes, takes a roughness and metallic chosen by the enchantment, and sinks into a relief; a shell copy of the piece covers it, with DarkSwirls holes through which the glow shows. Weak enchantments show faintly: glow, holes and sheen scale with a presence that eases in up to 0.6 magnitude level. The holes pulse gently in size, grow with the enchantment's magnitude and with distance from the spine, so the effect gathers at the extremities; the glow pulses very slightly and scales with magnitude, as do the relief (flat at weak magnitudes), how many charts light and the least share of the geometry they cover. Under the shell the picked area also carries a fuzz sheen in the glow's hue, slightly brightened, a halo at grazing angles. The enchantment, its effect and the worn item fix which geometry, material group and charts glow, always at least one chart.",
   "keys": [
     {
       "effectShader": "ImportedEffectShader"
@@ -93,8 +93,14 @@
     "glowMagnitudeGain": {
       "constant": 2.0
     },
+    "presenceWeak": {
+      "constant": 0.25
+    },
+    "presence": {
+      "expr": "lerp(@presenceWeak, 1, pow(@colourStrength, 2))"
+    },
     "glowIntensity": {
-      "expr": "@glowStrength * (1 + @glowMagnitudeGain * @magnitudeLevel) * @glowPulse"
+      "expr": "@glowStrength * (1 + @glowMagnitudeGain * @magnitudeLevel) * @glowPulse * @presence"
     },
     "glowHueRange": {
       "constant": 0.1
@@ -193,7 +199,7 @@
       "constant": 6.0
     },
     "holeThreshold": {
-      "expr": "@holeBase + @holeMagnitudeWeight * @magnitudeLevel + @holePulseDepth * sin(time * 6.2832 / @holePulsePeriod)"
+      "expr": "(@holeBase + @holeMagnitudeWeight * @magnitudeLevel + @holePulseDepth * sin(time * 6.2832 / @holePulsePeriod)) * @presence"
     },
     "holeSoftness": {
       "constant": 0.04
@@ -220,7 +226,7 @@
       "constant": 0.5
     },
     "haloWeight": {
-      "expr": "saturate(@haloWeightBase * max(@magnitudeFloor, 1 + @haloMagnitudeWeight * (2 * @magnitudeLevel - 1)))"
+      "expr": "saturate(@haloWeightBase * max(@magnitudeFloor, 1 + @haloMagnitudeWeight * (2 * @magnitudeLevel - 1)) * @presence)"
     },
     "haloValue": {
       "constant": 1.15
