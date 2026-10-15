@@ -36,12 +36,19 @@ std::vector<PlacedOutput> LiveOutputsOf(const PlacementOutputs &a_outputs) {
   return outputs;
 }
 
+SlotRefusal RefusalOf(const std::optional<Diagnostic> &a_problem) {
+  return a_problem && a_problem->severity == Severity::kWarning
+             ? SlotRefusal::kUnsupported
+             : SlotRefusal::kProblem;
+}
+
 std::vector<SlotTargetState> TargetsOf(LiveGeometry &a_bound) {
   std::vector<SlotTargetState> targets;
   for (const SlotPlan &slot : a_bound.plan.slots) {
     if (const SlotTarget *target = TargetFor(a_bound, slot.surface)) {
+      const std::optional<Diagnostic> problem = target->Problem(slot.slot);
       targets.push_back(
-          {slot.surface, slot.slot, ProblemText(target->Problem(slot.slot))});
+          {slot.surface, slot.slot, ProblemText(problem), RefusalOf(problem)});
     }
   }
   return targets;

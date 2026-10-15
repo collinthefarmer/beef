@@ -79,11 +79,16 @@ void DrawLoadedTable(const Studio::Snapshot &a_snapshot) {
   table.End();
 }
 
+[[nodiscard]] std::string OutputStatusText(const Studio::OutputRow &a_output) {
+  if (!a_output.problem.empty())
+    return std::format(" [{}]", a_output.problem);
+  if (!a_output.skipped.empty())
+    return std::format(" [skipped: {}]", a_output.skipped);
+  return a_output.animated ? " (animated)" : " (static)";
+}
+
 [[nodiscard]] std::string OutputDescription(const Studio::OutputRow &a_output) {
-  const std::string state =
-      a_output.problem.empty()
-          ? (a_output.animated ? " (animated)" : " (static)")
-          : std::format(" [{}]", a_output.problem);
+  const std::string state = OutputStatusText(a_output);
   return std::format("{}->{}{}",
                      a_output.target == Target::kLight
                          ? std::string_view{}

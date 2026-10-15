@@ -306,6 +306,7 @@ struct GeometrySnapshotBuilder {
     row.animated = output.stack && output.stack->Animated();
     row.size = output.stack ? output.stack->Size().Pixels() : 0;
     row.problem = ProblemOf(output.state);
+    row.skipped = SkipReasonOf(output.state);
     row.texture = RetainTexture(snapshot, output.stack ? output.stack->Texture()
                                                        : nullptr);
     if (const std::optional<std::size_t> merge = ChainIndexOf(

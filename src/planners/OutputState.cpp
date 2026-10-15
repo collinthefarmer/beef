@@ -16,8 +16,13 @@ std::string_view ProblemOf(const OutputState &a_state) noexcept {
   return {};
 }
 
+std::string_view SkipReasonOf(const OutputState &a_state) noexcept {
+  const OutputSkipped *skipped = Get<OutputSkipped>(a_state);
+  return skipped ? std::string_view{skipped->reason} : std::string_view{};
+}
+
 bool IsActive(const OutputState &a_state) noexcept {
-  return !Is<OutputInactive>(a_state);
+  return !Is<OutputInactive>(a_state) && !Is<OutputSkipped>(a_state);
 }
 
 OutputState Activated(std::string a_problem) {

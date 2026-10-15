@@ -21,6 +21,15 @@ void ActivationChecksTheProblem() {
         "an inactive output keeps its placement problem");
 }
 
+void ASkippedOutputIsNeitherActiveNorFailed() {
+  const OutputState skipped = OutputSkipped{"the material has a coat model"};
+  Check(!IsActive(skipped) && ProblemOf(skipped).empty() &&
+            SkipReasonOf(skipped) == "the material has a coat model",
+        "a skipped output draws nothing and reports a reason, not a problem");
+  Check(AfterRender(skipped, OutputRender::kFailed) == skipped,
+        "a render never touches a skipped output");
+}
+
 void RendersMoveAnActiveOutput() {
   const OutputState rendered =
       AfterRender(OutputPending{}, OutputRender::kRendered);
@@ -67,6 +76,7 @@ void LostAndRetiredGeometriesFail() {
 
 int main() {
   ActivationChecksTheProblem();
+  ASkippedOutputIsNeitherActiveNorFailed();
   RendersMoveAnActiveOutput();
   ProblemsKeepTheActivation();
   LostAndRetiredGeometriesFail();

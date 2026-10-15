@@ -38,6 +38,7 @@ struct LayerStack {
   bool animated = false;
   std::uint32_t size = 0;
   std::string problem;
+  std::string skipped;
   std::vector<ScalarRow> scalars;
   std::vector<Blend> blends;
   std::vector<std::string> masks;

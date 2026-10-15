@@ -81,6 +81,8 @@ private:
   };
   [[nodiscard]] bool MaterialAttached() const noexcept;
   [[nodiscard]] std::optional<std::string> ProblemMessage(Slot a_slot) const;
+  [[nodiscard]] std::optional<std::string>
+  UnsupportedMessage(Slot a_slot) const;
   [[nodiscard]] GroupState Capture(Slot a_slot) const;
   [[nodiscard]] Group *BeginWrite(Slot a_slot, bool a_enableFeature = false);
   void EndWrite(Slot a_slot);

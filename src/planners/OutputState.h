@@ -24,8 +24,13 @@ struct OutputFailed {
   [[nodiscard]] bool operator==(const OutputFailed &) const = default;
 };
 
-using OutputState =
-    std::variant<OutputInactive, OutputPending, OutputRendered, OutputFailed>;
+struct OutputSkipped {
+  std::string reason;
+  [[nodiscard]] bool operator==(const OutputSkipped &) const = default;
+};
+
+using OutputState = std::variant<OutputInactive, OutputPending, OutputRendered,
+                                 OutputFailed, OutputSkipped>;
 
 inline constexpr std::string_view kRenderFailedProblem =
     "the output could not be rendered; reapply to retry";
@@ -35,6 +40,8 @@ inline constexpr std::string_view kRetiredProblem =
 enum class OutputRender { kRendered, kPending, kFailed };
 
 [[nodiscard]] std::string_view ProblemOf(const OutputState &a_state) noexcept;
+[[nodiscard]] std::string_view
+SkipReasonOf(const OutputState &a_state) noexcept;
 [[nodiscard]] bool IsActive(const OutputState &a_state) noexcept;
 [[nodiscard]] OutputState Activated(std::string a_problem);
 [[nodiscard]] OutputState AfterRender(const OutputState &a_state,

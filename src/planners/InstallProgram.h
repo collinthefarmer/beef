@@ -49,10 +49,13 @@ struct SurfacePlan {
   std::vector<PlacementOutputs> placements;
 };
 
+enum class SlotRefusal { kProblem, kUnsupported };
+
 struct SlotTargetState {
   Surface surface = Surface::kMaterial;
   Slot slot = Slot::kEmissive;
   std::string problem;
+  SlotRefusal refusal = SlotRefusal::kProblem;
   [[nodiscard]] bool operator==(const SlotTargetState &) const = default;
 };
 

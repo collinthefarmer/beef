@@ -123,28 +123,40 @@ const BoundSurfaces *BoundAt(std::span<const BoundSurfaces> a_bound,
   return found == a_bound.end() ? nullptr : &*found;
 }
 
-std::string SurfaceProblem(const BoundSurfaces *a_bound, const SlotPlan &a_slot,
-                           std::string_view a_existing) {
+OutputState TargetState(const SlotTargetState &a_target) {
+  if (a_target.problem.empty()) {
+    return OutputPending{};
+  }
+  if (a_target.refusal == SlotRefusal::kUnsupported) {
+    return OutputSkipped{a_target.problem};
+  }
+  return OutputFailed{a_target.problem};
+}
+
+OutputState SurfaceState(const BoundSurfaces *a_bound, const SlotPlan &a_slot,
+                         std::string_view a_existing) {
   const bool shell = a_bound && a_bound->shell;
   const bool material = a_bound && a_bound->material;
   if (a_slot.surface == Surface::kShell && !shell) {
-    return std::string{kShellNotCreated};
+    return OutputFailed{std::string{kShellNotCreated}};
   }
   if (a_slot.surface == Surface::kMaterial && !material) {
-    return std::string{kMaterialNotBound};
+    return OutputFailed{std::string{kMaterialNotBound}};
   }
   if (!a_existing.empty()) {
-    return std::string{a_existing};
+    return OutputFailed{std::string{a_existing}};
   }
   if (!a_bound) {
-    return std::string{kSurfaceNotBound};
+    return OutputFailed{std::string{kSurfaceNotBound}};
   }
   const auto target =
       std::ranges::find_if(a_bound->targets, [&](const SlotTargetState &a_t) {
         return a_t.surface == a_slot.surface && a_t.slot == a_slot.slot;
       });
-  return target == a_bound->targets.end() ? std::string{kSurfaceNotBound}
-                                          : target->problem;
+  if (target == a_bound->targets.end()) {
+    return OutputFailed{std::string{kSurfaceNotBound}};
+  }
+  return TargetState(*target);
 }
 
 struct LocatedOutput {
@@ -310,11 +322,9 @@ OutputActivation ActivateOutputs(const SurfacePlan &a_plan,
         if (!located) {
           continue;
         }
-        std::string problem =
-            SurfaceProblem(bound, slot, ProblemOf(located->state.state));
-        const bool blocked = !problem.empty();
-        located->state.state = Activated(std::move(problem));
-        if (blocked) {
+        located->state.state =
+            SurfaceState(bound, slot, ProblemOf(located->state.state));
+        if (!Is<OutputPending>(located->state.state)) {
           continue;
         }
         activation.stacks.push_back({geometry.geometry, slot.surface, slot.slot,

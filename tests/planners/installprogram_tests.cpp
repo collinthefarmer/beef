@@ -186,6 +186,23 @@ void ATargetProblemBlocksItsOutput() {
         "a slot without a target reports an unbound surface");
 }
 
+void AnUnsupportedSlotSkipsItsOutput() {
+  const Fixture fixture = Matched({RecipeWith("glow", {Emissive()})});
+  const SurfacePlan plan = PlanSurfaces(fixture.matches, fixture.store);
+  BoundSurfaces coated = MaterialBound("the material has a coat model");
+  coated.targets.front().refusal = SlotRefusal::kUnsupported;
+  const std::vector<BoundSurfaces> bound{coated};
+  const OutputActivation activation =
+      ActivateOutputs(plan, bound, fixture.matches, fixture.store,
+                      AllInstances(fixture.matches));
+  const PlacedOutputState *output = OutputOf(activation.placements, 0);
+  Check(output && Is<OutputSkipped>(output->state) &&
+            SkipReasonOf(output->state) == "the material has a coat model" &&
+            ProblemOf(output->state).empty(),
+        "a slot the material cannot show skips its output without a problem");
+  Check(activation.stacks.empty(), "a skipped output requests no stack");
+}
+
 void AnUncompiledInstanceStaysInactive() {
   const Fixture fixture = Matched({RecipeWith("glow", {Emissive()})});
   const SurfacePlan plan = PlanSurfaces(fixture.matches, fixture.store);
@@ -412,6 +429,7 @@ int main() {
   ABoundSurfaceActivatesItsOutput();
   AFailedMaterialBlocksItsOutputs();
   ATargetProblemBlocksItsOutput();
+  AnUnsupportedSlotSkipsItsOutput();
   AnUncompiledInstanceStaysInactive();
   LayeredOutputsFormAChain();
   EqualSizesShareASide();

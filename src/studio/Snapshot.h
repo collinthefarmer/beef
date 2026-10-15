@@ -87,6 +87,7 @@ struct OutputRow {
   std::string selector;
   Selector selection;
   std::string problem;
+  std::string skipped;
   std::vector<ScalarRow> scalars;
   std::vector<LayerRow> layers;
   TextureHandle texture{};

@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <format>
 #include <functional>
 #include <optional>
 #include <span>
@@ -62,6 +63,9 @@ void DrawStack(const std::optional<Studio::LayerStack> &a_stack,
   ImGui::PushID(static_cast<int>(stack.output));
   if (!stack.problem.empty()) {
     Problem(stack.problem);
+  }
+  if (!stack.skipped.empty()) {
+    Warn(std::format("skipped on this piece: {}", stack.skipped));
   }
   DrawInspector(stack, a_inspector, a_frame);
   ImGui::PopID();

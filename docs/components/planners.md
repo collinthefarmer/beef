@@ -303,7 +303,7 @@ it.
 
 | Type or function | Description |
 |---|---|
-| `OutputInactive`, `OutputPending`, `OutputRendered`, `OutputFailed`, `OutputState` | An output that is not active, with its problem; active and not rendered yet; rendered; failed with a problem. |
+| `OutputInactive`, `OutputPending`, `OutputRendered`, `OutputFailed`, `OutputSkipped`, `OutputState` | An output that is not active, with its problem; active and not rendered yet; rendered; failed with a problem; skipped because the material's shading model cannot show its slot, with the reason. |
 | `OutputRender`, `AfterRender` | A render outcome (`kRendered`, `kPending`, `kFailed`) and the state after it. |
 | `Activated`, `WithProblem`, `AfterLostGeometry`, `AfterRetire` | The state when an output activates, gets a problem, loses its geometry or retires. A retire keeps an existing problem and otherwise uses `kRetiredProblem`. |
 | `ProblemOf`, `IsActive`, `kRenderFailedProblem` | The problem text of an inactive or failed state, whether the output is active, and the problem text of a render failure. |

@@ -130,6 +130,7 @@ std::optional<LayerStack> BuildStack(const RecipeRow &a_recipe,
   stack.animated = output->animated;
   stack.size = output->size;
   stack.problem = output->problem;
+  stack.skipped = output->skipped;
   stack.scalars = output->scalars;
   stack.blends = BlendsFor(output->slot);
   stack.masks = a_recipe.masks;

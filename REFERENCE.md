@@ -901,6 +901,21 @@ Lab mechanics:
 - Retirement moves journal entries into that list with `splice`, which takes no
   allocation, so no destructor can lose a lease to an allocation failure. The
   nodes were allocated at the first write.
+- `SlotWriter::Problem` refuses a slot write in one of two ways:
+
+  | Kind | Severity | Cause | Output state |
+  |---|---|---|---|
+  | problem (`ProblemMessage`) | error | The material is detached, the slot has no field, the property has no emissive storage, or the recipe wrote two slots that exclude each other (fuzz with glint, coat with subsurface). | `OutputFailed`: the application fails. |
+  | unsupported (`UnsupportedMessage`) | warning | The material's own shading model cannot show the slot: a hair model refuses fuzz, glint, coat and subsurface; a coat model (`kPbrTwoLayer`) refuses fuzz and glint; a material that already carries subsurface refuses coat, and one that carries a coat refuses subsurface. | `OutputSkipped`: the output draws nothing and the rest of the application continues. |
+
+  `TargetsOf` (`engine/InstallStages.cpp`) reads the severity into
+  `SlotTargetState::refusal`, and `ActivateOutputs` turns an unsupported
+  target into `OutputSkipped` with the message as its reason. A skipped
+  output is not active, has no problem, and does not count toward the
+  application's phase. The studio shows the reason as a warning ("skipped
+  on this piece"). The fill template's material fuzz is the common case: on
+  a coated material such as stalhrim the halo is skipped and the other
+  outputs render.
 - `SlotWriter::Restore` writes only while `MaterialAttached()`: a property whose
   material another system replaced is not ours to restore through.
   `~MaterialBinding` restores the fields the journal owns and leaves the private

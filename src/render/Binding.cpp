@@ -248,12 +248,16 @@ void SlotWriter::SetFeature(Slot a_slot, bool a_on) {
 }
 
 std::optional<Diagnostic> SlotWriter::Problem(Slot a_slot) const {
-  const std::optional<std::string> message = ProblemMessage(a_slot);
-  if (!message) {
-    return std::nullopt;
+  if (const std::optional<std::string> problem = ProblemMessage(a_slot)) {
+    return MakeDiagnostic(Severity::kError, std::string{SlotName(a_slot)},
+                          *problem);
   }
-  return MakeDiagnostic(Severity::kError, std::string{SlotName(a_slot)},
-                        *message);
+  if (const std::optional<std::string> unsupported =
+          UnsupportedMessage(a_slot)) {
+    return MakeDiagnostic(Severity::kWarning, std::string{SlotName(a_slot)},
+                          *unsupported);
+  }
+  return std::nullopt;
 }
 
 std::optional<std::string> SlotWriter::ProblemMessage(Slot a_slot) const {
@@ -267,7 +271,31 @@ std::optional<std::string> SlotWriter::ProblemMessage(Slot a_slot) const {
   if (a_slot == Slot::kEmissive && !material_.property_->emissiveColor) {
     return "the property has no emissive colour storage";
   }
-  const bool hair = (material_.layout_->pbrFlags & kPbrHairMarschner) != 0;
+  if (a_slot == Slot::kFuzz && HasGroup(Slot::kGlint)) {
+    return "glint was written on this material; fuzz and glint exclude each "
+           "other";
+  }
+  if (a_slot == Slot::kGlint && HasGroup(Slot::kFuzz)) {
+    return "fuzz was written on this material; fuzz and glint exclude each "
+           "other";
+  }
+  if (a_slot == Slot::kCoat && HasGroup(Slot::kSubsurface)) {
+    return "subsurface was written on this material; coat and subsurface "
+           "share one map";
+  }
+  if (a_slot == Slot::kSubsurface && HasGroup(Slot::kCoat)) {
+    return "coat was written on this material; coat and subsurface share one "
+           "map";
+  }
+  return std::nullopt;
+}
+
+std::optional<std::string> SlotWriter::UnsupportedMessage(Slot a_slot) const {
+  if (!MaterialAttached()) {
+    return std::nullopt;
+  }
+  const std::uint32_t flags = material_.layout_->pbrFlags;
+  const bool hair = (flags & kPbrHairMarschner) != 0;
   if ((a_slot == Slot::kFuzz || a_slot == Slot::kGlint ||
        a_slot == Slot::kCoat || a_slot == Slot::kSubsurface) &&
       hair) {
@@ -278,21 +306,12 @@ std::optional<std::string> SlotWriter::ProblemMessage(Slot a_slot) const {
     return "the material has a coat model, which CS evaluates instead of fuzz "
            "and glint";
   }
-  if (a_slot == Slot::kFuzz && HasGroup(Slot::kGlint)) {
-    return "glint was written on this material; fuzz and glint exclude each "
-           "other";
-  }
-  if (a_slot == Slot::kGlint && HasGroup(Slot::kFuzz)) {
-    return "fuzz was written on this material; fuzz and glint exclude each "
-           "other";
-  }
-  if (a_slot == Slot::kCoat &&
-      (HasGroup(Slot::kSubsurface) ||
-       (material_.layout_->pbrFlags & kPbrSubsurface))) {
+  if (a_slot == Slot::kCoat && !HasGroup(Slot::kSubsurface) &&
+      (flags & kPbrSubsurface) != 0) {
     return "the material carries subsurface; coat and subsurface share one map";
   }
-  if (a_slot == Slot::kSubsurface &&
-      (HasGroup(Slot::kCoat) || (material_.layout_->pbrFlags & kPbrTwoLayer))) {
+  if (a_slot == Slot::kSubsurface && !HasGroup(Slot::kCoat) &&
+      (flags & kPbrTwoLayer) != 0) {
     return "the material carries a coat; coat and subsurface share one map";
   }
   return std::nullopt;
