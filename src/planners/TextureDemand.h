@@ -10,7 +10,7 @@
 #include <string_view>
 
 namespace BetterEnchantmentEffects {
-enum class TextureFormat { kRgba8, kRgba32Float, kR8, kR32Float };
+enum class TextureFormat { kRgba8, kRgba32Float, kR8, kR32Float, kRgba16Float };
 enum class MipPolicy { kGenerate, kNone };
 inline constexpr std::size_t kMaxIdentityBytes = std::size_t{8} * 1024 * 1024;
 struct SideRef {
@@ -43,6 +43,8 @@ BytesPerTexel(TextureFormat a_format) noexcept {
   case TextureFormat::kRgba8:
   case TextureFormat::kR32Float:
     return 4;
+  case TextureFormat::kRgba16Float:
+    return 8;
   case TextureFormat::kRgba32Float:
     return 16;
   }

@@ -110,6 +110,11 @@ ConstantBindings BindingsOf(std::initializer_list<ConstantBinding> a_bound) {
   return bindings;
 }
 
+void SetLane(std::span<Float4> a_rows, std::size_t a_at, float a_value) {
+  if (a_at / 4 < a_rows.size())
+    a_rows[a_at / 4][a_at % 4] = a_value;
+}
+
 std::uint32_t PlacementOptions(const TextureLab::Scroll &a_placement) {
   return (a_placement.mirrorU ? kReadMirrorU : 0u) |
          (a_placement.mirrorV ? kReadMirrorV : 0u) |
@@ -147,10 +152,6 @@ void UploadConstants(ID3D11DeviceContext &context, ID3D11Buffer *buffer,
                      const Constants &constants) {
   if (buffer)
     context.UpdateSubresource(buffer, 0, nullptr, &constants, 0, 0);
-}
-
-std::unique_ptr<ProgramConstants> EmptyProgramConstants() {
-  return std::make_unique<ProgramConstants>();
 }
 
 bool ProgramFits(const ProgramCode &code,
@@ -806,18 +807,25 @@ bool TextureLab::RenderStack(RenderTarget &a_target,
   return drawn && RenderLayersOneByOne(a_target, a_base, drawn->passes);
 }
 
-std::unique_ptr<ProgramConstants> TextureLab::StackProgramConstants(
+ProgramConstants &TextureLab::FreshProgramConstants() {
+  if (!programScratch_)
+    programScratch_ = std::make_unique<ProgramConstants>();
+  *programScratch_ = ProgramConstants{};
+  return *programScratch_;
+}
+
+const ProgramConstants *TextureLab::StackProgramConstants(
     std::span<REX::W32::ID3D11ShaderResourceView *> a_srvs,
     const BoundLayerFields &a_fields, std::uint32_t a_targetSide) {
   if (a_fields.pack.segments.empty() || !gpu_ || !gpu_->program)
     return nullptr;
-  auto constants = EmptyProgramConstants();
+  ProgramConstants &constants = FreshProgramConstants();
   const std::span<REX::W32::ID3D11ShaderResourceView *> programSrvs =
       a_srvs.first(std::min<std::size_t>(a_srvs.size(), kPassSrvs));
-  FillProgramConstants(*constants, programSrvs, PackedCode(a_fields.pack),
+  FillProgramConstants(constants, programSrvs, PackedCode(a_fields.pack),
                        a_fields.bindings, a_targetSide);
   FillLookups(programSrvs, a_fields.bindings);
-  return constants;
+  return &constants;
 }
 
 REX::W32::ID3D11PixelShader *
@@ -844,7 +852,7 @@ bool TextureLab::DrawStackPass(RenderTarget &a_target,
   const PixelPipeline &pipeline = *gpu_->stack;
   const RenderPass pass{*renderer, *borrowedContext_, CaptureBatch()};
   std::array<REX::W32::ID3D11ShaderResourceView *, kStackSrvs> srvs{};
-  const std::unique_ptr<ProgramConstants> program =
+  const ProgramConstants *program =
       StackProgramConstants(srvs, a_fields, a_target.size);
   const StackConstants constants =
       StackConstantsOf(shape, a_base, a_layers, a_target.size);
@@ -973,13 +981,13 @@ bool TextureLab::DrawProgramPass(RenderTarget &a_target,
     return false;
   const PixelPipeline &pipeline = *gpu_->program;
   const RenderPass pass{*renderer, *borrowedContext_, CaptureBatch()};
-  const std::unique_ptr<ProgramConstants> constants = EmptyProgramConstants();
+  ProgramConstants &constants = FreshProgramConstants();
   REX::W32::ID3D11ShaderResourceView *srvs[kPassSrvs]{};
-  FillProgramConstants(*constants, srvs, a_code, a_bindings, a_target.size);
+  FillProgramConstants(constants, srvs, a_code, a_bindings, a_target.size);
   FillLookups(srvs, a_bindings);
-  constants->programVectorResult =
+  constants.programVectorResult =
       ShaderBoolOf(a_code.result != ValueType::kScalar);
-  UploadConstants(pass.Context(), pipeline.constants.Get(), *constants);
+  UploadConstants(pass.Context(), pipeline.constants.Get(), constants);
   const ConstantBindings cbs =
       BindingsOf({{ConstantSlot::kProgram, pipeline.constants.Get()}});
   DrawFullScreen(pass, a_target,
@@ -1134,6 +1142,37 @@ bool TextureLab::DilateInto(const RenderPass &a_pass, RenderTarget &a_source,
 
 static_assert(TextureLab::kRippleFirings == kRippleFiringRows);
 
+namespace {
+constexpr float kFaintestRipple = 1.0f / 512.0f;
+
+RippleConstants RippleConstantsOf(const TextureLab::RipplePass &a_pass) {
+  RippleConstants constants;
+  const std::size_t given =
+      std::min<std::size_t>(a_pass.firingCount, a_pass.firings.size());
+  std::size_t count = 0;
+  for (std::size_t k = 0; k < given; ++k) {
+    const TextureLab::RippleFiring &firing = a_pass.firings[k];
+    const float strength = std::exp(-a_pass.decay * firing.age);
+    if (!(strength >= kFaintestRipple) ||
+        count >= std::size(constants.rippleFirings))
+      continue;
+    constants.rippleFirings[count] = {
+        {firing.origin.x, firing.origin.y, firing.origin.z},
+        firing.age * a_pass.speed};
+    SetLane(constants.rippleStrengths, count, strength);
+    ++count;
+  }
+  constants.rippleDirection = {a_pass.direction.x, a_pass.direction.y,
+                               a_pass.direction.z};
+  constants.rippleFiringCount = static_cast<std::uint32_t>(count);
+  constants.rippleWidth = a_pass.width;
+  constants.rippleFrame = a_pass.frame;
+  constants.rippleDisc = ShaderBoolOf(a_pass.disc);
+  constants.rippleDirectional = ShaderBoolOf(a_pass.directional);
+  return constants;
+}
+}
+
 bool TextureLab::RenderRipple(RenderTarget &a_target,
                               const RipplePass &a_pass) {
   auto *renderer = RE::BSGraphics::Renderer::GetSingleton();
@@ -1147,24 +1186,7 @@ bool TextureLab::RenderRipple(RenderTarget &a_target,
   if (!positions || !positions->resourceView) {
     return false;
   }
-  RippleConstants constants;
-  const auto count =
-      std::min({static_cast<std::size_t>(a_pass.firingCount),
-                a_pass.firings.size(), std::size(constants.rippleFirings)});
-  for (std::size_t k = 0; k < count; ++k) {
-    const RippleFiring &firing = a_pass.firings[k];
-    constants.rippleFirings[k] = {
-        {firing.origin.x, firing.origin.y, firing.origin.z}, firing.age};
-  }
-  constants.rippleDirection = {a_pass.direction.x, a_pass.direction.y,
-                               a_pass.direction.z};
-  constants.rippleFiringCount = static_cast<std::uint32_t>(count);
-  constants.rippleSpeed = a_pass.speed;
-  constants.rippleWidth = a_pass.width;
-  constants.rippleDecay = a_pass.decay;
-  constants.rippleFrame = a_pass.frame;
-  constants.rippleDisc = ShaderBoolOf(a_pass.disc);
-  constants.rippleDirectional = ShaderBoolOf(a_pass.directional);
+  const RippleConstants constants = RippleConstantsOf(a_pass);
 
   pass.Context().UpdateSubresource(pipeline.constants.Get(), 0, nullptr,
                                    &constants, 0, 0);
@@ -1178,6 +1200,30 @@ bool TextureLab::RenderRipple(RenderTarget &a_target,
   return true;
 }
 
+namespace {
+FilterConstants FilterConstantsOf(const TextureLab::FilterPass &a_pass,
+                                  std::uint32_t a_targetSide,
+                                  std::uint32_t a_fromSide, bool a_vertical,
+                                  bool a_keepSeams) {
+  const std::uint32_t taps =
+      std::min(a_pass.taps, static_cast<std::uint32_t>(kMaxFilterTaps));
+  FilterConstants constants{
+      .filterOperation =
+          static_cast<std::uint32_t>(std::to_underlying(a_pass.operation)),
+      .filterTaps = taps,
+      .filterVertical = ShaderBoolOf(a_vertical),
+      .filterKeepSeams = ShaderBoolOf(a_keepSeams),
+      .filterTargetSize = {a_targetSide, a_targetSide},
+      .filterInputSize = {a_fromSide, a_fromSide},
+      .filterResamples = ShaderBoolOf(a_fromSide != a_targetSide)};
+  for (std::uint32_t k = 0; k <= taps; ++k)
+    SetLane(constants.filterWeights, k,
+            FilterWeight(static_cast<std::int32_t>(k),
+                         static_cast<std::int32_t>(taps)));
+  return constants;
+}
+}
+
 bool TextureLab::RenderFilter(RenderTarget &a_target,
                               const FilterPass &a_pass) {
   auto *renderer = RE::BSGraphics::Renderer::GetSingleton();
@@ -1189,7 +1235,7 @@ bool TextureLab::RenderFilter(RenderTarget &a_target,
   }
   const std::shared_ptr<RenderTarget> across =
       Acquire(TextureSize{a_target.size}, "filter pass",
-              TextureFormat::kRgba32Float, TargetMips::kNone);
+              TextureFormat::kRgba16Float, TargetMips::kNone);
   if (!across || !across->rtv.Get() || across->size != a_target.size) {
     return false;
   }
@@ -1201,15 +1247,8 @@ bool TextureLab::RenderFilter(RenderTarget &a_target,
       BindingsOf({{ConstantSlot::kFilter, pipeline.constants.Get()}});
   const auto draw = [&](RenderTarget &a_into, RenderTarget &a_from,
                         bool a_vertical) {
-    const FilterConstants constants{
-        .filterOperation =
-            static_cast<std::uint32_t>(std::to_underlying(a_pass.operation)),
-        .filterTaps =
-            std::min(a_pass.taps, static_cast<std::uint32_t>(kMaxFilterTaps)),
-        .filterVertical = ShaderBoolOf(a_vertical),
-        .filterKeepSeams = ShaderBoolOf(charts != nullptr),
-        .filterTargetSize = {a_target.size, a_target.size},
-        .filterInputSize = {a_from.size, a_from.size}};
+    const FilterConstants constants = FilterConstantsOf(
+        a_pass, a_target.size, a_from.size, a_vertical, charts != nullptr);
     pass.Context().UpdateSubresource(pipeline.constants.Get(), 0, nullptr,
                                      &constants, 0, 0);
     std::array<REX::W32::ID3D11ShaderResourceView *, kFilterChartsSlot + 1>
@@ -1362,11 +1401,6 @@ TextureLab::CopyMapPixels(RE::NiSourceTexture *a_map, std::uint32_t a_maxSide) {
 }
 
 namespace {
-void SetLane(std::span<Float4> a_rows, std::size_t a_at, float a_value) {
-  if (a_at / 4 < a_rows.size())
-    a_rows[a_at / 4][a_at % 4] = a_value;
-}
-
 GroupScore GroupScoreOf(const GroupScoring &a_group, float a_oddsWeight) {
   GroupScore score;
   for (std::size_t axis = 0; axis < kTexelAxes; ++axis)

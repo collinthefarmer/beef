@@ -226,17 +226,17 @@ struct alignas(16) StackConstants {
 
 struct RippleFiringRow {
   Float3 origin;
-  float age = 0.0f;
+  float radius = 0.0f;
 };
 
 inline constexpr std::size_t kRippleFiringRows = 8;
+static_assert(kRippleFiringRows % 4 == 0);
 struct alignas(16) RippleConstants {
   RippleFiringRow rippleFirings[kRippleFiringRows];
+  Float4 rippleStrengths[kRippleFiringRows / 4]{};
   Float3 rippleDirection;
   std::uint32_t rippleFiringCount = 0;
-  float rippleSpeed = 0.0f;
   float rippleWidth = 0.0f;
-  float rippleDecay = 0.0f;
   float rippleFrame = 0.0f;
   ShaderBool rippleDisc = ShaderBool::kNo;
   ShaderBool rippleDirectional = ShaderBool::kNo;
@@ -280,6 +280,8 @@ struct alignas(16) BakeNoiseConstants {
   std::uint32_t noiseStyle = 0;
 };
 
+inline constexpr std::size_t kFilterWeightRows =
+    (static_cast<std::size_t>(kMaxFilterTaps) + 1 + 3) / 4;
 struct alignas(16) FilterConstants {
   std::uint32_t filterOperation = 0;
   std::uint32_t filterTaps = 0;
@@ -287,6 +289,8 @@ struct alignas(16) FilterConstants {
   ShaderBool filterKeepSeams = ShaderBool::kNo;
   Uint2 filterTargetSize;
   Uint2 filterInputSize;
+  ShaderBool filterResamples = ShaderBool::kNo;
+  alignas(16) Float4 filterWeights[kFilterWeightRows]{};
 };
 static_assert(static_cast<int>(FilterOperation::kBlur) == 0 &&
               static_cast<int>(FilterOperation::kGrow) == 1 &&
@@ -364,6 +368,7 @@ inline constexpr ShaderWord kShaderWords[]{
     {"kLitChartRows", kLitChartRows},
     {"kRippleFiringRows", kRippleFiringRows},
     {"kMaxFilterTaps", static_cast<std::uint32_t>(kMaxFilterTaps)},
+    {"kFilterWeightRows", kFilterWeightRows},
 };
 
 [[nodiscard]] constexpr ShaderBool ShaderBoolOf(bool a_value) noexcept {

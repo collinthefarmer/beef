@@ -6,20 +6,27 @@ cbuffer FilterParams : register(b8)
 	bool  filterKeepSeams;
 	uint2 filterTargetSize;
 	uint2 filterInputSize;
+	bool  filterResamples;
+	float4 filterWeights[kFilterWeightRows];
 };
 
-float FilterWeight(int k, int taps)
+float FilterWeight(int k)
 {
-	float sigma = max(taps * 0.5, 0.5);
-	return exp(-(k * k) / (2 * sigma * sigma));
+	uint at = (uint)abs(k);
+	return filterWeights[at >> 2][at & 3];
+}
+
+int2 FilterSource(int2 at)
+{
+	if (!filterResamples) return at;
+	int2 target = int2(max(filterTargetSize, 1u));
+	int2 input = int2(max(filterInputSize, 1u));
+	return clamp(at * input / target, 0, input - 1);
 }
 
 float4 FilterRead(int2 at, bool vertical)
 {
-	int2 target = int2(max(filterTargetSize, 1u));
-	int2 input = int2(max(filterInputSize, 1u));
-	int2 from = clamp(at * input / target, 0, input - 1);
-	float4 s = filterInput.Load(int3(from, 0));
+	float4 s = filterInput.Load(int3(FilterSource(at), 0));
 	return vertical ? s : s.xxxx;
 }
 
@@ -47,7 +54,7 @@ float4 PSFilter(VSOut i) : SV_Target
 		int2 near = clamp(at + step * k, 0, target - 1);
 		if (keepSeams && filterCharts.Load(int3(near, 0)).r != chart) continue;
 		float4 v = FilterRead(near, vertical);
-		float wk = FilterWeight(k, taps);
+		float wk = FilterWeight(k);
 		sum += v.x * wk;
 		weight += wk;
 		lowest = min(lowest, v.y);

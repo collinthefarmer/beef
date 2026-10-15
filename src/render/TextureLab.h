@@ -188,7 +188,8 @@ public:
   [[nodiscard]] static constexpr bool
   HoldsCoverage(TextureFormat a_format) noexcept {
     return a_format == TextureFormat::kRgba8 ||
-           a_format == TextureFormat::kRgba32Float;
+           a_format == TextureFormat::kRgba32Float ||
+           a_format == TextureFormat::kRgba16Float;
   }
 
   [[nodiscard]] static constexpr TargetMips
@@ -524,7 +525,8 @@ private:
   bool DrawStackPass(RenderTarget &a_target, RE::NiSourceTexture *a_base,
                      std::span<const LayerPass> a_layers,
                      const BoundLayerFields &a_fields);
-  [[nodiscard]] std::unique_ptr<ProgramConstants>
+  [[nodiscard]] ProgramConstants &FreshProgramConstants();
+  [[nodiscard]] const ProgramConstants *
   StackProgramConstants(std::span<REX::W32::ID3D11ShaderResourceView *> a_srvs,
                         const BoundLayerFields &a_fields,
                         std::uint32_t a_targetSide);
@@ -552,6 +554,7 @@ private:
   std::optional<std::size_t> tickSpan_;
   bool generatedShaders_ = true;
   GeneratedShaders generated_;
+  std::unique_ptr<ProgramConstants> programScratch_;
 
   std::unique_ptr<RenderTargetPool> targets_;
   std::unique_ptr<TexturePreviews> previews_;

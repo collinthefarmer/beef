@@ -108,11 +108,10 @@ std::vector<ExpectedBuffer> ExpectedBuffers() {
        ConstantSlot::kRipple,
        sizeof(RippleConstants),
        {BEEF_MEMBER(RippleConstants, rippleFirings),
+        BEEF_MEMBER(RippleConstants, rippleStrengths),
         BEEF_MEMBER(RippleConstants, rippleDirection),
         BEEF_MEMBER(RippleConstants, rippleFiringCount),
-        BEEF_MEMBER(RippleConstants, rippleSpeed),
         BEEF_MEMBER(RippleConstants, rippleWidth),
-        BEEF_MEMBER(RippleConstants, rippleDecay),
         BEEF_MEMBER(RippleConstants, rippleFrame),
         BEEF_MEMBER(RippleConstants, rippleDisc),
         BEEF_MEMBER(RippleConstants, rippleDirectional)}},
@@ -170,7 +169,9 @@ std::vector<ExpectedBuffer> ExpectedBuffers() {
         BEEF_MEMBER(FilterConstants, filterVertical),
         BEEF_MEMBER(FilterConstants, filterKeepSeams),
         BEEF_MEMBER(FilterConstants, filterTargetSize),
-        BEEF_MEMBER(FilterConstants, filterInputSize)}},
+        BEEF_MEMBER(FilterConstants, filterInputSize),
+        BEEF_MEMBER(FilterConstants, filterResamples),
+        BEEF_MEMBER(FilterConstants, filterWeights)}},
   };
 }
 
@@ -203,7 +204,7 @@ std::vector<ExpectedRecord> ExpectedRecords() {
         BEEF_MEMBER(StackLayer, maskCode)}},
       {kHlslType<RippleFiringRow>,
        {BEEF_MEMBER(RippleFiringRow, origin),
-        BEEF_MEMBER(RippleFiringRow, age)}},
+        BEEF_MEMBER(RippleFiringRow, radius)}},
       {kHlslType<GroupScore>,
        {BEEF_MEMBER(GroupScore, mean), BEEF_MEMBER(GroupScore, whitening),
         BEEF_MEMBER(GroupScore, id), BEEF_MEMBER(GroupScore, logScale),

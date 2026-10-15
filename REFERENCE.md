@@ -662,9 +662,12 @@ binary op has `b` as the first operand and `a` the second; a ternary op
 has `d`, `b`, `a` in order.
 
 Ripple pass (`cbuffer RippleParams`, b2): `rippleFirings[8]` holds each
-firing's `origin` in bind-pose units and `age` in seconds.
-`rippleFiringCount` counts them. `rippleSpeed`, `rippleWidth`, `rippleDecay`
-and `rippleFrame` shape the fronts. `rippleDisc` draws discs instead of
+firing's `origin` in bind-pose units and its front `radius`, age x speed.
+`rippleStrengths` holds each firing's strength, exp(-decay x age).
+`RippleConstantsOf` computes both on the CPU once per draw, so the shader
+does no `exp` for the decay. It drops a firing whose strength is below 1/512:
+that firing adds less than half of one 8-bit step. `rippleFiringCount`
+counts the firings kept. `rippleWidth` and `rippleFrame` shape the fronts. `rippleDisc` draws discs instead of
 rings. `rippleDirection` is a normalised worldspace direction, used when
 `rippleDirectional` is true. The source is the position bake, rgb = position /
 (2 frame) + 0.5. Each firing is a front at distance age x speed from its
@@ -675,6 +678,20 @@ exp(-decay x age) and combine by max. The direction is resolved once per
 tick and shared by that source's live firings; the recipe side normalises
 it and a zero vector falls back to radial. A pooled target keeps its last
 content, so a pass with no firings paints it black.
+
+Filter pass (`PSFilter`, cbuffer `FilterParams` b8, `FilterConstants`): two
+draws, horizontal then vertical. The horizontal draw writes the blurred
+value, the minimum and the maximum of each texel's row to an RGBA16F target
+(`kRgba16Float`). The vertical draw reads that target and writes the
+operation's result. `filterWeights` holds the Gaussian weight of each offset
+0..16, computed on the CPU by `FilterWeight` (`mesh/FieldFilter.h`, the CPU
+reference), so the shader does no `exp` per tap. `filterResamples` is true
+only when the input's size differs from the target's. Only then does the
+shader scale the texel position with an integer divide. RGBA16F holds an
+8-bit input's minimum and maximum exactly after rounding to 8 bits, because
+its error (about 0.0005) is below half an 8-bit step (0.002). A blurred value
+can still move by that error, so a blur that falls on an 8-bit rounding
+boundary can round the other way.
 
 Group pass (`PSClusters`, cbuffer `GroupParams` b3, `GroupConstants`):
 

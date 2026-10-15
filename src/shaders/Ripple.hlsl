@@ -1,17 +1,16 @@
 struct RippleFiringRow
 {
 	float3 origin;
-	float  age;
+	float  radius;
 };
 
 cbuffer RippleParams : register(b2)
 {
 	RippleFiringRow rippleFirings[kRippleFiringRows];
+	float4          rippleStrengths[kRippleFiringRows / 4];
 	float3          rippleDirection;
 	uint            rippleFiringCount;
-	float           rippleSpeed;
 	float           rippleWidth;
-	float           rippleDecay;
 	float           rippleFrame;
 	bool            rippleDisc;
 	bool            rippleDirectional;
@@ -28,7 +27,7 @@ float4 PSRipple(VSOut i) : SV_Target
 		RippleFiringRow firing = rippleFirings[k];
 		float3 offset = pos - firing.origin;
 		float  d = directional ? dot(offset, rippleDirection) : length(offset);
-		float  r = firing.age * rippleSpeed;
+		float  r = firing.radius;
 		float  f;
 		if (rippleDisc) {
 			float lead = 1 - smoothstep(r - width, r, d);
@@ -38,7 +37,7 @@ float4 PSRipple(VSOut i) : SV_Target
 			float x = (d - r) / width;
 			f = exp(-x * x * 4);
 		}
-		v = max(v, f * exp(-rippleDecay * firing.age));
+		v = max(v, f * rippleStrengths[k >> 2][k & 3]);
 	}
 	return float4(v, v, v, 1);
 }
