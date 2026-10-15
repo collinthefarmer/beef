@@ -1,7 +1,7 @@
 {
   "format": 1,
   "name": "Fill import template",
-  "description": "The baseline import template for an effect shader with a fill texture. A pick lights a few texture charts of one material group on one of the piece's geometries. There the material glows, darker and brighter in drifting patches and, at strong magnitudes, slightly varied in hue, in the shader's colour (or, when that colour is nearly white, its edge colour or a hue seeded by the effect), turned in hue by the effect and deeper and darker at weak magnitudes, takes a roughness and metallic chosen by the enchantment, and sinks into a relief; a shell copy of the piece covers it, with holes cut by baked noise over the piece's bind-pose position, in one of three styles (blobs, ridges, cracks), sometimes stretched into streaks and usually inverted (the shell left as veins or a web of cracks over the glow), chosen by the enchantment, seamless across its UV charts and drifting as three noise fields cross-fade, through which the glow shows. Weak enchantments show faintly: the glow and the sheen scale with a presence that eases in up to 0.6 magnitude level, so light only peeks through the holes. The holes pulse gently in size, grow with the enchantment's magnitude and with distance from the spine, so the effect gathers at the extremities; the glow pulses very slightly and scales with magnitude, as do the relief (flat at weak magnitudes), how many charts light and the least share of the geometry they cover. Under the shell the picked area also carries a fuzz sheen in the glow's hue, slightly brightened, a halo at grazing angles. The enchantment, its effect and the worn item fix which geometry, material group and charts glow, always at least one chart.",
+  "description": "The baseline import template for an effect shader with a fill texture. A pick lights a few texture charts of one material group on one of the piece's geometries. There the material glows, darker and brighter in drifting patches and, at strong magnitudes, slightly varied in hue, in the shader's colour (or, when that colour is nearly white, its edge colour or a hue seeded by the effect), turned in hue by the effect and deeper and darker at weak magnitudes, takes a roughness and metallic chosen by the enchantment, and sinks into a relief; a shell copy of the piece covers it, with holes cut by baked noise over the piece's bind-pose position, in one of three styles (blobs, ridges, cracks), sometimes stretched into streaks and usually inverted (the shell left as veins or a web of cracks over the glow), chosen by the enchantment, seamless across its UV charts and drifting as three noise fields cross-fade, through which the glow shows. Weak enchantments show faintly: the glow and the sheen scale with a presence that eases in up to 0.6 magnitude level, so light only peeks through the holes. The holes pulse gently in size, grow with the enchantment's magnitude and with distance from the spine, so the effect gathers at the extremities; the glow pulses very slightly, scales with magnitude and grows brighter as its share of the texture shrinks, as do the relief (flat at weak magnitudes), how many charts light and the least share of the geometry they cover. Under the shell the picked area also carries a fuzz sheen in the glow's hue, slightly brightened, a halo at grazing angles. The enchantment, its effect and the worn item fix which geometry, material group and charts glow, always at least one chart.",
   "keys": [
     {
       "effectShader": "ImportedEffectShader"
@@ -286,6 +286,9 @@
       "expr": "rand() < @invertChance"
     }
   },
+  "curves": {
+    "areaGain": "x * clamp(0.05 / max(mean, 0.001), 0.5, 4)"
+  },
   "sources": {
     "lit": {
       "pick": {
@@ -342,6 +345,12 @@
           "source": "@glowTint",
           "opacity": 1.0,
           "mask": "@lit"
+        },
+        {
+          "source": "@lit",
+          "blend": "multiply",
+          "opacity": 1.0,
+          "curve": "@areaGain"
         }
       ]
     },
