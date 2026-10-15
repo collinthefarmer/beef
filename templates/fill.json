@@ -153,8 +153,20 @@
     "colourValueWeak": {
       "constant": 0.55
     },
+    "colourDepthPale": {
+      "constant": 2.5
+    },
+    "colourChromaVivid": {
+      "constant": 0.7
+    },
+    "vividChroma": {
+      "expr": "max(max(dot(@vividColour, [1, 0, 0]), dot(@vividColour, [0, 1, 0])), dot(@vividColour, [0, 0, 1])) - min(min(dot(@vividColour, [1, 0, 0]), dot(@vividColour, [0, 1, 0])), dot(@vividColour, [0, 0, 1]))"
+    },
+    "colourDepthStrong": {
+      "expr": "lerp(@colourDepthPale, 1, saturate(@vividChroma / @colourChromaVivid))"
+    },
     "colourDepth": {
-      "expr": "lerp(@colourDepthWeak, 1, @colourStrength)"
+      "expr": "lerp(@colourDepthWeak, @colourDepthStrong, @colourStrength)"
     },
     "deepColour": {
       "expr": "pow(@colourHue, @colourDepth * [1, 1, 1])"
