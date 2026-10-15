@@ -11,11 +11,10 @@ namespace {
 using Op = ProgramOpcode;
 
 constexpr std::array<OpcodeStatement, 47> kStatements{{
-    {Op::kNumber, R"(r = c.y;)"},
+    {Op::kNumber, R"(r = number;)"},
     {Op::kMakeVec2, R"(r = float3(b.x, a.x, 0);)"},
     {Op::kMakeVec3, R"(r = float3(d.x, b.x, a.x);)"},
-    {Op::kInput,
-     R"(r = inputs[idx].x > 0.5 ? ReadTexture((int)inputs[idx].y, uv) : inputValues[idx].xyz;)"},
+    {Op::kInput, R"(r = ReadInput(idx, uv);)"},
     {Op::kLookup, R"(r = LookupAt(idx, a.x);)"},
     {Op::kNeg, R"(r = -a;)"},
     {Op::kNot, R"(r = a.x > 0 ? 0 : 1;)"},
@@ -92,7 +91,7 @@ std::string InputStatement(std::span<const InputTextureSlot> slots,
                            std::uint32_t index) {
   if (index < slots.size() && slots[index])
     return std::format("r = ReadTexture({}, uv);", *slots[index]);
-  return "r = inputValues[idx].xyz;";
+  return "r = programInputs[idx].value;";
 }
 
 std::string StackLocal(std::optional<std::size_t> depth) {
@@ -149,7 +148,7 @@ std::string ProgramFunction(std::string_view name,
         instruction.components == 2 && !KeepsZ(instruction.opcode);
     const bool pushes = depth < kProgramStack;
     body += std::format(
-        "\t{{ float4 c = code[{}]; int idx = {}; int components = {}; "
+        "\t{{ float number = NumberAt({}); int idx = {}; int components = {}; "
         "float3 a = {}, b = {}, d = {}; float3 r = 0; {}{}{} }}\n",
         first + k, instruction.index, instruction.components, StackLocal(a),
         StackLocal(b), StackLocal(d), statement, zeroZ ? " r.z = 0;" : "",

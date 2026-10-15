@@ -93,7 +93,7 @@ int main() {
         std::format("{} declares one local per stack slot", expression));
     Check(text == GenerateProgramShader(*other),
           std::format("{} shares its shader across numbers", expression));
-    Check(text.find("code[") != std::string::npos &&
+    Check(text.find("NumberAt(") != std::string::npos &&
               text.find(kGeneratedProgramEntry) != std::string::npos,
           std::format("{} reads numbers from the constants", expression));
   }

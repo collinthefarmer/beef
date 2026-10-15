@@ -393,9 +393,11 @@ atom   := number | "[" expr "," expr ("," expr)? "]" | "(" expr ")"
   from reaching a valid program.
 - The limits in `Expression.h` (nesting depth, op count, stack size) are
   hard: input past them is an error, never a deep stack. `kMaxExpressionOps`
-  (256) is also the interpreter shader's array size, written there as the bare
-  literal `float4 code[256]` (`render/ShaderSource.cpp`), so the two must agree
-  or a long mask overruns the constant buffer. The value is carried unchanged
+  (256) is also the interpreter's instruction capacity: `programCode` holds two
+  instructions per row, so the shader declares `uint4 programCode[128]`
+  (`planners/ShaderSource.cpp`). The two must agree or a long mask overruns the
+  constant buffer; the dxc layout check compares the declared size with
+  `ProgramConstants`. The value is carried unchanged
   from the frozen `src/_old/Expression.h`; why 256 rather than another power of
   two is not recorded anywhere.
 - A curve is a `Program` over `x` and `mean` that reads no rows, scalar in
@@ -434,26 +436,65 @@ carry id / 255 texels through the same linear sampler) fabricates ids
 between the two — those want nearest sampling, recorded as a backlog
 item, not a dilation fix.
 
-The C++ side of every `cbuffer` below is declared once in
-`render/ShaderConstants.h` (`LayerConstants` for `Params`, plus
-`ProgramConstants`, `RippleConstants` and `ClassifyConstants`); the lab and
-the pass files include it rather than each declaring their own copy, so a
-field added here has one place to be added there. `render/D3DResult.h` holds
+`planners/ShaderConstants.h` declares the C++ side of every `cbuffer`. The
+lab, the pass files and the shader test include it. Each C++ struct uses the
+same member names, types and order as its `cbuffer`, so a field has one name
+on both sides. The shader test compiles each entry point with dxc, reads the
+compiler's layout listing and compares every member's name, type and offset
+with the C++ struct (see "Shader source check"). `render/D3DResult.h` holds
 the two D3D helpers every render file needs, `Failed` on an `HRESULT` and
 `DataOf` on an `NiSourceTexture`.
 
-`cbuffer Params` (b0):
+Data rules for the constants:
 
-| field | packing |
+- A flag is a `bool` in HLSL and a `ShaderBool` (0 or 1, 32 bits) in C++.
+- An enum value, count, index or slot is a `uint`. A bit set is a `uint`
+  named `options`.
+- Every struct inside a `cbuffer` fills whole 16-byte rows. HLSL packs a
+  scalar that follows an array of structs into the free tail of the last
+  element, and C++ does not, so a struct with a partial last row would move
+  every member after it. `GroupScore::padding` fills its last row for this
+  reason.
+- Every `cbuffer` member name is global in HLSL, so each name carries its
+  buffer's prefix (`pass`, `program`, `stack`, `ripple`, `group`,
+  `diffuseDetail`, `noise`, `filter`, `reduce`).
+- The bit and enum values the shaders compare against (`kReadMirrorU`,
+  `kLayerHasMask`, `kMapSlope`, `kGroupDrawPicked`, `kNoTextureSlot`, the
+  instruction byte positions) are declared once in `kShaderWords` and
+  emitted into the shader source as `static const uint` lines.
+
+Constant slots (`ConstantSlot`; `SavedPipeline` saves and restores all nine
+slots around a pass):
+
+| Slot | `cbuffer` | C++ struct | Read by |
+|---|---|---|---|
+| b0 | `PassParams` | `PassConstants` | `PSMain` |
+| b1 | `ProgramParams` | `ProgramConstants` | `PSProgram`, `PSStack`, generated shaders |
+| b2 | `RippleParams` | `RippleConstants` | `PSRipple` |
+| b3 | `GroupParams` | `GroupConstants` | `PSClusters` |
+| b4 | `ReduceParams` | `ReductionConstants` | `PSReduce` |
+| b5 | `StackParams` | `StackConstants` | `PSStack`, generated stack shaders |
+| b6 | `DiffuseDetailParams` | `DiffuseDetailConstants` | `PSDiffuseDetail` |
+| b7 | `BakeNoiseParams` | `BakeNoiseConstants` | `BakeNoisePS` |
+| b8 | `FilterParams` | `FilterConstants` | `PSFilter` |
+
+Shared records:
+
+| Record | Fields |
 |---|---|
-| `offsetScale` | xy uv offset, zw tile scale |
-| `flags` | x mirrorU, y mirrorV, z transpose, w mode |
-| `extra` | x source mip; y armor input (0 none, 1 displacement.r, 2 ao.b, 3 rmaos, 4 normal slope, 5 diffuse luminance); zw per mode: height = armor weight, noise weight; roughness = strength, contrast; masked glow = channel, threshold; channel = channel (as `Pick` reads it), slope-instead flag |
-| `extra2` | height: x relief mean, y relief contrast, z noise mean; masked glow: x softness, y invert, z strength; layer: x mip of the previous texture; channel: y mip of the armor input |
-| `layer` | x source channel (as `Pick` reads it), y mesh space, z blend mode, w opacity |
-| `layerColor` | rgb colour, w normalise factor |
-| `layerMask` | x mask channel (-1 none), y channel bits, z has previous, w has source |
-| `layerCurve` | x has curve; the curve texture is t3, 256 x 1 over 0..1 |
+| `TextureRead` | `offset`, `tile`: the uv placement. `mip`: the read mip. `normalize`: the factor on the read value. `channel`: the `ShaderChannel` that `Pick` reads. `options`: `kReadMirrorU`, `kReadMirrorV`, `kReadTranspose`, `kReadMeshSpace` (read at the raw uv), `kReadNearest` (snap to the texel centre). |
+| `LayerMix` | `color`, `opacity`, `blend` (the shader blend mode), `writeChannels` (r 1, g 2, b 4, a 8), `maskChannel`. `options`: `kLayerHasSource`, `kLayerHasMask`, `kLayerHasBelow`, `kLayerHasCurve`. |
+| `NormalDetail` | `fineMip`, `coarseMip`, `footprint` of the normal-detail measure; `present` is false when the normal map is absent. |
+
+`cbuffer PassParams` (b0):
+
+| Field | Holds |
+|---|---|
+| `passSource` | The source read. In the copy and glow modes only the placement and `mip` count. |
+| `passLayer` | The layer mix of the layer mode (6). |
+| `passMode` | The `TextureLab::Mode` value. |
+| `passBelowMip` | The read mip of the texture below, in the layer mode. |
+| `passMapChannel`, `passMapView`, `passMapMip` | The channel mode (4): the channel `Pick` reads, the view (`kMapChannel`, `kMapSlope`, `kMapIds`) and the read mip. Slope wins over ids when `ChannelParams` sets both. |
 
 Mode formulas:
 
@@ -483,13 +524,13 @@ Mode formulas:
   table. The table's `kNormalize` statement is the switch's `default`, as in
   the CPU reference.
 - A generated program declares one `float3` local per stack slot and runs
-  one block per instruction. Each block reads `c` from `code[k]` with `k` a
-  literal, and declares `idx` and `components` as literals, so the table
-  statement reads them as the interpreter does. A pop from an empty stack
+  one block per instruction. Each block reads `number` with `NumberAt(k)`
+  for a literal `k`, and declares `idx` and `components` as literals, so the
+  table statement reads them as the interpreter does. A pop from an empty stack
   reads `float3(0, 0, 0)` and a push past 32 slots is dropped, as in the
   interpreter. Numbers and value inputs stay in the program constants
-  (`code[k].y`, `inputValues`), so programs that differ only in numbers share
-  one shader.
+  (`programCode`, `programInputs`), so programs that differ only in numbers
+  share one shader.
 - `render/GeneratedShaders` owns the compiled shaders; `TextureLab` asks
   it for one per draw. `ProgramFor` keys compiled programs by their
   generated text.
@@ -535,16 +576,23 @@ Mode formulas:
 - A stack without a base starts transparent black: alpha is the fuzz
   weight, the coat strength or the subsurface thickness.
 
-Interpreter constants (`cbuffer` of the interpreter pass): `code[256]` x
-op, y number, z index, w the component count (1 to 3) plus 4 times the pop
-count, so the shader does not decode the pop count per instruction; `inputs[16]` x 1 = texture read (y slot) or 0 =
-value; `inputValues[16]` the value broadcast; `texParams[8]` x channel, y
-mesh space, z normalise, w mip; `texTransform[8]` xy uv offset, zw tile;
-`texFlags[8]` x mirror u, y mirror v, z transpose, w nearest; `misc` x
-time, y op count, z vector result. The stack's `stackMisc` is x layer count,
-y has base, z the base's mip; `stackFlags[k].w` is layer k's source mip. The shared sampler is linear; w
-nearest snaps the uv to the texel centre before the read, so a texel is
-read whole. The id maps (part, chart, material groups) set it:
+Interpreter constants (`cbuffer ProgramParams`, b1):
+
+| Field | Holds |
+|---|---|
+| `programCode[128]` | Two instructions per row: xy the first, zw the second. Each instruction is a word and the bits of its float number. The word holds the opcode in byte 0, the component count (1 to 3) in byte 1, the pop count in byte 2 and the index in byte 3 (`InstructionWord`). The pop count is stored so the shader does not decode it per instruction. |
+| `programInputs[16]` | `value` the broadcast value; `textureSlot` the texture slot the input reads, or `kNoTextureSlot` for a value input. |
+| `programTextures[8]` | One `TextureRead` per program texture. |
+| `programCount` | The instruction count. |
+| `programVectorResult` | True when the result is a vector; false broadcasts x. |
+
+`cbuffer StackParams` (b5): `stackLayers[8]` holds one `StackLayer` per layer:
+`source` (a `TextureRead`), `mix` (a `LayerMix`), and `sourceCode` and
+`maskCode`, each the first instruction and count of a layer field. A count
+of 0 samples the bound texture. `stackLayerCount`, `stackHasBase` and
+`stackBaseMip` describe the stack. The shared sampler is linear;
+`kReadNearest` snaps the uv to the texel centre before the read, so a texel
+is read whole. The id maps (part, chart, material groups) set it:
 their texels are identifiers scaled by 1/255, and a linear blend across
 an island border fabricates ids that exist on neither side. Every stack value is a float3 with a scalar
 broadcast, so component-wise arithmetic matches the CPU's rule;
@@ -553,13 +601,14 @@ and `mean` to 0.5. A pop from an empty stack reads 0. After the pops a
 binary op has `b` as the first operand and `a` the second; a ternary op
 has `d`, `b`, `a` in order.
 
-Ripple pass: `rippleFirings[8]` xyz origin in bind-pose units, w age in
-seconds; `rippleShape` x speed, y width, z decay, w 1 = disc; `rippleMisc`
-x firing count, y frame; `rippleDir` xyz a normalised worldspace direction,
-w 1 = directional. The source is the position bake, rgb = position /
+Ripple pass (`cbuffer RippleParams`, b2): `rippleFirings[8]` holds each
+firing's `origin` in bind-pose units and `age` in seconds.
+`rippleFiringCount` counts them. `rippleSpeed`, `rippleWidth`, `rippleDecay`
+and `rippleFrame` shape the fronts. `rippleDisc` draws discs instead of
+rings. `rippleDirection` is a normalised worldspace direction, used when
+`rippleDirectional` is true. The source is the position bake, rgb = position /
 (2 frame) + 0.5. Each firing is a front at distance age x speed from its
-origin: radial (w 0) measures `length(pos - origin)`, directional (w 1)
-measures `dot(pos - origin, dir)` so the front is a plane sweeping along
+origin: radial measures `length(pos - origin)`, directional measures `dot(pos - origin, dir)` so the front is a plane sweeping along
 `dir`. A ring is a band of the given width, a disc everything inside (and,
 when directional, only ahead of the origin plane); fronts fade by
 exp(-decay x age) and combine by max. The direction is resolved once per
@@ -571,12 +620,15 @@ Group pass (`PSClusters`, cbuffer `GroupParams` b3, `GroupConstants`):
 
 | Field | Holds |
 |---|---|
-| `groupCentre[2]`, `groupSpread[2]` | The texel standardisation: each of the eight axes minus its centre, divided by its spread. |
-| `groupMean[16]` | Two float4 per group: the group's mean in standardised axes. |
-| `groupWhitening[72]` | Nine float4 per group: the 36 entries of the inverse Cholesky factor, row by row, lower triangle. |
-| `groupInfo[8]` | x the group id, y the log weight minus half the log determinant and the normaliser. |
-| `groupMisc` | x the group count, y the picked id + 1 (0 draws ids), z palette on, w the weight of the smoothed odds (1 with smoothing, 0 without). |
-| `groupLevels`, `groupDetail` | The RMAOS and diffuse read mips, and the normal-detail levels. |
+| `groups[8]` | One `GroupScore` per group: `mean[2]`, the group's mean in standardised axes; `whitening[9]`, the 36 entries of the inverse Cholesky factor, row by row, lower triangle; `id`; `logScale`, the log weight minus half the log determinant and the normaliser. |
+| `groupAxisCentre[2]`, `groupAxisSpread[2]` | The texel standardisation: each of the eight axes minus its centre, divided by its spread. |
+| `groupLitCharts[2]` | The lit chart table: one bit per chart id, 256 bits. |
+| `groupDetail` | The normal-detail levels. |
+| `groupCount` | The group count. |
+| `groupDraw`, `groupPicked` | What the pass draws: `kGroupDrawIds`, `kGroupDrawPicked` (1 on the texels of group `groupPicked`) or `kGroupDrawPalette`. |
+| `groupOddsWeight` | The weight of the smoothed odds: 1 with smoothing, 0 without. |
+| `groupRmaosMip`, `groupDiffuseMip` | The read mips. |
+| `groupChartFilter` | True when the lit chart table filters the draw. |
 
 - A texel's score for a group is the group's log density at its own eight
   axes plus w times the log of the group's smoothed odds. The highest score
@@ -587,7 +639,8 @@ Group pass (`PSClusters`, cbuffer `GroupParams` b3, `GroupConstants`):
   1/512.
 - `ScoreOf` (`mesh/MaterialScoring.cpp`) is the CPU reference for the density
   part. A test checks it against the exact density.
-- The id is written as id / 255 grey.
+- The id is written as id / 255 grey. The palette draw uses `kIdPalette`,
+  which the shader source declares from `kClusterPalette`.
 
 A cluster source with `pick` draws membership instead of ids: 1 on the
 texels of one cluster, 0 elsewhere. `PickCluster` (`mesh/MaterialClusters.cpp`)
@@ -598,9 +651,9 @@ favouring the largest), and the pick walks the cumulative weights. A pick
 outside 0..1 is clamped, a non-finite pick takes the largest cluster, and a
 non-finite bias counts as 1. Without a `pick` the lowering ignores
 `areaBias`, so validation warns when `areaBias` is set to anything but its
-default of 1 and `pick` is absent. The draw passes the picked id + 1 in
-`groupMisc.y` (0 draws the id map), so a changed pick redraws one pass and
-never repeats the grouping. The enchantment signal fields `idHash` and
+default of 1 and `pick` is absent. The draw passes the picked id in
+`groupPicked` with `groupDraw` set to `kGroupDrawPicked`, so a changed pick
+redraws one pass and never repeats the grouping. The enchantment signal fields `idHash` and
 `effectHash` give a stable 0..1 value for this: `UnitHash` (FNV-1a over the
 form key's text, top 24 bits) of the enchantment, and of the magic effect
 the instance was matched on. Form keys name the plugin and local id, so the
@@ -2530,8 +2583,8 @@ them outside as separate passes.
   share the interpreter limits (256 instructions, 16 inputs, 8 textures, 4
   lookups); a field that does not fit stays a separate draw. `PSStack` binds
   the program constants at b1 and the program textures and lookups at t0 to
-  t11. `StackConstants::field` holds each layer's source and mask segment as
-  first and count; a count of 0 samples the bound texture.
+  t11. `StackLayer::sourceCode` and `maskCode` hold each layer's source and mask
+  segment as first and count; a count of 0 samples the bound texture.
 - A stack that cannot draw in one pass (more than 8 layers, or a legacy
   curve) draws its layer fields into RGBA8 targets first
   (`RenderFieldsToTargets`) and then runs the per-layer chain
@@ -3188,10 +3241,15 @@ The method and its prototype comparison are in
   type errors before the game. dxc targets Shader Model 6, so a shader can
   pass here and still fail under `D3DCompile` on an SM5-only construct.
   `-HV 2018` keeps the HLSL rules `D3DCompile` uses (a ternary over vectors).
-- The same suite parses each `cbuffer` of the source and compares its size
-  with the C++ struct that fills it (`render/ShaderConstants.h`). A field
-  type other than float4, int4, uint4 or float4x4 fails the parse, so the
-  table must grow with the source.
+- The same suite reads dxc's layout listing (`-Fc`) for each entry point.
+  For every `cbuffer` it compares the member names, HLSL types and offsets,
+  the size and the register with the C++ struct and `ConstantSlot`
+  (`planners/ShaderConstants.h`). It compares every struct used inside a
+  `cbuffer` the same way. dxc lists a nested struct's members at offsets
+  from the start of the buffer, so the parser subtracts the struct's own
+  offset. The table in the test maps each C++ member type to its HLSL type
+  name. A `cbuffer` in the source without a row in the table fails the
+  check.
 - Program and stack shaders (`GeneratedShaders`) append generated text to
   this source. The suite plans the imported fill and bare templates and the
   three example recipes natively, generates each plan's program and stack
@@ -3242,8 +3300,8 @@ The method and its prototype comparison are in
   geometry step agrees across geometries because each one computes the
   same shuffle of `count` indices.
 - The draw is the cluster draw (`PSClusters`) with the picked group, a
-  nearest-sampled chart bake at t3, and a 256-entry lit table in
-  `groupCharts`; `groupLevels.z` turns the chart filter on. A geometry that
+  nearest-sampled chart bake at t3, and a 256-bit lit table in
+  `groupLitCharts`; `groupChartFilter` turns the chart filter on. A geometry that
   is not picked draws with group 255, which matches no texel.
 - Each pick logs `area pick: geometry i of n lights material group g on k
   chart(s), x% of the geometry` (or "every chart" without a chart level),

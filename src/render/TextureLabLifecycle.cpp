@@ -5,10 +5,10 @@
 #include "Identity.h"
 #include "diagnostics/Metrics.h"
 #include "planners/ProgramShader.h"
+#include "planners/ShaderConstants.h"
 #include "planners/TargetCost.h"
 #include "render/D3DResult.h"
 #include "render/RenderTargetPool.h"
-#include "render/ShaderConstants.h"
 #include "render/TexturePreviews.h"
 
 #include <REX/W32/D3DCOMPILER.h>
@@ -120,7 +120,7 @@ bool TextureLab::Init() {
     return false;
   }
   D3D11_BUFFER_DESC cbDesc{};
-  cbDesc.byteWidth = sizeof(LayerConstants);
+  cbDesc.byteWidth = sizeof(PassConstants);
   cbDesc.usage = D3D11_USAGE_DEFAULT;
   cbDesc.bindFlags = D3D11_BIND_CONSTANT_BUFFER;
   if (Failed(borrowedDevice_->CreateBuffer(

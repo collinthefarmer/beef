@@ -5,27 +5,27 @@ float4 PSGeneratedStack(VSOut i) : SV_Target
 	{
 		float4 s = 0;
 		float4 m = 0;
-		float2 uv = PlaceUv(rawUv, stackOffsetScale[0], stackFlags[0]);
-		s = SampleStackSource(0, uv, stackFlags[0].w);
-		float3 value = LayerValue(stackColor[0], true, s, 4);
+		float2 uv = PlaceUv(rawUv, stackLayers[0].source);
+		s = SampleStackSource(0, uv, stackLayers[0].source.mip);
+		float3 value = LayerValue(stackLayers[0].mix.color, stackLayers[0].source.normalize, true, s, 4);
 		m = SampleStackMask(0, rawUv);
-		float4 result = ComposeLayer(below, value, stackLayer[0].w, true, m, 0, 1, 15);
+		float4 result = ComposeLayer(below, value, stackLayers[0].mix.opacity, true, m, 0, 1, 15);
 		below = Unorm8(result);
 	}
 	{
 		float4 s = 0;
 		float4 m = 0;
-		float3 value = LayerValue(stackColor[1], false, s, 0);
-		float4 result = ComposeLayer(below, value, stackLayer[1].w, false, m, 0, 4, 7);
+		float3 value = LayerValue(stackLayers[1].mix.color, stackLayers[1].source.normalize, false, s, 0);
+		float4 result = ComposeLayer(below, value, stackLayers[1].mix.opacity, false, m, 0, 4, 7);
 		below = Unorm8(result);
 	}
 	{
 		float4 s = 0;
 		float4 m = 0;
 		float2 uv = rawUv;
-		s = SampleStackSource(2, uv, stackFlags[2].w);
-		float3 value = LayerValue(stackColor[2], true, s, 0);
-		float4 result = ComposeLayer(below, value, stackLayer[2].w, false, m, 0, 0, 15);
+		s = SampleStackSource(2, uv, stackLayers[2].source.mip);
+		float3 value = LayerValue(stackLayers[2].mix.color, stackLayers[2].source.normalize, true, s, 0);
+		float4 result = ComposeLayer(below, value, stackLayers[2].mix.opacity, false, m, 0, 0, 15);
 		below = result;
 	}
 	return below;

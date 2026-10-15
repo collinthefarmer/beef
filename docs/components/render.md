@@ -113,8 +113,8 @@ inside the pass that reads it (**inline**).
 | `TextureLab::BoundLayerFields` | The packed code of a stack's layer fields (`ProgramPack`) with their current `ProgramBindings`. | `TextureLab.h` |
 | `TextureLab::LayersWithRenderedFields` | The layer passes after each layer field has been drawn to its own target, with the targets that hold them. | `TextureLab.h` |
 | `StackShape` | The record a generated stack shader is keyed by: base presence, one `LayerShape` per layer, and the fields' code without numbers. `CheckStackShape` accepts at most `kMaxStackLayers` (8) layers. | `planners/StackShader.h` |
-| `StackConstants` | The one-pass stack shader's constant buffer: offset and scale, flags, layer, color, mask and field rows for 8 layers. | `ShaderConstants.h` |
-| `LayerConstants` | The constant buffer of one `Render` call: offset and scale, flags, and the layer's color, mask and curve parameters. | `ShaderConstants.h` |
+| `StackConstants` | The one-pass stack shader's constant buffer: one `StackLayer` (source read, layer mix, field code ranges) for each of 8 layers, plus the layer count and the base. | `planners/ShaderConstants.h` |
+| `PassConstants` | The constant buffer of one `Render` call: the mode, the source read, the layer mix, and the channel mode's map view. | `planners/ShaderConstants.h` |
 
 `TextureLab::RenderStack` first tries `DrawStackPass`, which draws the whole
 stack in one pass. `CanRenderStack` refuses that pass when the shape fails
@@ -136,7 +136,7 @@ replaces the interpreter for one program text when its compile has finished.
 | `TextureLab::ProgramBindings` | The current values of a program's inputs: up to `kProgramInputs` values, `kProgramTextures` textures and `kProgramLookups` lookups, each with its count. | `TextureLab.h` |
 | `TextureLab::ProgramTexture` | One bound program texture with its sampling and normalization factor. | `TextureLab.h` |
 | `TextureLab::Lookup` | A 256-entry sampled function table on the GPU. `CreateLookup` makes one. It cannot be copied or moved. | `TextureLab.h` |
-| `ProgramConstants` | The interpreter's constant buffer: 256 instruction rows, 16 inputs and input values, and 8 texture parameter rows. Its static asserts pin the `ProgramOpcode` values that the shader mirrors. | `ShaderConstants.h` |
+| `ProgramConstants` | The interpreter's constant buffer: 256 instructions packed two per row, 16 inputs, and 8 texture reads. Its static asserts pin the `ProgramOpcode` values that the shader mirrors. | `planners/ShaderConstants.h` |
 | `ProgramPack`, `ProgramSegment`, `ProgramCode` | Several programs packed into one instruction block, one program's range in that block, and a view of one program's instructions and inputs. `SegmentCode` returns the code of one segment. | `planners/FieldProgram.h` |
 | `GeneratedShaders` | Two caches of compiled pixel shaders, one keyed by program text (`ProgramFor`) and one keyed by `StackShape` (`StackFor`). Each holds at most `kMaxPerCache` (256) entries. Both return null until the compile finishes. | `GeneratedShaders.h` |
 | `GeneratedShader` | One cache entry: the pending compile and the last use. | `GeneratedShaders.h` |
@@ -163,8 +163,8 @@ disables only its own pass (`ProgramPassAvailable`, `RippleAvailable`,
 | `TextureLab::MapReading` | How the shader decodes an input map: `kNone`, `kRmaos` or `kNormalSlope`. `InputMap` carries it with the texture. | `TextureLab.h` |
 | `TextureLab::Scroll`, `TextureLab::LayerInput` | UV offset, tiling, mirroring, transpose and source mip; and a channel with mesh-space and nearest-sampling flags plus a `Scroll`. | `TextureLab.h` |
 | `TextureLab::RipplePass`, `RippleFiring` | A ripple draw: the positions texture, up to `kRippleFirings` (8) firings with origin and age, and the wave's speed, width, decay and direction. | `TextureLab.h` |
-| `RippleConstants` | The ripple pass's constant buffer. | `ShaderConstants.h` |
-| `ClusterConstants` | The cluster pass's constant buffer: RMAOS, luma and diffuse centroids for `kMaxMaterialClusters` (8) clusters, plus weights. | `ShaderConstants.h` |
+| `RippleConstants` | The ripple pass's constant buffer. | `planners/ShaderConstants.h` |
+| `GroupConstants` | The cluster pass's constant buffer: one `GroupScore` for each of `kMaxMaterialClusters` (8) groups, the axis standardisation, the lit chart bits and the draw choice. | `planners/ShaderConstants.h` |
 
 `TextureLab::BakeMesh` rasterizes a mesh's triangles into UV space. It then
 calls `DilateInto`, which draws the dilate shader twice through a gutter
@@ -180,7 +180,7 @@ GPU.
 | Type | Description | Declared in |
 |---|---|---|
 | `TextureLab::ReductionReadback` | A `ReadbackRing` with `kReadbackSlots` (3) staging textures. `SubmitReduction` fills one slot, and `CollectReduction` maps the newest finished slot without waiting. | `TextureLab.h` |
-| `ReductionConstants` | The `PSReduce` constant buffer. Its static asserts pin the `ReductionKind` values: mean, sum, minimum, maximum. | `ShaderConstants.h` |
+| `ReductionConstants` | The `PSReduce` constant buffer. Its static asserts pin the `ReductionKind` values: mean, sum, minimum, maximum. | `planners/ShaderConstants.h` |
 | `TextureLab::MaterialReadback` | The RMAOS and diffuse staging copies of one material sample, and a pending flag. `SubmitMaterialSample` and `CollectMaterialSample` use it. | `TextureLab.h` |
 | `TextureLab::Extent` | A texture's width and height. `ExtentOf` reads it. | `TextureLab.h` |
 | `TextureLab::TimedSpan` | A scope that records one GPU timestamp pair when timing is on. `BeginTimedTick`, `CollectTimings` and `DrainTimings` manage the ticks. | `TextureLab.h` |
@@ -303,7 +303,7 @@ places the lights, and `LightBinding::Update` sets their values each tick.
 
 | Concern | Files |
 |---|---|
-| Lab setup, passes and readback | `TextureLab.h`, `TextureLabLifecycle.cpp`, `TextureLabPass.cpp`, `TextureLabReadback.cpp`, `ShaderSource.cpp`, `ShaderConstants.h`, `D3DResult.h` |
+| Lab setup, passes and readback | `TextureLab.h`, `TextureLabLifecycle.cpp`, `TextureLabPass.cpp`, `TextureLabReadback.cpp`, `D3DResult.h`; the shader source and its constants are in `planners/` |
 | Generated shaders | `GeneratedShaders.h`, `GeneratedShaders.cpp` |
 | Plan execution | `RenderInstance.h`, `RenderInstance.cpp` |
 | Compositor entry points and caches | `Compositor.h`, `Compositor.cpp`, `CompositorSource.cpp`, `CompositorBake.cpp`, `CompositorDemand.cpp`, `SourceSampling.h`, `SourceSampling.cpp` |

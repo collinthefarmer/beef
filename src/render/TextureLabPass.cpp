@@ -2,12 +2,12 @@
 #include "render/TextureLab.h"
 
 #include "mesh/FieldFilter.h"
+#include "planners/ShaderConstants.h"
 #include "render/D3DResult.h"
-#include "render/ShaderConstants.h"
 
 #include <algorithm>
+#include <bit>
 #include <cmath>
-#include <cstring>
 #include <limits>
 #include <ranges>
 #include <string_view>
@@ -70,13 +70,13 @@ float WholeReadMip(RE::NiSourceTexture *a_texture, std::uint32_t a_targetSide) {
   return FootprintMip(ExtentOrEmpty(a_texture), {}, a_targetSide);
 }
 
-std::array<float, 4> NormalDetailLevels(RE::NiSourceTexture *a_normal) {
+NormalDetail NormalDetailOf(RE::NiSourceTexture *a_normal) {
   const TextureExtent extent = ExtentOrEmpty(a_normal);
   if (extent.width == 0 || extent.height == 0 || extent.mips == 0) {
-    return {-1.0f, 0.0f, 0.0f, 0.0f};
+    return {};
   }
   const NormalDetailScale scale = NormalDetailScaleOf(extent);
-  return {scale.fineMip, scale.coarseMip, scale.footprint, 0.0f};
+  return {scale.fineMip, scale.coarseMip, scale.footprint, ShaderBool::kYes};
 }
 
 REX::W32::ID3D11ShaderResourceView *NormalView(RE::NiSourceTexture *a_normal) {
@@ -99,6 +99,53 @@ void BindSlot(std::span<REX::W32::ID3D11ShaderResourceView *> srvs,
     srvs[slot] = view;
 }
 
+using ConstantBindings = std::array<ID3D11Buffer *, kConstantSlotCount>;
+
+struct ConstantBinding {
+  ConstantSlot slot = ConstantSlot::kPass;
+  ID3D11Buffer *buffer = nullptr;
+};
+
+ConstantBindings BindingsOf(std::initializer_list<ConstantBinding> a_bound) {
+  ConstantBindings bindings{};
+  for (const ConstantBinding &bound : a_bound)
+    if (SlotOf(bound.slot) < bindings.size())
+      bindings[SlotOf(bound.slot)] = bound.buffer;
+  return bindings;
+}
+
+std::uint32_t PlacementOptions(const TextureLab::Scroll &a_placement) {
+  return (a_placement.mirrorU ? kReadMirrorU : 0u) |
+         (a_placement.mirrorV ? kReadMirrorV : 0u) |
+         (a_placement.transpose ? kReadTranspose : 0u);
+}
+
+TextureRead PlacedRead(const TextureLab::Scroll &a_placement, float a_mip) {
+  return {.offset = {a_placement.uOffset, a_placement.vOffset},
+          .tile = {a_placement.tileU, a_placement.tileV},
+          .mip = a_mip,
+          .options = PlacementOptions(a_placement)};
+}
+
+TextureRead InputRead(const TextureLab::LayerInput &a_input, float a_mip,
+                      float a_normalize) {
+  TextureRead read = PlacedRead(a_input.transform, a_mip);
+  read.normalize = a_normalize;
+  read.channel = std::to_underlying(a_input.channel);
+  read.options |= (a_input.meshSpace ? kReadMeshSpace : 0u) |
+                  (a_input.nearest ? kReadNearest : 0u);
+  return read;
+}
+
+LayerMix MixOf(const TextureLab::LayerPass &a_layer, std::uint32_t a_options) {
+  return {.color = {a_layer.color[0], a_layer.color[1], a_layer.color[2]},
+          .opacity = a_layer.opacity,
+          .blend = a_layer.blend,
+          .writeChannels = a_layer.channels,
+          .maskChannel = std::to_underlying(a_layer.maskChannel),
+          .options = a_options};
+}
+
 template <class Constants>
 void UploadConstants(ID3D11DeviceContext &context, ID3D11Buffer *buffer,
                      const Constants &constants) {
@@ -107,9 +154,7 @@ void UploadConstants(ID3D11DeviceContext &context, ID3D11Buffer *buffer,
 }
 
 std::unique_ptr<ProgramConstants> EmptyProgramConstants() {
-  auto constants = std::make_unique<ProgramConstants>();
-  std::memset(constants.get(), 0, sizeof(ProgramConstants));
-  return constants;
+  return std::make_unique<ProgramConstants>();
 }
 
 bool ProgramFits(const ProgramCode &code,
@@ -124,65 +169,54 @@ ProgramCode PackedCode(const ProgramPack &pack) {
   return {pack.code, pack.inputs, ValueType::kVec3};
 }
 
-void FillInstructionRow(ProgramConstants &constants, std::size_t row,
-                        const ProgramInstruction &instruction) {
-  if (row >= std::size(constants.code))
+void StoreInstruction(ProgramConstants &constants, std::size_t k,
+                      const ProgramInstruction &instruction) {
+  const std::size_t row = k / kInstructionsPerRow;
+  if (row >= std::size(constants.programCode))
     return;
-  constants.code[row][0] = static_cast<float>(instruction.opcode);
-  constants.code[row][1] = instruction.number;
-  constants.code[row][2] = static_cast<float>(instruction.index);
-  constants.code[row][3] =
-      static_cast<float>(std::min<std::uint32_t>(instruction.components, 3) +
-                         4 * OpcodePops(instruction.opcode));
+  Uint4 &pair = constants.programCode[row];
+  const std::uint32_t word = InstructionWord(instruction);
+  const auto number = std::bit_cast<std::uint32_t>(instruction.number);
+  if (k % kInstructionsPerRow == 0) {
+    pair.x = word;
+    pair.y = number;
+    return;
+  }
+  pair.z = word;
+  pair.w = number;
 }
 
 std::size_t
 FillProgramInstructions(ProgramConstants &constants,
                         std::span<const ProgramInstruction> instructions) {
   const std::size_t count =
-      std::min<std::size_t>(instructions.size(), std::size(constants.code));
-  for (std::size_t row = 0; row < count; ++row)
-    FillInstructionRow(constants, row, instructions[row]);
+      std::min<std::size_t>(instructions.size(), kProgramInstructions);
+  for (std::size_t k = 0; k < count; ++k)
+    StoreInstruction(constants, k, instructions[k]);
   return count;
 }
 
 void FillProgramInputs(ProgramConstants &constants,
                        std::span<const ProgramInput> inputs,
                        const TextureLab::ProgramBindings &bindings) {
-  const std::size_t count =
-      std::min({inputs.size(), kProgramInputs, std::size(constants.inputs),
-                std::size(constants.inputValues)});
+  const std::size_t count = std::min({inputs.size(), bindings.values.size(),
+                                      std::size(constants.programInputs)});
   for (std::size_t row = 0; row < count; ++row) {
     const auto *texture = Get<ProgramTextureInput>(inputs[row]);
-    constants.inputs[row][0] = texture ? 1.0f : 0.0f;
-    constants.inputs[row][1] =
-        texture ? static_cast<float>(texture->slot) : 0.0f;
-    constants.inputValues[row][0] = bindings.values[row].x;
-    constants.inputValues[row][1] = bindings.values[row].y;
-    constants.inputValues[row][2] = bindings.values[row].z;
+    const Vec3 &value = bindings.values[row];
+    constants.programInputs[row] = {{value.x, value.y, value.z},
+                                    texture ? texture->slot : kNoTextureSlot};
   }
 }
 
 void FillProgramTextureRow(ProgramConstants &constants, std::size_t row,
                            const TextureLab::ProgramTexture &texture,
                            std::uint32_t targetSide) {
-  if (row >= std::size(constants.texParams))
+  if (row >= std::size(constants.programTextures))
     return;
-  const TextureLab::Scroll &placement = texture.sampling.transform;
-  constants.texParams[row][0] =
-      static_cast<float>(std::to_underlying(texture.sampling.channel));
-  constants.texParams[row][1] = texture.sampling.meshSpace ? 1.0f : 0.0f;
-  constants.texParams[row][2] = texture.normalize;
-  constants.texParams[row][3] =
-      ReadMip(texture.texture, texture.sampling, targetSide);
-  constants.texTransform[row][0] = placement.uOffset;
-  constants.texTransform[row][1] = placement.vOffset;
-  constants.texTransform[row][2] = placement.tileU;
-  constants.texTransform[row][3] = placement.tileV;
-  constants.texFlags[row][0] = placement.mirrorU ? 1.0f : 0.0f;
-  constants.texFlags[row][1] = placement.mirrorV ? 1.0f : 0.0f;
-  constants.texFlags[row][2] = placement.transpose ? 1.0f : 0.0f;
-  constants.texFlags[row][3] = texture.sampling.nearest ? 1.0f : 0.0f;
+  constants.programTextures[row] = InputRead(
+      texture.sampling, ReadMip(texture.texture, texture.sampling, targetSide),
+      texture.normalize);
 }
 
 std::size_t BoundTextureCount(const TextureLab::ProgramBindings &bindings) {
@@ -212,7 +246,7 @@ void FillProgramConstants(ProgramConstants &constants,
   FillProgramInputs(constants, code.inputs, bindings);
   FillProgramTextures(constants, bindings, targetSide);
   BindProgramTextures(srvs, bindings);
-  constants.misc[1] = static_cast<float>(instructions);
+  constants.programCount = static_cast<std::uint32_t>(instructions);
 }
 
 bool FieldsBound(const TextureLab::BoundLayerFields &a_fields) {
@@ -258,56 +292,37 @@ StackShape StackShapeOf(bool a_base,
   return shape;
 }
 
-void FillStackCounts(StackConstants &constants, const StackShape &shape) {
-  constants.misc[0] = static_cast<float>(shape.layers.size());
-  constants.misc[1] = shape.base ? 1.0f : 0.0f;
+std::uint32_t LayerOptions(const LayerShape &a_shape) {
+  return (HasSource(a_shape) ? kLayerHasSource : 0u) |
+         (HasMask(a_shape) ? kLayerHasMask : 0u);
 }
 
-void FillBaseMip(StackConstants &constants, RE::NiSourceTexture *base,
-                 std::uint32_t targetSide) {
-  constants.misc[2] = WholeReadMip(base, targetSide);
+StackLayer StackLayerOf(const TextureLab::LayerPass &a_layer,
+                        const StackShape &a_stack, const LayerShape &a_shape,
+                        std::uint32_t a_targetSide) {
+  const ProgramSegment source = SourceSegment(a_stack, a_shape);
+  const ProgramSegment mask = MaskSegment(a_stack, a_shape);
+  const float mip = ReadMip(a_layer.source, a_layer.input, a_targetSide);
+  return {.source = InputRead(a_layer.input, mip, a_layer.normalize),
+          .mix = MixOf(a_layer, LayerOptions(a_shape)),
+          .sourceCode = {source.first, source.count},
+          .maskCode = {mask.first, mask.count}};
 }
 
-void FillLayerConstants(StackConstants &constants, std::size_t index,
-                        const TextureLab::LayerPass &layer,
-                        const LayerShape &shape, std::uint32_t targetSide) {
-  if (index >= std::size(constants.layer))
-    return;
-  const TextureLab::Scroll &placement = layer.input.transform;
-  constants.offsetScale[index][0] = placement.uOffset;
-  constants.offsetScale[index][1] = placement.vOffset;
-  constants.offsetScale[index][2] = placement.tileU;
-  constants.offsetScale[index][3] = placement.tileV;
-  constants.flags[index][0] = placement.mirrorU ? 1.0f : 0.0f;
-  constants.flags[index][1] = placement.mirrorV ? 1.0f : 0.0f;
-  constants.flags[index][2] = placement.transpose ? 1.0f : 0.0f;
-  constants.flags[index][3] = ReadMip(layer.source, layer.input, targetSide);
-  constants.layer[index][0] = static_cast<float>(shape.channel);
-  constants.layer[index][1] = layer.input.meshSpace ? 1.0f : 0.0f;
-  constants.layer[index][2] = static_cast<float>(shape.blend);
-  constants.layer[index][3] = layer.opacity;
-  constants.color[index][0] = layer.color[0];
-  constants.color[index][1] = layer.color[1];
-  constants.color[index][2] = layer.color[2];
-  constants.color[index][3] = layer.normalize;
-  constants.mask[index][0] =
-      HasMask(shape) ? static_cast<float>(shape.maskChannel) : -1.0f;
-  constants.mask[index][1] = static_cast<float>(shape.channels);
-  constants.mask[index][3] = HasSource(shape) ? 1.0f : 0.0f;
-}
-
-void FillLayerSegments(StackConstants &constants, const StackShape &shape) {
-  const std::size_t count =
-      std::min(shape.layers.size(), std::size(constants.field));
-  for (std::size_t index = 0; index < count; ++index) {
-    const LayerShape &layer = shape.layers[index];
-    const ProgramSegment source = SourceSegment(shape, layer);
-    const ProgramSegment mask = MaskSegment(shape, layer);
-    constants.field[index][0] = static_cast<float>(source.first);
-    constants.field[index][1] = static_cast<float>(source.count);
-    constants.field[index][2] = static_cast<float>(mask.first);
-    constants.field[index][3] = static_cast<float>(mask.count);
-  }
+StackConstants StackConstantsOf(const StackShape &a_shape,
+                                RE::NiSourceTexture *a_base,
+                                std::span<const TextureLab::LayerPass> a_layers,
+                                std::uint32_t a_targetSide) {
+  StackConstants constants;
+  constants.stackLayerCount = static_cast<std::uint32_t>(a_shape.layers.size());
+  constants.stackHasBase = ShaderBoolOf(a_shape.base);
+  constants.stackBaseMip = WholeReadMip(a_base, a_targetSide);
+  const std::size_t count = std::min({a_layers.size(), a_shape.layers.size(),
+                                      std::size(constants.stackLayers)});
+  for (std::size_t index = 0; index < count; ++index)
+    constants.stackLayers[index] = StackLayerOf(
+        a_layers[index], a_shape, a_shape.layers[index], a_targetSide);
+  return constants;
 }
 
 void BindLayerTextures(std::span<REX::W32::ID3D11ShaderResourceView *> srvs,
@@ -409,7 +424,7 @@ private:
   REX::W32::ID3D11ShaderResourceView
       *computeResources[D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT]{};
   REX::W32::ID3D11SamplerState *sampler = nullptr;
-  REX::W32::ID3D11Buffer *cbs[4]{};
+  REX::W32::ID3D11Buffer *cbs[kConstantSlotCount]{};
   REX::W32::ID3D11InputLayout *layout = nullptr;
   REX::W32::ID3D11Buffer *vertexBuffer = nullptr;
   std::uint32_t vertexStride = 0;
@@ -491,7 +506,7 @@ private:
     a_ctx->RSGetViewports(&viewportCount, viewports);
     CaptureStages(a_ctx);
     a_ctx->PSGetSamplers(0, 1, &sampler);
-    a_ctx->PSGetConstantBuffers(0, 4, cbs);
+    a_ctx->PSGetConstantBuffers(0, kConstantSlotCount, cbs);
     a_ctx->IAGetInputLayout(&layout);
     a_ctx->IAGetVertexBuffers(0, 1, &vertexBuffer, &vertexStride,
                               &vertexOffset);
@@ -509,7 +524,7 @@ private:
     a_ctx->RSSetViewports(viewportCount, viewports);
     RestoreStages(a_ctx);
     a_ctx->PSSetSamplers(0, 1, &sampler);
-    a_ctx->PSSetConstantBuffers(0, 4, cbs);
+    a_ctx->PSSetConstantBuffers(0, kConstantSlotCount, cbs);
     a_ctx->IASetInputLayout(layout);
     a_ctx->IASetVertexBuffers(0, 1, &vertexBuffer, &vertexStride,
                               &vertexOffset);
@@ -519,10 +534,9 @@ private:
     a_ctx->OMSetDepthStencilState(depth, stencilRef);
     a_ctx->RSSetState(raster);
     Release(sampler);
-    Release(cbs[0]);
-    Release(cbs[1]);
-    Release(cbs[2]);
-    Release(cbs[3]);
+    for (auto &buffer : cbs) {
+      Release(buffer);
+    }
     Release(vertexBuffer);
     Release(indexBuffer);
     Release(layout);
@@ -698,66 +712,47 @@ LayerViewsFor(const TextureLab::LayerParams &a_params,
   return views;
 }
 
-void FillSourceConstants(LayerConstants &a_constants,
-                         const TextureLab::LayerParams &a_params,
-                         const LayerViews &a_views) {
-  const bool layerPass = a_params.mode == TextureLab::Mode::kLayer;
-  const TextureLab::Scroll &sc =
-      layerPass ? a_params.layer.input.transform : a_params.scroll;
-  a_constants.offsetScale[0] = sc.uOffset;
-  a_constants.offsetScale[1] = sc.vOffset;
-  a_constants.offsetScale[2] = sc.tileU;
-  a_constants.offsetScale[3] = sc.tileV;
-  a_constants.flags[0] = sc.mirrorU ? 1.0f : 0.0f;
-  a_constants.flags[1] = sc.mirrorV ? 1.0f : 0.0f;
-  a_constants.flags[2] = sc.transpose ? 1.0f : 0.0f;
-  a_constants.flags[3] = static_cast<float>(a_params.mode);
-  a_constants.extra[0] = sc.sourceMip;
-  a_constants.extra[1] = a_views.map && !layerPass
-                             ? static_cast<float>(a_params.map.reading)
-                             : 0.0f;
+std::uint32_t PassLayerOptions(const LayerViews &a_views) {
+  return (a_views.source ? kLayerHasSource : 0u) |
+         (a_views.map ? kLayerHasMask : 0u) |
+         (a_views.previous ? kLayerHasBelow : 0u) |
+         (a_views.curve ? kLayerHasCurve : 0u);
 }
 
-void FillLayerPassConstants(LayerConstants &a_constants,
-                            const TextureLab::LayerPass &a_layer,
-                            const LayerViews &a_views) {
-  a_constants.layer[0] =
-      static_cast<float>(std::to_underlying(a_layer.input.channel));
-  a_constants.layer[1] = a_layer.input.meshSpace ? 1.0f : 0.0f;
-  a_constants.layer[2] = static_cast<float>(a_layer.blend);
-  a_constants.layer[3] = a_layer.opacity;
-  a_constants.layerColor[0] = a_layer.color[0];
-  a_constants.layerColor[1] = a_layer.color[1];
-  a_constants.layerColor[2] = a_layer.color[2];
-  a_constants.layerColor[3] = a_layer.normalize;
-  a_constants.layerMask[0] =
-      a_views.map ? static_cast<float>(std::to_underlying(a_layer.maskChannel))
-                  : -1.0f;
-  a_constants.layerMask[1] = static_cast<float>(a_layer.channels);
-  a_constants.layerMask[2] = a_views.previous ? 1.0f : 0.0f;
-  a_constants.layerMask[3] = a_views.source ? 1.0f : 0.0f;
-  a_constants.layerCurve[0] = a_views.curve ? 1.0f : 0.0f;
-  a_constants.extra2[0] = a_layer.previousMip;
+MapView MapViewOf(const TextureLab::ChannelParams &a_channel) {
+  if (a_channel.slope)
+    return MapView::kSlope;
+  if (a_channel.ids)
+    return MapView::kIds;
+  return MapView::kChannel;
 }
 
-void FillChannelConstants(LayerConstants &a_constants,
-                          const TextureLab::ChannelParams &a_channel) {
-  a_constants.extra[2] =
-      static_cast<float>(std::to_underlying(a_channel.channel));
-  a_constants.extra[3] = a_channel.slope ? 1.0f : 0.0f;
-  a_constants.extra2[1] = a_channel.mapMip;
-  a_constants.extra2[2] = a_channel.ids ? 1.0f : 0.0f;
+void FillLayerPass(PassConstants &a_constants,
+                   const TextureLab::LayerPass &a_layer,
+                   const LayerViews &a_views) {
+  a_constants.passSource = InputRead(
+      a_layer.input, a_layer.input.transform.sourceMip, a_layer.normalize);
+  a_constants.passLayer = MixOf(a_layer, PassLayerOptions(a_views));
+  a_constants.passBelowMip = a_layer.previousMip;
 }
 
-LayerConstants LayerConstantsFor(const TextureLab::LayerParams &a_params,
-                                 const LayerViews &a_views) {
-  LayerConstants constants{};
-  FillSourceConstants(constants, a_params, a_views);
+void FillMapView(PassConstants &a_constants,
+                 const TextureLab::ChannelParams &a_channel) {
+  a_constants.passMapChannel = std::to_underlying(a_channel.channel);
+  a_constants.passMapView = MapViewOf(a_channel);
+  a_constants.passMapMip = a_channel.mapMip;
+}
+
+PassConstants PassConstantsFor(const TextureLab::LayerParams &a_params,
+                               const LayerViews &a_views) {
+  PassConstants constants;
+  constants.passMode = std::to_underlying(a_params.mode);
+  constants.passSource = PlacedRead(a_params.scroll, a_params.scroll.sourceMip);
   if (a_params.mode == TextureLab::Mode::kLayer) {
-    FillLayerPassConstants(constants, a_params.layer, a_views);
+    FillLayerPass(constants, a_params.layer, a_views);
   }
   if (a_params.mode == TextureLab::Mode::kChannel) {
-    FillChannelConstants(constants, a_params.channel);
+    FillMapView(constants, a_params.channel);
   }
   return constants;
 }
@@ -777,12 +772,13 @@ bool TextureLab::Render(RenderTarget &a_target, RE::NiSourceTexture *a_source,
   if (!views) {
     return false;
   }
-  const LayerConstants constants = LayerConstantsFor(a_params, *views);
+  const PassConstants constants = PassConstantsFor(a_params, *views);
   pass.Context().UpdateSubresource(gpu_->constants.Get(), 0, nullptr,
                                    &constants, 0, 0);
   REX::W32::ID3D11ShaderResourceView *srvs[4]{views->source, views->map,
                                               views->previous, views->curve};
-  REX::W32::ID3D11Buffer *cbs[1]{gpu_->constants.Get()};
+  const ConstantBindings cbs =
+      BindingsOf({{ConstantSlot::kPass, gpu_->constants.Get()}});
   DrawFullScreen(pass, a_target, {gpu_->pixel.Get(), srvs, cbs});
   return true;
 }
@@ -850,22 +846,17 @@ bool TextureLab::DrawStackPass(RenderTarget &a_target,
   std::array<REX::W32::ID3D11ShaderResourceView *, kStackSrvs> srvs{};
   const std::unique_ptr<ProgramConstants> program =
       StackProgramConstants(srvs, a_fields, a_target.size);
-  StackConstants constants{};
-  FillStackCounts(constants, shape);
-  FillBaseMip(constants, a_base, a_target.size);
-  for (std::size_t index = 0; index < a_layers.size(); ++index)
-    FillLayerConstants(constants, index, a_layers[index], shape.layers[index],
-                       a_target.size);
-  FillLayerSegments(constants, shape);
+  const StackConstants constants =
+      StackConstantsOf(shape, a_base, a_layers, a_target.size);
   BindLayerTextures(srvs, a_base, a_layers);
   UploadConstants(pass.Context(), pipeline.constants.Get(), constants);
   REX::W32::ID3D11Buffer *programBuffer =
       program && gpu_->program ? gpu_->program->constants.Get() : nullptr;
   if (program)
     UploadConstants(pass.Context(), programBuffer, *program);
-  REX::W32::ID3D11Buffer *cbs[6]{nullptr, programBuffer,
-                                 nullptr, nullptr,
-                                 nullptr, pipeline.constants.Get()};
+  const ConstantBindings cbs =
+      BindingsOf({{ConstantSlot::kProgram, programBuffer},
+                  {ConstantSlot::kStack, pipeline.constants.Get()}});
   auto *shader = StackShaderFor(shape);
   if (!shader)
     return false;
@@ -986,10 +977,11 @@ bool TextureLab::DrawProgramPass(RenderTarget &a_target,
   REX::W32::ID3D11ShaderResourceView *srvs[kPassSrvs]{};
   FillProgramConstants(*constants, srvs, a_code, a_bindings, a_target.size);
   FillLookups(srvs, a_bindings);
-  constants->misc[2] = a_code.result != ValueType::kScalar ? 1.0f : 0.0f;
+  constants->programVectorResult =
+      ShaderBoolOf(a_code.result != ValueType::kScalar);
   UploadConstants(pass.Context(), pipeline.constants.Get(), *constants);
-  REX::W32::ID3D11Buffer *cbs[2]{gpu_->constants.Get(),
-                                 pipeline.constants.Get()};
+  const ConstantBindings cbs =
+      BindingsOf({{ConstantSlot::kProgram, pipeline.constants.Get()}});
   DrawFullScreen(pass, a_target,
                  {a_shader ? a_shader : pipeline.shader.Get(), srvs, cbs});
   return true;
@@ -1102,13 +1094,15 @@ void TextureLab::DrawBakeTriangles(const RenderPass &a_pass,
       D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
   a_pass.Context().VSSetShader(pipeline.vertex.Get(), nullptr, 0);
   if (a_noise && pipeline.noisePixel.Get() && pipeline.noiseConstants.Get()) {
-    const BakeNoiseConstants constants{
-        {a_noise->octaves, a_noise->seed,
-         static_cast<std::uint32_t>(std::to_underlying(a_noise->style)), 0}};
+    const BakeNoiseConstants constants{.noiseOctaves = a_noise->octaves,
+                                       .noiseSeed = a_noise->seed,
+                                       .noiseStyle =
+                                           std::to_underlying(a_noise->style)};
     a_pass.Context().UpdateSubresource(pipeline.noiseConstants.Get(), 0,
                                        nullptr, &constants, 0, 0);
     REX::W32::ID3D11Buffer *noiseBuffer = pipeline.noiseConstants.Get();
-    a_pass.Context().PSSetConstantBuffers(kBakeNoiseSlot, 1, &noiseBuffer);
+    a_pass.Context().PSSetConstantBuffers(SlotOf(ConstantSlot::kBakeNoise), 1,
+                                          &noiseBuffer);
     a_pass.Context().PSSetShader(pipeline.noisePixel.Get(), nullptr, 0);
   } else {
     a_pass.Context().PSSetShader(pipeline.pixel.Get(), nullptr, 0);
@@ -1138,6 +1132,8 @@ bool TextureLab::DilateInto(const RenderPass &a_pass, RenderTarget &a_source,
   return true;
 }
 
+static_assert(TextureLab::kRippleFirings == kRippleFiringRows);
+
 bool TextureLab::RenderRipple(RenderTarget &a_target,
                               const RipplePass &a_pass) {
   auto *renderer = RE::BSGraphics::Renderer::GetSingleton();
@@ -1151,32 +1147,32 @@ bool TextureLab::RenderRipple(RenderTarget &a_target,
   if (!positions || !positions->resourceView) {
     return false;
   }
-  RippleConstants constants{};
+  RippleConstants constants;
   const auto count =
-      std::min<std::size_t>(a_pass.firingCount, a_pass.firings.size());
+      std::min({static_cast<std::size_t>(a_pass.firingCount),
+                a_pass.firings.size(), std::size(constants.rippleFirings)});
   for (std::size_t k = 0; k < count; ++k) {
-    constants.firings[k][0] = a_pass.firings[k].origin.x;
-    constants.firings[k][1] = a_pass.firings[k].origin.y;
-    constants.firings[k][2] = a_pass.firings[k].origin.z;
-    constants.firings[k][3] = a_pass.firings[k].age;
+    const RippleFiring &firing = a_pass.firings[k];
+    constants.rippleFirings[k] = {
+        {firing.origin.x, firing.origin.y, firing.origin.z}, firing.age};
   }
-  constants.shape[0] = a_pass.speed;
-  constants.shape[1] = a_pass.width;
-  constants.shape[2] = a_pass.decay;
-  constants.shape[3] = a_pass.disc ? 1.0f : 0.0f;
-  constants.misc[0] = static_cast<float>(count);
-  constants.misc[1] = a_pass.frame;
-  constants.direction[0] = a_pass.direction.x;
-  constants.direction[1] = a_pass.direction.y;
-  constants.direction[2] = a_pass.direction.z;
-  constants.direction[3] = a_pass.directional ? 1.0f : 0.0f;
+  constants.rippleDirection = {a_pass.direction.x, a_pass.direction.y,
+                               a_pass.direction.z};
+  constants.rippleFiringCount = static_cast<std::uint32_t>(count);
+  constants.rippleSpeed = a_pass.speed;
+  constants.rippleWidth = a_pass.width;
+  constants.rippleDecay = a_pass.decay;
+  constants.rippleFrame = a_pass.frame;
+  constants.rippleDisc = ShaderBoolOf(a_pass.disc);
+  constants.rippleDirectional = ShaderBoolOf(a_pass.directional);
 
   pass.Context().UpdateSubresource(pipeline.constants.Get(), 0, nullptr,
                                    &constants, 0, 0);
   REX::W32::ID3D11ShaderResourceView *srvs[kPassSrvs]{
       reinterpret_cast<REX::W32::ID3D11ShaderResourceView *>(
           positions->resourceView)};
-  REX::W32::ID3D11Buffer *cbs[3]{nullptr, nullptr, pipeline.constants.Get()};
+  const ConstantBindings cbs =
+      BindingsOf({{ConstantSlot::kRipple, pipeline.constants.Get()}});
   DrawFullScreen(pass, a_target, {pipeline.shader.Get(), srvs, cbs});
   return true;
 }
@@ -1200,15 +1196,19 @@ bool TextureLab::RenderFilter(RenderTarget &a_target,
   const RenderPass pass{*renderer, *borrowedContext_, CaptureBatch()};
   REX::W32::ID3D11ShaderResourceView *charts =
       a_pass.charts ? a_pass.charts->srv.Get() : nullptr;
-  REX::W32::ID3D11Buffer *cbs[kFilterSlot + 1]{};
-  cbs[kFilterSlot] = pipeline.constants.Get();
+  const ConstantBindings cbs =
+      BindingsOf({{ConstantSlot::kFilter, pipeline.constants.Get()}});
   const auto draw = [&](RenderTarget &a_into, RenderTarget &a_from,
                         bool a_vertical) {
     const FilterConstants constants{
-        {static_cast<std::uint32_t>(std::to_underlying(a_pass.operation)),
-         std::min(a_pass.taps, static_cast<std::uint32_t>(kMaxFilterTaps)),
-         a_vertical ? 1u : 0u, charts ? 1u : 0u},
-        {a_target.size, a_target.size, a_from.size, a_from.size}};
+        .filterOperation =
+            static_cast<std::uint32_t>(std::to_underlying(a_pass.operation)),
+        .filterTaps =
+            std::min(a_pass.taps, static_cast<std::uint32_t>(kMaxFilterTaps)),
+        .filterVertical = ShaderBoolOf(a_vertical),
+        .filterKeepSeams = ShaderBoolOf(charts != nullptr),
+        .filterTargetSize = {a_target.size, a_target.size},
+        .filterInputSize = {a_from.size, a_from.size}};
     pass.Context().UpdateSubresource(pipeline.constants.Get(), 0, nullptr,
                                      &constants, 0, 0);
     REX::W32::ID3D11ShaderResourceView *srvs[]{a_from.srv.Get(), charts};
@@ -1290,23 +1290,17 @@ bool TextureLab::DrawDiffuseDetail(RenderTarget &a_target,
   }
   const PixelPipeline &pipeline = *gpu_->diffuseDetail;
   const RenderPass pass{*renderer, *borrowedContext_, CaptureBatch()};
-  DiffuseDetailConstants constants{};
-  constants.levels[0] = a_diffuseMip;
-  const std::array<float, 4> detail = NormalDetailLevels(a_maps.normal);
-  std::ranges::copy(detail, constants.normal);
+  const DiffuseDetailConstants constants{.diffuseDetailNormal =
+                                             NormalDetailOf(a_maps.normal),
+                                         .diffuseDetailMip = a_diffuseMip};
   pass.Context().UpdateSubresource(pipeline.constants.Get(), 0, nullptr,
                                    &constants, 0, 0);
   REX::W32::ID3D11ShaderResourceView *srvs[kPassSrvs]{
       reinterpret_cast<REX::W32::ID3D11ShaderResourceView *>(
           diffuseData->resourceView),
       nullptr, NormalView(a_maps.normal)};
-  REX::W32::ID3D11Buffer *cbs[7]{nullptr,
-                                 nullptr,
-                                 nullptr,
-                                 nullptr,
-                                 nullptr,
-                                 nullptr,
-                                 pipeline.constants.Get()};
+  const ConstantBindings cbs =
+      BindingsOf({{ConstantSlot::kDiffuseDetail, pipeline.constants.Get()}});
   DrawFullScreen(pass, a_target, {pipeline.shader.Get(), srvs, cbs});
   return true;
 }
@@ -1362,6 +1356,71 @@ TextureLab::CopyMapPixels(RE::NiSourceTexture *a_map, std::uint32_t a_maxSide) {
   return out;
 }
 
+namespace {
+void SetLane(std::span<Float4> a_rows, std::size_t a_at, float a_value) {
+  if (a_at / 4 < a_rows.size())
+    a_rows[a_at / 4][a_at % 4] = a_value;
+}
+
+GroupScore GroupScoreOf(const GroupScoring &a_group, float a_oddsWeight) {
+  GroupScore score;
+  for (std::size_t axis = 0; axis < kTexelAxes; ++axis)
+    SetLane(score.mean, axis, a_group.mean[axis]);
+  for (std::size_t w = 0; w < kWhiteningFloats; ++w)
+    SetLane(score.whitening, w, a_group.whitening[w]);
+  score.id = static_cast<std::uint32_t>(std::max<int>(a_group.id, 0));
+  score.logScale =
+      a_group.logScale - (a_oddsWeight > 0.0f ? a_group.logShare : 0.0f);
+  return score;
+}
+
+GroupDraw GroupDrawOf(const TextureLab::ClusterDraw &a_draw) {
+  if (a_draw.palette)
+    return GroupDraw::kPalette;
+  if (a_draw.picked)
+    return GroupDraw::kPicked;
+  return GroupDraw::kIds;
+}
+
+GroupConstants GroupConstantsOf(const MaterialGrouping &a_grouping,
+                                const TextureLab::ClusterDraw &a_draw,
+                                const NormalDetail &a_detail) {
+  GroupConstants constants;
+  const Standardisation &standard = a_grouping.groups.standardisation;
+  for (std::size_t axis = 0; axis < kTexelAxes; ++axis) {
+    SetLane(constants.groupAxisCentre, axis,
+            static_cast<float>(standard.centre[axis]));
+    SetLane(constants.groupAxisSpread, axis,
+            static_cast<float>(standard.spread[axis]));
+  }
+  const float oddsWeight = OddsWeightOf(a_grouping.settings);
+  const std::vector<GroupScoring> &scoring = a_grouping.scoring;
+  const std::size_t count =
+      std::min(scoring.size(), std::size(constants.groups));
+  for (std::size_t k = 0; k < count; ++k)
+    constants.groups[k] = GroupScoreOf(scoring[k], oddsWeight);
+  constants.groupCount = static_cast<std::uint32_t>(count);
+  constants.groupDraw = GroupDrawOf(a_draw);
+  constants.groupPicked = a_draw.picked.value_or(0);
+  constants.groupOddsWeight = oddsWeight;
+  constants.groupDetail = a_detail;
+  return constants;
+}
+
+std::array<Uint4, kLitChartRows>
+LitChartRows(const std::array<bool, kChartSlots> &a_lit) {
+  std::array<std::uint32_t, kLitChartRows * 4> words{};
+  for (std::size_t chart = 0; chart < kChartSlots; ++chart)
+    if (a_lit[chart])
+      words[chart / 32] |= 1u << (chart % 32);
+  std::array<Uint4, kLitChartRows> rows{};
+  for (std::size_t row = 0; row < kLitChartRows; ++row)
+    rows[row] = {words[row * 4], words[row * 4 + 1], words[row * 4 + 2],
+                 words[row * 4 + 3]};
+  return rows;
+}
+}
+
 bool TextureLab::RenderClusters(
     RenderTarget &a_target, const MaterialMaps &a_maps,
     const std::shared_ptr<const MaterialGrouping> &a_owner,
@@ -1389,54 +1448,19 @@ bool TextureLab::RenderClusters(
   }
   const PixelPipeline &pipeline = *gpu_->clusters;
   const RenderPass pass{*renderer, *borrowedContext_, CaptureBatch()};
-  GroupConstants constants{};
-  const Standardisation &standard = a_grouping.groups.standardisation;
-  for (std::size_t axis = 0; axis < kTexelAxes; ++axis) {
-    constants.centre[axis / 4][axis % 4] =
-        static_cast<float>(standard.centre[axis]);
-    constants.spread[axis / 4][axis % 4] =
-        static_cast<float>(standard.spread[axis]);
-  }
-  for (std::size_t k = 0; k < scoring.size(); ++k) {
-    const GroupScoring &group = scoring[k];
-    for (std::size_t axis = 0; axis < kTexelAxes; ++axis) {
-      constants.mean[k * 2 + axis / 4][axis % 4] = group.mean[axis];
-    }
-    for (std::size_t w = 0; w < kWhiteningFloats; ++w) {
-      const std::size_t at = k * kWhiteningFloats + w;
-      constants.whitening[at / 4][at % 4] = group.whitening[w];
-    }
-    constants.info[k][0] = static_cast<float>(group.id);
-    constants.info[k][1] =
-        group.logScale -
-        (OddsWeightOf(a_grouping.settings) > 0.0f ? group.logShare : 0.0f);
-  }
-  constants.misc[0] = static_cast<float>(scoring.size());
-  constants.misc[1] =
-      a_draw.picked ? static_cast<float>(*a_draw.picked) + 1.0f : 0.0f;
-  constants.misc[2] = a_draw.palette ? 1.0f : 0.0f;
-  constants.misc[3] = OddsWeightOf(a_grouping.settings);
-  for (std::size_t k = 0; k < kClusterPalette.size(); ++k) {
-    constants.palette[k][0] = kClusterPalette[k].x;
-    constants.palette[k][1] = kClusterPalette[k].y;
-    constants.palette[k][2] = kClusterPalette[k].z;
-    constants.palette[k][3] = 1.0f;
-  }
-  constants.levels[0] = WholeReadMip(a_maps.rmaos, a_target.size);
-  constants.levels[1] = WholeReadMip(a_maps.diffuse, a_target.size);
-  const std::array<float, 4> detail = NormalDetailLevels(a_maps.normal);
-  std::ranges::copy(detail, constants.detail);
+  GroupConstants constants =
+      GroupConstantsOf(a_grouping, a_draw, NormalDetailOf(a_maps.normal));
+  constants.groupRmaosMip = WholeReadMip(a_maps.rmaos, a_target.size);
+  constants.groupDiffuseMip = WholeReadMip(a_maps.diffuse, a_target.size);
   REX::W32::ID3D11ShaderResourceView *chartIds = nullptr;
   if (a_draw.charts) {
     if (!a_draw.charts->chartIds || !a_draw.charts->chartIds->srv.Get()) {
       return false;
     }
     chartIds = a_draw.charts->chartIds->srv.Get();
-    constants.levels[2] = 1.0f;
-    for (std::size_t chart = 0; chart < kChartSlots; ++chart) {
-      constants.charts[chart / 4][chart % 4] =
-          a_draw.charts->lit[chart] ? 1.0f : 0.0f;
-    }
+    constants.groupChartFilter = ShaderBool::kYes;
+    std::ranges::copy(LitChartRows(a_draw.charts->lit),
+                      constants.groupLitCharts);
   }
 
   pass.Context().UpdateSubresource(pipeline.constants.Get(), 0, nullptr,
@@ -1450,8 +1474,8 @@ bool TextureLab::RenderClusters(
       chartIds,
       (*odds)[0].Get(),
       (*odds)[1].Get()};
-  REX::W32::ID3D11Buffer *cbs[4]{nullptr, nullptr, nullptr,
-                                 pipeline.constants.Get()};
+  const ConstantBindings cbs =
+      BindingsOf({{ConstantSlot::kGroup, pipeline.constants.Get()}});
   DrawFullScreen(pass, a_target, {pipeline.shader.Get(), srvs, cbs});
   return true;
 }
@@ -1579,9 +1603,10 @@ bool TextureLab::DrawReduction(RenderTarget &a_field, ReductionKind a_kind,
   ReductionExtent sourceExtent = field;
   for (std::size_t i = 0; i < levels.size(); ++i) {
     const ReductionConstants constants{
-        {static_cast<std::uint32_t>(a_kind), ReductionComponents(a_type),
-         sourceExtent.width, sourceExtent.height},
-        {i == 0 ? 1u : 0u, 0u, 0u, 0u}};
+        .reduceKind = static_cast<std::uint32_t>(a_kind),
+        .reduceComponents = ReductionComponents(a_type),
+        .reduceExtent = {sourceExtent.width, sourceExtent.height},
+        .reduceReadsField = ShaderBoolOf(i == 0)};
     context.UpdateSubresource(pipeline.constants.Get(), 0, nullptr, &constants,
                               0, 0);
     REX::W32::ID3D11RenderTargetView *rtv = levels[i]->rtv.Get();
@@ -1593,7 +1618,7 @@ bool TextureLab::DrawReduction(RenderTarget &a_field, ReductionKind a_kind,
     context.RSSetViewports(1, &viewport);
     context.PSSetShaderResources(0, 1, &source);
     REX::W32::ID3D11Buffer *buffers[]{pipeline.constants.Get()};
-    context.PSSetConstantBuffers(4, 1, buffers);
+    context.PSSetConstantBuffers(SlotOf(ConstantSlot::kReduce), 1, buffers);
     context.Draw(3, 0);
     UnbindTarget(pass, 1);
     source = levels[i]->srv.Get();

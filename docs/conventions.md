@@ -692,7 +692,7 @@ with these meanings and no other word for the same thing.
 | **texture handle** | An opaque `enum class` over `std::uintptr_t` the snapshot carries for a preview. `TextureHandleOf` (engine) and `TextureOf` (menu) are the only conversions. Lifetime belongs to the snapshot's `shared_ptr`, never to the handle. |
 | **application record** | `studio/ApplicationRecord.h`, the application record types. Nothing under `studio/` includes `engine/`. |
 | **visit** | `recipe/Visit.h`, the published recipe traversal, with the location vocabulary (`ResourceKind`, `ResourceRef`, the `*Owner` records, `PropertyLocation`). A new traversal extends it; it does not grow an anonymous namespace. |
-| **shader constants** | `render/ShaderConstants.h`, the one copy of the GPU constant-buffer structs the shaders and the passes share. |
+| **shader constants** | `planners/ShaderConstants.h`, the one copy of the GPU constant-buffer structs the shaders and the passes share. |
 | **D3D result** | `render/D3DResult.h`: `Failed(hr)` and `DataOf(texture)`, the two D3D result checks. |
 | **mesh cache** | `render/MeshCache.h`, the per-geometry cache of mesh data, facts, analysis, and bakes. `MeshReader` fills it from the engine. |
 | **layers** | `ALLOWS` in `tools/gate.py`, the only copy of the include graph. A new directory, top-level file or widened edge is an edit to that table. |

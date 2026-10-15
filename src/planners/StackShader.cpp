@@ -35,11 +35,10 @@ std::string SourceStatement(const LayerShape &layer, std::size_t k) {
   if (const auto *texture = std::get_if<SourceTexture>(&layer.source))
     return std::format(
         "\t\tfloat2 uv = {};\n\t\ts = SampleStackSource({}, uv, "
-        "stackFlags[{}].w);\n",
+        "stackLayers[{}].source.mip);\n",
         texture->meshSpace
             ? std::string{"rawUv"}
-            : std::format(
-                  "PlaceUv(rawUv, stackOffsetScale[{}], stackFlags[{}])", k, k),
+            : std::format("PlaceUv(rawUv, stackLayers[{}].source)", k),
         k, k);
   return {};
 }
@@ -112,7 +111,7 @@ GenerateStackShader(const StackShape &shape) {
       std::format("float4 {}(VSOut i) : SV_Target\n{{\n", kGeneratedStackEntry);
   text += "\tfloat2 rawUv = i.uv;\n";
   text += shape.base ? "\tfloat4 below = stackBase.SampleLevel(samp, rawUv, "
-                       "stackMisc.z);\n"
+                       "stackBaseMip);\n"
                      : "\tfloat4 below = float4(0, 0, 0, 0);\n";
   for (std::size_t k = 0; k < shape.layers.size(); ++k) {
     const auto &layer = shape.layers[k];
@@ -120,15 +119,17 @@ GenerateStackShader(const StackShape &shape) {
     const bool hasMask = HasMask(layer);
     text += "\t{\n\t\tfloat4 s = 0;\n\t\tfloat4 m = 0;\n";
     text += SourceStatement(layer, k);
-    text += std::format(
-        "\t\tfloat3 value = LayerValue(stackColor[{}], {}, s, {});\n", k,
-        hasSource ? "true" : "false", layer.channel);
+    text +=
+        std::format("\t\tfloat3 value = LayerValue(stackLayers[{}].mix.color, "
+                    "stackLayers[{}].source.normalize, {}, s, {});\n",
+                    k, k, hasSource ? "true" : "false", layer.channel);
     text += MaskStatement(layer, k);
-    text += std::format(
-        "\t\tfloat4 result = ComposeLayer(below, value, stackLayer[{}].w, {}, "
-        "m, {}, {}, {});\n",
-        k, hasMask ? "true" : "false", hasMask ? layer.maskChannel : 0u,
-        layer.blend, layer.channels);
+    text += std::format("\t\tfloat4 result = ComposeLayer(below, value, "
+                        "stackLayers[{}].mix.opacity, {}, "
+                        "m, {}, {}, {});\n",
+                        k, hasMask ? "true" : "false",
+                        hasMask ? layer.maskChannel : 0u, layer.blend,
+                        layer.channels);
     text += k + 1 < shape.layers.size() ? "\t\tbelow = Unorm8(result);\n"
                                         : "\t\tbelow = result;\n";
     text += "\t}\n";
