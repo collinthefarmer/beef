@@ -339,6 +339,50 @@ int main() {
         "a pick reaches the cluster draw as an area pick, not a group pick");
   Check(chartBake && chartBake->nearest,
         "the area pick reads the chart ids from a nearest-sampled bake");
+  Recipe meanRecipe;
+  PickSource meanPick;
+  meanPick.seed = Param{0.5f};
+  meanRecipe.sources = {{"lit", meanPick}};
+  meanRecipe.curves = {
+      Curve{"gain", "x * clamp(0.05 / max(mean, 0.001), 0.5, 4)", ""}};
+  SurfaceOutput meanSurface;
+  Layer meanBase;
+  meanBase.source = Vec3{1.0f, 1.0f, 1.0f};
+  meanBase.mask = Ref{"lit"};
+  Layer meanGain;
+  meanGain.source = Ref{"lit"};
+  meanGain.blend = Blend::kMultiply;
+  meanGain.curve = CurveRef{"@gain"};
+  meanSurface.stack = {meanBase, meanGain};
+  meanRecipe.outputs.push_back(meanSurface);
+  const auto meanGraph = RecipeGraph::Compile(meanRecipe);
+  const std::array meanRequests{RenderStackRequest{
+      &meanGraph, &meanSurface, 1, PlacementId{0}, 0, {SideRef{0}}}};
+  const auto meanPlan = BuildRenderPlan({}, meanRequests, Bindings());
+  const auto reduction =
+      meanPlan
+          ? std::ranges::find_if(meanPlan->steps,
+                                 [](const RenderStep &step) {
+                                   return Is<SubmitReductionStep>(step.kind);
+                                 })
+          : std::vector<RenderStep>::const_iterator{};
+  const auto *submitted = meanPlan && reduction != meanPlan->steps.end()
+                              ? Get<SubmitReductionStep>(reduction->kind)
+                              : nullptr;
+  const auto *measuredRef =
+      submitted ? Get<StepOutputRef>(submitted->value) : nullptr;
+  std::optional<TextureFormat> measuredFormat;
+  if (measuredRef && measuredRef->step < meanPlan->steps.size()) {
+    std::visit(
+        [&](const auto &step) {
+          if constexpr (requires { step.requirements.format; })
+            measuredFormat = step.requirements.format;
+        },
+        meanPlan->steps[measuredRef->step].kind);
+  }
+  Check(measuredFormat && !IsUnorm8(*measuredFormat),
+        "a mean over a texture source measures a float field, which the GPU "
+        "reduction requires");
   const auto plainDraw =
       clusterPlan
           ? std::ranges::find_if(clusterPlan->steps,

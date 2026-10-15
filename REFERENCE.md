@@ -2392,6 +2392,13 @@ them outside as separate passes.
   non-finite result fails instead of using a fallback. A float gutter target prevents
   bake dilation from introducing an extra RGBA8 quantization into the
   measurement path.
+- `DrawReduction` measures a field stored as `R32G32B32A32_FLOAT` or, for a
+  scalar, `R32_FLOAT` (the format `FormatFor` gives a scalar measurement
+  field). Until 2026-10-15 it accepted only the four-channel format, so every
+  scalar reduction failed at runtime ("reduction could not be drawn") and its
+  stack with it; the plan tests could not see it because they never draw.
+  The first pass rebuilds alpha from the used channels (`ReductionSample`),
+  so a one-channel source's implicit alpha of 1 is not read as a flag.
 - A reduction lowers to a `SubmitReductionStep` and a readback input
   (`ReadbackBinding`). The submission copies the one-texel result to one of
   three staging textures and returns a constant, so its version never

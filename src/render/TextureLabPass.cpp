@@ -1514,7 +1514,9 @@ bool TextureLab::DrawReduction(RenderTarget &a_field, ReductionKind a_kind,
   a_field.texture->GetDesc(&desc);
   const ReductionExtent field{desc.width, desc.height};
   const auto extents = ReductionLevels(field);
-  if (desc.format != DXGI_FORMAT_R32G32B32A32_FLOAT || extents.empty())
+  if ((desc.format != DXGI_FORMAT_R32G32B32A32_FLOAT &&
+       desc.format != DXGI_FORMAT_R32_FLOAT) ||
+      extents.empty())
     return false;
   std::vector<ReductionLevel *> levels;
   for (const auto &extent : extents) {
