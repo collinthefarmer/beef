@@ -66,7 +66,13 @@ std::vector<OutputRef> InputsOf(const NodeKind &kind) {
       },
       [&](const ImageOperation &k) { inputs = {k.texture, k.coordinates}; },
       [&](const MaterialOperation &k) { inputs = {k.material, k.coordinates}; },
-      [&](const BakeOperation &k) { inputs = {k.geometry, k.coordinates}; },
+      [&](const BakeOperation &k) {
+        inputs = {k.geometry, k.coordinates};
+        if (k.noise) {
+          inputs.insert(inputs.end(),
+                        {k.noise->cell, k.noise->style, k.noise->stretch});
+        }
+      },
       [&](const DistanceOperation &k) {
         inputs = {k.geometry, k.coordinates, k.origin};
       },

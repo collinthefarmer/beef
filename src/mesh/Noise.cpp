@@ -57,13 +57,83 @@ float FractalNoise(const Vec3 &a_cell, std::uint32_t a_octaves,
   return sum / total;
 }
 
+float CellularEdge(const Vec3 &a_cell, std::uint32_t a_seed) noexcept {
+  if (!std::isfinite(a_cell.x) || !std::isfinite(a_cell.y) ||
+      !std::isfinite(a_cell.z)) {
+    return 0.0f;
+  }
+  const auto x0 = static_cast<std::int32_t>(std::floor(a_cell.x));
+  const auto y0 = static_cast<std::int32_t>(std::floor(a_cell.y));
+  const auto z0 = static_cast<std::int32_t>(std::floor(a_cell.z));
+  float nearest = 8.0f;
+  float second = 8.0f;
+  for (std::int32_t dz = -1; dz <= 1; ++dz) {
+    for (std::int32_t dy = -1; dy <= 1; ++dy) {
+      for (std::int32_t dx = -1; dx <= 1; ++dx) {
+        const std::int32_t x = x0 + dx;
+        const std::int32_t y = y0 + dy;
+        const std::int32_t z = z0 + dz;
+        const float px = static_cast<float>(x) +
+                         LatticeValue(x, y, z, a_seed + kCellularSeedStep);
+        const float py = static_cast<float>(y) +
+                         LatticeValue(x, y, z, a_seed + 2 * kCellularSeedStep);
+        const float pz = static_cast<float>(z) +
+                         LatticeValue(x, y, z, a_seed + 3 * kCellularSeedStep);
+        const float d = std::sqrt((px - a_cell.x) * (px - a_cell.x) +
+                                  (py - a_cell.y) * (py - a_cell.y) +
+                                  (pz - a_cell.z) * (pz - a_cell.z));
+        if (d < nearest) {
+          second = nearest;
+          nearest = d;
+        } else if (d < second) {
+          second = d;
+        }
+      }
+    }
+  }
+  return std::clamp(second - nearest, 0.0f, 1.0f);
+}
+
+float StyledNoise(const Vec3 &a_cell, const NoiseShading &a_shading,
+                  std::uint32_t a_seed) noexcept {
+  switch (a_shading.style) {
+  case NoiseStyle::kRidges:
+    return std::abs(2.0f * FractalNoise(a_cell, a_shading.octaves, a_seed) -
+                    1.0f);
+  case NoiseStyle::kCracks:
+    return CellularNoise(a_cell, a_shading.octaves, a_seed);
+  case NoiseStyle::kBlobs:
+    break;
+  }
+  return FractalNoise(a_cell, a_shading.octaves, a_seed);
+}
+
+float CellularNoise(const Vec3 &a_cell, std::uint32_t a_octaves,
+                    std::uint32_t a_seed) noexcept {
+  const std::uint32_t octaves = std::clamp<std::uint32_t>(a_octaves, 1, 4);
+  float sum = 0.0f;
+  float total = 0.0f;
+  float amplitude = 1.0f;
+  float frequency = 1.0f;
+  for (std::uint32_t octave = 0; octave < octaves; ++octave) {
+    sum += amplitude *
+           CellularEdge(Vec3{a_cell.x * frequency, a_cell.y * frequency,
+                             a_cell.z * frequency},
+                        a_seed + octave * kNoiseOctaveSeedStep);
+    total += amplitude;
+    amplitude *= 0.5f;
+    frequency *= 2.0f;
+  }
+  return sum / total;
+}
+
 Vec3 NoiseFieldsAt(const Vec3 &a_cell, const NoiseShading &a_shading) noexcept {
   std::array<float, kNoiseFields> fields{};
   for (std::size_t k = 0; k < kNoiseFields; ++k) {
     const Vec3 &offset = kNoiseFieldOffsets[k];
-    fields[k] = FractalNoise(
+    fields[k] = StyledNoise(
         Vec3{a_cell.x + offset.x, a_cell.y + offset.y, a_cell.z + offset.z},
-        a_shading.octaves,
+        a_shading,
         a_shading.seed + static_cast<std::uint32_t>(k) * kNoiseFieldSeedStep);
   }
   return Vec3{fields[0], fields[1], fields[2]};

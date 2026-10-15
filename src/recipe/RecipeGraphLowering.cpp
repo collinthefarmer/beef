@@ -382,7 +382,13 @@ struct RecipeGraphLowering {
           return MaterialOperation{Material(), Uv(), k.channel};
         },
         [&](const MeshSource &k) -> NodeKind {
-          return BakeOperation{Geometry(), Uv(), k.bake};
+          BakeOperation operation{Geometry(), Uv(), k.bake, std::nullopt};
+          if (const auto *noise = Get<NoiseBake>(k.bake)) {
+            operation.noise =
+                NoiseOperands{Parameter(noise->cell), Parameter(noise->style),
+                              Parameter(noise->stretch)};
+          }
+          return operation;
         },
         [&](const DistanceSource &k) -> NodeKind {
           return DistanceOperation{Geometry(), Uv(),

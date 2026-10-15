@@ -483,10 +483,16 @@ inline constexpr float kMinNoiseCell = 0.25f;
 inline constexpr float kMaxNoiseCell = 256.0f;
 inline constexpr std::uint32_t kMaxNoiseOctaves = 4;
 inline constexpr std::uint32_t kMaxNoiseSeed = 1u << 24;
+inline constexpr float kMinNoiseStretch = 0.1f;
+inline constexpr float kMaxNoiseStretch = 16.0f;
+enum class NoiseStyle : std::uint32_t { kBlobs, kRidges, kCracks };
+inline constexpr std::size_t kNoiseStyleCount = 3;
 struct NoiseBake {
-  float cell = 7.0f;
+  Param cell = 7.0f;
   std::uint32_t octaves = 2;
   std::uint32_t seed = 0;
+  Param style = 0.0f;
+  Vec3Param stretch = std::array<Param, 3>{1.0f, 1.0f, 1.0f};
   [[nodiscard]] bool operator==(const NoiseBake &) const = default;
 };
 using BakeKind = std::variant<PositionBake, LocalPositionBake, NormalBake,

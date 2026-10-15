@@ -54,7 +54,6 @@ void EncodeBakeOperation(Encoding &out, const BakeOperation &operation) {
       [](const NormalBake &) {}, [](const UvBake &) {}, [](const PartBake &) {},
       [](const ChartBake &) {}, [](const GeometryBake &) {},
       [&](const NoiseBake &n) {
-        out.Number(n.cell);
         out.Number(n.octaves);
         out.Number(n.seed);
       });

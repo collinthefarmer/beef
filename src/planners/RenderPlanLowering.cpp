@@ -533,9 +533,19 @@ struct PlanBuilder {
         geometry && !IsNamedBy(*geometry, GeometryNameOf(request)))
       return Field(Step(ConstantRenderStep{0.0f}, label + " elsewhere"),
                    request.requirements, label);
+    std::variant<BakeKind, RenderValueRef, NoiseBakeInputs> bake =
+        operation.bake;
+    if (const auto *noise = Get<NoiseBake>(operation.bake);
+        noise && operation.noise) {
+      bake = NoiseBakeInputs{
+          BuildOperand(operation.noise->cell, request, depth),
+          BuildOperand(operation.noise->style, request, depth),
+          BuildOperand(operation.noise->stretch, request, depth),
+          noise->octaves, noise->seed};
+    }
     const RenderValueRef buffers = Step(
         BuildBakeBuffersStep{BuildOperand(operation.geometry, request, depth),
-                             operation.bake},
+                             std::move(bake)},
         label + " buffers");
     return Step(BakeMeshStep{buffers, request.requirements,
                              Is<PartBake>(operation.bake) ||

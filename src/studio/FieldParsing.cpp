@@ -1,10 +1,19 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #include "studio/FieldParsing.h"
 
+#include "recipe/Words.h"
+
 #include <algorithm>
 #include <charconv>
 
 namespace BetterEnchantmentEffects::Studio {
+std::optional<Param> ParseNoiseStyle(std::string_view a_text) {
+  if (const auto named = FromName(kNoiseStyles, a_text)) {
+    return Param{static_cast<float>(std::to_underlying(*named))};
+  }
+  return ParseParam(a_text);
+}
+
 bool IsWholeReference(std::string_view a_text) noexcept {
   return a_text.size() > 1 && a_text.starts_with('@') &&
          a_text.find(',') == std::string_view::npos;

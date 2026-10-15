@@ -4,6 +4,7 @@
 #include "recipe/Words.h"
 #include "studio/FieldParsing.h"
 
+#include <cmath>
 #include <format>
 #include <limits>
 #include <utility>
@@ -47,6 +48,16 @@ MaterialRowOf(const MaterialSource &a_material) {
       std::string{MaterialChannelName(a_material.channel)}};
 }
 
+[[nodiscard]] std::string NoiseStyleText(const Param &a_style) {
+  const float *index = Get<float>(a_style);
+  if (index && *index >= 0.0f && *index == std::floor(*index) &&
+      *index < static_cast<float>(kNoiseStyleCount)) {
+    return std::string{NameOf(
+        kNoiseStyles, FromIndex<NoiseStyle>(static_cast<std::size_t>(*index)))};
+  }
+  return ParamText(a_style);
+}
+
 [[nodiscard]] MeshSourceRow BakeRowOf(const MeshSource &a_bake) {
   MeshSourceRow bake;
   bake.bake = std::string{BakeKindName(a_bake.bake)};
@@ -65,6 +76,8 @@ MaterialRowOf(const MaterialSource &a_material) {
     bake.noiseCell = ParamText(noise->cell);
     bake.noiseOctaves = std::to_string(noise->octaves);
     bake.noiseSeed = std::to_string(noise->seed);
+    bake.noiseStyle = NoiseStyleText(noise->style);
+    bake.noiseStretch = Vec3ParamText(noise->stretch);
   }
   return bake;
 }
@@ -232,14 +245,14 @@ MaterialKindOf(const MaterialSourceRow &a_row) {
   }
   if (NoiseBake *noise = Get<NoiseBake>(*bake)) {
     const auto cell = ParseParam(a_row.noiseCell);
-    const auto *cellValue = cell ? Get<float>(*cell) : nullptr;
     const auto octaves = WholeNumber(a_row.noiseOctaves, kMaxNoiseOctaves);
     const auto seed = WholeNumber(a_row.noiseSeed, kMaxNoiseSeed);
-    if (!cellValue || !(*cellValue >= kMinNoiseCell) ||
-        *cellValue > kMaxNoiseCell || !octaves || *octaves == 0 || !seed) {
+    const auto style = ParseNoiseStyle(a_row.noiseStyle);
+    const auto stretch = ParseVec3Param(a_row.noiseStretch);
+    if (!cell || !octaves || *octaves == 0 || !seed || !style || !stretch) {
       return std::nullopt;
     }
-    *noise = NoiseBake{*cellValue, *octaves, *seed};
+    *noise = NoiseBake{*cell, *octaves, *seed, *style, *stretch};
   }
   return SourceKind{MeshSource{*bake}};
 }

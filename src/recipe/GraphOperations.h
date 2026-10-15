@@ -171,9 +171,13 @@ struct MaterialOperation {
   OutputRef material, coordinates;
   MaterialChannel channel;
 };
+struct NoiseOperands {
+  OutputRef cell, style, stretch;
+};
 struct BakeOperation {
   OutputRef geometry, coordinates;
   BakeKind bake;
+  std::optional<NoiseOperands> noise;
 };
 struct DistanceOperation {
   OutputRef geometry, coordinates, origin;

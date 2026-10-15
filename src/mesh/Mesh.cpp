@@ -231,10 +231,11 @@ std::array<float, 3> ValueOf(const MeshVertex &a_vertex,
       [&](const ChartBake &) { return std::array{1.0f, 1.0f, 1.0f}; },
       [&](const GeometryBake &) { return std::array{1.0f, 1.0f, 1.0f}; },
       [&](const NoiseBake &noise) {
-        const float cell = std::max(noise.cell, kMinNoiseCell);
-        return std::array{a_vertex.position.x / cell,
-                          a_vertex.position.y / cell,
-                          a_vertex.position.z / cell};
+        const NoiseSettings settings = LiteralNoiseSettings(noise);
+        return std::array{
+            a_vertex.position.x / (settings.cell * settings.stretch.x),
+            a_vertex.position.y / (settings.cell * settings.stretch.y),
+            a_vertex.position.z / (settings.cell * settings.stretch.z)};
       });
 }
 
@@ -259,6 +260,55 @@ std::string NeedsAnalysis(const BakeKind &a_kind) {
 
 }
 
+NoiseSettings NoiseSettingsOf(float a_cell, float a_style,
+                              const Vec3 &a_stretch, std::uint32_t a_octaves,
+                              std::uint32_t a_seed) noexcept {
+  const auto bounded = [](float a_value, float a_low, float a_high,
+                          float a_fallback) {
+    return std::isfinite(a_value) ? std::clamp(a_value, a_low, a_high)
+                                  : a_fallback;
+  };
+  NoiseSettings out;
+  out.cell = bounded(a_cell, kMinNoiseCell, kMaxNoiseCell, 7.0f);
+  out.stretch =
+      Vec3{bounded(a_stretch.x, kMinNoiseStretch, kMaxNoiseStretch, 1.0f),
+           bounded(a_stretch.y, kMinNoiseStretch, kMaxNoiseStretch, 1.0f),
+           bounded(a_stretch.z, kMinNoiseStretch, kMaxNoiseStretch, 1.0f)};
+  const float style = bounded(std::floor(a_style), 0.0f,
+                              static_cast<float>(kNoiseStyleCount - 1), 0.0f);
+  out.shading.style = FromIndex<NoiseStyle>(static_cast<std::size_t>(style));
+  out.shading.octaves =
+      std::clamp<std::uint32_t>(a_octaves, 1, kMaxNoiseOctaves);
+  out.shading.seed = std::min(a_seed, kMaxNoiseSeed);
+  return out;
+}
+
+NoiseSettings LiteralNoiseSettings(const NoiseBake &a_noise) noexcept {
+  const auto literal = [](const Param &a_param, float a_fallback) {
+    const float *value = Get<float>(a_param);
+    return value ? *value : a_fallback;
+  };
+  Vec3 stretch{1.0f, 1.0f, 1.0f};
+  if (const auto *parts = Get<std::array<Param, 3>>(a_noise.stretch)) {
+    stretch = Vec3{literal((*parts)[0], 1.0f), literal((*parts)[1], 1.0f),
+                   literal((*parts)[2], 1.0f)};
+  }
+  return NoiseSettingsOf(literal(a_noise.cell, 7.0f),
+                         literal(a_noise.style, 0.0f), stretch, a_noise.octaves,
+                         a_noise.seed);
+}
+
+NoiseBake NoiseBakeOf(const NoiseSettings &a_settings) noexcept {
+  NoiseBake out;
+  out.cell = a_settings.cell;
+  out.octaves = a_settings.shading.octaves;
+  out.seed = a_settings.shading.seed;
+  out.style = static_cast<float>(std::to_underlying(a_settings.shading.style));
+  out.stretch = std::array<Param, 3>{a_settings.stretch.x, a_settings.stretch.y,
+                                     a_settings.stretch.z};
+  return out;
+}
+
 BakeBuffers BuildBake(const MeshData &a_mesh, const BakeKind &a_kind) {
   BakeBuffers out;
   out.vector = std::holds_alternative<PositionBake>(a_kind) ||
@@ -267,8 +317,7 @@ BakeBuffers BuildBake(const MeshData &a_mesh, const BakeKind &a_kind) {
                std::holds_alternative<UvBake>(a_kind) ||
                std::holds_alternative<NoiseBake>(a_kind);
   if (const auto *noise = std::get_if<NoiseBake>(&a_kind)) {
-    out.noise =
-        NoiseShading{std::min(noise->octaves, kMaxNoiseOctaves), noise->seed};
+    out.noise = LiteralNoiseSettings(*noise).shading;
   }
   if (std::holds_alternative<LocalPositionBake>(a_kind) &&
       a_mesh.radius <= 0.0f) {
@@ -419,8 +468,11 @@ std::string Definition(const BakeKind &a_kind) {
       [](const ChartBake &) { return std::string{"chart"}; },
       [](const GeometryBake &) { return std::string{"geometry coverage"}; },
       [](const NoiseBake &n) {
-        return std::format("noise cell {} octaves {} seed {}", n.cell,
-                           n.octaves, n.seed);
+        const NoiseSettings s = LiteralNoiseSettings(n);
+        return std::format(
+            "noise {} cell {} stretch {},{},{} octaves {} seed {}",
+            NameOf(kNoiseStyles, s.shading.style), s.cell, s.stretch.x,
+            s.stretch.y, s.stretch.z, s.shading.octaves, s.shading.seed);
       });
 }
 }

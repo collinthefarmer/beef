@@ -45,10 +45,11 @@ std::string DescribeMeshSource(const MeshSource &a_source) {
                            g.geometry);
       },
       [](const NoiseBake &n) {
-        return std::format("mesh noise (three value-noise fields over the "
-                           "bind-pose position, {}-unit cells, {} octave(s), "
-                           "seed {})",
-                           n.cell, n.octaves, n.seed);
+        return std::format("mesh noise (three noise fields over the bind-pose "
+                           "position, style {}, {}-unit cells stretched {}, "
+                           "{} octave(s), seed {})",
+                           ParamText(n.style), ParamText(n.cell),
+                           Vec3ParamText(n.stretch), n.octaves, n.seed);
       });
 }
 
@@ -353,9 +354,23 @@ json MeshToJson(const MeshSource &k) {
         const NoiseBake defaults;
         json o = json::object();
         Writer w{o};
-        w.WriteNumberIf("cell", n.cell, defaults.cell);
+        w.WriteIf("cell", n.cell, defaults.cell);
         w.WriteIf("octaves", n.octaves, defaults.octaves);
         w.WriteIf("seed", n.seed, defaults.seed);
+        if (n.style != defaults.style) {
+          const float *index = Get<float>(n.style);
+          const auto named =
+              index ? std::optional{FromIndex<NoiseStyle>(
+                          static_cast<std::size_t>(std::max(*index, 0.0f)))}
+                    : std::nullopt;
+          if (named && *index == std::floor(*index) &&
+              *index < static_cast<float>(kNoiseStyleCount)) {
+            w.WriteEnum("style", kNoiseStyles, *named);
+          } else {
+            w.Write("style", n.style);
+          }
+        }
+        w.WriteIf("stretch", n.stretch, defaults.stretch);
         return json::object({{"noise", o}});
       });
 }

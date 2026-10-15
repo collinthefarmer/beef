@@ -218,7 +218,14 @@ void VisitSourceParams(SourceKind &a_kind, Visitor &a_visit) {
               });
         }
       },
-      [](MaterialSource &) {}, [](MeshSource &) {}, [](DistanceSource &) {});
+      [&](MeshSource &s) {
+        if (auto *noise = Get<NoiseBake>(s.bake)) {
+          VisitParam(noise->cell, std::nullopt, a_visit, "cell");
+          VisitParam(noise->style, std::nullopt, a_visit, "style");
+          VisitVector(noise->stretch, std::nullopt, a_visit, "stretch");
+        }
+      },
+      [](MaterialSource &) {}, [](DistanceSource &) {});
 }
 
 template <class Visitor>

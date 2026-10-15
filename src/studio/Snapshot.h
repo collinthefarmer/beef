@@ -152,6 +152,8 @@ struct MeshSourceRow {
   std::string noiseCell = "7";
   std::string noiseOctaves = "2";
   std::string noiseSeed = "0";
+  std::string noiseStyle = "blobs";
+  std::string noiseStretch = "[1, 1, 1]";
 };
 
 struct DistanceSourceRow {

@@ -451,14 +451,65 @@ float FractalNoise(float3 p, uint octaves, uint seed)
 	return sum / total;
 }
 
+float CellularEdge(float3 p, uint seed)
+{
+	float3 cell = floor(p);
+	int3 c = int3(cell);
+	float nearest = 8.0;
+	float second = 8.0;
+	[unroll] for (int dz = -1; dz <= 1; ++dz)
+	[unroll] for (int dy = -1; dy <= 1; ++dy)
+	[unroll] for (int dx = -1; dx <= 1; ++dx) {
+		int3 n = c + int3(dx, dy, dz);
+		float3 feature = float3(n) + float3(
+			LatticeValue(n, seed + 1013u),
+			LatticeValue(n, seed + 2026u),
+			LatticeValue(n, seed + 3039u));
+		float d = length(feature - p);
+		if (d < nearest) {
+			second = nearest;
+			nearest = d;
+		} else if (d < second) {
+			second = d;
+		}
+	}
+	return saturate(second - nearest);
+}
+
+float CellularNoise(float3 p, uint octaves, uint seed)
+{
+	float sum = 0;
+	float total = 0;
+	float amplitude = 1;
+	float frequency = 1;
+	[loop] for (uint o = 0; o < 4; ++o) {
+		if (o < octaves) {
+			sum += amplitude * CellularEdge(p * frequency, seed + o * 7919u);
+			total += amplitude;
+		}
+		amplitude *= 0.5;
+		frequency *= 2.0;
+	}
+	return sum / total;
+}
+
+float StyledNoise(float3 p, uint octaves, uint seed, uint style)
+{
+	if (style == 2u)
+		return CellularNoise(p, octaves, seed);
+	float n = FractalNoise(p, octaves, seed);
+	return style == 1u ? abs(2.0 * n - 1.0) : n;
+}
+
 float4 BakeNoisePS(BakeOut i) : SV_Target
 {
 	uint octaves = clamp(bakeNoise.x, 1u, 4u);
 	uint seed = bakeNoise.y;
+	uint style = min(bakeNoise.z, 2u);
 	return float4(
-		FractalNoise(i.value, octaves, seed),
-		FractalNoise(i.value + float3(17.3, 5.9, 31.1), octaves, seed + 101u),
-		FractalNoise(i.value + float3(41.7, 23.3, 11.9), octaves, seed + 202u),
+		StyledNoise(i.value, octaves, seed, style),
+		StyledNoise(i.value + float3(17.3, 5.9, 31.1), octaves, seed + 101u, style),
+		StyledNoise(i.value + float3(41.7, 23.3, 11.9), octaves, seed + 202u, style),
 		1);
 }
 

@@ -612,12 +612,25 @@ std::optional<BakeKind> NoiseBakeFrom(const json &a_v, const Reporter &a_ctx) {
   }
   NoiseBake noise;
   Reader r(a_v, a_ctx);
-  if (auto cell = r.Number("cell")) {
-    noise.cell = *cell;
-  }
+  r.Read("cell", noise.cell);
   bool ok = r.IntRange("octaves", 1, static_cast<int>(kMaxNoiseOctaves),
                        noise.octaves);
   ok &= r.IntRange("seed", 0, static_cast<int>(kMaxNoiseSeed), noise.seed);
+  if (const json *style = r.Child("style");
+      style && style->is_string() &&
+      !style->get<std::string>().starts_with("@")) {
+    const auto named = FromName(kNoiseStyles, style->get<std::string>());
+    if (!named) {
+      a_ctx.Error(std::format("'style' is one of {}, a number or @signal",
+                              Choices(kNoiseStyles)));
+      ok = false;
+    } else {
+      noise.style = static_cast<float>(std::to_underlying(*named));
+    }
+  } else {
+    r.Read("style", noise.style);
+  }
+  r.Read("stretch", noise.stretch);
   r.Finish();
   if (!ok) {
     return std::nullopt;

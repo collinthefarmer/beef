@@ -233,6 +233,23 @@ int main() {
   Check(Near(noiseBake.vertices[1].value[0],
              mesh.partitions[0].vertices[1].position.x / 4.0f),
         "a noise bake carries the raw position in cells");
+  NoiseBake stretched{4.0f, 2, 0, 2.0f, std::array<Param, 3>{2.0f, 1.0f, 1.0f}};
+  const auto stretchBake = BuildBake(mesh, stretched);
+  Check(stretchBake.noise && stretchBake.noise->style == NoiseStyle::kCracks &&
+            Near(stretchBake.vertices[1].value[0],
+                 mesh.partitions[0].vertices[1].position.x / 8.0f),
+        "a stretch lengthens the cells along its axis and the style reaches "
+        "the shader");
+  const NoiseSettings clamped = NoiseSettingsOf(
+      0.0f, 9.0f, Vec3{100.0f, 0.0f, std::numeric_limits<float>::quiet_NaN()},
+      0, 1u << 30);
+  Check(clamped.cell == kMinNoiseCell &&
+            clamped.shading.style == NoiseStyle::kCracks &&
+            clamped.stretch.x == kMaxNoiseStretch &&
+            clamped.stretch.y == kMinNoiseStretch &&
+            clamped.stretch.z == 1.0f && clamped.shading.octaves == 1 &&
+            clamped.shading.seed == kMaxNoiseSeed,
+        "signal-driven noise settings clamp to their ranges");
 
   const auto localBake = BuildBake(mesh, LocalPositionBake{});
   Check(localBake.vector &&

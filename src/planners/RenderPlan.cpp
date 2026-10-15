@@ -121,6 +121,9 @@ std::vector<RenderValueRef> InputsOf(const RenderStepKind &step) {
         std::vector<RenderValueRef> inputs{k.mesh};
         if (const auto *origin = Get<RenderValueRef>(k.operation))
           inputs.push_back(*origin);
+        if (const auto *noise = Get<NoiseBakeInputs>(k.operation))
+          inputs.insert(inputs.end(),
+                        {noise->cell, noise->style, noise->stretch});
         return inputs;
       },
       [](const BakeMeshStep &k) { return std::vector{k.buffers}; },
@@ -339,6 +342,15 @@ ValidateBuildBakeBuffersStep(const RenderPlan &plan,
     return mesh;
   if (const RenderValueRef *origin = Get<RenderValueRef>(step.operation))
     return RequireType(plan, *origin, ValueType::kVec3);
+  if (const auto *noise = Get<NoiseBakeInputs>(step.operation)) {
+    for (const RenderValueRef scalar : {noise->cell, noise->style}) {
+      if (std::expected<void, std::string> checked =
+              RequireType(plan, scalar, ValueType::kScalar);
+          !checked)
+        return checked;
+    }
+    return RequireType(plan, noise->stretch, ValueType::kVec3);
+  }
   return {};
 }
 std::expected<void, std::string> ValidateAreaPick(const RenderPlan &plan,

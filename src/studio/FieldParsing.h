@@ -21,4 +21,5 @@ namespace BetterEnchantmentEffects::Studio {
                                      std::string_view a_name);
 [[nodiscard]] std::optional<Vec3> LiteralColor(std::string_view a_text);
 [[nodiscard]] std::string LiteralColorText(const Vec3 &a_color);
+[[nodiscard]] std::optional<Param> ParseNoiseStyle(std::string_view a_text);
 }

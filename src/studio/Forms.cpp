@@ -1450,12 +1450,17 @@ BindNoiseMember(std::string a_name, SourceKind a_record, M NoiseBake::*a_member,
   };
 }
 
-[[nodiscard]] std::optional<float> NoiseCellOf(const std::string &a_text) {
+[[nodiscard]] std::optional<Param> NoiseCellOf(const std::string &a_text) {
   const auto param = ParseParam(a_text);
   const auto *value = param ? Get<float>(*param) : nullptr;
-  return value && *value >= kMinNoiseCell && *value <= kMaxNoiseCell
-             ? std::optional{*value}
-             : std::nullopt;
+  if (!param || (value && (*value < kMinNoiseCell || *value > kMaxNoiseCell))) {
+    return std::nullopt;
+  }
+  return param;
+}
+
+[[nodiscard]] std::optional<Param> NoiseStyleOf(const std::string &a_text) {
+  return ParseNoiseStyle(a_text);
 }
 
 [[nodiscard]] std::optional<std::uint32_t>
@@ -1469,15 +1474,15 @@ NoiseSeedOf(const std::string &a_text) {
   return WholeNumber(a_text, kMaxNoiseSeed);
 }
 
-void NoiseFields(std::vector<FormField> &a_form, const SourceContext &a_ctx,
-                 const MeshSourceRow &a_source) {
+void NoiseBakeFields(std::vector<FormField> &a_form, const SourceContext &a_ctx,
+                     const MeshSourceRow &a_source) {
   const std::string &name = a_ctx.name;
   const SourceKind &record = a_ctx.record;
   FormField cell = ParamField(
       {.name = "cell",
        .kind = FieldKind::kScalar,
        .text = a_source.noiseCell,
-       .names = {},
+       .names = a_ctx.names.scalar,
        .bind = BindNoiseMember(name, record, &NoiseBake::cell, NoiseCellOf)});
   cell.range = std::pair{kMinNoiseCell, kMaxNoiseCell};
   cell.workingRange = std::pair{1.0f, 32.0f};
@@ -1501,6 +1506,19 @@ void NoiseFields(std::vector<FormField> &a_form, const SourceContext &a_ctx,
        .bind = BindNoiseMember(name, record, &NoiseBake::seed, NoiseSeedOf)});
   seed.integral = true;
   a_form.push_back(std::move(seed));
+  a_form.push_back(
+      TextEntryField({.name = "style",
+                      .kind = FieldKind::kText,
+                      .text = a_source.noiseStyle,
+                      .bind = BindNoiseMember(name, record, &NoiseBake::style,
+                                              NoiseStyleOf)}));
+  a_form.push_back(
+      ParamField({.name = "stretch",
+                  .kind = FieldKind::kVector,
+                  .text = a_source.noiseStretch,
+                  .names = a_ctx.names.color,
+                  .bind = BindNoiseMember(name, record, &NoiseBake::stretch,
+                                          ParseVec3Param)}));
 }
 
 void BakeFields(std::vector<FormField> &a_form, const SourceContext &a_ctx,
@@ -1531,7 +1549,7 @@ void BakeFields(std::vector<FormField> &a_form, const SourceContext &a_ctx,
     geometry.names.assign(a_ctx.geometries.begin(), a_ctx.geometries.end());
     a_form.push_back(std::move(geometry));
   } else if (a_source.bake == "noise") {
-    NoiseFields(a_form, a_ctx, a_source);
+    NoiseBakeFields(a_form, a_ctx, a_source);
   }
 }
 

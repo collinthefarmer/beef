@@ -54,9 +54,15 @@ struct ConstantRenderStep {
   Value value;
   [[nodiscard]] bool operator==(const ConstantRenderStep &) const = default;
 };
+struct NoiseBakeInputs {
+  RenderValueRef cell, style, stretch;
+  std::uint32_t octaves = 2;
+  std::uint32_t seed = 0;
+  [[nodiscard]] bool operator==(const NoiseBakeInputs &) const = default;
+};
 struct BuildBakeBuffersStep {
   RenderValueRef mesh;
-  std::variant<BakeKind, RenderValueRef> operation;
+  std::variant<BakeKind, RenderValueRef, NoiseBakeInputs> operation;
   [[nodiscard]] bool operator==(const BuildBakeBuffersStep &) const = default;
 };
 struct BakeMeshStep {

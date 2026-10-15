@@ -15,11 +15,19 @@ inline constexpr std::array<Vec3, kNoiseFields> kNoiseFieldOffsets{
     Vec3{41.7f, 23.3f, 11.9f}};
 inline constexpr std::uint32_t kNoiseFieldSeedStep = 101;
 inline constexpr std::uint32_t kNoiseOctaveSeedStep = 7919;
+inline constexpr std::uint32_t kCellularSeedStep = 1013;
 
 [[nodiscard]] float ValueNoise(const Vec3 &a_cell,
                                std::uint32_t a_seed) noexcept;
 [[nodiscard]] float FractalNoise(const Vec3 &a_cell, std::uint32_t a_octaves,
                                  std::uint32_t a_seed) noexcept;
+[[nodiscard]] float CellularEdge(const Vec3 &a_cell,
+                                 std::uint32_t a_seed) noexcept;
+[[nodiscard]] float CellularNoise(const Vec3 &a_cell, std::uint32_t a_octaves,
+                                  std::uint32_t a_seed) noexcept;
+[[nodiscard]] float StyledNoise(const Vec3 &a_cell,
+                                const NoiseShading &a_shading,
+                                std::uint32_t a_seed) noexcept;
 [[nodiscard]] Vec3 NoiseFieldsAt(const Vec3 &a_cell,
                                  const NoiseShading &a_shading) noexcept;
 }

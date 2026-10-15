@@ -181,10 +181,31 @@ struct SourceFields {
       report.Error("'geometry' names a geometry or a glob");
     }
     if (const auto *noise = Get<NoiseBake>(s.bake)) {
-      Number(report, noise->cell, "cell");
-      if (!(noise->cell >= kMinNoiseCell) || noise->cell > kMaxNoiseCell) {
-        report.Error(std::format("'cell' is {}..{} units", kMinNoiseCell,
-                                 kMaxNoiseCell));
+      NoiseSettings(*noise);
+    }
+  }
+  void NoiseSettings(const NoiseBake &a_noise) const {
+    Scalar(report, a_noise.cell, "cell");
+    if (const float *cell = Get<float>(a_noise.cell);
+        cell && (!(*cell >= kMinNoiseCell) || *cell > kMaxNoiseCell)) {
+      report.Error(
+          std::format("'cell' is {}..{} units", kMinNoiseCell, kMaxNoiseCell));
+    }
+    Scalar(report, a_noise.style, "style");
+    if (const float *style = Get<float>(a_noise.style);
+        style && (*style < 0.0f || *style != std::floor(*style) ||
+                  *style >= static_cast<float>(kNoiseStyleCount))) {
+      report.Error(std::format("'style' is one of {}", Choices(kNoiseStyles)));
+    }
+    Vector(report, a_noise.stretch, "stretch");
+    if (const auto *parts = Get<std::array<Param, 3>>(a_noise.stretch)) {
+      for (const Param &part : *parts) {
+        if (const float *value = Get<float>(part);
+            value && (*value < kMinNoiseStretch || *value > kMaxNoiseStretch)) {
+          report.Error(std::format("'stretch' components are {}..{}",
+                                   kMinNoiseStretch, kMaxNoiseStretch));
+          break;
+        }
       }
     }
   }

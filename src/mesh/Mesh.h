@@ -113,7 +113,15 @@ struct BakeVertex {
 struct NoiseShading {
   std::uint32_t octaves = 2;
   std::uint32_t seed = 0;
+  NoiseStyle style = NoiseStyle::kBlobs;
   [[nodiscard]] bool operator==(const NoiseShading &) const = default;
+};
+
+struct NoiseSettings {
+  float cell = 7.0f;
+  Vec3 stretch{1.0f, 1.0f, 1.0f};
+  NoiseShading shading;
+  [[nodiscard]] bool operator==(const NoiseSettings &) const = default;
 };
 
 struct BakeBuffers {
@@ -128,6 +136,13 @@ struct BakeBuffers {
 inline constexpr float kPositionFrame = 128.0f;
 [[nodiscard]] BakeBuffers BuildBake(const MeshData &a_mesh,
                                     const BakeKind &a_kind);
+[[nodiscard]] NoiseSettings NoiseSettingsOf(float a_cell, float a_style,
+                                            const Vec3 &a_stretch,
+                                            std::uint32_t a_octaves,
+                                            std::uint32_t a_seed) noexcept;
+[[nodiscard]] NoiseSettings
+LiteralNoiseSettings(const NoiseBake &a_noise) noexcept;
+[[nodiscard]] NoiseBake NoiseBakeOf(const NoiseSettings &a_settings) noexcept;
 
 inline constexpr float kDistanceFrame = 256.0f;
 [[nodiscard]] BakeBuffers BuildDistanceBake(const MeshData &a_mesh,

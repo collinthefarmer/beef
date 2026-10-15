@@ -414,14 +414,24 @@ BakeBuffers BakeBuffersFor(const MeshData &mesh, const MeshAnalysis &analysis,
     return BuildIslandBake(mesh, analysis, IslandSource::kChart);
   return BuildBake(mesh, kind);
 }
-std::expected<Vec3, std::string>
-DistanceOriginOf(const std::variant<BakeKind, RenderValueRef> &operation,
-                 const Arguments &arguments) {
+std::expected<Vec3, std::string> DistanceOriginOf(
+    const std::variant<BakeKind, RenderValueRef, NoiseBakeInputs> &operation,
+    const Arguments &arguments) {
   const auto *reference = Get<RenderValueRef>(operation);
   const auto *origin = reference ? arguments.Find<Value>(*reference) : nullptr;
   if (!origin || !Get<Vec3>(*origin))
     return std::unexpected("distance origin is unavailable");
   return AsVec3(*origin);
+}
+std::expected<NoiseSettings, std::string>
+NoiseSettingsFrom(const NoiseBakeInputs &noise, const Arguments &arguments) {
+  const auto *cell = arguments.Find<Value>(noise.cell);
+  const auto *style = arguments.Find<Value>(noise.style);
+  const auto *stretch = arguments.Find<Value>(noise.stretch);
+  if (!cell || !style || !stretch)
+    return std::unexpected("noise settings are unavailable");
+  return NoiseSettingsOf(AsScalar(*cell), AsScalar(*style), AsVec3(*stretch),
+                         noise.octaves, noise.seed);
 }
 StepResult ExecuteBuildBakeBuffersStep(const BuildBakeBuffersStep &step,
                                        StepExecution &execution) {
@@ -433,7 +443,12 @@ StepResult ExecuteBuildBakeBuffersStep(const BuildBakeBuffersStep &step,
   BakeBuffers buffers;
   if (const auto *kind = Get<BakeKind>(step.operation))
     buffers = BakeBuffersFor(*mesh.mesh, mesh.analysis, *kind);
-  else {
+  else if (const auto *noise = Get<NoiseBakeInputs>(step.operation)) {
+    const auto settings = NoiseSettingsFrom(*noise, execution.arguments);
+    if (!settings)
+      return std::unexpected(settings.error());
+    buffers = BuildBake(*mesh.mesh, NoiseBakeOf(*settings));
+  } else {
     const auto origin = DistanceOriginOf(step.operation, execution.arguments);
     if (!origin)
       return std::unexpected(origin.error());

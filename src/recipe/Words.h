@@ -191,6 +191,11 @@ static_assert(
     std::is_same_v<std::variant_alternative_t<1, TriggerOrigin>,
                    PluginOrigin> &&
     std::is_same_v<std::variant_alternative_t<2, TriggerOrigin>, WhenOrigin>);
+inline constexpr Named<NoiseStyle> kNoiseStyles[]{
+    {NoiseStyle::kBlobs, "blobs"},
+    {NoiseStyle::kRidges, "ridges"},
+    {NoiseStyle::kCracks, "cracks"}};
+static_assert(Complete(kNoiseStyles, kNoiseStyleCount));
 inline constexpr std::string_view kBakeKindWords[]{
     "position",   "localPosition", "normal", "uv",       "partition",
     "boneWeight", "part",          "chart",  "geometry", "noise"};

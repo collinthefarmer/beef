@@ -1101,7 +1101,9 @@ void TextureLab::DrawBakeTriangles(const RenderPass &a_pass,
       D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
   a_pass.Context().VSSetShader(pipeline.vertex.Get(), nullptr, 0);
   if (a_noise && pipeline.noisePixel.Get() && pipeline.noiseConstants.Get()) {
-    const BakeNoiseConstants constants{{a_noise->octaves, a_noise->seed, 0, 0}};
+    const BakeNoiseConstants constants{
+        {a_noise->octaves, a_noise->seed,
+         static_cast<std::uint32_t>(std::to_underlying(a_noise->style)), 0}};
     a_pass.Context().UpdateSubresource(pipeline.noiseConstants.Get(), 0,
                                        nullptr, &constants, 0, 0);
     REX::W32::ID3D11Buffer *noiseBuffer = pipeline.noiseConstants.Get();

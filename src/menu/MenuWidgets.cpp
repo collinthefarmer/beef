@@ -957,7 +957,7 @@ std::string SourceValueText(const SourceKind &a_kind) {
             [](const ChartBake &) { return std::string{"chart"}; },
             [](const GeometryBake &g) { return "geometry " + g.geometry; },
             [](const NoiseBake &n) {
-              return std::format("noise, {}-unit cells", n.cell);
+              return std::format("noise, {}-unit cells", ParamText(n.cell));
             });
       },
       [](const DistanceSource &s) { return s.from; },

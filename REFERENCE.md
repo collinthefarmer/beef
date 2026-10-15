@@ -2094,8 +2094,17 @@ builds the new one beside it, as a resize does.
   is the summed weight of the named bones (sorted, so two orders of one set
   share a key); `part` and `chart` carry island id / 255 in x with
   `kNoIsland` vertices at 1 and need the analysis, not the mesh alone.
-- `{"mesh": {"noise": {cell, octaves, seed}}}` (`NoiseBake`, 2026-10-15) is
-  three fractal value-noise fields (r, g, b) over the bind-pose position.
+- `{"mesh": {"noise": {cell, octaves, seed, style, stretch}}}` (`NoiseBake`,
+  2026-10-15) is three noise fields (r, g, b) over the bind-pose position.
+  Styles (`NoiseStyle`): `blobs` (fractal value noise), `ridges`
+  (`|2·blobs − 1|`, zero along veins) and `cracks` (cellular noise, F2 − F1
+  over the 27 neighbouring cells, zero along cell borders). `stretch`
+  scales the cell per bind-pose axis (x across, y forward, z up). `cell`,
+  `style` and `stretch` are parameters: a signal makes them render-plan
+  operands of the bake step (`NoiseBakeInputs`), resolved and clamped at
+  execution (`NoiseSettingsOf`), so the bake's identity is per instance
+  through its operands; literals stay shared per mesh. `octaves` and `seed`
+  are literals in the step.
   `BuildBake` writes each vertex's raw position divided by `cell` and marks
   the buffers `noise`; the bake pass draws them with `BakeNoisePS`, which
   evaluates the noise per pixel from the interpolated position, so the input

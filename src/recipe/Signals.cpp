@@ -336,6 +336,11 @@ std::vector<Diagnostic> CheckSourceInputs(const RowTypes &a_rows,
             bw && bw->bones.empty()) {
           report.Error("boneWeight needs at least one bone");
         }
+        if (const auto *noise = Get<NoiseBake>(s.bake)) {
+          CheckScalar(a_rows, report, noise->cell, "cell");
+          CheckScalar(a_rows, report, noise->style, "style");
+          CheckVector<3>(a_rows, report, noise->stretch, "stretch");
+        }
       },
       [&](const DistanceSource &s) {
         if (s.from.empty()) {

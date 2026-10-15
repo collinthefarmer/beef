@@ -377,7 +377,8 @@ int main() {
     "bakeBone": { "mesh": { "boneWeight": ["NPC Spine", "NPC Spine1"] } },
     "bakeGeom": { "mesh": { "geometry": "BonemoldCuirass_1" } },
     "uvSrc":    { "mesh": "uv" },
-    "noiseSrc": { "mesh": { "noise": { "cell": 5, "octaves": 3, "seed": 9 } } },
+    "noiseSrc": { "mesh": { "noise": { "cell": 5, "octaves": 3, "seed": 9, "style": "cracks", "stretch": [1, 1, 4] } } },
+    "noiseLive": { "mesh": { "noise": { "cell": "@chartsSig", "style": "@indexSig", "stretch": "@vecConst" } } },
     "noiseBare": { "mesh": "noise" },
     "distNode": { "distance": "NPC Root [Root]" },
     "ripSrc":   { "ripple": { "trigger": "@trig", "speed": 90.0, "width": 8.0, "decay": 1.2, "shape": "disc" } },
@@ -494,7 +495,9 @@ int main() {
     const Source *bareSource = r.FindSource("noiseBare");
     const MeshSource *bareMesh =
         bareSource ? Get<MeshSource>(bareSource->kind) : nullptr;
-    Check(noise && *noise == NoiseBake{5.0f, 3, 9} &&
+    Check(noise &&
+              *noise == NoiseBake{5.0f, 3, 9, 2.0f,
+                                  std::array<Param, 3>{1.0f, 1.0f, 4.0f}} &&
               SourceType(*noiseSource) == ValueType::kVec3 && bareMesh &&
               bareMesh->bake == BakeKind{NoiseBake{}},
           "a noise fact round-trips its cell, octaves and seed");
