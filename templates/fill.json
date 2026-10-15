@@ -1,7 +1,7 @@
 {
   "format": 1,
   "name": "Fill import template",
-  "description": "The baseline import template for an effect shader with a fill texture. A pick lights a few texture charts of one material group on one of the piece's geometries. There the material glows in the shader's colour, turned in hue by the effect, takes a roughness and metallic chosen by the enchantment, and sinks into a relief; a shell copy of the piece covers it, with DarkSwirls holes through which the glow shows. The holes pulse gently in size, grow with the enchantment's magnitude and with distance from the spine, so the effect gathers at the extremities; the glow pulses very slightly and scales with magnitude, as do the relief, how many charts light and the least share of the geometry they cover. Under the shell the picked area also carries a fuzz sheen in the glow's hue, slightly brightened, a halo at grazing angles. The enchantment, its effect and the worn item fix which geometry, material group and charts glow, always at least one chart.",
+  "description": "The baseline import template for an effect shader with a fill texture. A pick lights a few texture charts of one material group on one of the piece's geometries. There the material glows in the shader's colour (or, when that colour is nearly white, its edge colour or a hue seeded by the effect), turned in hue by the effect, takes a roughness and metallic chosen by the enchantment, and sinks into a relief; a shell copy of the piece covers it, with DarkSwirls holes through which the glow shows. The holes pulse gently in size, grow with the enchantment's magnitude and with distance from the spine, so the effect gathers at the extremities; the glow pulses very slightly and scales with magnitude, as do the relief, how many charts light and the least share of the geometry they cover. Under the shell the picked area also carries a fuzz sheen in the glow's hue, slightly brightened, a halo at grazing angles. The enchantment, its effect and the worn item fix which geometry, material group and charts glow, always at least one chart.",
   "keys": [
     {
       "effectShader": "ImportedEffectShader"
@@ -81,12 +81,6 @@
     "glowStrength": {
       "constant": 0.3
     },
-    "glowMagnitudeWeight": {
-      "constant": 9.0
-    },
-    "glowMagnitude": {
-      "expr": "max(@magnitudeFloor, 1 + @glowMagnitudeWeight * (2 * @magnitudeLevel - 1))"
-    },
     "glowPulseDepth": {
       "constant": 0.04
     },
@@ -96,8 +90,11 @@
     "glowPulse": {
       "expr": "1 + @glowPulseDepth * sin(time * 6.2832 / @glowPulsePeriod)"
     },
+    "glowMagnitudeGain": {
+      "constant": 2.0
+    },
     "glowIntensity": {
-      "expr": "@glowStrength * @glowMagnitude * @glowPulse"
+      "expr": "@glowStrength * (1 + @glowMagnitudeGain * @magnitudeLevel) * @glowPulse"
     },
     "glowHueRange": {
       "constant": 0.1
@@ -105,8 +102,32 @@
     "glowHueTurn": {
       "expr": "lerp(-@glowHueRange, @glowHueRange, @effectHash)"
     },
+    "colourChromaMin": {
+      "constant": 0.35
+    },
+    "sourceChroma": {
+      "expr": "max(max(dot(@importHue, [1, 0, 0]), dot(@importHue, [0, 1, 0])), dot(@importHue, [0, 0, 1])) - min(min(dot(@importHue, [1, 0, 0]), dot(@importHue, [0, 1, 0])), dot(@importHue, [0, 0, 1]))"
+    },
+    "edgeChroma": {
+      "expr": "max(max(dot(@shaderEdgeColor, [1, 0, 0]), dot(@shaderEdgeColor, [0, 1, 0])), dot(@shaderEdgeColor, [0, 0, 1])) - min(min(dot(@shaderEdgeColor, [1, 0, 0]), dot(@shaderEdgeColor, [0, 1, 0])), dot(@shaderEdgeColor, [0, 0, 1]))"
+    },
+    "seededHue": {
+      "expr": "hue(@effectHash)"
+    },
+    "fallbackColour": {
+      "expr": "if(@edgeChroma >= @colourChromaMin, @shaderEdgeColor, @seededHue)"
+    },
+    "baseColour": {
+      "expr": "lerp(@fallbackColour, @importHue, saturate(@sourceChroma / @colourChromaMin))"
+    },
+    "baseBrightest": {
+      "expr": "max(max(dot(@baseColour, [1, 0, 0]), dot(@baseColour, [0, 1, 0])), dot(@baseColour, [0, 0, 1]))"
+    },
+    "vividColour": {
+      "expr": "@baseColour / max(@baseBrightest, 0.001)"
+    },
     "glowColor": {
-      "expr": "hueShift(@importHue, @glowHueTurn)"
+      "expr": "hueShift(@vividColour, @glowHueTurn)"
     },
     "swirlSize": {
       "constant": 1.0
