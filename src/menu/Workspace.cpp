@@ -1152,7 +1152,7 @@ struct ResourceGroup {
 
 std::string OutputTitle(const Studio::OutputRow &a_output) {
   if (a_output.target == Target::kLight) {
-    return std::format("Light {}", a_output.index + 1);
+    return "Light settings";
   }
   return std::format("{} {}", SurfaceName(a_output.surface),
                      SlotName(a_output.slot));
@@ -1236,12 +1236,9 @@ void DrawOutputChoices(const Frame &a_frame) {
   }
   Dim("Light");
   ImGui::Indent();
-  for (const Studio::LightRow &light : a_frame.recipe->lights) {
-    ImGui::PushID(static_cast<int>(light.output));
-    PickSubject(std::format("Light {}", light.output + 1).c_str(),
-                Studio::OutputSubject{light.output}, a_frame);
-    ImGui::PopID();
-  }
+  PickSubject("Light settings",
+              Studio::OutputSubject{a_frame.recipe->lights.front().output},
+              a_frame);
   ImGui::Unindent();
 }
 
