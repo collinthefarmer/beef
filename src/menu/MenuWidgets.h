@@ -233,6 +233,7 @@ void Problem(std::string_view a_text);
 void Warn(std::string_view a_text);
 void Ok(std::string_view a_text);
 void Dim(std::string_view a_text);
+void TextOrDash(std::string_view a_text);
 void ProblemBadge(const char *a_label);
 void WarnBadge(const char *a_label);
 void DimBadge(const char *a_label);

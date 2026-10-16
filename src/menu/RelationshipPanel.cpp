@@ -6,6 +6,7 @@
 #include "studio/Relationships.h"
 
 #include <algorithm>
+#include <array>
 #include <format>
 #include <string>
 
@@ -89,6 +90,45 @@ const Studio::SignalRow *FiredSignal(const Frame &a_frame,
   return signal && !signal->event.empty() ? signal : nullptr;
 }
 
+struct RelationBlock {
+  const char *title;
+  const char *id;
+  std::array<const char *, 3> columns;
+  bool (*shows)(const Studio::Relationship &, const Studio::InspectorSubject &);
+  void (*draw)(const Frame &, const Studio::Relationship &, Table &);
+};
+
+constexpr std::size_t kVisibleRows = 3;
+
+bool IsDriverOf(const Studio::Relationship &a_link,
+                const Studio::InspectorSubject &a_subject);
+bool IsUsedBy(const Studio::Relationship &a_link,
+              const Studio::InspectorSubject &a_subject);
+void DrawDriverRow(const Frame &a_frame, const Studio::Relationship &a_link,
+                   Table &a_table);
+void DrawConsumerRow(const Frame &a_frame, const Studio::Relationship &a_link,
+                     Table &a_table);
+std::size_t RowCount(const Frame &a_frame, const RelationBlock &a_block,
+                     const Studio::InspectorSubject &a_subject);
+float BlockHeight(std::size_t a_rows);
+void DrawBlock(const Frame &a_frame, const RelationBlock &a_block,
+               const Studio::InspectorSubject &a_subject);
+void DrawBlockTable(const Frame &a_frame, const RelationBlock &a_block,
+                    const Studio::InspectorSubject &a_subject);
+
+constexpr RelationBlock kRelationBlocks[]{
+    {"Driven by",
+     "driven-by",
+     {"Driver", "Property", "Value"},
+     IsDriverOf,
+     DrawDriverRow},
+    {"Used by",
+     "used-by",
+     {"Consumer", "Property", "Component"},
+     IsUsedBy,
+     DrawConsumerRow},
+};
+
 void Follow(Studio::LinkKind a_kind, const std::string &a_label,
             Studio::InspectorSubject a_subject, const Frame &a_frame,
             std::optional<PropertyLocation> a_property = std::nullopt) {
@@ -96,115 +136,126 @@ void Follow(Studio::LinkKind a_kind, const std::string &a_label,
     NavigateFromInspector(a_frame, std::move(a_subject), std::move(a_property));
   }
 }
-}
 
-void DrawDrivenBy(const Frame &a_frame,
-                  const Studio::InspectorSubject &a_subject) {
-  const auto driven = [&](const auto &a_link) {
-    return SubjectOf(a_link.consumer.owner) == a_subject;
-  };
-  if (std::ranges::none_of(a_frame.recipe->relationships, driven)) {
-    return;
-  }
-  if (!Rule(Studio::RuleSpec{.text = "Driven by",
-                             .collapsible = true,
-                             .leadingSpace = false})
-           .open) {
-    return;
-  }
-  Table table = Table::Begin("driven-by",
-                             {{"Driver", Studio::Width::Fit()},
-                              {"Property", Studio::Width::Fit()},
-                              {"Value", Studio::Width::Fill()}},
-                             Studio::kRelationTable);
-  if (!table.Open()) {
-    return;
-  }
-  std::size_t index = 0;
-  for (const auto &link : a_frame.recipe->relationships) {
-    if (!driven(link)) {
-      continue;
-    }
-    ImGui::PushID(static_cast<int>(index++));
-    table.Cell();
-    Follow(Studio::LinkKindOf(link.driver.kind), link.driver.name,
-           SubjectOf(link.driver), a_frame);
-    table.Cell();
-    Dim(link.consumer.property);
-    table.Cell();
-    if (const Studio::SignalRow *trigger = FiredSignal(a_frame, link.driver)) {
-      FirePopup(*trigger, a_frame);
-      ImGui::SameLine();
-    }
-    DimFitted(ResourceValueText(*a_frame.recipe, link.driver));
-    ImGui::PopID();
-  }
-  table.End();
-}
-
-void DrawUsedBy(const Frame &a_frame,
+bool IsDriverOf(const Studio::Relationship &a_link,
                 const Studio::InspectorSubject &a_subject) {
-  const auto uses = [&](const auto &a_link) {
-    return SubjectOf(a_link.driver) == a_subject;
-  };
-  if (std::ranges::none_of(a_frame.recipe->relationships, uses)) {
-    return;
-  }
-  if (!Rule(Studio::RuleSpec{
-                .text = "Used by", .collapsible = true, .leadingSpace = false})
-           .open) {
-    return;
-  }
-  Table table = Table::Begin("used-by",
-                             {{"Consumer", Studio::Width::Fit()},
-                              {"Property", Studio::Width::Fit()},
-                              {"Component", Studio::Width::Fit()}},
-                             Studio::kRelationTable);
-  if (!table.Open()) {
-    return;
-  }
-  std::size_t index = 0;
-  for (const auto &link : a_frame.recipe->relationships) {
-    if (!uses(link)) {
-      continue;
-    }
-    ImGui::PushID(static_cast<int>(index++));
-    table.Cell();
-    Follow(Studio::LinkKindOf(link.consumer.owner),
-           OwnerName(link.consumer.owner, *a_frame.recipe),
-           SubjectOf(link.consumer.owner), a_frame, link.consumer);
-    table.Cell();
-    Dim(link.consumer.property);
-    table.Cell();
-    const std::string component =
-        link.consumer.component
-            ? std::format("[{}]", *link.consumer.component + 1)
-            : std::string{};
-    Dim(component);
-    ImGui::PopID();
-  }
-  table.End();
+  return SubjectOf(a_link.consumer.owner) == a_subject;
+}
+
+bool IsUsedBy(const Studio::Relationship &a_link,
+              const Studio::InspectorSubject &a_subject) {
+  return SubjectOf(a_link.driver) == a_subject;
+}
 }
 
 bool HasRelationships(const Frame &a_frame) {
+  return RelationshipsHeight(a_frame) > 0.0f;
+}
+
+float RelationshipsHeight(const Frame &a_frame) {
   if (!a_frame.recipe) {
-    return false;
+    return 0.0f;
   }
-  const auto subject = SelectionOf(a_frame).subject;
-  return std::ranges::any_of(a_frame.recipe->relationships,
-                             [&](const auto &a_link) {
-                               return SubjectOf(a_link.consumer.owner) ==
-                                      subject;
-                             }) ||
-         std::ranges::any_of(a_frame.recipe->relationships,
-                             [&](const auto &a_link) {
-                               return SubjectOf(a_link.driver) == subject;
-                             });
+  const Studio::InspectorSubject subject = SelectionOf(a_frame).subject;
+  float height = 0.0f;
+  for (const RelationBlock &block : kRelationBlocks) {
+    const std::size_t rows = RowCount(a_frame, block, subject);
+    if (rows > 0) {
+      height += RuleHeight() + BlockHeight(rows);
+    }
+  }
+  return height;
 }
 
 void DrawRelationships(const Frame &a_frame) {
-  const auto subject = SelectionOf(a_frame).subject;
-  DrawDrivenBy(a_frame, subject);
-  DrawUsedBy(a_frame, subject);
+  if (!a_frame.recipe) {
+    return;
+  }
+  const Studio::InspectorSubject subject = SelectionOf(a_frame).subject;
+  for (const RelationBlock &block : kRelationBlocks) {
+    DrawBlock(a_frame, block, subject);
+  }
+}
+
+namespace {
+std::size_t RowCount(const Frame &a_frame, const RelationBlock &a_block,
+                     const Studio::InspectorSubject &a_subject) {
+  return static_cast<std::size_t>(std::ranges::count_if(
+      a_frame.recipe->relationships, [&](const Studio::Relationship &a_link) {
+        return a_block.shows(a_link, a_subject);
+      }));
+}
+
+float BlockHeight(std::size_t a_rows) {
+  return ImGui::GetFrameHeightWithSpacing() *
+         static_cast<float>((std::min)(a_rows, kVisibleRows) + 1);
+}
+
+void DrawBlock(const Frame &a_frame, const RelationBlock &a_block,
+               const Studio::InspectorSubject &a_subject) {
+  const std::size_t rows = RowCount(a_frame, a_block, a_subject);
+  if (rows == 0) {
+    return;
+  }
+  static_cast<void>(Rule(Studio::RuleSpec{.text = a_block.title}));
+  if (ImGui::BeginChild(a_block.id, ImGui::ImVec2{0.0f, BlockHeight(rows)}, 0,
+                        0)) {
+    DrawBlockTable(a_frame, a_block, a_subject);
+  }
+  ImGui::EndChild();
+}
+
+void DrawBlockTable(const Frame &a_frame, const RelationBlock &a_block,
+                    const Studio::InspectorSubject &a_subject) {
+  Table table = Table::Begin(a_block.id,
+                             {{a_block.columns[0], Studio::Width::Fit()},
+                              {a_block.columns[1], Studio::Width::Fill()},
+                              {a_block.columns[2], Studio::Width::Fill()}},
+                             Studio::kRelationTable);
+  if (!table.Open()) {
+    return;
+  }
+  int index = 0;
+  for (const Studio::Relationship &link : a_frame.recipe->relationships) {
+    if (!a_block.shows(link, a_subject)) {
+      continue;
+    }
+    ImGui::PushID(index++);
+    a_block.draw(a_frame, link, table);
+    ImGui::PopID();
+  }
+  table.End();
+}
+
+void DrawDriverRow(const Frame &a_frame, const Studio::Relationship &a_link,
+                   Table &a_table) {
+  a_table.Cell();
+  ImGui::AlignTextToFramePadding();
+  Follow(Studio::LinkKindOf(a_link.driver.kind), a_link.driver.name,
+         SubjectOf(a_link.driver), a_frame);
+  a_table.Cell();
+  TextOrDash(a_link.consumer.property);
+  a_table.Cell();
+  if (const Studio::SignalRow *trigger = FiredSignal(a_frame, a_link.driver)) {
+    FirePopup(*trigger, a_frame);
+    ImGui::SameLine();
+  }
+  TextOrDash(ResourceValueText(*a_frame.recipe, a_link.driver));
+}
+
+void DrawConsumerRow(const Frame &a_frame, const Studio::Relationship &a_link,
+                     Table &a_table) {
+  a_table.Cell();
+  ImGui::AlignTextToFramePadding();
+  Follow(Studio::LinkKindOf(a_link.consumer.owner),
+         OwnerName(a_link.consumer.owner, *a_frame.recipe),
+         SubjectOf(a_link.consumer.owner), a_frame, a_link.consumer);
+  a_table.Cell();
+  TextOrDash(a_link.consumer.property);
+  a_table.Cell();
+  TextOrDash(a_link.consumer.component
+                 ? std::format("[{}]", *a_link.consumer.component + 1)
+                 : std::string{});
+}
 }
 }

@@ -71,15 +71,6 @@ std::string KeyDescription([[maybe_unused]] const RecipeKey &a_key) {
   return std::string{};
 }
 
-void TextOrDash(std::string_view a_text) {
-  ImGui::AlignTextToFramePadding();
-  if (a_text.empty()) {
-    Dim("—");
-  } else {
-    ImGui::TextUnformatted(a_text.data(), a_text.data() + a_text.size());
-  }
-}
-
 void DrawKeyRows(const Studio::RecipeRow &a_recipe, Studio::Intents &a_out,
                  Table &a_table) {
   for (std::size_t i = 0; i < a_recipe.keys.size(); ++i) {

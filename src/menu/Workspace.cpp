@@ -1066,22 +1066,23 @@ enum class InspectorFooter { kNone, kRelationships, kKeys };
                                    : InspectorFooter::kNone;
 }
 
-[[nodiscard]] float InspectorFooterHeight(InspectorFooter a_footer) {
-  if (a_footer == InspectorFooter::kNone) {
+[[nodiscard]] float InspectorFooterHeight(const Frame &a_frame,
+                                          InspectorFooter a_footer) {
+  switch (a_footer) {
+  case InspectorFooter::kKeys:
+    return RuleHeight() + ImGui::GetFrameHeightWithSpacing() * 4.0f;
+  case InspectorFooter::kRelationships:
+    return RelationshipsHeight(a_frame);
+  case InspectorFooter::kNone:
     return 0.0f;
   }
-  if (a_footer == InspectorFooter::kKeys) {
-    return RuleHeight() + ImGui::GetFrameHeightWithSpacing() * 4.0f;
-  }
-  return (std::min)(ImGui::GetContentRegionAvail().y * 0.35f,
-                    ImGui::GetFrameHeightWithSpacing() * 6.0f);
+  return 0.0f;
 }
 
-bool BeginInspectorBody(InspectorFooter a_footer) {
-  const float footer = InspectorFooterHeight(a_footer);
-  if (a_footer != InspectorFooter::kKeys) {
-    return ImGui::BeginChild(
-        "inspector-body", ImVec2{0.0f, footer > 0.0f ? -footer : 0.0f}, 0, 0);
+bool BeginInspectorBody(const Frame &a_frame, InspectorFooter a_footer) {
+  const float footer = InspectorFooterHeight(a_frame, a_footer);
+  if (a_footer == InspectorFooter::kNone) {
+    return ImGui::BeginChild("inspector-body", ImVec2{0.0f, 0.0f}, 0, 0);
   }
   const ImVec2 avail = ImGui::GetContentRegionAvail();
   const float tallest =
@@ -1094,7 +1095,7 @@ bool BeginInspectorBody(InspectorFooter a_footer) {
 
 void DrawInspectorBody(const Frame &a_frame, const InspectorPass &a_pass,
                        InspectorFooter a_footer) {
-  if (BeginInspectorBody(a_footer)) {
+  if (BeginInspectorBody(a_frame, a_footer)) {
     if (a_pass.before != SelectionOf(a_frame).subject) {
       ImGui::SetScrollY(a_frame.state->navigation.scroll);
     }
@@ -1111,10 +1112,7 @@ void DrawInspectorBody(const Frame &a_frame, const InspectorPass &a_pass,
 }
 
 void DrawInspectorRelationships(const Frame &a_frame, bool a_editPending) {
-  if (ImGui::BeginChild("inspector-relationships", ImVec2{0.0f, 0.0f}, 0, 0)) {
-    Disabled(a_editPending, [&] { DrawRelationships(a_frame); });
-  }
-  ImGui::EndChild();
+  Disabled(a_editPending, [&] { DrawRelationships(a_frame); });
 }
 
 void DrawInspectorKeys(const Frame &a_frame, bool a_editPending) {

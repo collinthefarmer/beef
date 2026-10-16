@@ -1406,6 +1406,15 @@ void Ok(std::string_view a_text) { Colored(kOk, a_text); }
 
 void Dim(std::string_view a_text) { Colored(kDim, a_text); }
 
+void TextOrDash(std::string_view a_text) {
+  ImGui::AlignTextToFramePadding();
+  if (a_text.empty()) {
+    Dim("—");
+    return;
+  }
+  ImGui::TextUnformatted(a_text.data(), a_text.data() + a_text.size());
+}
+
 void ProblemBadge(const char *a_label) {
   BadgeFrame(a_label, kBad, true, ImVec2{0.0f, 0.0f});
 }
