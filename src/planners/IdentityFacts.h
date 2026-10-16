@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace BetterEnchantmentEffects {
 struct MatchedShaderFacts {
@@ -16,6 +17,12 @@ struct MatchedShaderFacts {
   std::string fill;
   std::string membrane;
   [[nodiscard]] bool operator==(const MatchedShaderFacts &) const = default;
+};
+
+struct NodeBindFact {
+  std::string name;
+  Vec3 position;
+  [[nodiscard]] bool operator==(const NodeBindFact &) const = default;
 };
 
 struct IdentityFacts {
@@ -30,6 +37,7 @@ struct IdentityFacts {
   std::string geometryName;
   std::uint32_t geometryIndex = 0;
   std::uint32_t geometryCount = 1;
+  std::vector<NodeBindFact> nodes;
   [[nodiscard]] bool operator==(const IdentityFacts &) const = default;
 };
 

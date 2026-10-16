@@ -32,6 +32,23 @@ std::optional<float> ItemFactOf(const GeometryInputs &inputs, ItemField field) {
   return static_cast<float>((*mesh)->analysis.charts);
 }
 
+std::vector<NodeBindFact> NodeBindFactsOf(const RecipeGraph &graph,
+                                          const GeometryInputs &inputs) {
+  std::vector<NodeBindFact> facts;
+  for (const RecipeNode &node : graph.Nodes()) {
+    const auto *external = Get<ExternalInput>(node.kind);
+    const auto *position =
+        external ? Get<NodePositionInput>(external->source) : nullptr;
+    if (!position ||
+        std::ranges::contains(facts, position->name, &NodeBindFact::name))
+      continue;
+    if (const std::optional<Vec3> bind = NodeBindPosition(
+            inputs.geometry.get(), inputs.root.get(), position->name))
+      facts.push_back({position->name, *bind});
+  }
+  return facts;
+}
+
 IdentityFacts IdentityFactsOf(const RecipeGraph &graph,
                               const GeometryInputs &inputs) {
   return {InstanceIdentity(reinterpret_cast<std::uintptr_t>(&graph),
@@ -45,7 +62,8 @@ IdentityFacts IdentityFactsOf(const RecipeGraph &graph,
           inputs.shader,
           inputs.name,
           inputs.geometryIndex,
-          inputs.geometryCount};
+          inputs.geometryCount,
+          NodeBindFactsOf(graph, inputs)};
 }
 
 ValueBindings TextureValueBindings(const RecipeGraph &graph,

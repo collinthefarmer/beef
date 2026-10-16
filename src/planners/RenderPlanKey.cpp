@@ -22,10 +22,6 @@ StaticInputIdentities(const RecipeGraph &a_graph,
                       const ValueBindings &a_bindings) {
   std::vector<std::string> identities;
   for (const ExternalSource &source : StaticExternalSources(a_graph)) {
-    if (const auto *position = Get<NodePositionInput>(source)) {
-      identities.push_back("node:" + position->name);
-      continue;
-    }
     if (!a_bindings.external) {
       return std::nullopt;
     }

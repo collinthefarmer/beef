@@ -1301,15 +1301,19 @@ different item with the same mesh reused another item's static outputs.
 A plan has no key (`uncacheable` in the trace) when a mesh has no hash yet
 (the identity would be a pointer nothing holds) or when a static input's
 identity fails. Such a plan builds in a job and is handed to its actor
-(`uncacheable_job`). A node position keys by its name (`node:<name>`), not by
-its value identity (geometry and root pointers): `MarkContentKeyedSteps` gives
-no content key to a step that depends on a node position (`NodePositionSteps`,
-via `DependsOnNodePosition` on the graph), so no output that depends on an
-actor's skeleton is shared between actors, and a reused plan carries no
-content key from the storing actor's skeleton. Each actor's instance reads its
-own node positions (`NumberValueOf`). Before 2026-10-15 a graph that read a
-node position made its plan uncacheable, so the fill template (its `fromCore`
-distance source) lowered on the main thread on every equip. `SameStructure` compares only
+(`uncacheable_job`). A node position's identity is its name and its bind position rounded to
+0.01 units (`node:<length>:<name>@x,y,z`, `NodeIdentity`; `@missing` when no
+skin carries the node). `IdentityFactsOf` reads each node the graph names with
+`NodeBindPosition`, the same call the instance reads its input with, so the
+identity and the value agree. Actors whose skeletons give one bind position
+share the plan and every output that depends on it; another bind position
+gives another plan key and other content keys. A bake's runtime cache key
+still carries the exact position bits (`CacheKeyFor`). History: before
+2026-10-15 a graph that read a node position made its plan uncacheable (its
+identity held geometry and root pointers), so the fill template lowered on
+the main thread on every equip; from `8ceffb3` to the bind-position key,
+node-position steps had no content key, which cost about 10 MB per mannequin
+in run 20261015T222111-1 (922 MB against 802 MB). `SameStructure` compares only
 whether a step has a content key, because legitimate keys differ between
 actors. An entry holds the `RecipeGraph`s its key names (`GraphsNamedBy`), so
 a graph cannot be freed or its address reused while the plan lives. No rebuild
@@ -1319,7 +1323,7 @@ evicts the least recently used. A load keeps it because every key part
 survives a load: a texture identity is its address, generation and file name,
 so an address reused for another texture only matches with the same name, which
 is the same file; a mesh identity is its content hash; and a node position
-keys by its name. On 2026-10-12 the five loads of trace
+keys by its name and rounded bind position. On 2026-10-12 the five loads of trace
 `...-1791770642202300.jsonl` gave 16 misses, all right after a load. `VerifyRenderPlanCache`, or a run
 file's `verifyRenderPlans`, builds every reused plan again and logs, traces
 and replaces one that differs. On 2026-10-03 (runs 20261003T175431 and

@@ -223,27 +223,52 @@ Recipe DistanceBesideBake() {
   return recipe;
 }
 
-void NodePositionStepsAreNeverShared() {
+RenderBindingResolver SkeletonBindings(std::string a_bind) {
+  return [bind = std::move(a_bind)](const TextureValue &value, GeometryId) {
+    return ValueBindings{
+        [bind](const ExternalSource &a_source)
+            -> std::expected<std::string, std::string> {
+          return Is<NodePositionInput>(a_source) ? bind : std::string{"static"};
+        },
+        [instance = value.instance](NodeId node) {
+          return std::to_string(instance) + ":" + std::to_string(node);
+        }};
+  };
+}
+
+std::vector<std::string> PositionedKeys(const RenderPlan &a_plan) {
+  const std::vector<bool> positioned = NodePositionSteps(a_plan);
+  std::vector<std::string> keys;
+  for (std::size_t i = 0; i < a_plan.steps.size(); ++i)
+    if (positioned[i] && a_plan.steps[i].contentKey)
+      keys.push_back(*a_plan.steps[i].contentKey);
+  return keys;
+}
+
+void NodePositionStepsShareByBindPosition() {
   const Recipe recipe = DistanceBesideBake();
   const RecipeGraph graph = RecipeGraph::Compile(recipe);
-  const std::optional<RenderPlan> plan = SingleStackPlan(recipe, graph);
-  if (!plan)
+  const auto *surface = Get<SurfaceOutput>(recipe.outputs.front());
+  const std::array requests{
+      RenderStackRequest{&graph, surface, 1, PlacementId{0}, 0, {SideRef{0}}}};
+  const auto plan = [&](std::string a_bind) {
+    return BuildRenderPlan({}, requests, SkeletonBindings(std::move(a_bind)));
+  };
+  const auto first = plan("node:4:Head@0.00,0.00,120.00");
+  const auto same = plan("node:4:Head@0.00,0.00,120.00");
+  const auto taller = plan("node:4:Head@0.00,0.00,128.00");
+  Check(first && same && taller, "the distance recipe lowers per skeleton");
+  if (!first || !same || !taller)
     return;
-  const std::vector<bool> positioned = NodePositionSteps(*plan);
-  bool anyPositioned = false;
-  bool positionedUnkeyed = true;
-  bool otherKeyed = false;
-  for (std::size_t i = 0; i < plan->steps.size(); ++i) {
-    const RenderStep &step = plan->steps[i];
-    anyPositioned = anyPositioned || positioned[i];
-    positionedUnkeyed =
-        positionedUnkeyed && (!positioned[i] || !step.contentKey);
-    otherKeyed = otherKeyed || (!positioned[i] && step.contentKey);
-  }
-  Check(anyPositioned, "the distance bake depends on a node position");
-  Check(positionedUnkeyed,
-        "a step that depends on a node position carries no content key");
-  Check(otherKeyed, "the position bake beside it keeps its content key");
+  Check(!PositionedKeys(*first).empty(),
+        "a step that depends on a node position carries a content key");
+  Check(PositionedKeys(*first) == PositionedKeys(*same),
+        "equal bind positions share the distance outputs");
+  std::vector<std::string> common;
+  const auto a = PositionedKeys(*first), b = PositionedKeys(*taller);
+  std::ranges::set_intersection(a, b, std::back_inserter(common));
+  Check(common.empty(),
+        "a different bind position never shares a distance output");
 }
 
 Recipe ImageOverBake() {
@@ -689,7 +714,7 @@ int main() {
   }
   GeometryBakesLowerByName();
   ContentKeysMarkOnlyStaticTextureSteps(recipes);
-  NodePositionStepsAreNeverShared();
+  NodePositionStepsShareByBindPosition();
   TextureReadsAreSampledDirectly(recipes);
   ImagesReadOnlyBySamplingAreDirect();
   SlotChainsMergeIntoOnePass();

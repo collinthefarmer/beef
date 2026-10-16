@@ -963,15 +963,14 @@ RenderPlan MergeSlotChains(RenderPlan plan,
 
 RenderPlan MarkContentKeyedSteps(RenderPlan plan) {
   const std::vector<bool> changing = ChangingSteps(plan);
-  const std::vector<bool> positioned = NodePositionSteps(plan);
   for (std::size_t i = 0; i < plan.steps.size() && i < changing.size(); ++i) {
     RenderStep &step = plan.steps[i];
     const std::optional<TextureRequirements> requirements =
         RequirementsOf(step.kind);
     const bool texture =
         OutputType(step.kind) == RenderValueType{RenderResourceType::kTexture};
-    const bool shareable = !changing[i] && !positioned[i] && texture &&
-                           requirements && step.producedKey &&
+    const bool shareable = !changing[i] && texture && requirements &&
+                           step.producedKey &&
                            !Is<CompositeStackStep>(step.kind);
     step.contentKey =
         shareable ? ContentKeyOf(*step.producedKey, step.kind, *requirements)

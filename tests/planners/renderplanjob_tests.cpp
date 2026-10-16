@@ -37,6 +37,7 @@ IdentityFacts FactsOf(std::string a_mesh) {
   facts.root = 12;
   facts.itemHash = 0.5f;
   facts.shader = {"0x1~A.esp", "Effects/Fill.dds", "Effects/Membrane.dds"};
+  facts.nodes = {{"Head", Vec3{1.0f, -2.5f, 120.004f}}};
   return facts;
 }
 
@@ -107,8 +108,11 @@ void IdentityBindingsReadOnlyTheFacts() {
             std::string{"material:a"},
         "the material input names the material");
   Check(bindings.external(ExternalSource{NodePositionInput{"Head"}}) ==
-            std::string{"11:12:Head"},
-        "a node position names the geometry, the root and the node");
+            std::string{"node:4:Head@1.00,-2.50,120.00"},
+        "a node position names the node and its rounded bind position");
+  Check(bindings.external(ExternalSource{NodePositionInput{"Hand"}}) ==
+            std::string{"node:4:Hand@missing"},
+        "a node no skin carries names itself as missing");
   Check(bindings.external(ExternalSource{TextureInput{"A/B.dds"}}) ==
             std::string{"a/b.dds"},
         "a texture input names its cache key");

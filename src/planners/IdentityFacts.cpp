@@ -4,6 +4,7 @@
 #include "Core.h"
 #include "planners/TextureIdentity.h"
 
+#include <algorithm>
 #include <bit>
 #include <format>
 #include <utility>
@@ -34,6 +35,18 @@ std::string EventOriginIdentity(const EventInput &a_event,
       });
 }
 
+std::string NodeIdentity(const IdentityFacts &a_facts,
+                         std::string_view a_name) {
+  const auto found =
+      std::ranges::find(a_facts.nodes, a_name, &NodeBindFact::name);
+  if (found == a_facts.nodes.end()) {
+    return std::format("node:{}:{}@missing", a_name.size(), a_name);
+  }
+  const Vec3 &at = found->position;
+  return std::format("node:{}:{}@{:.2f},{:.2f},{:.2f}", a_name.size(), a_name,
+                     at.x, at.y, at.z);
+}
+
 Identity ExternalSourceIdentity(const ExternalSource &a_source,
                                 const IdentityFacts &a_facts) {
   const std::string &instance = a_facts.instance;
@@ -44,8 +57,7 @@ Identity ExternalSourceIdentity(const ExternalSource &a_source,
         return ImageCacheKey(a_input.path);
       },
       [&](const NodePositionInput &a_input) -> Identity {
-        return std::format("{}:{}:{}", a_facts.geometry, a_facts.root,
-                           a_input.name);
+        return NodeIdentity(a_facts, a_input.name);
       },
       [&](const ItemInput &a_input) -> Identity {
         switch (a_input.field) {

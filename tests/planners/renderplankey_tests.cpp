@@ -218,11 +218,15 @@ void UncacheableRequestsGiveNoKey() {
       return Is<NodePositionInput>(a_source) ? a_root : std::string{"static"};
     };
   };
-  first.bindings.external = skeleton("0x10:0x20:NPC Head [Head]");
-  second.bindings.external = skeleton("0x30:0x40:NPC Head [Head]");
+  first.bindings.external = skeleton("node:4:Head@0.00,0.00,120.00");
+  second.bindings.external = skeleton("node:4:Head@0.00,0.00,120.00");
   const auto firstKey = KeyOf(first);
   Check(firstKey && firstKey == KeyOf(second),
-        "a node position keys by its name, not by the actor's skeleton");
+        "two skeletons with one bind position share a plan key");
+  StackKeyRequest taller = Request(distance, "item:1");
+  taller.bindings.external = skeleton("node:4:Head@0.00,0.00,128.00");
+  Check(firstKey && KeyOf(taller) && firstKey != KeyOf(taller),
+        "a different bind position gives a different plan key");
   const RecipeGraph graph = RecipeGraph::Compile(MaterialRecipe());
   StackKeyRequest unhashed = Request(graph, "item:1");
   unhashed.meshHash.reset();
