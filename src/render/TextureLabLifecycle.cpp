@@ -306,6 +306,10 @@ void TextureLab::InvalidatePreviews() noexcept {
 }
 
 void TextureLab::ExpireIdleTargets(std::uint64_t a_nowMs) {
+  sweepClockMs_ = a_nowMs;
+  std::erase_if(filterSweeps_, [&](const auto &a_entry) {
+    return a_nowMs - a_entry.second.lastUseMs > kFilterSweepIdleMs;
+  });
   if (targets_) {
     targets_->ExpireIdle(a_nowMs);
   }
@@ -325,6 +329,7 @@ void TextureLab::CollectPreviewTargets(HolderSet &a_set) {
 
 void TextureLab::Clear() {
   ClearPreviews();
+  filterSweeps_.clear();
   targets_->ClearUnused();
   luminance_.clear();
   channelMeans_.clear();

@@ -277,7 +277,8 @@ public:
   RenderFieldsToTargets(std::span<const LayerPass> a_layers,
                         const BoundLayerFields &a_fields, TextureSize a_size);
   bool RenderProgram(RenderTarget &a_target, const FieldProgram &a_program,
-                     const ProgramBindings &a_bindings);
+                     const ProgramBindings &a_bindings,
+                     CompiledShader &a_shader);
   [[nodiscard]] bool ProgramPassAvailable() const noexcept;
 
   bool BakeMesh(RenderTarget &a_target, const BakeBuffers &a_bake);
@@ -539,6 +540,8 @@ private:
   [[nodiscard]] ProgramConstants &FreshProgramConstants();
   [[nodiscard]] REX::W32::ID3D11PixelShader *
   GeneratedFor(const ProgramCode &a_code);
+  [[nodiscard]] std::shared_ptr<RenderTarget>
+  FilterSweepFor(TextureSize a_size);
   [[nodiscard]] const ProgramConstants *
   StackProgramConstants(std::span<REX::W32::ID3D11ShaderResourceView *> a_srvs,
                         const BoundLayerFields &a_fields,
@@ -560,6 +563,13 @@ private:
   std::unordered_set<RE::NiSourceTexture *> sampleWarned_;
   std::map<std::pair<std::uint32_t, std::uint32_t>, ReductionLevel>
       reductionLevels_;
+  struct FilterSweep {
+    std::shared_ptr<RenderTarget> target;
+    std::uint64_t lastUseMs = 0;
+  };
+  inline static constexpr std::uint64_t kFilterSweepIdleMs = 1000;
+  std::map<std::uint32_t, FilterSweep> filterSweeps_;
+  std::uint64_t sweepClockMs_ = 0;
 
   std::array<TimingQueries, GpuTiming::kFrameSlots> timingQueries_;
   GpuTiming::Ring timingRing_;

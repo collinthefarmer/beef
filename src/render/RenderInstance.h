@@ -42,6 +42,7 @@ struct RenderScratch {
   TextureLab::MaterialReadback material;
   GroupingRequest grouping;
   std::optional<LayerFieldPack> layerFieldPack;
+  CompiledShader programShader;
 };
 class RenderInstance {
 public:

@@ -989,13 +989,18 @@ TextureLab::RenderFieldsToTargets(std::span<const LayerPass> a_layers,
 
 bool TextureLab::RenderProgram(RenderTarget &a_target,
                                const FieldProgram &a_program,
-                               const ProgramBindings &a_bindings) {
+                               const ProgramBindings &a_bindings,
+                               CompiledShader &a_shader) {
   if (a_bindings.inputCount != a_program.Inputs().size() ||
       a_bindings.textureCount != a_program.TextureCount() ||
       a_bindings.lookupCount != a_program.FunctionLookups().size())
     return false;
   const ProgramCode code = CodeOf(a_program);
-  return DrawProgramPass(a_target, code, a_bindings, GeneratedFor(code));
+  if (!generatedShaders_)
+    return DrawProgramPass(a_target, code, a_bindings, nullptr);
+  if (!a_shader.Get())
+    a_shader = GeneratedFor(code);
+  return DrawProgramPass(a_target, code, a_bindings, a_shader.Get());
 }
 
 REX::W32::ID3D11PixelShader *
@@ -1274,6 +1279,17 @@ FilterConstants FilterConstantsOf(const TextureLab::FilterPass &a_pass,
 }
 }
 
+std::shared_ptr<TextureLab::RenderTarget>
+TextureLab::FilterSweepFor(TextureSize a_size) {
+  FilterSweep &sweep = filterSweeps_[a_size.Pixels()];
+  sweep.lastUseMs = sweepClockMs_;
+  if (sweep.target && sweep.target->size == a_size.Pixels())
+    return sweep.target;
+  sweep.target = Acquire(a_size, "filter pass", TextureFormat::kRgba16Float,
+                         TargetMips::kNone);
+  return sweep.target;
+}
+
 bool TextureLab::RenderFilter(RenderTarget &a_target,
                               const FilterPass &a_pass) {
   auto *renderer = RE::BSGraphics::Renderer::GetSingleton();
@@ -1284,8 +1300,7 @@ bool TextureLab::RenderFilter(RenderTarget &a_target,
     return false;
   }
   const std::shared_ptr<RenderTarget> across =
-      Acquire(TextureSize{a_target.size}, "filter pass",
-              TextureFormat::kRgba16Float, TargetMips::kNone);
+      FilterSweepFor(TextureSize{a_target.size});
   if (!across || !across->rtv.Get() || across->size != a_target.size) {
     return false;
   }

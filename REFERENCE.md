@@ -594,9 +594,15 @@ Mode formulas:
   interpreter. Numbers and value inputs stay in the program constants
   (`programCode`, `programInputs`), so programs that differ only in numbers
   share one shader.
-- `render/GeneratedShaders` owns the compiled shaders; `TextureLab` asks
-  it for one per draw. `ProgramFor` keys compiled programs by their
-  generated text.
+- `render/GeneratedShaders` owns the compiled shaders. `ProgramFor` keys
+  compiled programs by their generated text, so asking for one formats the
+  whole program as HLSL. A program step therefore asks once: its scratch
+  keeps the compiled shader (`RenderScratch::programShader`, a counted
+  reference that survives the cache evicting the entry), and later draws use
+  it without generating text. Until the compile finishes the step asks again
+  each draw and draws with the interpreter. Before 2026-10-16 every draw
+  generated the text; in run 20261016T041250-1 a mask draw cost 25 us of CPU
+  against 11 us for a whole stack.
   The first draw of a text starts a compile on a detached thread and draws
   with the interpreter; later draws use the shader once the compile has
   finished, or the interpreter if it failed. The thread holds its own
@@ -688,7 +694,13 @@ it and a zero vector falls back to radial. A pooled target keeps its last
 content, so a pass with no firings paints it black.
 
 Filter pass (`PSFilter`, cbuffer `FilterParams` b8, `FilterConstants`): two
-draws, horizontal then vertical. The horizontal draw writes the blurred
+draws, horizontal then vertical. The horizontal draw's target is the lab's
+sweep for that size (`FilterSweepFor`): one RGBA16F target per side, kept
+while filters run and released by `ExpireIdleTargets` after 1 s without a
+filter. Draws run one at a time on the render thread, so one sweep per size
+serves every filter. Before 2026-10-16 each filter run acquired and
+recycled a pool target, which wrote two trace events per run (128,090
+acquisitions in run 20261016T041250-1). The horizontal draw writes the blurred
 value, the minimum and the maximum of each texel's row to an RGBA16F target
 (`kRgba16Float`). The vertical draw reads that target and writes the
 operation's result. `filterWeights` holds the Gaussian weight of each offset

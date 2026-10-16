@@ -246,7 +246,8 @@ StepResult DrawProgram(const FieldProgram &program,
     return std::unexpected(bindings.error());
   const auto target = AcquireStepTarget(
       execution, requirements, TextureLab::MipsFor(requirements.mipPolicy));
-  if (!target || !execution.lab.RenderProgram(*target, program, *bindings))
+  if (!target || !execution.lab.RenderProgram(*target, program, *bindings,
+                                              execution.scratch.programShader))
     return std::unexpected("program draw failed");
   return RenderValue{View(target, program.ResultType())};
 }
