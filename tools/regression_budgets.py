@@ -79,7 +79,7 @@ def fraction(fields: dict, name: str) -> float:
 
 LEVELS = ('full', 'half', 'quarter', 'eighth')
 PHASES = ('signals', 'render', 'render_inputs', 'render_slots', 'render_shell',
-          'render_evaluate', 'cull', 'lights',
+          'render_evaluate', 'render_execute', 'cull', 'lights',
           'previews', 'sweep', 'snapshot', 'sync')
 
 

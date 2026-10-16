@@ -15,6 +15,10 @@
 
 namespace BetterEnchantmentEffects::Trace {
 namespace {
+constexpr std::size_t kMaxEventFields = 128;
+}
+
+namespace {
 std::atomic<std::uint64_t> nextID{1};
 std::atomic<std::uint64_t> session{0};
 thread_local std::optional<Context> context;
@@ -121,7 +125,7 @@ void Recorder::Record(Event a_event, Context a_context,
     std::size_t count = 0;
     bool truncated = false;
     for (const Field &field : a_fields) {
-      if (++count > 64) {
+      if (++count > kMaxEventFields) {
         truncated = true;
         break;
       }

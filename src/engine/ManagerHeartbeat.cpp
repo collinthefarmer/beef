@@ -51,12 +51,14 @@ void EmitGpuTimings() {
          {"max_us", std::to_string(total.maxNanoseconds / 1000)}});
 }
 
-void EmitStepKinds(const Metrics::StepKindCounts &a_counts) {
+void EmitStepKinds(const Metrics::StepKindCounts &a_counts,
+                   const Metrics::StepKindCounts &a_micros) {
   std::vector<Trace::Field> fields{{"action", "step_kinds"}};
   for (std::size_t kind = 0; kind < kRenderStepKindCount; ++kind) {
     if (a_counts[kind] > 0) {
-      fields.push_back(
-          {std::string{StepKindNameAt(kind)}, std::to_string(a_counts[kind])});
+      const std::string name{StepKindNameAt(kind)};
+      fields.push_back({name, std::to_string(a_counts[kind])});
+      fields.push_back({name + "_us", std::to_string(a_micros[kind])});
     }
   }
   if (fields.size() > 1) {
@@ -193,7 +195,7 @@ void EmitMetricsHeartbeat(const Metrics::Snapshot &a_measured,
   const TextureLab::TargetHoldings held =
       lab ? lab->HeldTargets() : TextureLab::TargetHoldings{};
   const Compositor *compositor = Compositor::GetSingleton();
-  EmitStepKinds(a_measured.stepExecutionsByKind);
+  EmitStepKinds(a_measured.stepExecutionsByKind, a_measured.stepMicrosByKind);
   std::vector<Trace::Field> heartbeat{
       {"action", "heartbeat"},
       {"syncs", std::to_string(a_measured.syncs)},

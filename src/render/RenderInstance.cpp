@@ -1573,7 +1573,12 @@ ExecuteTimed(const RenderStep &step,
   std::optional<TextureLab::TimedSpan> span;
   if (lab && lab->Timing())
     span.emplace(*lab, StepSpanKey(step, sizes));
-  return ExecuteStep(step, inputs, scratch, sizes);
+  const Metrics::Stopwatch watch;
+  StepResult result = ExecuteStep(step, inputs, scratch, sizes);
+  const std::uint64_t micros = watch.Micros();
+  Metrics::CountStepTime(step.kind.index(), micros);
+  Metrics::CountSection(Metrics::Section::kRenderExecute, micros);
+  return result;
 }
 std::vector<Value>
 NumericOperandsOf(std::span<const ResolvedRenderInput<RenderValue>> inputs) {

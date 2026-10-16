@@ -22,6 +22,7 @@ enum class Section {
   kRenderSlots,
   kRenderShell,
   kRenderEvaluate,
+  kRenderExecute,
   kCull,
   kCount
 };
@@ -40,6 +41,7 @@ inline constexpr Named<Section> kSections[]{
     {Section::kRenderSlots, "render_slots"},
     {Section::kRenderShell, "render_shell"},
     {Section::kRenderEvaluate, "render_evaluate"},
+    {Section::kRenderExecute, "render_execute"},
     {Section::kCull, "cull"}};
 static_assert(Complete(kSections, kSectionCount));
 inline constexpr std::array<std::uint64_t, 3> kPluginSpikeMicros{8000, 16000,
@@ -78,6 +80,7 @@ struct Snapshot {
   std::uint64_t renderEvaluations = 0;
   std::uint64_t stepExecutions = 0;
   StepKindCounts stepExecutionsByKind{};
+  StepKindCounts stepMicrosByKind{};
   std::uint64_t stepCacheHits = 0;
   std::uint64_t stepReleases = 0;
   std::uint64_t stepRestores = 0;
@@ -113,6 +116,7 @@ void CountFrameAt(std::int64_t a_nowMicros) noexcept;
 void ForgetFrameInterval() noexcept;
 void CountRenderEvaluation() noexcept;
 void CountStepExecution(std::size_t a_kind) noexcept;
+void CountStepTime(std::size_t a_kind, std::uint64_t a_micros) noexcept;
 void CountStepCacheHit() noexcept;
 void CountStepReleases(std::uint64_t a_count) noexcept;
 void CountStepRestores(std::uint64_t a_count) noexcept;
