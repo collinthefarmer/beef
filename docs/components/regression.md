@@ -39,7 +39,7 @@ role or an item into an array index, clamped to the array's size.
 | `Item` | `kFixture`, `kPlainCuirass` | The demo cuirass and the control's plain cuirass. |
 | `Body` | `kMannequin`, `kIdleNpc`, `kFighter` | What a crowd actor is. Mannequins hold still, idle NPCs animate but never ready a weapon, and fighters fight. |
 | `Spot` | `kRing`, `kBehind`, `kAhead` | Where a crowd stands: in a ring 300 units around the player; in a row 1200 units behind the player, outside the view; or in four rows at 150, 400, 800 and 1600 units in front of the player, so the crowd covers every resolution level. |
-| `Dress` | `kDemoCuirass`, `kVanillaCuirasses`, `kEnchantedCuirasses` | What a crowd wears: the demo cuirass; six vanilla cuirasses tagged to match Arcane Circuit for the life of the crowd; or the same six cuirasses under vanilla constant-effect enchantments with an effect whose shader a loaded recipe is keyed on, so the imported recipes match (`EnchantmentsWithShaderRecipes`, which checks every effect as the importer does, up to six distinct shaders). |
+| `Dress` | `kDemoCuirass`, `kVanillaCuirasses`, `kEnchantedCuirasses`, `kOneEnchantedCuirass` | What a crowd wears: the demo cuirass; six vanilla cuirasses tagged to match Arcane Circuit for the life of the crowd; the same six cuirasses under vanilla constant-effect enchantments with an effect whose shader a loaded recipe is keyed on, so the imported recipes match (`EnchantmentsWithShaderRecipes`, which checks every effect as the importer does, up to six distinct shaders); or only the first of them, so every member wears one item under one enchantment and one imported recipe (`soak-enchanted-one`, the case for outputs and plans shared across actors). |
 | `Camera` | `kFirstPerson`, `kThirdPerson` | The camera a `SetCamera` or `HoldCamera` step asks for. The observation holds an optional `Camera`: no value means any other camera state, such as the idle camera or a transition. The observation's `idleOrbit` is true while the idle camera (state 1) runs. |
 | `QueuedWork` | `kNothing`, `kApply`, `kEdit` | The work a `LoadDuring` step queues in the same frame as the load. |
 | `Session` | `kGesture`, `kPaint` | The studio session a `BeginSession` step opens. |
@@ -107,7 +107,7 @@ The catalog holds `lifecycle`, `equip-cycle`, `unequip-one`, `camera`, `cull`, `
 `unload`, `load-idle`, `load-apply`, `load-edit`, `load-gesture`,
 `load-paint`, `studio-save`, `studio-reload`, `soak`, `soak-hour`,
 `soak-stack`, `soak-ward`, `soak-frost`, `soak-large`, `soak-waves`,
-`soak-churn`, `soak-vanilla`, `soak-enchanted`, `soak-distance`, `soak-idle`, `soak-fight`, `soak-orbit` and `soak-fight-orbit`.
+`soak-churn`, `soak-vanilla`, `soak-enchanted`, `soak-enchanted-one`, `soak-distance`, `soak-idle`, `soak-fight`, `soak-orbit` and `soak-fight-orbit`.
 
 ### The observation (`Observation.h`)
 

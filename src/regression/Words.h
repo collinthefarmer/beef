@@ -24,9 +24,10 @@ inline constexpr std::size_t kBodyCount = 3;
 enum class Dress : std::uint8_t {
   kDemoCuirass,
   kVanillaCuirasses,
-  kEnchantedCuirasses
+  kEnchantedCuirasses,
+  kOneEnchantedCuirass
 };
-inline constexpr std::size_t kDressCount = 3;
+inline constexpr std::size_t kDressCount = 4;
 
 enum class Spot : std::uint8_t { kRing, kBehind, kAhead };
 inline constexpr std::size_t kSpotCount = 3;
@@ -75,7 +76,8 @@ static_assert(Complete(kBodies, kBodyCount));
 inline constexpr Named<Dress> kDresses[]{
     {Dress::kDemoCuirass, "demo-cuirass"},
     {Dress::kVanillaCuirasses, "vanilla-cuirasses"},
-    {Dress::kEnchantedCuirasses, "enchanted-cuirasses"}};
+    {Dress::kEnchantedCuirasses, "enchanted-cuirasses"},
+    {Dress::kOneEnchantedCuirass, "one-enchanted-cuirass"}};
 static_assert(Complete(kDresses, kDressCount));
 
 inline constexpr Named<Spot> kSpots[]{

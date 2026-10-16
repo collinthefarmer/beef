@@ -363,7 +363,7 @@ std::vector<RE::EnchantmentItem *> EnchantmentsWithShaderRecipes() {
   return chosen;
 }
 
-void TagEnchantedCuirasses(RunWorld &a_world) {
+void TagEnchantedCuirasses(RunWorld &a_world, std::size_t a_cuirasses) {
   const std::vector<RE::EnchantmentItem *> enchantments =
       EnchantmentsWithShaderRecipes();
   if (enchantments.empty()) {
@@ -371,7 +371,8 @@ void TagEnchantedCuirasses(RunWorld &a_world) {
                  "that a loaded recipe covers");
     return;
   }
-  for (std::size_t i = 0; i < kVanillaCuirasses.size(); ++i) {
+  const std::size_t count = std::min(a_cuirasses, kVanillaCuirasses.size());
+  for (std::size_t i = 0; i < count; ++i) {
     RE::TESObjectARMO *armor =
         SkyrimForm<RE::TESObjectARMO>(kVanillaCuirasses[i]);
     RE::EnchantmentItem *enchantment = enchantments[i % enchantments.size()];
@@ -397,10 +398,18 @@ void DressCuirasses(RunWorld &a_world, Regression::Dress a_dress) {
     return;
   }
   UntagVanillaCuirasses(a_world);
-  if (a_dress == Regression::Dress::kVanillaCuirasses) {
+  switch (a_dress) {
+  case Regression::Dress::kVanillaCuirasses:
     TagVanillaCuirasses(a_world);
-  } else {
-    TagEnchantedCuirasses(a_world);
+    break;
+  case Regression::Dress::kEnchantedCuirasses:
+    TagEnchantedCuirasses(a_world, kVanillaCuirasses.size());
+    break;
+  case Regression::Dress::kOneEnchantedCuirass:
+    TagEnchantedCuirasses(a_world, 1);
+    break;
+  case Regression::Dress::kDemoCuirass:
+    break;
   }
   a_world.taggedFor = a_dress;
 }

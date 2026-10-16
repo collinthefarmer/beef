@@ -932,6 +932,15 @@ void SoakVariantsHoldAndCleanUp() {
               std::vector<std::string>{"show-all-recipes"},
               "soak-enchanted shows every recipe");
 
+  World oneItem;
+  Drive(oneItem, RunOf("soak-enchanted-one"), 20000);
+  test::Equal(FirstFailure(oneItem), std::string{},
+              "soak-enchanted-one passes");
+  test::Equal(
+      ActionsStartingWith(oneItem, "spawn-crowd"),
+      std::vector<std::string>{"spawn-crowd 12 in one-enchanted-cuirass"},
+      "soak-enchanted-one dresses every mannequin in one enchanted cuirass");
+
   World stuck;
   stuck.faults.crowdKeepsEffect = true;
   Drive(stuck, RunOf("soak-churn"), 20000);
