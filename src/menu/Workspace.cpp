@@ -1208,27 +1208,41 @@ void DrawRecipeCrumb(const Frame &a_frame) {
     return;
   }
   PickSubject("Settings and keys", Studio::RecipeSubject{}, a_frame);
-  PickSubject("Shell settings", Studio::ShellSubject{}, a_frame);
   ImGui::EndCombo();
 }
 
-void DrawOutputChoices(const Frame &a_frame) {
-  for (const Surface surface : {Surface::kMaterial, Surface::kShell}) {
-    for (const Studio::OutputRow &output : a_frame.recipe->outputs) {
-      if (IsSurfaceOutput(output, surface)) {
-        ImGui::PushID(static_cast<int>(output.index));
-        PickSubject(OutputTitle(output).c_str(),
-                    Studio::OutputSubject{output.index}, a_frame);
-        ImGui::PopID();
-      }
+void DrawSurfaceChoices(const Frame &a_frame, Surface a_surface) {
+  Dim(SurfaceName(a_surface));
+  ImGui::Indent();
+  if (a_surface == Surface::kShell) {
+    PickSubject("Shell settings", Studio::ShellSubject{}, a_frame);
+  }
+  for (const Studio::OutputRow &output : a_frame.recipe->outputs) {
+    if (IsSurfaceOutput(output, a_surface)) {
+      ImGui::PushID(static_cast<int>(output.index));
+      PickSubject(std::string{SlotName(output.slot)}.c_str(),
+                  Studio::OutputSubject{output.index}, a_frame);
+      ImGui::PopID();
     }
   }
+  ImGui::Unindent();
+}
+
+void DrawOutputChoices(const Frame &a_frame) {
+  DrawSurfaceChoices(a_frame, Surface::kMaterial);
+  DrawSurfaceChoices(a_frame, Surface::kShell);
+  if (a_frame.recipe->lights.empty()) {
+    return;
+  }
+  Dim("Light");
+  ImGui::Indent();
   for (const Studio::LightRow &light : a_frame.recipe->lights) {
     ImGui::PushID(static_cast<int>(light.output));
     PickSubject(std::format("Light {}", light.output + 1).c_str(),
                 Studio::OutputSubject{light.output}, a_frame);
     ImGui::PopID();
   }
+  ImGui::Unindent();
 }
 
 void DrawOutputAdds(const Frame &a_frame) {
