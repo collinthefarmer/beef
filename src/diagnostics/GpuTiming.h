@@ -11,7 +11,7 @@
 #include <vector>
 
 namespace BetterEnchantmentEffects::GpuTiming {
-inline constexpr std::size_t kFrameSlots = 4;
+inline constexpr std::size_t kFrameSlots = 8;
 inline constexpr std::size_t kMaxSpans = 2048;
 
 enum class SlotState { kFree, kRecording, kPending };

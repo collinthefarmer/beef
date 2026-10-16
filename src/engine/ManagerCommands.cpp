@@ -103,7 +103,9 @@ Manager::Execute(const std::vector<Orchestration::Command> &a_commands,
            Match(
                command,
                [&](const Orchestration::TickActor &a_command) {
-                 return RunTickActor(a_command, a_context);
+                 return RunTickActor(
+                     a_command, TickFrame{a_context.settings, a_context.view,
+                                          a_context.nowMS, a_context.resuming});
                },
                [&](const Orchestration::StartResize &a_command) {
                  return RunStartResize(a_command);

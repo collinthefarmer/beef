@@ -10,6 +10,7 @@
 #include "engine/LogOnce.h"
 #include "engine/RegressionRun.h"
 #include "engine/SectionTimer.h"
+#include "orchestration/DrawSpread.h"
 #include "orchestration/Tick.h"
 #include "planners/RenderBudget.h"
 #include "planners/RenderMemory.h"
@@ -91,13 +92,6 @@ void WriteSlot(SlotTarget &a_target, const SlotWrite &a_write) {
     break;
   }
 }
-
-struct TickFrame {
-  const Settings &settings;
-  const Studio::View &view;
-  std::uint32_t nowMS;
-  bool resuming;
-};
 
 struct SlotRenderView {
   const Studio::View &view;
@@ -583,6 +577,7 @@ std::optional<HeartbeatReading> Manager::RunFrame(TextureLab &a_lab,
   editor_.TickGesture();
   Metrics::CountFrame();
   ++renderFrame_;
+  ++framesSinceTick_;
   if (a_nowMS - lastSweepMS_ >= 1000) {
     lastSweepMS_ = a_nowMS;
     carriedInstances_.Expire(a_nowMS);
@@ -590,6 +585,7 @@ std::optional<HeartbeatReading> Manager::RunFrame(TextureLab &a_lab,
   }
   const Settings settings = GetSettings();
   if (a_nowMS - lastTickMS_ < settings.TickIntervalMS()) {
+    DrawSpreadTimed(a_lab, settings, a_nowMS, spreadFramesLeft_);
     return std::nullopt;
   }
   lastTickMS_ = a_nowMS;
@@ -609,7 +605,8 @@ std::optional<HeartbeatReading> Manager::RunFrame(TextureLab &a_lab,
 std::optional<HeartbeatReading> Manager::RunTick(TextureLab &a_lab,
                                                  std::uint32_t a_nowMS,
                                                  const Settings &a_settings) {
-  tickNowMS_ = a_nowMS;
+  DrawSpreadTimed(a_lab, a_settings, a_nowMS, 0);
+  drawNowMS_ = a_nowMS;
   std::vector<Orchestration::PlanJobDone> jobs = DrainPlanJobs();
   {
     const SectionTimer sweepTimer{Metrics::Section::kSweep};
@@ -648,7 +645,11 @@ std::optional<HeartbeatReading> Manager::RunTick(TextureLab &a_lab,
   }
   a_lab.SetGeneratedShaders(a_settings.generatedShaders);
   a_lab.BeginTimedTick(a_settings.gpuTiming);
-  results_ = Execute(out.commands, context);
+  Orchestration::SpreadCommands split =
+      Orchestration::SpreadTickActors(std::move(out.commands));
+  results_ = Execute(split.now, context);
+  QueueSpreadDraws(std::move(split.spread), context.resuming);
+  DrawSpreadShare(a_settings, a_nowMS, spreadFramesLeft_);
   a_lab.EndTimedTick();
   return heartbeat;
 }
@@ -708,7 +709,7 @@ void Manager::RenderGeometry(LiveActor &a_state, LiveGeometry &a_bound,
   const TextureLab::PassBatch batch{*lab};
   const Studio::View &view = editor_.CurrentView();
   if (a_bound.inputs.render &&
-      a_bound.inputs.render->BeginFrame(renderFrame_, tickNowMS_)) {
+      a_bound.inputs.render->BeginFrame(renderFrame_, drawNowMS_)) {
     const SectionTimer inputsTimer{Metrics::Section::kRenderInputs};
     UpdateRenderInputs(a_state, a_bound, warningHistory_);
   }
@@ -758,8 +759,50 @@ void Manager::UpdateLights(LiveActor &a_state,
   }
 }
 
+void Manager::QueueSpreadDraws(std::vector<Orchestration::TickActor> a_draws,
+                               bool a_resuming) {
+  for (Orchestration::TickActor &draw : a_draws) {
+    spreadDraws_.push_back({std::move(draw), a_resuming});
+  }
+  spreadFramesLeft_ = framesSinceTick_;
+  framesSinceTick_ = 0;
+}
+
+void Manager::DrawSpreadTimed(TextureLab &a_lab, const Settings &a_settings,
+                              std::uint32_t a_nowMS,
+                              std::uint64_t a_framesLeft) {
+  if (spreadDraws_.empty()) {
+    return;
+  }
+  a_lab.BeginTimedTick(a_settings.gpuTiming);
+  DrawSpreadShare(a_settings, a_nowMS, a_framesLeft);
+  a_lab.EndTimedTick();
+}
+
+void Manager::DrawSpreadShare(const Settings &a_settings, std::uint32_t a_nowMS,
+                              std::uint64_t a_framesLeft) {
+  if (spreadDraws_.empty()) {
+    return;
+  }
+  const std::size_t due =
+      Orchestration::DrawsDue(spreadDraws_.size(), a_framesLeft);
+  spreadFramesLeft_ = a_framesLeft > 0 ? a_framesLeft - 1 : 0;
+  DrawSpread(due, a_settings, a_nowMS);
+}
+
+void Manager::DrawSpread(std::size_t a_count, const Settings &a_settings,
+                         std::uint32_t a_nowMS) {
+  const Studio::View &view = editor_.CurrentView();
+  for (std::size_t i = 0; i < a_count && !spreadDraws_.empty(); ++i) {
+    const SpreadDraw draw = std::move(spreadDraws_.front());
+    spreadDraws_.pop_front();
+    (void)RunTickActor(draw.command,
+                       TickFrame{a_settings, view, a_nowMS, draw.resuming});
+  }
+}
+
 CommandResults Manager::RunTickActor(const Orchestration::TickActor &a_command,
-                                     const TickContext &a_context) {
+                                     const TickFrame &a_frame) {
   const RE::FormID id = Orchestration::FormOf(a_command.actor);
   const auto found = live_.find(id);
   if (found == live_.end()) {
@@ -769,16 +812,15 @@ CommandResults Manager::RunTickActor(const Orchestration::TickActor &a_command,
   if (!state.actor.get()) {
     return {};
   }
+  drawNowMS_ = a_frame.nowMS;
   {
     const SectionTimer signalsTimer{Metrics::Section::kSignals};
-    const TickFrame frame{a_context.settings, a_context.view, a_context.nowMS,
-                          a_context.resuming};
     for (LiveInstance &instance : state.instances) {
       if (!instance.recipe || !instance.graph || !instance.signals ||
           !instance.environment) {
         continue;
       }
-      const InstanceTiming timing = InstanceTimeFor(instance, frame);
+      const InstanceTiming timing = InstanceTimeFor(instance, a_frame);
       TickInstance(instance, timing.time, timing.delta);
       instance.lastTime = timing.time;
     }

@@ -366,6 +366,11 @@ std::string StepSpanKey(const RenderStep &step, const PlanSizes &sizes) {
   const auto requirements = RequirementsOf(step.kind);
   if (!requirements)
     return std::string{StepKindName(step.kind)};
+  if (const auto *stack = Get<CompositeStackStep>(step.kind))
+    return std::format("{} {} {} {}", StepKindName(step.kind),
+                       SlotName(stack->slot),
+                       SizeOf(sizes, requirements->side).Pixels(),
+                       FormatName(requirements->format));
   return std::format("{} {} {}", StepKindName(step.kind),
                      SizeOf(sizes, requirements->side).Pixels(),
                      FormatName(requirements->format));

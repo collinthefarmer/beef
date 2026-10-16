@@ -40,6 +40,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <deque>
 #include <expected>
 #include <functional>
 #include <map>
@@ -96,6 +97,18 @@ struct TickContext {
   std::uint32_t nowMS = 0;
   bool resuming = false;
   const GatheredFacts &inputs;
+};
+
+struct TickFrame {
+  const Settings &settings;
+  const Studio::View &view;
+  std::uint32_t nowMS;
+  bool resuming;
+};
+
+struct SpreadDraw {
+  Orchestration::TickActor command;
+  bool resuming = false;
 };
 
 struct RegressionWearer {
@@ -195,7 +208,7 @@ private:
   std::uint64_t renderFrame_ = 0;
   std::optional<Studio::MaterialDumpResult> materialDump_;
   std::string build_;
-  std::uint32_t tickNowMS_ = 0;
+  std::uint32_t drawNowMS_ = 0;
   friend class RecipeEditor;
 
   Manager();
@@ -230,7 +243,15 @@ private:
           const TickContext &a_context);
   [[nodiscard]] CommandResults
   RunTickActor(const Orchestration::TickActor &a_command,
-               const TickContext &a_context);
+               const TickFrame &a_frame);
+  void QueueSpreadDraws(std::vector<Orchestration::TickActor> a_draws,
+                        bool a_resuming);
+  void DrawSpreadTimed(TextureLab &a_lab, const Settings &a_settings,
+                       std::uint32_t a_nowMS, std::uint64_t a_framesLeft);
+  void DrawSpreadShare(const Settings &a_settings, std::uint32_t a_nowMS,
+                       std::uint64_t a_framesLeft);
+  void DrawSpread(std::size_t a_count, const Settings &a_settings,
+                  std::uint32_t a_nowMS);
   [[nodiscard]] CommandResults
   RunStartResize(const Orchestration::StartResize &a_command);
   [[nodiscard]] CommandResults
@@ -382,6 +403,9 @@ private:
   std::optional<IdleCameraHold> menuIdleHold_;
   std::uint64_t regressionPaintSession_ = 0;
   std::uint32_t lastTickMS_ = 0;
+  std::deque<SpreadDraw> spreadDraws_;
+  std::uint64_t framesSinceTick_ = 0;
+  std::uint64_t spreadFramesLeft_ = 0;
   std::uint32_t lastMetricsMS_ = 0;
   std::uint32_t holdingStep_ = 0;
   VideoMemoryProbe videoMemory_;

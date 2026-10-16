@@ -2498,7 +2498,16 @@ by one 8-bit step; the stage 3 equality proof does not cover direct samples.
 
 Field inlining (`InlineFields`) inlines an animated producer into its one
 consumer, as stage 3 decided, and a static producer into any consumer that is
-itself static. `AnimatedSteps` decides "static": it is `ChangingSteps` with a
+itself static. An animated producer whose every live reader is an animated
+program of the same shape also inlines into each reader
+(`IsReadOnlyByAnimatedPrograms`). Each reader then recomputes it, but each
+reader runs every tick anyway, and a pass costs more than the arithmetic: in
+run `20261016T145353-1` an `EvaluateProgram` cost 12.7 µs of GPU at 512 and
+2.4 µs at 256, about 1.5–2 µs of which is per pass. The fill template's
+`holeLevel` and `holeField` are read by `holes` and `holeDepth`; inlining them
+leaves one animated program pass (`glowArea`) per wearer instead of three. A
+producer that a layer or a non-program step also reads stays one target,
+because inlining into the programs would not remove its pass. `AnimatedSteps` decides "static": it is `ChangingSteps` with a
 stack's base and visibility treated as stable, because the engine imports them
 on every render even when nothing changed. A static field stays a cached target
 under an animated stack: inlining it there recomputes it every tick. Measured on
@@ -2638,9 +2647,12 @@ them outside as separate passes.
   around the tick (`RenderTick`), each step execution (`<kind> <side>
   <format>`) and each `GenerateMips` (`GenerateMips <side>`). Spans nest: a
   step's time includes its mip generation, and `RenderTick` includes every
-  step. The engine-free `diagnostics/GpuTiming` ring holds four ticks; a tick
-  with no free slot goes untimed, a disjoint tick is discarded, and at most 256
-  spans are recorded per tick. `CollectTimings` polls with
+  step. A stack's span also names its slot (`CompositeStack emissive 512
+  rgba8`), so stacks of equal size on different slots are timed apart. The
+  engine times each frame's share of spread draws as its own tick. The
+  engine-free `diagnostics/GpuTiming` ring holds eight ticks; a tick with no
+  free slot goes untimed, a disjoint tick is discarded, and at most 2048 spans
+  (`kMaxSpans`) are recorded per tick. `CollectTimings` polls with
   `D3D11_ASYNC_GETDATA_DONOTFLUSH` once per frame and never waits, because a
   wait would add the GPU backlog to the frame being measured.
 - `InlineFields` (`planners/FieldInlining`) inlines a producer program into
@@ -4499,6 +4511,20 @@ once per tick. "The engine runs the core" below says how.
   installed. It drains the plan jobs, sweeps, gathers the facts
   (`GatherFacts`), checks agreement, calls `Orchestration::Tick`, emits the
   core's trace records and log lines, and executes the commands in order.
+- `SpreadTickActors` (`orchestration/DrawSpread`) takes each `TickActor` that
+  draws stacks and whose actor no other command of the tick names, and the
+  engine queues it (`spreadDraws_`). The tick frame and the frames after it
+  each draw `DrawsDue(waiting, framesLeft)` of the queue, where the frame count
+  is the number of frames in the last tick interval. A new tick first draws
+  whatever is left, so the core's next facts see every draw done. Each
+  queued actor ticks its signals at its own draw frame. Without the spread,
+  every actor drew on one frame in four at `AnimationFPS=30` and 118 fps: in
+  run `20261016T145353-1` that frame carried about 3.4 ms of plugin GPU time
+  and the longest frame interval was 14.5–16.2 ms against a 9.2 ms mean. A
+  queued `TickActor` returns no results, so drawing it later changes nothing
+  the core reads before its next tick. An actor that another command names
+  (an install, a retire, a resize, an unpublished draw) draws in the tick,
+  after that command, as before.
 - Only `world_ = std::move(out.world)` writes `world_`. No executor reads it.
   The heartbeat, the census and the regression facts read it after the tick.
 - An executor branches only on whether an engine call succeeded. It looks up

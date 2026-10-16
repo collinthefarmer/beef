@@ -285,10 +285,34 @@ int main() {
     for (std::size_t s = 0; s < inlined.plan.steps.size(); ++s)
       if (inlined.plan.steps[s].displayName == "mask m1" && consumers[s] >= 1)
         ++liveM1;
-    Check(liveM1 == 1,
-          "an animated producer read by two programs stays materialized once");
+    Check(liveM1 == 0,
+          "an animated producer read only by animated programs inlines into "
+          "each");
     test::Equal(CompareStacks(*plan, inlined.plan, random, 20), std::size_t{0},
                 "the shared producer plan stays equivalent");
+  }
+
+  Recipe direct = shared;
+  Layer directRead;
+  directRead.source = Ref{"m1"};
+  SurfaceOutput threeLayers = twoLayers;
+  threeLayers.stack.push_back(directRead);
+  direct.outputs = {threeLayers};
+  const auto directGraph = RecipeGraph::Compile(direct);
+  const std::array directRequests{RenderStackRequest{
+      &directGraph, &threeLayers, 1, PlacementId{0}, 0, {SideRef{0}}}};
+  if (const auto plan =
+          LowerRenderPlan({}, directRequests, PerGeometryMesh())) {
+    const auto inlined = InlineFields(*plan);
+    const auto consumers = LiveConsumers(inlined.plan);
+    std::size_t liveM1 = 0;
+    for (std::size_t s = 0; s < inlined.plan.steps.size(); ++s)
+      if (inlined.plan.steps[s].displayName == "mask m1" && consumers[s] >= 1)
+        ++liveM1;
+    Check(liveM1 == 1, "an animated producer that a layer also reads stays "
+                       "one target that every reader samples");
+    test::Equal(CompareStacks(*plan, inlined.plan, random, 20), std::size_t{0},
+                "the directly read producer plan stays equivalent");
   }
 
   Recipe twice;

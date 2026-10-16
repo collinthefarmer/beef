@@ -16,10 +16,42 @@ constexpr std::size_t kMaxInliningRounds = 4096;
 struct StepUses {
   std::vector<bool> changing;
   std::vector<std::size_t> consumers;
+  std::vector<std::vector<RenderStepId>> readers;
 };
 
+bool IsRoot(const RenderPlan &plan, RenderStepId step) {
+  return std::ranges::any_of(
+             plan.stackOutputs,
+             [&](const auto &output) { return output.result.step == step; }) ||
+         std::ranges::any_of(plan.mergedChains, [&](const auto &merged) {
+           return merged.result.step == step;
+         });
+}
+
+std::vector<std::vector<RenderStepId>>
+LiveReaders(const RenderPlan &plan, std::span<const std::size_t> consumers) {
+  std::vector<std::vector<RenderStepId>> readers(plan.steps.size());
+  for (RenderStepId step = 0; step < plan.steps.size(); ++step) {
+    if (step >= consumers.size() ||
+        (consumers[step] == 0 && !IsRoot(plan, step)))
+      continue;
+    for (const RenderValueRef &operand : StepDependencies(plan, step)) {
+      const auto *output = Get<StepOutputRef>(operand);
+      if (!output || output->step >= readers.size())
+        continue;
+      std::vector<RenderStepId> &known = readers[output->step];
+      if (std::ranges::find(known, step) == known.end())
+        known.push_back(step);
+    }
+  }
+  return readers;
+}
+
 StepUses StepUsesOf(const RenderPlan &plan) {
-  return StepUses{AnimatedSteps(plan), LiveConsumers(plan)};
+  std::vector<std::size_t> consumers = LiveConsumers(plan);
+  std::vector<std::vector<RenderStepId>> readers = LiveReaders(plan, consumers);
+  return StepUses{AnimatedSteps(plan), std::move(consumers),
+                  std::move(readers)};
 }
 
 bool Changing(const StepUses &uses, RenderStepId step) {
@@ -36,6 +68,19 @@ bool ConsumedOnce(const StepUses &uses, RenderStepId producer) {
                                   : uses.consumers[producer] > 0;
 }
 
+bool IsReadOnlyByAnimatedPrograms(const RenderPlan &plan, RenderStepId producer,
+                                  const TextureRequirements &shape,
+                                  const StepUses &uses) {
+  if (!Changing(uses, producer) || producer >= uses.readers.size())
+    return false;
+  return std::ranges::all_of(uses.readers[producer], [&](RenderStepId reader) {
+    const std::optional<ProgramLikeStep> program =
+        AsProgramLike(plan, plan.steps[reader].kind);
+    return Changing(uses, reader) && program &&
+           SameUnorm8Shape(shape, program->requirements);
+  });
+}
+
 bool CanInlineProducer(const RenderPlan &plan, RenderStepId producer,
                        RenderStepId consumer, const StepUses &uses) {
   if (producer >= plan.steps.size() || producer >= uses.consumers.size() ||
@@ -45,9 +90,13 @@ bool CanInlineProducer(const RenderPlan &plan, RenderStepId producer,
       AsProgramLike(plan, plan.steps[producer].kind);
   const std::optional<ProgramLikeStep> reader =
       AsProgramLike(plan, plan.steps[consumer].kind);
-  return program && reader &&
-         SameUnorm8Shape(program->requirements, reader->requirements) &&
-         ConsumedOnce(uses, producer) && InlinesFor(uses, producer, consumer);
+  if (!program || !reader ||
+      !SameUnorm8Shape(program->requirements, reader->requirements))
+    return false;
+  const bool shared =
+      ConsumedOnce(uses, producer) ||
+      IsReadOnlyByAnimatedPrograms(plan, producer, program->requirements, uses);
+  return shared && InlinesFor(uses, producer, consumer);
 }
 
 bool ReadsTexture(const FieldProgram &program, std::size_t input) {
@@ -173,12 +222,7 @@ std::size_t AttachField(CompositeStackStep &stack, RenderStepId producer,
 
 bool Live(const RenderPlan &plan, RenderStepId step, const StepUses &uses) {
   return (step < uses.consumers.size() && uses.consumers[step] > 0) ||
-         std::ranges::any_of(
-             plan.stackOutputs,
-             [&](const auto &output) { return output.result.step == step; }) ||
-         std::ranges::any_of(plan.mergedChains, [&](const auto &merged) {
-           return merged.result.step == step;
-         });
+         IsRoot(plan, step);
 }
 
 std::size_t InlineField(RenderPlan &plan, RenderStepId producer,

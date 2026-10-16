@@ -110,6 +110,7 @@ void Manager::Clear() {
   for (auto &[actorID, state] : live_)
     RetireActorEffects(state);
   live_.clear();
+  spreadDraws_.clear();
   world_ = {};
   models_.clear();
   results_.clear();
