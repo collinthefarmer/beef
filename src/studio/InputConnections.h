@@ -2,12 +2,16 @@
 #pragma once
 
 #include "studio/Forms.h"
+#include "studio/InputCatalog.h"
 #include "studio/Names.h"
 
 #include <array>
 #include <expected>
+#include <optional>
+#include <span>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace BetterEnchantmentEffects::Studio {
 enum class InputConnectionKind {
@@ -28,9 +32,22 @@ struct InputConnectionSpec {
   Measure measure = Measure::kCurrent;
 };
 
+struct ReadAsOption {
+  std::string label;
+  std::string_view description;
+  InputConnectionSpec spec;
+  std::optional<float> now;
+};
+
+[[nodiscard]] const ActorValueSample *
+SampleNamed(std::span<const ActorValueSample> a_samples,
+            std::string_view a_name);
+[[nodiscard]] std::vector<ReadAsOption>
+ReadAsOptions(const std::string &a_actorValue,
+              const ActorValueSample *a_sample);
+[[nodiscard]] InputConnectionSpec HitResponse();
+
 [[nodiscard]] bool CanConnectInput(const FormField &a_field);
-[[nodiscard]] std::expected<EditBatch, std::string>
-CreateInput(const Names &a_names, const InputConnectionSpec &a_spec);
 [[nodiscard]] std::expected<EditBatch, std::string>
 ConnectInput(const FormField &a_field, const Names &a_names,
              const InputConnectionSpec &a_spec);

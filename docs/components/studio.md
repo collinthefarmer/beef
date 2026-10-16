@@ -252,15 +252,16 @@ native tests exercise them.
 ### Game catalogs and inputs
 
 These records describe game objects that a field can name. The engine fills
-them, and `menu/InputBrowser.cpp` reads them.
+them, and `menu/WearerInputs.cpp` and the catalog combos in `menu/FormDraw.cpp` read them.
 
 | Type | Description | Declared in |
 |---|---|---|
 | `GameObjectCatalog`, `GameObjectCandidate`, `GameObjectKind` | One catalog of candidates (actor values, anim events, keywords, nodes, textures, and five more kinds). `Snapshot::catalogs` holds one per kind. | `GameObjects.h` |
 | `WornTextures`, `MaterialTexture`, `EffectShaderTextures` | The texture paths the viewed actor's materials and matched effect shaders use. `TextureCatalogOf` turns them into the texture catalog; `NodeCatalogOf` builds the node catalog from skin bones and skeleton nodes. | `ActorCatalogs.h` |
 | `KeywordKeysToAdd`, `ArmorKeyOf` | `KeywordKeysToAdd` lists the keyword keys of a worn piece that a recipe does not have yet, in the piece's order and without duplicates. `ArmorKeyOf` gives the armor key that keys a new recipe to a worn piece. | `WornPieces.h` |
-| `ActorValueSample`, `InputMeasureInfo` | One actor value sampled under each `Measure`. `kInputMeasures` describes each measure. | `InputCatalog.h` |
-| `InputConnectionSpec`, `InputConnectionKind` | A request to connect a field to an actor value. `CreateInput` and `ConnectInput` turn it into an `EditBatch`. | `InputConnections.h` |
+| `ActorValueSample`, `InputMeasureInfo` | One actor value sampled under each `Measure`. `kInputMeasures` describes each measure. `SampleNamed` finds the sample of one actor value. | `InputCatalog.h`, `InputConnections.h` |
+| `InputConnectionSpec`, `InputConnectionKind` | A request to connect a field to an actor value or to a received hit. `ConnectInput` turns it into one `EditBatch` that adds the signals and binds the field. `HitResponse` is the hit request. | `InputConnections.h` |
+| `ReadAsOption` | One way to read an actor value: a measure, current over maximum, or the exhausted condition, with its connection request and its live result. `ReadAsOptions` lists them for one actor value. | `InputConnections.h` |
 | `ResponseGraph` | 65 sampled values of one signal over time, with the live value and a caption. `BuildResponseGraph` builds it. | `ResponseGraph.h` |
 
 ## How editing flows

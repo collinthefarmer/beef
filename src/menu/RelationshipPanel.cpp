@@ -79,6 +79,16 @@ std::string OwnerName(const RelationshipOwner &a_owner,
       });
 }
 
+const Studio::SignalRow *FiredSignal(const Frame &a_frame,
+                                     const ResourceRef &a_driver) {
+  if (a_driver.kind != ResourceKind::kSignal) {
+    return nullptr;
+  }
+  const Studio::SignalRow *signal =
+      FindByName(a_frame.recipe->signals, a_driver.name);
+  return signal && !signal->event.empty() ? signal : nullptr;
+}
+
 void Follow(Studio::LinkKind a_kind, const std::string &a_label,
             Studio::InspectorSubject a_subject, const Frame &a_frame,
             std::optional<PropertyLocation> a_property = std::nullopt) {
@@ -122,6 +132,10 @@ void DrawDrivenBy(const Frame &a_frame,
     table.Cell();
     Dim(link.consumer.property);
     table.Cell();
+    if (const Studio::SignalRow *trigger = FiredSignal(a_frame, link.driver)) {
+      FirePopup(*trigger, a_frame);
+      ImGui::SameLine();
+    }
     DimFitted(ResourceValueText(*a_frame.recipe, link.driver));
     ImGui::PopID();
   }

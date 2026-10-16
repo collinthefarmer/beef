@@ -4,7 +4,6 @@
 #include "menu/ClusterChart.h"
 #include "menu/ContextRows.h"
 #include "menu/FormDraw.h"
-#include "menu/InputBrowser.h"
 #include "menu/MenuWidgets.h"
 #include "menu/PaintPanel.h"
 #include "menu/PreviewWindows.h"
@@ -12,6 +11,7 @@
 #include "menu/ResourcePanels.h"
 #include "menu/ResponsePanel.h"
 #include "menu/StackPanel.h"
+#include "menu/WearerInputs.h"
 #include "studio/ActorCatalogs.h"
 #include "studio/Create.h"
 #include "studio/EditResult.h"
@@ -893,6 +893,9 @@ void DrawSignalInspector(const Studio::SignalSubject &a_signal,
   DrawFormWithSignals("signal",
                       Studio::SignalForm(*row, Studio::SignalNamesOf(recipe)),
                       a_frame);
+  if (const auto *actorValue = Get<ActorValueSignal>(row->definition)) {
+    DrawActorValueReadout(a_frame, *actorValue);
+  }
   DrawResponse(*row, a_frame);
 }
 

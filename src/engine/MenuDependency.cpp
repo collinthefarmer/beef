@@ -72,6 +72,7 @@ constexpr const char *kMenuExports[]{
     "igGetForegroundDrawList_Nil",
     "igGetForegroundDrawList_ViewportPtr",
     "igGetForegroundDrawList_WindowPtr",
+    "igGetFrameCount",
     "igGetFrameHeight",
     "igGetFrameHeightWithSpacing",
     "igGetIO",
@@ -148,10 +149,6 @@ constexpr const char *kMenuExports[]{
     "igTextUnformatted",
     "igTextV",
     "igTextWrappedV",
-    "igTreeNodeV_Ptr",
-    "igTreeNodeV_Str",
-    "igTreeNode_Str",
-    "igTreePop",
     "igUnindent",
 };
 }

@@ -1858,11 +1858,11 @@ Decompile provenance (`decompiled/WornEnchantmentFX/plugin.c` unless noted):
   `kAnimEvent` catalog lists only events that have fired since watching began
   (`AnimEventCatalogOf`, keyed by actor, rebuilt when a new tag appears).
 - `BuildActorValueSamples` emits one sample per `kActorValue` candidate in the
-  catalog's order (or none, when no wearer is loaded), so a reader index-aligns
-  `actorValueSamples[i]` with the catalog's candidate `i` rather than looking up
-  by name. The built-in trigger events are listed once, in
-  `recipe/BusEvents.h` (`kBusEvents`): the engine emitters, the wizard, the
-  event picker and validation all read that table.
+  catalog's order (or none, when no wearer is loaded). Readers find a sample by
+  its actor value's name (`SampleNamed`), so the two lists need not stay
+  aligned. The built-in trigger events are listed once, in
+  `recipe/BusEvents.h` (`kBusEvents`): the engine emitters, the hit connection,
+  the event picker and validation all read that table.
 - Actor value names resolve through the engine's table once per name; the
   environment holds handles and form ids, never engine pointers across
   ticks, and answers zero for anything it cannot reach. `av` readings:
@@ -2920,6 +2920,22 @@ them outside as separate passes.
   `Workspace.cpp`), then a row's field name (`FormDraw.cpp`'s
   `DrawRowField`/`DrawFieldTable`) — each level is a plain `PushID` call at
   its own draw site, not a mechanism `MenuWidgets.cpp` provides.
+- ImGui hashes a popup's id with the window that opens it, and closing a
+  popup closes every popup it opened. A signal combo can draw inside the
+  "typed-value" popup of a tunable field, so its "Wearer value..." choice
+  cannot open the wearer-value popup there: the popup would have a different
+  id from the one the field level draws, and the commit that closes
+  "typed-value" would close it too. `RequestWearerValue` records the field and
+  the frame number instead, and `DrawWearerValue`, drawn at field level after
+  the typed-value opener, opens the popup when the field and the frame match.
+  The frame number keeps a stale request from matching a field that reuses the
+  address on a later frame. The removed input wizard had this defect
+  (studio review C6).
+- The "When hit" connection writes one trigger on `hit.received` with a 1 s
+  lifetime and the curve `1 - x`. The removed wizard wrote a trigger plus the
+  expression signal `1 - @trigger`; the response graph refuses an expression
+  signal, so the property had no graph (studio review G8). A recipe written
+  that way still loads and runs unchanged.
 - `-FLT_MIN` is ImGui's exact "everything left" (`kFillWidth` in
   `MenuWidgets.cpp`); `-1` leaves a pixel, and a stretch table measuring such
   content shrinks a pixel per frame (NOTES 51).

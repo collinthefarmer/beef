@@ -22,7 +22,7 @@ Menu Framework. No native test covers it.
   `StackPanel.cpp`, `RelationshipPanel.cpp`, `ContextRows.cpp`,
   `ResourcePanels.cpp`, `ResponsePanel.cpp`, and `RecipeActions.cpp`.
 - The special-input popups: `ExpressionShelf.cpp`, `Tuning.cpp`,
-  `PatternChooser.cpp`, and `InputBrowser.cpp`.
+  `PatternChooser.cpp`, and `WearerInputs.cpp`.
 - The **mask** editor in `PaintPanel.cpp`.
 - The menu lifecycle in `Menu.cpp`: `RegisterMenu`, `Perform`, `Dispatch`,
   and the shared status strips.
@@ -63,7 +63,7 @@ value into an **intent**.
 | Type | Description |
 |---|---|
 | `TextCheck` | A function from typed text to an optional problem text. A text widget shows the problem under the field. |
-| `kNewInputChoice` | The reserved combo choice that opens the new-input wizard. `CommitField` (`FormDraw.cpp`) tests for it. |
+| `kWearerValueChoice`, `kWhenHitChoice` | The reserved signal-combo choices "Wearer value..." and "When hit". `CommitField` (`FormDraw.cpp`) tests for them. |
 | `FieldScope` | An RAII ImGui ID scope. It pushes one part of the current **field** key for its lifetime. |
 | `WidgetSize` | A `Studio::Width` and DPI scale pair that sizes a **field** widget. |
 | `Table` | The column table. `Begin` opens it from `Studio::Column`s and a `Studio::TableStyle`. `Cell` advances one cell. `End` closes it. |
@@ -109,7 +109,7 @@ above it place fields in tables and multi-column **forms**.
 |---|---|
 | `FieldInput` | Draws one **field**'s widget by the field's `FieldInputKind` and returns the committed text. |
 | `PostField` | Posts one field's committed text as an `EditRecipe` **intent**. It rejects text that the field's `bind` cannot turn into a `RecipeEdit`. |
-| `DrawRowField` | Draws one field outside a table, with its input wizard and **tuning** control. The mask and curve inspectors in `Workspace.cpp` use it. |
+| `DrawRowField` | Draws one field outside a table, with its wearer-value popup and **tuning** control. The mask and curve inspectors in `Workspace.cpp` use it. |
 | `DrawFieldTable`, `DrawForm` | Place a **field** span in a table or in a multi-column **form**. Each returns the index of the field whose detail button the user clicked. |
 | `DrawFormWithSignals` | Draws a **form** through `DrawForm`. A clicked signal detail button navigates to that signal. The shell and light inspectors use it. |
 | `DrawInspectorFields` | Draws a `Studio::Inspector`'s fields through `DrawForm`. It follows a clicked detail button to the referenced subject. |
@@ -129,7 +129,9 @@ intents, as the inline widgets do.
 | `DrawTuning`, `TuningSink`, `FieldTunable` | The **tuning** control for a numeric **field**. An optional `TuningSink` sends the commit to a callback. | `Tuning.h` |
 | `BeginTuningFrame`, `EndTuningFrame`, `FinishTuning` | The per-frame **tuning** lifecycle over `Studio::MenuState`. `FinishTuning` commits or discards the held value. | `Tuning.h` |
 | `DrawPatternChooser` | Draws the filtered list of `Studio::TermOffer` patterns. | `PatternChooser.h` |
-| `OpenInputWizard`, `DrawInputWizard` | The new-input wizard. `OpenInputWizard` opens it. `DrawInputWizard` draws it for the **field** that asked. | `InputBrowser.h` |
+| `RequestWearerValue`, `DrawWearerValue` | The wearer-value popup: a search over the wearer's actor values with live values, then a "Read as" list that connects the **field** in one edit batch. `RequestWearerValue` asks for it during a frame; `DrawWearerValue` opens it for the same field later in that frame, outside any popup the request came from. | `WearerInputs.h` |
+| `ConnectWhenHit` | Connects the **field** to a new hit trigger whose curve fades it from one to zero. | `WearerInputs.h` |
+| `DrawActorValueReadout` | Shows each measure of an actor-value signal's live value in the signal inspector, with the chosen measure marked. | `WearerInputs.h` |
 
 ### The mask editor (`PaintPanel.h`)
 
@@ -242,7 +244,7 @@ next tick: Manager publishes a new Snapshot; RenderStudio reads it
 | Form and field drawing | `FormDraw.h`/`.cpp` |
 | Pages | `StudioPage.h`/`.cpp`, `RecipesPage.cpp`, `SetupPage.cpp`, `BoardPage.h`/`.cpp` |
 | Studio panels | `Workspace.h`/`.cpp` (navigator, inspector subjects, preview), `StackPanel.h`/`.cpp`, `RelationshipPanel.h`/`.cpp`, `ContextRows.h`/`.cpp`, `ResourcePanels.h`/`.cpp`, `ResponsePanel.h`/`.cpp`, `RecipeActions.h`/`.cpp` |
-| Special-input popups | `ExpressionShelf.h`/`.cpp`, `Tuning.h`/`.cpp`, `PatternChooser.h`/`.cpp`, `InputBrowser.h`/`.cpp` |
+| Special-input popups | `ExpressionShelf.h`/`.cpp`, `Tuning.h`/`.cpp`, `PatternChooser.h`/`.cpp`, `WearerInputs.h`/`.cpp` |
 | Mask editor | `PaintPanel.h`/`.cpp` |
 
 ## See also

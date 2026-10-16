@@ -2,10 +2,10 @@
 #include "menu/FormDraw.h"
 
 #include "menu/ExpressionShelf.h"
-#include "menu/InputBrowser.h"
 #include "menu/MenuWidgets.h"
 #include "menu/PaintPanel.h"
 #include "menu/Tuning.h"
+#include "menu/WearerInputs.h"
 #include "recipe/Expression.h"
 #include "recipe/Recipe.h"
 #include "recipe/Words.h"
@@ -286,8 +286,10 @@ void PostField(const FormField &a_field, const std::string &a_text,
 
 void CommitField(const FormField &a_field, const std::string &a_text,
                  const Frame &a_frame) {
-  if (a_text == kNewInputChoice) {
-    OpenInputWizard();
+  if (a_text == kWearerValueChoice) {
+    RequestWearerValue(a_field);
+  } else if (a_text == kWhenHitChoice) {
+    ConnectWhenHit(a_frame, a_field);
   } else {
     PostField(a_field, a_text, a_frame);
   }
@@ -474,7 +476,7 @@ void DrawTypedValueOpener(const FormField &a_field, const Frame &a_frame) {
 void DrawTunableField(const FormField &a_field, const Frame &a_frame) {
   DrawTypedValueOpener(a_field, a_frame);
   ImGui::SameLine(0.0f, 0.0f);
-  DrawInputWizard(a_frame, a_field);
+  DrawWearerValue(a_frame, a_field);
   DrawTuning(a_field, a_frame);
 }
 
@@ -490,7 +492,7 @@ void DrawRowField(const char *a_key, const FormField &a_field,
     DrawTunableField(a_field, a_frame);
   } else {
     DrawFieldInput(a_field, a_frame);
-    DrawInputWizard(a_frame, a_field);
+    DrawWearerValue(a_frame, a_field);
   }
   ImGui::PopID();
 }
@@ -544,7 +546,7 @@ std::optional<std::size_t> DrawFieldTable(const char *a_id,
       DrawTunableField(field, a_frame);
     } else {
       DrawFieldInput(field, a_frame);
-      DrawInputWizard(a_frame, field);
+      DrawWearerValue(a_frame, field);
     }
     ImGui::PopID();
   }

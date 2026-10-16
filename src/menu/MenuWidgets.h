@@ -25,7 +25,8 @@ namespace BetterEnchantmentEffects::Menu {
 using TextCheck =
     std::function<std::optional<std::string>(const std::string &)>;
 
-inline constexpr std::string_view kNewInputChoice = "\x01new-input";
+inline constexpr std::string_view kWearerValueChoice = "\x01wearer-value";
+inline constexpr std::string_view kWhenHitChoice = "\x01when-hit";
 
 class FieldScope {
 public:

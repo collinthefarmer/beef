@@ -107,6 +107,13 @@ void CheckConnections(const Recipe &a_base) {
       Check(Near(state.Scalar(ref->name), 0),
             "recovered stamina releases exhaustion");
     } else {
+      const auto added =
+          std::ranges::count_if(edits->edits, [](const RecipeEdit &a_edit) {
+            return Get<AddSignal>(a_edit);
+          });
+      Check(added == 1 && prepared->signals.back().curve ==
+                              std::optional{CurveRef{"1 - x"}},
+            "hit response is one trigger signal shaped by its curve");
       Check(Near(state.Scalar(ref->name), 0), "hit glow is off before any hit");
       state.Fire({"hit.received", {}}, 0);
       state.Tick(resources, {0, 0});
@@ -139,26 +146,6 @@ int main() {
             Get<AddSignal>(connection->edits.front())->name ==
                 "av_stamina_current5",
         "input creation avoids signal, source, mask and curve names");
-  const auto created = CreateInput(
-      names, {InputConnectionKind::kFraction, "Stamina", Measure::kCurrent});
-  const auto bound = ConnectInput(
-      Opacity(), names,
-      {InputConnectionKind::kFraction, "Stamina", Measure::kCurrent});
-  Check(created && bound && !created->edits.empty() &&
-            bound->edits.size() == created->edits.size() + 1,
-        "create-only input builds the same signals, minus the field binding");
-  if (created) {
-    bool binds = false;
-    for (const RecipeEdit &edit : created->edits) {
-      if (Get<SetLayerOpacity>(edit)) {
-        binds = true;
-      }
-    }
-    Check(!binds, "create-only input never binds a destination field");
-  }
-  Check(
-      !CreateInput({}, {InputConnectionKind::kFraction, "", Measure::kCurrent}),
-      "create-only input refuses a missing actor value");
   FormField count = Opacity();
   count.bind = [](const std::string &) -> std::optional<RecipeEdit> {
     return std::nullopt;
@@ -182,5 +169,36 @@ int main() {
         "missing actor samples remain unavailable rather than fabricated zero");
   Check(ActorValueHelpOf("CustomUnknown").units.empty(),
         "unknown actor-value units are not invented");
+  ActorValueSample sampled{"Stamina", {}};
+  sampled.samples[0] = 30.0f;
+  sampled.samples[std::size(kInputMeasures) - 1] = 120.0f;
+  const std::array samples{ActorValueSample{"Health", {}}, sampled};
+  Check(SampleNamed(samples, "Stamina") == &samples[1] &&
+            SampleNamed(samples, "Magicka") == nullptr,
+        "a sample is found by its actor value's name");
+  const std::vector<ReadAsOption> options =
+      ReadAsOptions("Stamina", &samples[1]);
+  Check(options.size() == std::size(kInputMeasures) + 2,
+        "every measure, the fraction and the exhausted condition are offered");
+  Check(!options.empty() && options.front().now == std::optional{30.0f} &&
+            options.front().spec.kind == InputConnectionKind::kMeasure &&
+            options.front().spec.actorValue == "Stamina",
+        "a measure option carries its live sample and its connection");
+  Check(options.size() >= 2 &&
+            options[options.size() - 2].now == std::optional{0.25f} &&
+            options.back().now == std::optional{0.0f},
+        "the fraction and the exhausted condition show their live result");
+  sampled.samples[std::size(kInputMeasures) - 1] = 0.0f;
+  sampled.samples[0] = -5.0f;
+  const std::vector<ReadAsOption> depleted = ReadAsOptions("Stamina", &sampled);
+  Check(depleted.size() >= 2 &&
+            depleted[depleted.size() - 2].now == std::optional{0.0f} &&
+            depleted.back().now == std::optional{1.0f},
+        "a zero maximum reads as zero and depletion reads as exhausted");
+  Check(std::ranges::all_of(ReadAsOptions("Stamina", nullptr),
+                            [](const ReadAsOption &a_option) {
+                              return !a_option.now.has_value();
+                            }),
+        "without a wearer no live value is invented");
   return test::Finish("studio_inputconnections");
 }

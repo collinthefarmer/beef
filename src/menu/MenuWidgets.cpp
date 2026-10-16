@@ -147,8 +147,11 @@ SignalCombo(const Studio::FormField &a_field) {
       a_field.text, a_field.names, a_field.allowEmpty, a_field.creators);
   if (Studio::CanConnectInput(a_field)) {
     ImGui::Separator();
-    if (ImGui::Selectable("New input", false)) {
-      chosen = std::string{kNewInputChoice};
+    if (ImGui::Selectable("Wearer value...", false)) {
+      chosen = std::string{kWearerValueChoice};
+    }
+    if (ImGui::Selectable("When hit", false)) {
+      chosen = std::string{kWhenHitChoice};
     }
   }
   ImGui::EndCombo();

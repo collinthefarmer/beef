@@ -5,6 +5,7 @@
 #include "recipe/Words.h"
 #include "studio/GameObjects.h"
 
+#include <algorithm>
 #include <cctype>
 #include <format>
 #include <utility>
@@ -18,6 +19,8 @@ namespace {
   }
   return stem;
 }
+
+constexpr std::string_view kFadeCurve = "1 - x";
 
 struct ConnectionBuilder {
   EditBatch batch;
@@ -47,8 +50,10 @@ BuildResponseSignal(ConnectionBuilder &a_builder,
     trigger.origin = EventOrigin{std::string{kHitReceivedEvent}, {}};
     trigger.lifetime = 1.0f;
     trigger.max = 1;
-    const std::string name = a_builder.Add("hit", trigger);
-    return a_builder.Add("hit_glow", ExprSignal{std::format("1 - @{}", name)});
+    const std::string name = a_builder.Add("hit_glow", trigger);
+    a_builder.batch.edits.emplace_back(
+        SetSignalCurve{name, CurveRef{std::string{kFadeCurve}}});
+    return name;
   }
   const Measure measure = a_spec.kind == InputConnectionKind::kMeasure
                               ? a_spec.measure
@@ -85,19 +90,51 @@ BuildInput(const Names &a_names, const InputConnectionSpec &a_spec) {
 }
 }
 
+const ActorValueSample *SampleNamed(std::span<const ActorValueSample> a_samples,
+                                    std::string_view a_name) {
+  const auto found =
+      std::ranges::find(a_samples, a_name, &ActorValueSample::name);
+  return found == a_samples.end() ? nullptr : &*found;
+}
+
+std::vector<ReadAsOption> ReadAsOptions(const std::string &a_actorValue,
+                                        const ActorValueSample *a_sample) {
+  const auto sampled = [&](Measure a_measure) -> std::optional<float> {
+    return a_sample ? SampleAt(*a_sample, a_measure) : std::nullopt;
+  };
+  std::vector<ReadAsOption> options;
+  for (const InputMeasureInfo &info : kInputMeasures) {
+    options.push_back(
+        {std::string{NameOf(kMeasures, info.measure)},
+         info.description,
+         {InputConnectionKind::kMeasure, a_actorValue, info.measure},
+         sampled(info.measure)});
+  }
+  const std::optional<float> current = sampled(Measure::kCurrent);
+  const std::optional<float> maximum = sampled(Measure::kMax);
+  options.push_back(
+      {"current / max",
+       "Ratio of current to maximum; zero when the maximum is zero or below.",
+       {InputConnectionKind::kFraction, a_actorValue, Measure::kCurrent},
+       current && maximum
+           ? std::optional{*maximum > 0.0f ? *current / *maximum : 0.0f}
+           : std::nullopt});
+  options.push_back(
+      {"exhausted",
+       "One while current is zero or below, otherwise zero. Stays on while "
+       "depleted.",
+       {InputConnectionKind::kExhausted, a_actorValue, Measure::kCurrent},
+       current ? std::optional{*current <= 0.0f ? 1.0f : 0.0f} : std::nullopt});
+  return options;
+}
+
+InputConnectionSpec HitResponse() {
+  return {InputConnectionKind::kHitResponse, {}, Measure::kCurrent};
+}
+
 bool CanConnectInput(const FormField &a_field) {
   return a_field.kind == FieldKind::kScalar && a_field.bind &&
          a_field.bind("@input").has_value();
-}
-
-std::expected<EditBatch, std::string>
-CreateInput(const Names &a_names, const InputConnectionSpec &a_spec) {
-  std::expected<std::pair<EditBatch, std::string>, std::string> built =
-      BuildInput(a_names, a_spec);
-  if (!built) {
-    return std::unexpected(std::move(built.error()));
-  }
-  return std::move(built->first);
 }
 
 std::expected<EditBatch, std::string>
