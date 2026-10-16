@@ -121,23 +121,29 @@ std::string SurfaceScope(Surface a_surface) {
   return std::format("surface-{}", SurfaceName(a_surface));
 }
 
+void PostCreation(const Frame &a_frame, Studio::Creation a_creation) {
+  Studio::Created made = Studio::Create(std::move(a_creation), *a_frame.recipe);
+  Studio::Post(*a_frame.intents,
+               Studio::EditRecipe{a_frame.recipe->id, std::move(made.edits)});
+  a_frame.state->pendingSelection = made.subject;
+}
+
+void DrawSlotChoices(const Frame &a_frame, Surface a_surface) {
+  for (const Slot slot : SlotsOf(a_surface, a_frame.recipe->shellMaterial)) {
+    if (ImGui::Selectable(std::string{SlotName(slot)}.c_str())) {
+      PostCreation(a_frame, Studio::NewOutput{a_surface, slot, {}});
+      ImGui::CloseCurrentPopup();
+    }
+  }
+}
+
 void DrawSurfaceAdd(const Frame &a_frame, Surface a_surface) {
   ImGui::PushID(SurfaceScope(a_surface).c_str());
   if (AddButton()) {
     ImGui::OpenPopup("add-output");
   }
   if (ImGui::BeginPopup("add-output")) {
-    for (const Slot slot : SlotsOf(a_surface, a_frame.recipe->shellMaterial)) {
-      if (ImGui::Selectable(std::string{SlotName(slot)}.c_str())) {
-        Studio::Created made = Studio::Create(
-            Studio::NewOutput{a_surface, slot, {}}, *a_frame.recipe);
-        Studio::Post(
-            *a_frame.intents,
-            Studio::EditRecipe{a_frame.recipe->id, std::move(made.edits)});
-        a_frame.state->pendingSelection = made.subject;
-        ImGui::CloseCurrentPopup();
-      }
-    }
+    DrawSlotChoices(a_frame, a_surface);
     ImGui::EndPopup();
   }
   ImGui::PopID();
@@ -241,11 +247,7 @@ void DrawOutputNode(const Frame &a_frame, const Studio::OutputRow &a_output,
   if (a_output.target != Target::kLight && SlotTakesLayers(a_output.slot)) {
     ImGui::PushID("add");
     if (ImGui::Button("+ layer")) {
-      Studio::Created made =
-          Studio::Create(Studio::NewLayer{a_output.index}, *a_frame.recipe);
-      Studio::Post(*a_frame.intents, Studio::EditRecipe{a_frame.recipe->id,
-                                                        std::move(made.edits)});
-      a_frame.state->pendingSelection = made.subject;
+      PostCreation(a_frame, Studio::NewLayer{a_output.index});
     }
     ImGui::PopID();
   }
@@ -532,10 +534,7 @@ void DrawLightRemove(const Frame &a_frame) {
 
 void DrawLightAdd(const Frame &a_frame) {
   if (AddButton()) {
-    Studio::Created made = Studio::Create(Studio::NewLight{}, *a_frame.recipe);
-    Studio::Post(*a_frame.intents,
-                 Studio::EditRecipe{a_frame.recipe->id, std::move(made.edits)});
-    a_frame.state->pendingSelection = made.subject;
+    PostCreation(a_frame, Studio::NewLight{});
   }
 }
 
@@ -1146,6 +1145,201 @@ void DrawInspectorPane(const Frame &a_frame, const InspectorPass &a_pass) {
   ImGui::EndChild();
 }
 
+struct ResourceGroup {
+  const char *title;
+  std::vector<std::pair<std::string, Studio::InspectorSubject>> entries;
+};
+
+std::string OutputTitle(const Studio::OutputRow &a_output) {
+  if (a_output.target == Target::kLight) {
+    return std::format("Light {}", a_output.index + 1);
+  }
+  return std::format("{} {}", SurfaceName(a_output.surface),
+                     SlotName(a_output.slot));
+}
+
+const Studio::OutputRow *SubjectOutput(const Frame &a_frame) {
+  const Studio::InspectorSubject &subject = SelectionOf(a_frame).subject;
+  std::optional<std::size_t> index;
+  if (const auto *output = Get<Studio::OutputSubject>(subject)) {
+    index = output->output;
+  } else if (const auto *layer = Get<Studio::LayerSubject>(subject)) {
+    index = layer->output;
+  }
+  return index ? FindBy(a_frame.recipe->outputs, *index,
+                        &Studio::OutputRow::index)
+               : nullptr;
+}
+
+std::optional<std::string>
+ResourceCrumbText(const Studio::InspectorSubject &a_subject) {
+  return Match(
+      a_subject,
+      [](const Studio::SignalSubject &s) -> std::optional<std::string> {
+        return "signal " + s.name;
+      },
+      [](const Studio::SourceSubject &s) -> std::optional<std::string> {
+        return "source " + s.name;
+      },
+      [](const Studio::MaskSubject &s) -> std::optional<std::string> {
+        return "mask " + s.name;
+      },
+      [](const Studio::CurveSubject &s) -> std::optional<std::string> {
+        return "curve " + s.name;
+      },
+      [](const auto &) -> std::optional<std::string> { return std::nullopt; });
+}
+
+bool BeginCrumb(const char *a_id, const std::string &a_preview) {
+  NextItemWidth(
+      Studio::Width::Px(ButtonWidth(a_preview) + ImGui::GetFrameHeight()));
+  return ImGui::BeginCombo(a_id, a_preview.c_str());
+}
+
+void CrumbSeparator() {
+  ImGui::SameLine();
+  ImGui::AlignTextToFramePadding();
+  Dim(">");
+  ImGui::SameLine();
+}
+
+void DrawRecipeCrumb(const Frame &a_frame) {
+  if (!BeginCrumb("##recipe-crumb", "Recipe")) {
+    return;
+  }
+  PickSubject("Settings and keys", Studio::RecipeSubject{}, a_frame);
+  PickSubject("Shell settings", Studio::ShellSubject{}, a_frame);
+  ImGui::EndCombo();
+}
+
+void DrawOutputChoices(const Frame &a_frame) {
+  for (const Surface surface : {Surface::kMaterial, Surface::kShell}) {
+    for (const Studio::OutputRow &output : a_frame.recipe->outputs) {
+      if (IsSurfaceOutput(output, surface)) {
+        ImGui::PushID(static_cast<int>(output.index));
+        PickSubject(OutputTitle(output).c_str(),
+                    Studio::OutputSubject{output.index}, a_frame);
+        ImGui::PopID();
+      }
+    }
+  }
+  for (const Studio::LightRow &light : a_frame.recipe->lights) {
+    ImGui::PushID(static_cast<int>(light.output));
+    PickSubject(std::format("Light {}", light.output + 1).c_str(),
+                Studio::OutputSubject{light.output}, a_frame);
+    ImGui::PopID();
+  }
+}
+
+void DrawOutputAdds(const Frame &a_frame) {
+  ImGui::Separator();
+  for (const Surface surface : {Surface::kMaterial, Surface::kShell}) {
+    const std::string label = std::format("+ {} output", SurfaceName(surface));
+    if (ImGui::BeginMenu(label.c_str())) {
+      DrawSlotChoices(a_frame, surface);
+      ImGui::EndMenu();
+    }
+  }
+  if (a_frame.recipe->lights.empty() && ImGui::Selectable("+ light")) {
+    PostCreation(a_frame, Studio::NewLight{});
+  }
+}
+
+void DrawOutputCrumb(const Frame &a_frame, const Studio::OutputRow *a_output) {
+  const bool shell = Is<Studio::ShellSubject>(SelectionOf(a_frame).subject);
+  const std::string preview = a_output ? OutputTitle(*a_output)
+                              : shell  ? std::string{"Shell settings"}
+                                       : std::string{"Outputs"};
+  if (!BeginCrumb("##output-crumb", preview)) {
+    return;
+  }
+  DrawOutputChoices(a_frame);
+  DrawOutputAdds(a_frame);
+  ImGui::EndCombo();
+}
+
+void DrawLayerCrumb(const Frame &a_frame, const Studio::OutputRow &a_output) {
+  const auto *layer = Get<Studio::LayerSubject>(SelectionOf(a_frame).subject);
+  const std::string preview =
+      layer ? std::format("layer {}", layer->layer + 1) : std::string{"Layers"};
+  if (!BeginCrumb("##layer-crumb", preview)) {
+    return;
+  }
+  for (std::size_t i = 0; i < a_output.layers.size(); ++i) {
+    const Studio::LayerRow &row = a_output.layers[i];
+    const std::string label = std::format(
+        "{}: {}", i + 1, row.source.empty() ? "Choose a signal" : row.source);
+    ImGui::PushID(static_cast<int>(i));
+    PickSubject(label.c_str(), Studio::LayerSubject{a_output.index, i},
+                a_frame);
+    ImGui::PopID();
+  }
+  ImGui::Separator();
+  if (ImGui::Selectable("+ layer")) {
+    PostCreation(a_frame, Studio::NewLayer{a_output.index});
+  }
+  ImGui::EndCombo();
+}
+
+std::vector<ResourceGroup> ResourceGroups(const Studio::RecipeRow &a_recipe) {
+  std::vector<ResourceGroup> groups{
+      {"Signals", {}}, {"Curves", {}}, {"Sources", {}}, {"Masks", {}}};
+  for (const Studio::SignalRow &row : a_recipe.signals) {
+    groups[0].entries.emplace_back(row.name, Studio::SignalSubject{row.name});
+  }
+  for (const Studio::TextRow &row : a_recipe.curves) {
+    groups[1].entries.emplace_back(row.name, Studio::CurveSubject{row.name});
+  }
+  for (const Studio::SourceRow &row : a_recipe.sourceRows) {
+    groups[2].entries.emplace_back(row.name, Studio::SourceSubject{row.name});
+  }
+  for (const Studio::TextRow &row : a_recipe.maskRows) {
+    groups[3].entries.emplace_back(row.name, Studio::MaskSubject{row.name});
+  }
+  return groups;
+}
+
+void DrawResourceCrumb(const Frame &a_frame) {
+  const std::string preview =
+      ResourceCrumbText(SelectionOf(a_frame).subject).value_or("Resources");
+  RightAligned(ButtonWidth(preview) + ImGui::GetFrameHeight(), [&] {
+    if (!BeginCrumb("##resource-crumb", preview)) {
+      return;
+    }
+    const std::string filter{LiveTextField("resource-crumb-search", "Find",
+                                           Studio::Width::Px(220.0f),
+                                           a_frame.scale)};
+    for (const ResourceGroup &group : ResourceGroups(*a_frame.recipe)) {
+      if (group.entries.empty()) {
+        continue;
+      }
+      Dim(group.title);
+      ImGui::PushID(group.title);
+      for (const auto &[name, subject] : group.entries) {
+        if (Studio::NameMatches(name, filter)) {
+          PickSubject(name.c_str(), subject, a_frame);
+        }
+      }
+      ImGui::PopID();
+    }
+    ImGui::EndCombo();
+  });
+}
+
+void DrawLocationBar(const Frame &a_frame) {
+  const Studio::OutputRow *output = SubjectOutput(a_frame);
+  DrawRecipeCrumb(a_frame);
+  CrumbSeparator();
+  DrawOutputCrumb(a_frame, output);
+  if (output && output->target != Target::kLight &&
+      SlotTakesLayers(output->slot)) {
+    CrumbSeparator();
+    DrawLayerCrumb(a_frame, *output);
+  }
+  ImGui::SameLine();
+  DrawResourceCrumb(a_frame);
+}
+
 void DrawWideWorkspace(const Frame &a_frame, const InspectorPass &a_pass) {
   Studio::MenuState &state = *a_frame.state;
   const auto navigator = [&] {
@@ -1167,11 +1361,7 @@ void DrawWideWorkspace(const Frame &a_frame, const InspectorPass &a_pass) {
 
 void DrawNarrowWorkspace(const Frame &a_frame, const InspectorPass &a_pass) {
   if (!Studio::MaskTaskActive(*a_frame.state)) {
-    if (ImGui::Button("Browse outputs and resources")) {
-      ImGui::OpenPopup("Outputs & resources###workspace-navigator");
-    }
-    DetailModal("Outputs & resources###workspace-navigator",
-                [&] { DrawNavigator(a_frame); });
+    DrawLocationBar(a_frame);
   }
   DrawInspectorPane(a_frame, a_pass);
 }
