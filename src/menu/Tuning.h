@@ -9,7 +9,8 @@
 
 namespace BetterEnchantmentEffects::Menu {
 struct TuningSink {
-  std::function<void(float a_value)> commit;
+  std::function<void(float a_value, bool a_remember)> commit;
+  std::function<void()> cancel;
 };
 
 void DrawTuning(const Studio::FormField &a_field, const Frame &a_frame,

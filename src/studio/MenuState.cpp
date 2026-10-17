@@ -385,7 +385,9 @@ struct ReduceVisitor {
   }
 
   void operator()(const SetTermKind &a_i) {
-    Remember();
+    if (a_i.remember) {
+      Remember();
+    }
     if (a_i.index < mask.terms.size()) {
       if (state.paint) {
         state.paint->sources.insert(state.paint->sources.end(),

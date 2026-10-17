@@ -89,6 +89,7 @@ struct SetTermKind {
   std::string text;
   std::string label;
   std::vector<RecipeEdit> sources{};
+  bool remember = true;
 };
 struct RemoveTerm {
   std::size_t index = 0;
@@ -128,7 +129,7 @@ struct BeginPaint {
   std::uint64_t sessionID = 0;
   std::uint64_t resetID = 0;
   std::optional<PaintAssignment> assignment{};
-  std::optional<std::string> createdMask{};
+  std::optional<CreatedMask> createdMask{};
 };
 struct SetPaintSurface {
   Surface surface = Surface::kMaterial;

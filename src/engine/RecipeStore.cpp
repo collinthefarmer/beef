@@ -16,6 +16,9 @@
 #include "studio/Presets.h"
 
 #include <algorithm>
+#include <cctype>
+#include <optional>
+#include <system_error>
 #include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
@@ -34,6 +37,7 @@ struct LoadedRecipe {
       variantGraphs;
   bool dirty = false;
   bool transient = false;
+  bool ownsFile = false;
   Studio::ReferenceCounts references{};
   Recipe saved{};
   std::vector<Diagnostic> inputDiagnostics;
@@ -263,6 +267,7 @@ void LoadFile(const std::filesystem::path &a_path, RecipeClass a_class) {
   LoadedRecipe loaded;
   loaded.recipe = std::move(*result.recipe);
   loaded.path = a_path;
+  loaded.ownsFile = true;
   loaded.recipeClass = a_class;
   loaded.diagnostics = std::move(result.diagnostics);
   loaded.inputDiagnostics = std::move(result.inputDiagnostics);
@@ -428,6 +433,7 @@ void ImportMissing(const std::filesystem::path &a_folder) {
     LoadedRecipe loaded;
     loaded.recipe = std::move(recipe);
     loaded.path = path;
+    loaded.ownsFile = true;
     g_loaded.push_back(std::move(loaded));
   }
 }
@@ -615,6 +621,16 @@ bool IsDirty(std::string_view a_id) noexcept {
   return loaded && loaded->dirty;
 }
 
+namespace {
+using Claim = std::expected<std::optional<std::filesystem::path>, Diagnostic>;
+Claim ClaimDestination(const std::filesystem::path &a_path,
+                       std::size_t a_index);
+void ReleaseClaim(const std::filesystem::path &a_path,
+                  const std::optional<std::filesystem::path> &a_aside);
+bool IsIdTaken(std::string_view a_id,
+               std::optional<std::size_t> a_except = std::nullopt);
+}
+
 std::expected<std::filesystem::path, Diagnostic>
 SaveRecipe(std::string_view a_id) {
   const auto index = LoadedIndex(a_id);
@@ -630,12 +646,26 @@ SaveRecipe(std::string_view a_id) {
   if (!IsUnder(path, Identity::UserRecipeFolder())) {
     path = Identity::UserRecipeFolder() / (loaded->recipe.id + ".json");
   }
+  Claim claim = Claim{std::nullopt};
+  if (!loaded->ownsFile || path != loaded->path) {
+    claim = ClaimDestination(path, *index);
+    if (!claim) {
+      return std::unexpected(std::move(claim.error()));
+    }
+  }
   auto written = WriteRecipeFile(path, loaded->recipe, promoteImported);
   if (!written) {
+    ReleaseClaim(path, *claim);
     return std::unexpected(written.error());
+  }
+  if (*claim) {
+    logger::warn("save {}: {} did not load and was not written by the "
+                 "studio; kept as {}",
+                 loaded->recipe.id, path.string(), (*claim)->string());
   }
   loaded->recipe = std::move(*written);
   loaded->path = path;
+  loaded->ownsFile = true;
   loaded->saved = loaded->recipe;
   loaded->dirty = false;
   loaded->inputDiagnostics.clear();
@@ -645,6 +675,68 @@ SaveRecipe(std::string_view a_id) {
 }
 
 namespace {
+std::string Folded(std::string_view a_text) {
+  std::string folded{a_text};
+  std::ranges::transform(folded, folded.begin(), [](char c) {
+    return static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+  });
+  return folded;
+}
+
+bool IsSameFile(const std::filesystem::path &a_left,
+                const std::filesystem::path &a_right) {
+  return Folded(a_left.lexically_normal().generic_string()) ==
+         Folded(a_right.lexically_normal().generic_string());
+}
+
+bool IsIdTaken(std::string_view a_id, std::optional<std::size_t> a_except) {
+  const std::string folded = Folded(a_id);
+  for (std::size_t i = 0; i < g_loaded.size(); ++i) {
+    if (i != a_except && Folded(g_loaded[i].recipe.id) == folded) {
+      return true;
+    }
+  }
+  return false;
+}
+
+Claim ClaimDestination(const std::filesystem::path &a_path,
+                       std::size_t a_index) {
+  const std::string &id = g_loaded[a_index].recipe.id;
+  for (std::size_t i = 0; i < g_loaded.size(); ++i) {
+    if (i != a_index && IsSameFile(g_loaded[i].path, a_path)) {
+      return std::unexpected(
+          Refusal(id, std::format("{} is the file of recipe '{}'; rename "
+                                  "this recipe before saving",
+                                  a_path.string(), g_loaded[i].recipe.id)));
+    }
+  }
+  std::error_code ec;
+  if (!std::filesystem::exists(a_path, ec)) {
+    return std::nullopt;
+  }
+  const std::optional<std::filesystem::path> aside = SetAside(a_path);
+  if (!aside) {
+    return std::unexpected(Refusal(
+        id, std::format("{} exists and did not load, and {}{} "
+                        "exists too; move one of them first",
+                        a_path.string(), a_path.string(), kSetAsideSuffix)));
+  }
+  return aside;
+}
+
+void ReleaseClaim(const std::filesystem::path &a_path,
+                  const std::optional<std::filesystem::path> &a_aside) {
+  if (!a_aside) {
+    return;
+  }
+  std::error_code ec;
+  std::filesystem::rename(*a_aside, a_path, ec);
+  if (ec) {
+    logger::error("save: could not return {} to {} ({})", a_aside->string(),
+                  a_path.string(), ec.message());
+  }
+}
+
 bool IsStem(std::string_view a_id) {
   return !a_id.empty() && a_id != Studio::kPaintRecipe &&
          std::ranges::all_of(a_id,
@@ -669,7 +761,7 @@ std::optional<Diagnostic> RenameRecipe(std::string_view a_from,
                               "paint recipe's",
                               a_to));
   }
-  if (Loaded(a_to)) {
+  if (IsIdTaken(a_to, LoadedIndex(a_from))) {
     return refuse(std::format("a recipe named '{}' already exists", a_to));
   }
   auto *loaded = Loaded(a_from);
@@ -691,6 +783,7 @@ std::optional<Diagnostic> RenameRecipe(std::string_view a_from,
     loaded->saved.id = std::string{a_to};
   }
   loaded->path = to;
+  loaded->ownsFile = owned && loaded->ownsFile;
   RefreshRecipeDerivedState(a_to);
   logger::info("recipe {} renamed {}; saves to {}", a_from, a_to, to.string());
   return std::nullopt;
@@ -735,7 +828,7 @@ std::optional<Diagnostic> DuplicateRecipe(std::string_view a_from,
                               "paint recipe's",
                               a_to));
   }
-  if (Loaded(a_to)) {
+  if (IsIdTaken(a_to)) {
     return refuse(std::format("a recipe named '{}' already exists", a_to));
   }
   const auto *source = Loaded(a_from);
@@ -768,7 +861,7 @@ std::optional<Diagnostic> NewRecipe(std::string_view a_id, RecipeKey a_key,
     return refuse("an id is a file stem (letters, digits, '-', '_', '.') and "
                   "not the paint recipe's");
   }
-  if (Loaded(a_id)) {
+  if (IsIdTaken(a_id)) {
     return refuse("a recipe has that id");
   }
   const std::string id{a_id};

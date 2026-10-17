@@ -2,6 +2,7 @@
 #pragma once
 
 #include "Core.h"
+#include "recipe/Expression.h"
 #include "studio/ClusterReadout.h"
 #include "studio/EditResult.h"
 #include "studio/History.h"
@@ -35,7 +36,7 @@ inline constexpr FieldKey kNoField = 0;
                                     std::string_view a_field,
                                     std::string_view a_leaf);
 
-using TextBuffer = std::array<char, 1024>;
+using TextBuffer = std::array<char, kMaxExpressionLength + 1>;
 using NumberBuffer = std::array<float, 3>;
 
 struct FiringDraft {
@@ -63,6 +64,7 @@ struct TuningGesture {
   InspectorSubject subject;
   float value = 0.0f;
   std::function<std::optional<RecipeEdit>(const std::string &)> bind;
+  std::optional<std::pair<float, float>> span;
   bool seen = false;
   bool finishing = false;
 };
@@ -87,6 +89,7 @@ struct MenuState {
   std::optional<PendingIndexedEdit> pendingRecipeFile;
   std::optional<PendingEditorChange> pendingEditorChange;
   std::optional<TuningGesture> tuning;
+  std::optional<FieldKey> termDrag;
   std::unordered_map<FieldKey, std::pair<float, float>> tuningRanges;
   std::unordered_map<FieldKey, ExpressionDraft> expressionDrafts;
   std::optional<NameDraft> nameDraft;

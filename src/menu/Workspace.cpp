@@ -912,7 +912,7 @@ void DrawMaskInspector(const Studio::MaskSubject &a_mask,
       [&]() {
         Disabled(otherDraft || !a_frame.piece, [&] {
           if (ImGui::Button("Advanced Edit")) {
-            EditMaskAsTerms(*row, a_frame, false);
+            EditMaskAsTerms(*row, a_frame, std::nullopt);
           }
         });
         Tooltip(otherDraft       ? "Finish the current mask draft first."

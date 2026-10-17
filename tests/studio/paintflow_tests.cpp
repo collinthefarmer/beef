@@ -432,8 +432,29 @@ void CommonMaskOperations() {
 }
 }
 
+void OneUndoStepPerDrag() {
+  Flow flow;
+  flow.Ready();
+  flow.Offer(ClusterTerm{});
+  flow.DispatchFrame();
+  const std::vector<Term> before = flow.state.mask.terms;
+  for (std::uint32_t smoothing = 1; smoothing <= 3; ++smoothing) {
+    ClusterTerm term;
+    term.settings.smoothing = smoothing;
+    const auto built = BuildTerm(term, MaskPresets{},
+                                 PaintSources(flow.state, flow.published, {}));
+    Reduce(flow.state, SetTermKind{0, term, built.expression, "cluster",
+                                   built.edits, smoothing == 1});
+  }
+  Reduce(flow.state, UndoMask{});
+  Check(flow.state.mask.terms.size() == before.size() &&
+            flow.state.mask.terms.front().text == before.front().text,
+        "one undo reverts a whole slider drag over a term");
+}
+
 int main() {
   RetunedSources();
+  OneUndoStepPerDrag();
   DelayedUndo();
   RapidOffersAndKeep();
   RefusalAndRetry();

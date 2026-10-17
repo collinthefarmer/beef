@@ -214,6 +214,29 @@ void EndTuningFrame(Studio::MenuState &a_state) {
 }
 
 namespace {
+void HoldSpan(Studio::MenuState &a_state, Studio::FieldKey a_key,
+              std::pair<float, float> a_span) {
+  if (a_state.tuning && a_state.tuning->field == a_key &&
+      !a_state.tuning->span) {
+    a_state.tuning->span = a_span;
+  }
+}
+
+void ObserveTermDrag(Studio::MenuState &a_state, Studio::FieldKey a_key,
+                     const TuningSink &a_sink) {
+  if (a_state.termDrag != a_key) {
+    return;
+  }
+  if (ImGui::IsKeyPressed(ImGuiMCP::ImGuiKey_Escape, false)) {
+    if (a_sink.cancel) {
+      a_sink.cancel();
+    }
+    a_state.termDrag.reset();
+  } else if (!ImGui::IsItemActive()) {
+    a_state.termDrag.reset();
+  }
+}
+
 void ObserveTuningItem(Studio::MenuState &a_state, Studio::FieldKey a_key) {
   if (!a_state.tuning || a_state.tuning->field != a_key) {
     return;
@@ -239,11 +262,18 @@ void DrawRecipeTuning(const Studio::FormField &a_field, const Frame &a_frame) {
   const bool owned = state.tuning && state.tuning->field == key &&
                      state.tuning->recipeID == a_frame.recipe->id;
   float value = owned ? state.tuning->value : *initial;
-  const TuneRange range = ResolveTuningRange(a_field, state, key, *initial);
+  const TuneRange resolved = ResolveTuningRange(a_field, state, key, *initial);
+  const TuneRange range =
+      owned && state.tuning->span
+          ? TuneRange{*state.tuning->span, resolved.adjustable}
+          : resolved;
   const bool disabled = state.tuning && (!owned || state.tuning->finishing);
   DrawRangeSlider(
       SliderScope{a_field, state, key, range, disabled}, value,
-      [&](float a_value) { UpdateTuning(a_field, a_frame, key, a_value); },
+      [&](float a_value) {
+        UpdateTuning(a_field, a_frame, key, a_value);
+        HoldSpan(state, key, range.span);
+      },
       [&] { ObserveTuningItem(state, key); });
   if (a_frame.snapshot && a_frame.snapshot->gesture && owned &&
       a_frame.snapshot->gesture->error) {
@@ -263,7 +293,11 @@ void DrawSinkTuning(const Studio::FormField &a_field, const Frame &a_frame,
   const TuneRange range = ResolveTuningRange(a_field, state, key, value);
   DrawRangeSlider(
       SliderScope{a_field, state, key, range, false}, value,
-      [&](float a_value) { a_sink.commit(a_value); }, [] {});
+      [&](float a_value) {
+        a_sink.commit(a_value, state.termDrag != key);
+        state.termDrag = key;
+      },
+      [&] { ObserveTermDrag(state, key, a_sink); });
 }
 }
 

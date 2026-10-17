@@ -286,27 +286,33 @@ Creators(std::span<const char *const> a_names) {
   return std::vector<std::string>(a_names.begin(), a_names.end());
 }
 
-[[nodiscard]] Created WireInto(Created a_made, const FieldBinding &a_bind) {
-  if (const auto name = ResourceName(a_made.subject)) {
-    if (const auto bound = a_bind(ReferenceText(*name))) {
-      a_made.edits.push_back(*bound);
-    }
+[[nodiscard]] Created WireInto(Created a_made, const FieldBinding &a_bind,
+                               const std::string &a_current = {}) {
+  const auto name = ResourceName(a_made.subject);
+  const auto bound = name ? a_bind(ReferenceText(*name)) : std::nullopt;
+  if (!bound) {
+    return a_made;
+  }
+  a_made.edits.push_back(*bound);
+  if (const auto restore = a_bind(a_current)) {
+    a_made.unwire.push_back(*restore);
   }
   return a_made;
 }
 
 [[nodiscard]] std::optional<Created> CreateImage(const std::string &a_creator,
                                                  const RecipeRow &a_recipe,
-                                                 const FieldBinding &a_bind) {
+                                                 const FieldBinding &a_bind,
+                                                 const std::string &a_current) {
   if (a_creator == "new mask") {
-    return WireInto(Create(NewMask{}, a_recipe), a_bind);
+    return WireInto(Create(NewMask{}, a_recipe), a_bind, a_current);
   }
   const std::string_view word = a_creator.starts_with("new ")
                                     ? std::string_view{a_creator}.substr(4)
                                     : std::string_view{a_creator};
   if (const auto kind = DefaultSourceKind(word)) {
     return WireInto(Create(NewSource{std::string{word}, *kind}, a_recipe),
-                    a_bind);
+                    a_bind, a_current);
   }
   return std::nullopt;
 }
@@ -672,9 +678,9 @@ SourceFieldOf(const Inspector &a_inspector,
        .detail =
            DetailWhen(a_inspector.source.has_value(), FieldDetail::kSource)});
   source.creators = Creators(kImageCreators);
-  source.create = [bind = source.bind](const std::string &a_creator,
-                                       const RecipeRow &a_recipe) {
-    return CreateImage(a_creator, a_recipe, bind);
+  source.create = [bind = source.bind, current = a_inspector.row.source](
+                      const std::string &a_creator, const RecipeRow &a_recipe) {
+    return CreateImage(a_creator, a_recipe, bind, current);
   };
   return source;
 }
@@ -757,9 +763,9 @@ SourceFieldOf(const Inspector &a_inspector,
        .bind = BindLayerMask(a_inspector.output, a_inspector.layer),
        .detail = DetailWhen(a_inspector.mask.has_value(), FieldDetail::kMask),
        .creators = {"new mask"}});
-  mask.create = [bind = mask.bind](const std::string &a_creator,
-                                   const RecipeRow &a_recipe) {
-    return CreateImage(a_creator, a_recipe, bind);
+  mask.create = [bind = mask.bind, current = a_inspector.row.mask](
+                    const std::string &a_creator, const RecipeRow &a_recipe) {
+    return CreateImage(a_creator, a_recipe, bind, current);
   };
   return mask;
 }

@@ -505,6 +505,7 @@ std::optional<std::string> TextField(const char *a_key,
   auto &state = Studio::State();
   const Studio::FieldKey key = KeyOf(a_key);
   auto &buffer = state.textBuffers[key];
+  const bool fits = a_model.size() < buffer.size();
   if (state.activeField != key) {
     const auto n = (std::min)(a_model.size(), buffer.size() - 1);
     std::memcpy(buffer.data(), a_model.data(), n);
@@ -519,11 +520,16 @@ std::optional<std::string> TextField(const char *a_key,
     ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_FrameBg, kProblemFrame);
   }
   NextItemWidth(a_size.width, a_size.scale);
+  const int flags = ImGuiMCP::ImGuiInputTextFlags_EnterReturnsTrue |
+                    (fits ? 0 : ImGuiMCP::ImGuiInputTextFlags_ReadOnly);
   const bool committed =
-      ImGui::InputText("##text", buffer.data(), buffer.size(),
-                       ImGuiMCP::ImGuiInputTextFlags_EnterReturnsTrue);
+      ImGui::InputText("##text", buffer.data(), buffer.size(), flags) && fits;
   if (problem) {
     ImGui::PopStyleColor();
+  }
+  if (!fits) {
+    Tooltip("This text is longer than a field can edit; edit it in the "
+            "recipe file.");
   }
   TrackActive(key);
   if (problem) {

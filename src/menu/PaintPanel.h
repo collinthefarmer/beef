@@ -2,8 +2,10 @@
 #pragma once
 
 #include "menu/Frame.h"
+#include "studio/PaintSession.h"
 #include "studio/Snapshot.h"
 
+#include <optional>
 #include <string_view>
 
 namespace BetterEnchantmentEffects::Menu {
@@ -15,5 +17,5 @@ void DrawMaskStack(const Frame &a_frame);
 void DrawTermTuningPane(const Frame &a_frame);
 void RebuildScratch(const Frame &a_frame);
 void EditMaskAsTerms(const Studio::TextRow &a_mask, const Frame &a_frame,
-                     bool a_created);
+                     std::optional<Studio::CreatedMask> a_created);
 }

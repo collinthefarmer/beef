@@ -243,13 +243,13 @@ std::optional<std::string> FieldInput(const FormField &a_field, float a_scale,
   return std::nullopt;
 }
 
-void FocusCreatedSubject(const InspectorSubject &a_subject,
-                         const Frame &a_frame) {
-  if (const auto *mask = Get<MaskSubject>(a_subject)) {
-    EditMaskAsTerms(TextRow{.name = mask->name, .text = "0"}, a_frame, true);
+void FocusCreatedSubject(const Created &a_created, const Frame &a_frame) {
+  if (const auto *mask = Get<MaskSubject>(a_created.subject)) {
+    EditMaskAsTerms(TextRow{.name = mask->name, .text = "0"}, a_frame,
+                    Studio::CreatedMask{mask->name, a_created.unwire});
     return;
   }
-  a_frame.state->pendingSelection = a_subject;
+  a_frame.state->pendingSelection = a_created.subject;
 }
 
 [[nodiscard]] bool PostCreate(const FormField &a_field,
@@ -263,9 +263,8 @@ void FocusCreatedSubject(const InspectorSubject &a_subject,
     RefuseCreate(a_field.name, a_text);
     return true;
   }
-  Post(*a_frame.intents,
-       EditRecipe{a_frame.recipe->id, std::move(created->edits)});
-  FocusCreatedSubject(created->subject, a_frame);
+  Post(*a_frame.intents, EditRecipe{a_frame.recipe->id, created->edits});
+  FocusCreatedSubject(*created, a_frame);
   return true;
 }
 

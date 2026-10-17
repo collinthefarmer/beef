@@ -1,5 +1,7 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #include "recipe/Recipe.h"
+#include "studio/Create.h"
+#include "studio/Edits.h"
 #include "studio/Fields.h"
 #include "studio/Forms.h"
 #include "studio/Panels.h"
@@ -7,6 +9,7 @@
 #include "test_support.h"
 
 #include <algorithm>
+#include <format>
 #include <optional>
 #include <string>
 #include <variant>
@@ -438,6 +441,48 @@ void TestInspectorForm() {
         "the source field offers resource creators");
 }
 
+void TestCreatedMaskUnwires() {
+  Recipe recipe;
+  recipe.id = "sample";
+  recipe.sources = {
+      Source{"base", MaterialSource{MaterialChannel::kRoughness}}};
+  SurfaceOutput surface;
+  Layer layer;
+  layer.source = Ref{"base"};
+  surface.stack = {layer};
+  recipe.outputs.push_back(surface);
+  Inspector inspector;
+  inspector.output = 0;
+  inspector.layer = 0;
+  inspector.row.source = "@base";
+  inspector.row.opacityText = "1";
+  inspector.sources = {"base"};
+  const std::vector<FormField> form = InspectorForm(inspector);
+  RecipeRow row;
+  row.id = recipe.id;
+  for (const char *name : {"mask", "source"}) {
+    const FormField *field = Field(form, name);
+    const std::optional<Created> created =
+        field && field->create ? field->create("new mask", row) : std::nullopt;
+    const auto *mask = created ? Get<MaskSubject>(created->subject) : nullptr;
+    Check(mask != nullptr && !created->unwire.empty(),
+          std::format("a mask made from the {} field records how to unwire it",
+                      name));
+    if (!mask) {
+      continue;
+    }
+    const auto made = PrepareEdits(recipe, EditBatch{created->edits});
+    std::vector<RecipeEdit> discard = created->unwire;
+    discard.emplace_back(RemoveMask{.name = mask->name});
+    const auto restored = made ? PrepareEdits(*made, EditBatch{discard}) : made;
+
+    Check(made && restored && *restored == recipe,
+          std::format("discarding a mask made from the {} field restores the "
+                      "layer as it was",
+                      name));
+  }
+}
+
 void TestScalarForm() {
   LayerStack stack;
   stack.output = 0;
@@ -733,6 +778,7 @@ int main() {
   TestRecipeHeaderForm();
   TestOutputHeaderForm();
   TestInspectorForm();
+  TestCreatedMaskUnwires();
   TestScalarForm();
   TestStackAndInspectorViews();
   TestIntegerSignalFields();

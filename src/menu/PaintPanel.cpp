@@ -56,7 +56,7 @@ const std::vector<std::string> kTermOps{
     std::string{Studio::TermOpName(Studio::TermOp::kNot)}};
 
 void PostTermKind(std::size_t a_index, const Studio::TermKind &a_kind,
-                  const Frame &a_frame);
+                  const Frame &a_frame, bool a_remember = true);
 
 void Refuse(std::string_view a_field, const std::string &a_text) {
   logger::warn("{} not applied: '{}' does not parse", a_field, a_text);
@@ -104,14 +104,15 @@ TermFieldInput(const Studio::FormField &a_field, const Frame &a_frame) {
 }
 
 void CommitTermField(std::size_t a_index, const Studio::TermField &a_field,
-                     const std::string &a_text, const Frame &a_frame) {
+                     const std::string &a_text, const Frame &a_frame,
+                     bool a_remember = true) {
   const std::optional<Studio::TermKind> changed =
       a_field.apply ? a_field.apply(a_text) : std::nullopt;
   if (!changed) {
     Refuse(a_field.field.name, a_text);
     return;
   }
-  PostTermKind(a_index, *changed, a_frame);
+  PostTermKind(a_index, *changed, a_frame, a_remember);
 }
 
 [[nodiscard]] const Studio::GeometryRow &
@@ -128,7 +129,7 @@ TermGeometry(const std::optional<std::string> &a_guard, const Frame &a_frame) {
 }
 
 void PostTermKind(std::size_t a_index, const Studio::TermKind &a_kind,
-                  const Frame &a_frame) {
+                  const Frame &a_frame, bool a_remember) {
   const std::optional<std::string> guard = TermGuard(a_index, a_frame);
   Studio::PlacedTerm placed = Studio::PlaceTerm(
       a_kind, guard, LoadedPresets(),
@@ -137,7 +138,7 @@ void PostTermKind(std::size_t a_index, const Studio::TermKind &a_kind,
   Studio::Post(*a_frame.intents,
                Studio::SetTermKind{a_index, a_kind, std::move(placed.term.text),
                                    std::move(placed.term.label),
-                                   std::move(placed.edits)});
+                                   std::move(placed.edits), a_remember});
 }
 
 void DrawTermSettings(std::size_t a_index, const Studio::Term &a_term,
@@ -434,8 +435,9 @@ void KeepMaskPopup(const Frame &a_frame) {
 void DiscardMaskDraft(const Frame &a_frame) {
   const Studio::MenuState &state = *a_frame.state;
   if (state.paint && state.paint->createdMask) {
-    std::vector<Studio::RecipeEdit> edits;
-    edits.emplace_back(Studio::RemoveMask{*state.paint->createdMask, true});
+    const Studio::CreatedMask &created = *state.paint->createdMask;
+    std::vector<Studio::RecipeEdit> edits = created.unwire;
+    edits.emplace_back(Studio::RemoveMask{.name = created.name});
     Studio::Post(*a_frame.intents,
                  Studio::EditRecipe{state.paint->recipeID, std::move(edits)});
   }
@@ -614,7 +616,7 @@ void RebuildScratch(const Frame &a_frame) {
 }
 
 void EditMaskAsTerms(const Studio::TextRow &a_mask, const Frame &a_frame,
-                     bool a_created) {
+                     std::optional<Studio::CreatedMask> a_created) {
   if (!a_frame.recipe || !a_frame.piece || a_frame.state->paint) {
     return;
   }
@@ -635,15 +637,11 @@ void EditMaskAsTerms(const Studio::TextRow &a_mask, const Frame &a_frame,
     assignment = Studio::PaintAssignment{layer->output, layer->layer,
                                          a_frame.recipe->documentRevision};
   }
-  std::optional<std::string> createdMask;
-  if (a_created) {
-    createdMask = a_mask.name;
-  }
   Studio::Post(*a_frame.intents,
                Studio::BeginPaint{a_frame.recipe->id, *key, Surface::kMaterial,
                                   a_frame.state->nextPaintSessionID++,
                                   a_frame.state->lastPaintReset, assignment,
-                                  createdMask});
+                                  std::move(a_created)});
   if (!a_mask.name.empty()) {
     a_frame.state->pendingSelection = Studio::MaskSubject{a_mask.name};
   }
@@ -787,15 +785,20 @@ void DrawTermParameter(std::size_t a_index, const Studio::TermField &a_field,
   const bool tunable = a_field.field.kind == Studio::FieldKind::kScalar &&
                        (a_field.field.range || a_field.field.workingRange);
   if (tunable) {
-    DrawTuning(a_field.field, a_preview,
-               TuningSink{[a_index, &a_field, &a_preview](float a_value) {
-                 const std::string text =
-                     a_field.field.integral
-                         ? std::to_string(
-                               static_cast<long long>(std::llround(a_value)))
-                         : ParamText(Param{a_value});
-                 CommitTermField(a_index, a_field, text, a_preview);
-               }});
+    DrawTuning(
+        a_field.field, a_preview,
+        TuningSink{
+            [a_index, &a_field, &a_preview](float a_value, bool a_remember) {
+              const std::string text =
+                  a_field.field.integral
+                      ? std::to_string(
+                            static_cast<long long>(std::llround(a_value)))
+                      : ParamText(Param{a_value});
+              CommitTermField(a_index, a_field, text, a_preview, a_remember);
+            },
+            [&a_preview] {
+              Studio::Post(*a_preview.intents, Studio::UndoMask{});
+            }});
   } else if (const auto text = TermFieldInput(a_field.field, a_preview)) {
     CommitTermField(a_index, a_field, *text, a_preview);
   }

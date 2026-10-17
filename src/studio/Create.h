@@ -46,6 +46,7 @@ using Creation = std::variant<NewOutput, NewLight, NewLayer, NewSignal,
 struct Created {
   std::vector<RecipeEdit> edits;
   InspectorSubject subject;
+  std::vector<RecipeEdit> unwire;
 };
 
 [[nodiscard]] Created Create(const Creation &a_request,

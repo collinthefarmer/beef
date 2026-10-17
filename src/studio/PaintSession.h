@@ -21,6 +21,11 @@ inline constexpr std::string_view kPeekMask = "peek";
 inline constexpr std::string_view kPaintRecipe = "paint";
 inline constexpr int kPaintPriority = 1000;
 
+struct CreatedMask {
+  std::string name;
+  std::vector<RecipeEdit> unwire;
+};
+
 struct PaintSession {
   std::string recipeID;
   Surface surface = Surface::kMaterial;
@@ -39,7 +44,7 @@ struct PaintSession {
   float originScroll = 0.0f;
   std::optional<PaintAssignment> assignment;
   bool assignmentInvalid = false;
-  std::optional<std::string> createdMask;
+  std::optional<CreatedMask> createdMask;
   std::optional<PaintPeek> peek;
 };
 

@@ -560,6 +560,25 @@ void CleanRename(const std::filesystem::path &root, const Recipe &fixture) {
         "file");
 }
 
+void SaveKeepsUnloadedFile(const std::filesystem::path &root,
+                           const Recipe &fixture) {
+  Start(root, "unloaded_user_file", fixture);
+  const auto unread = Identity::UserRecipeFolder() / "fresh.json";
+  const auto aside = std::filesystem::path{unread.string() + ".unloaded"};
+  Check(WriteText(unread, "{ not json"), "seed an unreadable user file");
+  Check(LoadRecipes().loaded == 1, "the unreadable user file does not load");
+  Check(!NewRecipe("fresh", RecipeKey{}, {}),
+        "a new recipe may take the id of a file that did not load");
+  const auto saved = SaveRecipe("fresh");
+  const auto written = ReadRecipeFile(unread, "fresh");
+  Check(saved && test::ReadFile(aside) == "{ not json" && written &&
+            written->recipe && written->recipe->id == "fresh",
+        "save keeps the unreadable user file aside and writes its own");
+  Check(NewRecipe("FRESH", RecipeKey{}, {}).has_value() &&
+            BetterEnchantmentEffects::DuplicateRecipe(kID, "Fresh").has_value(),
+        "an id that differs from a loaded one only by case is refused");
+}
+
 void ShippedSaveRouting(const std::filesystem::path &root,
                         const Recipe &fixture) {
   for (const std::string folder : {"vendor/nested", "user-assets", ""}) {
@@ -1630,6 +1649,7 @@ int main() {
     CleanRename(root, *parsed.recipe);
     ShippedOwnership(root, *parsed.recipe);
     ShippedSaveRouting(root, *parsed.recipe);
+    SaveKeepsUnloadedFile(root, *parsed.recipe);
     NestedUserSave(root, *parsed.recipe);
     PaintCommitLifecycle(root, *parsed.recipe);
     PaintDiscardAndStaleWork(root, *parsed.recipe);

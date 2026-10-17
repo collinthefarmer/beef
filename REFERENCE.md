@@ -3037,6 +3037,17 @@ them outside as separate passes.
   rename/duplicate/delete; imported/shipped files are unpublished, not deleted.
 - `SaveRecipe` / `RevertRecipe` are `RecipeEditor` methods called directly from
   `menu/RecipeActions.cpp`, not intents — persistence, not CRUD.
+- Ids collide without case (`IsIdTaken`), because NTFS opens `Recipe.json`
+  and `recipe.json` as one file. Rename may change only the case of its own
+  id; the file move then refuses, because the destination exists.
+- A recipe owns its file (`LoadedRecipe::ownsFile`) once it was read from that
+  path or written there. A save to a path the recipe does not own claims it
+  first (`ClaimDestination`): it refuses a path that another loaded recipe
+  holds, compared without case, and sets aside an existing file as
+  `<file>.unloaded`, as the importer does. Such a file never loaded, usually
+  because it does not parse, and only a person wrote it, so the save keeps it
+  instead of writing over it. A failed write returns the set-aside file to its
+  path.
 
 
 On a load, `CancelFileOperationsForLoad` records the load as an active
