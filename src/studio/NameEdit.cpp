@@ -2,8 +2,10 @@
 #include "studio/NameEdit.h"
 
 #include "recipe/Recipe.h"
+#include "studio/PaintSession.h"
 
 #include <algorithm>
+#include <cctype>
 #include <utility>
 
 namespace BetterEnchantmentEffects::Studio {
@@ -27,6 +29,31 @@ std::optional<std::string> NameProblem(std::string_view a_text,
   }
   if (std::ranges::contains(a_rules.taken, a_text)) {
     return "That name is already in use.";
+  }
+  return std::nullopt;
+}
+
+std::optional<std::string>
+RecipeNameProblem(std::string_view a_text,
+                  std::span<const std::string> a_taken) {
+  if (!IsName(a_text)) {
+    return "Use letters, digits and underscores; do not start with a digit.";
+  }
+  if (a_text == kPaintRecipe) {
+    return "The paint editor uses that name.";
+  }
+  const auto folded = [](std::string_view a_name) {
+    std::string out{a_name};
+    std::ranges::transform(out, out.begin(), [](char c) {
+      return static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    });
+    return out;
+  };
+  const std::string wanted = folded(a_text);
+  if (std::ranges::any_of(a_taken, [&](const std::string &a_name) {
+        return folded(a_name) == wanted;
+      })) {
+    return "A recipe has that name.";
   }
   return std::nullopt;
 }

@@ -123,6 +123,8 @@ constexpr const char *kMenuExports[]{
     "igPushStyleColor_U32",
     "igPushStyleColor_Vec4",
     "igPushTextWrapPos",
+    "igRadioButton_Bool",
+    "igRadioButton_IntPtr",
     "igSameLine",
     "igSelectable_Bool",
     "igSelectable_BoolPtr",

@@ -11,6 +11,7 @@
 #include "studio/GameObjects.h"
 #include "studio/Intent.h"
 #include "studio/MenuState.h"
+#include "studio/NameEdit.h"
 #include "studio/Names.h"
 #include "studio/RecipeSections.h"
 #include "studio/Selection.h"
@@ -20,7 +21,9 @@
 #include "studio/WornPieces.h"
 
 #include <algorithm>
+#include <cfloat>
 #include <cstddef>
+#include <cstdint>
 #include <format>
 #include <functional>
 #include <optional>
@@ -318,61 +321,196 @@ std::optional<RecipeKey> DefaultKeyOf(const Studio::PieceRow &a_piece) {
 }
 
 namespace {
-void CreateForSelectedArmor(const Frame &a_frame, const std::string &a_name,
-                            bool a_nameValid) {
-  if (!a_frame.piece) {
-    return;
-  }
-  const auto key = DefaultKeyOf(*a_frame.piece);
-  if (!key) {
-    return;
-  }
-  Disabled(!a_nameValid, [&] {
-    if (ImGui::Button("Create for selected armor")) {
-      Studio::Post(*a_frame.intents,
-                   Studio::CreateRecipe{a_name, *key, {}, a_frame.piece->ref});
-      ImGui::CloseCurrentPopup();
-    }
-  });
-}
+enum class KeySource : std::uint8_t { kSelectedArmor, kWornPiece, kTypedKey };
 
 struct WornChoice {
   RecipeKey key;
   Studio::PieceRef piece;
+  std::string label;
 };
 
-std::optional<WornChoice> WornPieceCombo(const Frame &a_frame) {
+struct NewRecipeDraft {
+  KeySource source = KeySource::kSelectedArmor;
+  KeyKind kind = KeyKind::kArmor;
+  std::optional<WornChoice> worn;
+};
+
+struct ChosenKey {
+  RecipeKey key;
+  std::optional<Studio::PieceRef> piece;
+};
+
+constexpr KeyKind kTypedKeyKinds[]{
+    KeyKind::kArmor,       KeyKind::kKeyword,      KeyKind::kEnchantment,
+    KeyKind::kMagicEffect, KeyKind::kEffectShader, KeyKind::kMaterial};
+
+NewRecipeDraft &Draft() {
+  static NewRecipeDraft draft;
+  return draft;
+}
+
+std::optional<RecipeKey> SelectedArmorKey(const Frame &a_frame) {
+  return a_frame.piece ? DefaultKeyOf(*a_frame.piece) : std::nullopt;
+}
+
+NewRecipeDraft FreshDraft(const Frame &a_frame) {
+  return {.source = SelectedArmorKey(a_frame) ? KeySource::kSelectedArmor
+                                              : KeySource::kWornPiece};
+}
+
+std::optional<RecipeKey> TypedKey(KeyKind a_kind, std::string_view a_operand) {
+  if (a_operand.empty()) {
+    return std::nullopt;
+  }
+  RecipeKey key;
+  key.kind = a_kind;
+  if (a_kind == KeyKind::kMaterial) {
+    key.operand = std::string{a_operand};
+  } else {
+    key.operand = FormRef::From(a_operand);
+  }
+  return key;
+}
+
+void SourceRadio(const char *a_label, KeySource a_source, bool a_enabled) {
+  NewRecipeDraft &draft = Draft();
+  Disabled(!a_enabled, [&] {
+    if (ImGui::RadioButton(a_label, draft.source == a_source)) {
+      draft.source = a_source;
+    }
+  });
+  ImGui::SameLine();
+}
+
+void SelectedArmorRow(const Frame &a_frame) {
+  const bool available = SelectedArmorKey(a_frame).has_value();
+  SourceRadio("Selected armor", KeySource::kSelectedArmor, available);
+  ImGui::AlignTextToFramePadding();
+  Dim(available ? a_frame.piece->armorName : "no armor is selected");
+}
+
+void WornPieceRow(const Frame &a_frame) {
+  NewRecipeDraft &draft = Draft();
+  SourceRadio("A worn piece", KeySource::kWornPiece, true);
   const std::vector<Studio::WornPieceRow> &worn = a_frame.snapshot->worn;
-  std::optional<WornChoice> chosen;
-  NextItemWidth(Studio::Width::Px(320.0f));
-  if (!ImGui::BeginCombo("From a worn piece", "choose a worn piece")) {
-    return chosen;
+  NextItemWidth(Studio::Width::Fill());
+  const char *preview =
+      draft.worn ? draft.worn->label.c_str() : "choose a worn piece";
+  if (!ImGui::BeginCombo("##worn-piece", preview)) {
+    return;
   }
   if (worn.empty()) {
     Dim("the viewed actor wears no armor");
   }
   for (std::size_t i = 0; i < worn.size(); ++i) {
     const std::optional<RecipeKey> key = Studio::ArmorKeyOf(worn[i]);
+    const std::string label = Studio::WornPieceLabel(worn[i]);
     ImGui::PushID(static_cast<int>(i));
-    if (key &&
-        ImGui::Selectable(Studio::WornPieceLabel(worn[i]).c_str(), false)) {
-      chosen = WornChoice{*key, worn[i].piece};
+    if (key && ImGui::Selectable(label.c_str(), false)) {
+      draft.worn = WornChoice{*key, worn[i].piece, label};
+      draft.source = KeySource::kWornPiece;
     }
     ImGui::PopID();
   }
   ImGui::EndCombo();
-  return chosen;
 }
 
-void CreateFromWornPiece(const Frame &a_frame, const std::string &a_name,
-                         bool a_nameValid) {
-  Disabled(!a_nameValid, [&] {
-    if (const std::optional<WornChoice> choice = WornPieceCombo(a_frame)) {
-      Studio::Post(
-          *a_frame.intents,
-          Studio::CreateRecipe{a_name, choice->key, {}, choice->piece});
-      ImGui::CloseCurrentPopup();
+std::string_view TypedKeyRow(const Frame &a_frame) {
+  NewRecipeDraft &draft = Draft();
+  SourceRadio("Any key", KeySource::kTypedKey, true);
+  const std::string kindName{KeyKindName(draft.kind)};
+  NextItemWidth(
+      Studio::Width::Px(ButtonWidth("effectShader") + ImGui::GetFrameHeight()),
+      a_frame.scale);
+  if (ImGui::BeginCombo("##key-kind", kindName.c_str())) {
+    for (const KeyKind choice : kTypedKeyKinds) {
+      if (ImGui::Selectable(std::string{KeyKindName(choice)}.c_str(),
+                            choice == draft.kind)) {
+        draft.kind = choice;
+        draft.source = KeySource::kTypedKey;
+      }
     }
+    ImGui::EndCombo();
+  }
+  ImGui::SameLine();
+  const std::string_view operand = LiveTextField(
+      "new-key",
+      draft.kind == KeyKind::kMaterial ? "texture path or pattern"
+                                       : "editor ID or plugin form key",
+      Studio::Width::Fill(), a_frame.scale);
+  if (!operand.empty() && ImGui::IsItemActive()) {
+    draft.source = KeySource::kTypedKey;
+  }
+  return operand;
+}
+
+std::optional<ChosenKey> KeyOfDraft(const Frame &a_frame,
+                                    std::string_view a_operand) {
+  const NewRecipeDraft &draft = Draft();
+  switch (draft.source) {
+  case KeySource::kSelectedArmor:
+    if (const std::optional<RecipeKey> key = SelectedArmorKey(a_frame)) {
+      return ChosenKey{*key, a_frame.piece->ref};
+    }
+    return std::nullopt;
+  case KeySource::kWornPiece:
+    if (draft.worn) {
+      return ChosenKey{draft.worn->key, draft.worn->piece};
+    }
+    return std::nullopt;
+  case KeySource::kTypedKey:
+    if (const std::optional<RecipeKey> key = TypedKey(draft.kind, a_operand)) {
+      return ChosenKey{*key, std::nullopt};
+    }
+    return std::nullopt;
+  }
+  return std::nullopt;
+}
+
+void FormLabel(Table &a_table, std::string_view a_label) {
+  a_table.Cell();
+  ImGui::AlignTextToFramePadding();
+  ImGui::TextUnformatted(a_label.data(), a_label.data() + a_label.size());
+  a_table.Cell();
+}
+
+void DrawNewRecipeForm(const Frame &a_frame) {
+  const std::string proposed =
+      Studio::UniqueName("recipe", a_frame.snapshot->loaded);
+  Table table =
+      Table::Begin("new-recipe-form",
+                   {{"", Studio::Width::Fit()}, {"", Studio::Width::Fill()}},
+                   Studio::kFormTable);
+  if (!table.Open()) {
+    return;
+  }
+  FormLabel(table, "Name");
+  const std::string_view typed = LiveTextField(
+      "new-name", proposed.c_str(), Studio::Width::Fill(), a_frame.scale);
+  const std::string name = typed.empty() ? proposed : std::string{typed};
+  const std::optional<std::string> problem =
+      Studio::RecipeNameProblem(name, a_frame.snapshot->loaded);
+  if (problem) {
+    Problem(*problem);
+  }
+  FormLabel(table, "Key it to");
+  SelectedArmorRow(a_frame);
+  WornPieceRow(a_frame);
+  const std::string_view operand = TypedKeyRow(a_frame);
+  const std::optional<ChosenKey> chosen = KeyOfDraft(a_frame, operand);
+  Dim(chosen ? std::format("Keyed by {}", chosen->key.ToString())
+             : std::string{"Choose what the recipe applies to."});
+  table.End();
+  Dim("Creates an empty recipe. Add outputs to make an effect.");
+  RightAligned(ButtonWidth("Create"), [&] {
+    Disabled(problem.has_value() || !chosen, [&] {
+      if (ImGui::Button("Create") && chosen && !problem) {
+        Studio::Post(
+            *a_frame.intents,
+            Studio::CreateRecipe{name, chosen->key, {}, chosen->piece});
+        ImGui::CloseCurrentPopup();
+      }
+    });
   });
 }
 
@@ -396,54 +534,15 @@ void DeleteRecipeButton(const Studio::RecipeRow &a_recipe,
 
 void NewRecipeButton(const Frame &a_frame) {
   if (ImGui::Button("New recipe")) {
+    Draft() = FreshDraft(a_frame);
     ImGui::OpenPopup("new-recipe");
   }
+  ImGui::SetNextWindowSizeConstraints(ImVec2{460.0f * a_frame.scale, 0.0f},
+                                      ImVec2{640.0f * a_frame.scale, FLT_MAX});
   if (!ImGui::BeginPopup("new-recipe")) {
     return;
   }
-  static KeyKind kind = KeyKind::kArmor;
-  const std::string proposed =
-      Studio::UniqueName("recipe", a_frame.snapshot->loaded);
-  const std::string_view typed = LiveTextField(
-      "new-name", proposed.c_str(), Studio::Width::Px(240.0f), a_frame.scale);
-  const std::string name = typed.empty() ? proposed : std::string{typed};
-  const KeyKind kinds[]{KeyKind::kArmor,        KeyKind::kKeyword,
-                        KeyKind::kEnchantment,  KeyKind::kMagicEffect,
-                        KeyKind::kEffectShader, KeyKind::kMaterial};
-  if (ImGui::BeginCombo("Key type", std::string{KeyKindName(kind)}.c_str())) {
-    for (const KeyKind choice : kinds) {
-      if (ImGui::Selectable(std::string{KeyKindName(choice)}.c_str(),
-                            choice == kind)) {
-        kind = choice;
-      }
-    }
-    ImGui::EndCombo();
-  }
-  const std::string_view operand = LiveTextField(
-      "new-key",
-      kind == KeyKind::kMaterial ? "texture path or pattern"
-                                 : "form editor ID or plugin form key",
-      Studio::Width::Px(320.0f), a_frame.scale);
-  const bool nameValid =
-      IsName(name) && !std::ranges::contains(a_frame.snapshot->loaded, name);
-  const bool ready = nameValid && !operand.empty();
-  Dim("Creates an empty document with the chosen key. Add outputs to make an "
-      "effect.");
-  Disabled(!ready, [&] {
-    if (ImGui::Button("Create document")) {
-      RecipeKey key;
-      key.kind = kind;
-      if (kind == KeyKind::kMaterial) {
-        key.operand = std::string{operand};
-      } else {
-        key.operand = FormRef::From(operand);
-      }
-      Studio::Post(*a_frame.intents, Studio::CreateRecipe{name, key, {}});
-      ImGui::CloseCurrentPopup();
-    }
-  });
-  CreateForSelectedArmor(a_frame, name, nameValid);
-  CreateFromWornPiece(a_frame, name, nameValid);
+  DrawNewRecipeForm(a_frame);
   ImGui::EndPopup();
 }
 

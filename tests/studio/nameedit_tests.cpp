@@ -92,8 +92,23 @@ void Cancels() {
 }
 }
 
+void RecipeNames() {
+  const std::vector<std::string> loaded{"Glow", "frost"};
+  Check(!RecipeNameProblem("ember", loaded),
+        "an unused recipe name has no problem");
+  Check(RecipeNameProblem("glow", loaded).has_value() &&
+            RecipeNameProblem("FROST", loaded).has_value(),
+        "a recipe name that differs from a loaded one only by case is taken");
+  Check(RecipeNameProblem("paint", loaded).has_value(),
+        "the paint editor's recipe name is reserved");
+  Check(RecipeNameProblem("9lives", loaded).has_value() &&
+            RecipeNameProblem("", loaded).has_value(),
+        "a recipe name must be a name");
+}
+
 int main() {
   Begins();
+  RecipeNames();
   Problems();
   Commits();
   RefusesInvalid();

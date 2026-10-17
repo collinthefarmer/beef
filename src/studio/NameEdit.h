@@ -39,6 +39,9 @@ using NameStep = std::variant<KeepNaming, CommitName, CancelNaming>;
                             FieldKey a_label) noexcept;
 [[nodiscard]] std::optional<std::string> NameProblem(std::string_view a_text,
                                                      const NameRules &a_rules);
+[[nodiscard]] std::optional<std::string>
+RecipeNameProblem(std::string_view a_text,
+                  std::span<const std::string> a_taken);
 [[nodiscard]] NameStep StepNameDraft(const NameDraft &a_draft,
                                      const NameInput &a_input,
                                      const NameRules &a_rules);
