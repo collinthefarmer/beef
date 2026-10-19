@@ -50,6 +50,7 @@ struct ActorVisibility {
   std::optional<float> screenFraction;
   bool shown = true;
   ActorRole role = ActorRole::kOther;
+  ResolutionLevel finest = ResolutionLevel::kFull;
 };
 
 struct KeepLevel {

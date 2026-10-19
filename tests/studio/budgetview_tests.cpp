@@ -61,7 +61,7 @@ void KnownMemoryWithCap() {
 }
 
 void FreeVideoMemorySetsTheAllowance() {
-  const BudgetSample sample{VideoMemory{8 * kGiB, 6 * kGiB}, 1 * kGiB, 0};
+  const BudgetSample sample{VideoMemory{3 * kGiB, 1 * kGiB}, 1 * kGiB, 0};
   const BudgetState state{3 * kGiB - kMinBudgetMargin, 2 * kGiB,
                           Pressure::kNone};
   const std::vector<ReadoutLine> lines =

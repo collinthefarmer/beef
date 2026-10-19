@@ -3643,6 +3643,11 @@ The method and its prototype comparison are in
   Since 2026-10-13 every slot defaults to full (`DefaultSlotResolution`), and
   the threshold has not been re-tuned. The player is always full, and
   the setting `ScreenResolution` off makes every actor full.
+- The setting `NpcResolution` (default `Half`) is the finest level an NPC
+  reaches (`ActorVisibility::finest`, set per sighting by `SightingOf`). The
+  actor inspected in the studio is exempt, and the player is always full. In
+  the usage session of 2026-10-19 one NPC at full held 955-1348 MiB (Belrand,
+  a Vigilant of Stendarr); half holds a quarter of that.
 - Each tick, the core's lifecycle step asks `LevelStepOf` for each actor with
   a target level (render-performance 7c-3, 2026-10-08; `StepLevel`,
   `orchestration/Lifecycle.cpp`). `LevelStepOf` reads an `ActorVisibility`: the
@@ -3813,11 +3818,16 @@ The method and its prototype comparison are in
   allowance stays the same. A usage over the budget gives no free video
   memory. Plugin bytes over the usage count only up to the usage. Every sum
   saturates.
-- The **margin** is the larger of 512 MiB and 5 % of the DXGI budget
+- The **margin** is the larger of 512 MiB and 15 % of the DXGI budget
   (`MarginOf`). The plugin samples once a second and cannot see the game's
   own allocations between two samples, for example the textures of a new
-  cell. The margin keeps that room free. The 5 % term scales the room with
-  the card's memory.
+  cell. The margin keeps that room free. The 15 % term scales the room with
+  the card's memory. Until 2026-10-19 it was 5 %: in that day's usage session
+  every step up fit the allowance, and the process still reached 93 % of the
+  budget (12.85 of 13.77 GiB) as the game's own usage rose and Windows cut the
+  budget from 15.2 to 13.7 GiB. An external profile counted 0.45 hitches per
+  second above 85 % against 0.16 below it, with driver stalls in whichever
+  D3D call came next.
 - The setting `RenderTargetBudgetMiB` caps the allowance; 0 sets no cap. The
   run file field `renderTargetBudgetMiB` replaces the setting for one
   regression run. The cap applies only while the DXGI reading is known.
@@ -4036,12 +4046,18 @@ The method and its prototype comparison are in
   in `Queued` or `Running` (`MayEvict`, `BudgetActor::resizing`).
 - **Growth.** Each memory sample under pressure restarts the radius's dwell
   (`BudgetRadius::sinceMs`). Without pressure, the radius tries to grow by
-  1 / 0.8 once per dwell (`GrowRadius`, `kRadiusDwellMs` 10 s). The 1 / 0.8
+  1 / 0.8 once per dwell (`GrowRadius`, `DwellAfter`). The 1 / 0.8
   step lets every NPC inside the old radius pass the 0.8 restore rule. The
   dwell is 10 s because a pressure episode from an install ends within 1 to
   2 s, and the returning installs reach the planned figure within one
   heartbeat. A 10 s dwell therefore sees any pressure that a growth step
   causes before the next step.
+- The dwell doubles with each shrink of one radius (`BudgetRadius::shrinks`,
+  `DwellAfter`): 10 s after the first, 20 s after the second, at most 160 s
+  (`kMaxRadiusDwellMs`). The count resets only when the radius clears. In the
+  2026-10-19 session the radius evicted and returned the follower Belrand
+  repeatedly; each return cost a full install (70-130 ms on the main thread)
+  and up to 1.3 GiB of new render targets before pressure evicted him again.
 - **The ring.** A growth step prices the NPCs it lets return. Before the
   ring, a run with `RenderTargetBudgetMiB=64` and four Vigilants of Stendarr
   grew the radius, let the evicted NPCs return, started pressure and evicted

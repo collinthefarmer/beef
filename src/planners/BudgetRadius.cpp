@@ -61,6 +61,15 @@ float EffectiveEvictDistance(
              : a_radius->distance;
 }
 
+std::uint32_t DwellAfter(std::uint32_t a_shrinks) noexcept {
+  std::uint64_t dwell = kRadiusDwellMs;
+  for (std::uint32_t i = 1; i < a_shrinks && dwell < kMaxRadiusDwellMs; ++i) {
+    dwell *= 2;
+  }
+  return static_cast<std::uint32_t>(
+      std::min<std::uint64_t>(dwell, kMaxRadiusDwellMs));
+}
+
 std::optional<RadiusShrink>
 ShrinkRadius(std::span<const BudgetActor> a_actors,
              const std::optional<BudgetRadius> &a_current,
@@ -88,7 +97,9 @@ ShrinkRadius(std::span<const BudgetActor> a_actors,
   const float radius =
       std::min(std::max(evicted * kRadiusShrinkFactor, kept), bound);
   const BudgetActor &evictee = a_actors[*chosen];
-  return RadiusShrink{evictee.actor, BudgetRadius{radius, a_nowMs},
+  const std::uint32_t shrinks = a_current ? a_current->shrinks + 1 : 1;
+  return RadiusShrink{evictee.actor,
+                      BudgetRadius{radius, a_nowMs, false, shrinks},
                       evictee.costs.planned};
 }
 
@@ -165,10 +176,10 @@ float RadiusStoppingAt(float a_distance) noexcept {
 RadiusGrowth GrowRadius(const RadiusGrowthRequest &a_request) {
   const BudgetRadius &radius = a_request.radius;
   if (IsOver(a_request.budget.pressure)) {
-    return RadiusUnchanged{
-        BudgetRadius{radius.distance, a_request.nowMs, radius.blockReported}};
+    return RadiusUnchanged{BudgetRadius{radius.distance, a_request.nowMs,
+                                        radius.blockReported, radius.shrinks}};
   }
-  if (a_request.nowMs - radius.sinceMs < kRadiusDwellMs) {
+  if (a_request.nowMs - radius.sinceMs < DwellAfter(radius.shrinks)) {
     return RadiusUnchanged{radius};
   }
   const float grown = radius.distance / kRestoreFraction;
@@ -179,8 +190,9 @@ RadiusGrowth GrowRadius(const RadiusGrowthRequest &a_request) {
   const bool clears = !limit || !(grown < *limit);
   const float evictAfter =
       clears ? a_request.evictDistance
-             : EffectiveEvictDistance(a_request.evictDistance,
-                                      BudgetRadius{grown, a_request.nowMs});
+             : EffectiveEvictDistance(
+                   a_request.evictDistance,
+                   BudgetRadius{grown, a_request.nowMs, false, radius.shrinks});
   const std::vector<RingActor> ring = RingOf(
       a_request.evicted,
       EffectiveEvictDistance(a_request.evictDistance, radius), evictAfter);
@@ -193,15 +205,18 @@ RadiusGrowth GrowRadius(const RadiusGrowthRequest &a_request) {
     if (clears) {
       return RadiusCleared{fit.bytes};
     }
-    return RadiusGrown{BudgetRadius{grown, a_request.nowMs}, fit.bytes};
+    return RadiusGrown{
+        BudgetRadius{grown, a_request.nowMs, false, radius.shrinks}, fit.bytes};
   }
   const float stop = RadiusStoppingAt(ring[fit.returning].distance);
   if (fit.returning == 0 || !(stop > radius.distance)) {
-    return RadiusBlocked{BudgetRadius{radius.distance, a_request.nowMs, true},
-                         RingBytes(ring, a_request.unpricedBytes),
-                         room.value_or(RingRoom{}), !radius.blockReported};
+    return RadiusBlocked{
+        BudgetRadius{radius.distance, a_request.nowMs, true, radius.shrinks},
+        RingBytes(ring, a_request.unpricedBytes), room.value_or(RingRoom{}),
+        !radius.blockReported};
   }
-  return RadiusGrown{BudgetRadius{stop, a_request.nowMs}, fit.bytes};
+  return RadiusGrown{BudgetRadius{stop, a_request.nowMs, false, radius.shrinks},
+                     fit.bytes};
 }
 
 std::string RadiusShrinkLine(float a_radius, std::uint32_t a_actor,

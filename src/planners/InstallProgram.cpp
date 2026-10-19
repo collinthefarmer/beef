@@ -278,16 +278,17 @@ std::vector<GeometryId> LightGeometries(const ActorMatches &a_matches,
 
 SurfacePlan PlanSurfaces(const ActorMatches &a_matches,
                          std::span<const Recipe> a_store,
-                         const OutputFilter &a_filter) {
+                         const OutputFilter &a_filter,
+                         std::span<const OutputAnimation> a_animated) {
   SurfacePlan plan;
   for (std::size_t g = 0; g < a_matches.geometries.size(); ++g) {
     const GeometryId geometry{g};
-    GeometryBinding binding{
-        geometry,
-        PlanGeometryPlacement(a_matches, a_store, geometry, a_filter),
-        {},
-        {},
-        std::nullopt};
+    GeometryBinding binding{geometry,
+                            PlanGeometryPlacement(a_matches, a_store, geometry,
+                                                  a_filter, a_animated),
+                            {},
+                            {},
+                            std::nullopt};
     binding.stacks =
         PlanStacks(binding.placement.placed, binding.placement.plan);
     binding.binding =

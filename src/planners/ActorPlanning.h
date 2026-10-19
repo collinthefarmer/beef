@@ -33,7 +33,8 @@ using RecipeResolver =
 [[nodiscard]] GeometryPlacementPlan
 PlanGeometryPlacement(const ActorMatches &a_matches,
                       std::span<const Recipe> a_store, GeometryId a_geometry,
-                      const OutputFilter &a_filter = {});
+                      const OutputFilter &a_filter = {},
+                      std::span<const OutputAnimation> a_animated = {});
 [[nodiscard]] ActorLightPlan PlanActorLights(const ActorMatches &a_matches,
                                              std::span<const Recipe> a_store,
                                              const OutputFilter &a_filter = {});

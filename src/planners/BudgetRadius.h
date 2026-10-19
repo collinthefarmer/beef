@@ -15,6 +15,7 @@
 namespace BetterEnchantmentEffects {
 inline constexpr float kRadiusShrinkFactor = 0.99f;
 inline constexpr std::uint32_t kRadiusDwellMs = 10000;
+inline constexpr std::uint32_t kMaxRadiusDwellMs = 160000;
 inline constexpr std::uint64_t kRingMarginDivisor = 2;
 inline constexpr std::size_t kUnpricedPerGrowth = 1;
 inline constexpr int kRadiusRoundingSteps = 4;
@@ -23,6 +24,7 @@ struct BudgetRadius {
   float distance = 0.0f;
   std::uint32_t sinceMs = 0;
   bool blockReported = false;
+  std::uint32_t shrinks = 1;
   [[nodiscard]] bool operator==(const BudgetRadius &) const = default;
 };
 
@@ -98,6 +100,7 @@ using RadiusGrowth =
 [[nodiscard]] float
 EffectiveEvictDistance(float a_evictDistance,
                        const std::optional<BudgetRadius> &a_radius) noexcept;
+[[nodiscard]] std::uint32_t DwellAfter(std::uint32_t a_shrinks) noexcept;
 [[nodiscard]] std::optional<RadiusShrink>
 ShrinkRadius(std::span<const BudgetActor> a_actors,
              const std::optional<BudgetRadius> &a_current,

@@ -166,6 +166,23 @@ int main() {
 
   {
     const Recipe lower = StaticRecipe();
+    const Recipe upper = AnimatedRecipe();
+    const std::vector<PlacedRecipe> placed{
+        PlacedRecipe{&lower, 5, {0}, 0, {true}},
+        PlacedRecipe{&upper, 10, {0}, 1, {false}},
+    };
+    const GeometryStackPlan stacks = PlanStacks(placed, PlanGeometry(placed));
+    const SlotStackPlan *emissive =
+        SlotStackPlanOf(stacks, Surface::kMaterial, Slot::kEmissive);
+    Check(emissive && emissive->chain.size() == 2 &&
+              emissive->chain.front().selfAnimated &&
+              !emissive->chain.back().selfAnimated,
+          "known output animation is read as given, without compiling the "
+          "recipe");
+  }
+
+  {
+    const Recipe lower = StaticRecipe();
     const Recipe upper = StaticRecipe();
     const std::vector<PlacedRecipe> placed{
         PlacedRecipe{&lower, 5, {0}},

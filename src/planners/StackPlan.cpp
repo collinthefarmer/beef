@@ -16,6 +16,10 @@ bool LinkSelfAnimated(std::span<const PlacedRecipe> a_placed,
   if (!recipe || a_contribution.output >= recipe->outputs.size()) {
     return false;
   }
+  const OutputAnimation &known = a_placed[placed].animated;
+  if (a_contribution.output < known.size()) {
+    return known[a_contribution.output];
+  }
   const SurfaceOutput *output =
       Get<SurfaceOutput>(recipe->outputs[a_contribution.output]);
   if (!output) {

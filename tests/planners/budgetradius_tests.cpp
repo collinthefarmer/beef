@@ -165,6 +165,31 @@ void GrowthWaitsForTheDwell() {
   Check(Is<RadiusUnchanged>(wrapped), "the dwell survives a clock wrap");
 }
 
+void RepeatedShrinksWaitLonger() {
+  const std::vector<BudgetActor> actors = Numbered({At(1000.0f), At(2000.0f)});
+  const std::optional<RadiusShrink> first =
+      ShrinkRadius(actors, std::nullopt, 0);
+  const std::optional<RadiusShrink> second =
+      first ? ShrinkRadius(actors, first->radius, 10) : std::nullopt;
+  Check(first && first->radius.shrinks == 1 && second &&
+            second->radius.shrinks == 2,
+        "each shrink in one episode counts");
+  Equal(DwellAfter(1), kRadiusDwellMs, "a first shrink waits the base dwell");
+  Equal(DwellAfter(2), 2 * kRadiusDwellMs,
+        "a second shrink waits twice as long");
+  Equal(DwellAfter(1000), kMaxRadiusDwellMs, "the dwell has a ceiling");
+  const BudgetRadius twice{1000.0f, 5000, false, 2};
+  Check(Is<RadiusUnchanged>(
+            GrowRadius(GrowthOf(twice, 5000 + kRadiusDwellMs, 0.0f, 9000.0f))),
+        "a twice-shrunk radius does not grow after the base dwell");
+  const RadiusGrowth due =
+      GrowRadius(GrowthOf(twice, 5000 + 2 * kRadiusDwellMs, 0.0f, 9000.0f));
+  const RadiusGrown *grown = Get<RadiusGrown>(due);
+  Check(grown && grown->radius.shrinks == 2,
+        "a twice-shrunk radius grows after the doubled dwell and keeps its "
+        "count");
+}
+
 void GrowthStopsUnderPressure() {
   const BudgetRadius radius{1000.0f, 0};
   for (const Pressure pressure : {Pressure::kOver, Pressure::kOverWarned}) {
@@ -427,6 +452,7 @@ int main() {
   PlayerAndResizesAreNeverCandidates();
   GarbageDistancesAreSkipped();
   GrowthWaitsForTheDwell();
+  RepeatedShrinksWaitLonger();
   GrowthStopsUnderPressure();
   RadiusClearsWhenGrowthReachesTheLimit();
   RingIsWhatGrowthLetsReturn();

@@ -17,7 +17,7 @@
 namespace BetterEnchantmentEffects {
 inline constexpr std::uint64_t kMebibyte = std::uint64_t{1} << 20;
 inline constexpr std::uint64_t kMinBudgetMargin = 512 * kMebibyte;
-inline constexpr std::uint64_t kBudgetMarginDivisor = 20;
+inline constexpr std::uint64_t kBudgetMarginTwentieths = 3;
 inline constexpr std::uint64_t kMinPressureBand = 256 * kMebibyte;
 inline constexpr std::uint64_t kPressureBandDivisor = 10;
 

@@ -343,6 +343,20 @@ std::vector<GeometryInputs> GeometryInputsOf(const LiveActor &a_state) {
   return inputs;
 }
 
+std::vector<OutputAnimation> AnimatedOutputsOf(const LiveActor &a_state) {
+  std::vector<OutputAnimation> animated(a_state.instances.size());
+  for (std::size_t i = 0; i < a_state.instances.size(); ++i) {
+    const LiveInstance &instance = a_state.instances[i];
+    if (!instance.recipe || !instance.graph) {
+      continue;
+    }
+    for (const Output &output : instance.recipe->outputs) {
+      animated[i].push_back(IsAnimated(*instance.graph, output));
+    }
+  }
+  return animated;
+}
+
 std::vector<std::shared_ptr<const RecipeGraph>>
 LiveGraphs(const LiveActor &a_state) {
   std::vector<std::shared_ptr<const RecipeGraph>> graphs;
@@ -1266,7 +1280,8 @@ PlacedRender Manager::PlaceInstances(LiveActor &a_state, RE::FormID a_actorID,
   const std::expected<ActorRenderRequest, std::string> request =
       phases.Measure("geometry_us", [&] {
         SurfacePlan plan =
-            PlanSurfaces(a_state.matches, RecipesOf(a_state), ShownOutputs());
+            PlanSurfaces(a_state.matches, RecipesOf(a_state), ShownOutputs(),
+                         AnimatedOutputsOf(a_state));
         KeepSurfacePlan(a_state, plan);
         const std::vector<BoundSurfaces> bound =
             BindSurfaces(a_state, plan.geometries, a_settings.uniqueMaterial);
@@ -1446,8 +1461,8 @@ Manager::Restaged(RE::Actor &a_actor, LiveActor &a_published,
     }
   }
 
-  SurfacePlan plan =
-      PlanSurfaces(staged.matches, RecipesOf(staged), ShownOutputs());
+  SurfacePlan plan = PlanSurfaces(staged.matches, RecipesOf(staged),
+                                  ShownOutputs(), AnimatedOutputsOf(staged));
   if (KeptBindingsOf(plan, staged) != KeptBindingsOf(a_published)) {
     return std::unexpected(
         std::string{"the edit changes a material or shell binding"});

@@ -131,10 +131,11 @@ ActorMatches MatchActor(std::span<const Geometry> a_geometries,
                     });
 }
 
-GeometryPlacementPlan PlanGeometryPlacement(const ActorMatches &a_matches,
-                                            std::span<const Recipe> a_store,
-                                            GeometryId a_geometry,
-                                            const OutputFilter &a_filter) {
+GeometryPlacementPlan
+PlanGeometryPlacement(const ActorMatches &a_matches,
+                      std::span<const Recipe> a_store, GeometryId a_geometry,
+                      const OutputFilter &a_filter,
+                      std::span<const OutputAnimation> a_animated) {
   GeometryPlacementPlan out;
   for (const PlacementId placementId :
        PlacementsOfGeometry(a_matches, a_geometry)) {
@@ -154,6 +155,10 @@ GeometryPlacementPlan PlanGeometryPlacement(const ActorMatches &a_matches,
     row.recipe = recipe;
     row.priority = placement->priority;
     row.loadOrder = IndexOf(instance->recipe);
+    if (const std::size_t i = IndexOf(placement->instance);
+        i < a_animated.size()) {
+      row.animated = a_animated[i];
+    }
     for (const OutputPlacement &output : placement->outputs) {
       if (output.selected &&
           (!a_filter || a_filter(*recipe, IndexOf(output.output)))) {

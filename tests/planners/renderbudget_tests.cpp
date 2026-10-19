@@ -48,10 +48,10 @@ BudgetActor Hidden(std::uint64_t a_releasable) {
 }
 
 void AllowanceIsFreeVideoMemoryLessMargin() {
-  const BudgetSample sample{VideoMemory{8 * kGiB, 6 * kGiB}, 1 * kGiB, 0};
-  Equal(MarginOf(8 * kGiB), kMinBudgetMargin,
+  const BudgetSample sample{VideoMemory{3 * kGiB, 1 * kGiB}, 1 * kGiB, 0};
+  Equal(MarginOf(3 * kGiB), kMinBudgetMargin,
         "a small budget keeps the 512 MiB margin");
-  Equal(MarginOf(20 * kGiB), 1 * kGiB, "a large budget keeps 5 % as margin");
+  Equal(MarginOf(20 * kGiB), 3 * kGiB, "a large budget keeps 15 % as margin");
   Check(AllowanceOf(sample) == 1 * kGiB + 2 * kGiB - kMinBudgetMargin,
         "the allowance is the plugin's bytes plus free video memory less the "
         "margin");
@@ -64,7 +64,7 @@ void AllowanceIsFreeVideoMemoryLessMargin() {
 }
 
 void AllowanceNamesItsLimit() {
-  const BudgetSample sample{VideoMemory{8 * kGiB, 6 * kGiB}, 1 * kGiB, 0};
+  const BudgetSample sample{VideoMemory{3 * kGiB, 1 * kGiB}, 1 * kGiB, 0};
   const std::uint64_t fromMemory = 3 * kGiB - kMinBudgetMargin;
   Check(LimitedAllowanceOf(sample) ==
             LimitedAllowance{fromMemory, AllowanceLimit::kFreeVideoMemory},
@@ -103,7 +103,7 @@ void GarbageReadingsStayBounded() {
             std::optional<std::uint64_t>{0},
         "usage over the budget leaves no allowance");
   Check(AllowanceOf({VideoMemory{8 * kGiB, 1 * kGiB}, 6 * kGiB, 0}) ==
-            8 * kGiB - kMinBudgetMargin,
+            8 * kGiB - MarginOf(8 * kGiB),
         "plugin bytes above the usage count only up to the usage");
   constexpr std::uint64_t kMax = std::numeric_limits<std::uint64_t>::max();
   Check(AllowanceOf({VideoMemory{kMax, 0}, kMax, 0}).has_value(),

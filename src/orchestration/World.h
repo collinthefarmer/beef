@@ -44,12 +44,13 @@ struct Sighting {
   std::optional<float> screenFraction;
   std::optional<float> distance;
   std::string name;
+  ResolutionLevel finest = ResolutionLevel::kFull;
   [[nodiscard]] bool operator==(const Sighting &) const = default;
 };
 
 [[nodiscard]] constexpr ActorVisibility
 VisibilityOf(const Sighting &a_sight) noexcept {
-  return {a_sight.screenFraction, a_sight.shown, a_sight.role};
+  return {a_sight.screenFraction, a_sight.shown, a_sight.role, a_sight.finest};
 }
 
 struct InstalledRender {

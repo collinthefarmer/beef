@@ -12,12 +12,14 @@
 
 namespace BetterEnchantmentEffects {
 using OutputFilter = std::function<bool(const Recipe &, std::size_t)>;
+using OutputAnimation = std::vector<bool>;
 
 struct PlacedRecipe {
   const Recipe *recipe = nullptr;
   int priority = 0;
   std::vector<std::size_t> outputs;
   std::size_t loadOrder = 0;
+  OutputAnimation animated;
 };
 
 enum class SlotContributor : std::size_t {};

@@ -42,7 +42,9 @@ LevelFor(const ActorVisibility &a_visibility) noexcept {
   if (!a_visibility.shown) {
     return ResolutionLevel::kEighth;
   }
-  return IdealLevel(*a_visibility.screenFraction);
+  const ResolutionLevel ideal = IdealLevel(*a_visibility.screenFraction);
+  return Halvings(ideal) < Halvings(a_visibility.finest) ? a_visibility.finest
+                                                         : ideal;
 }
 
 bool SmallFor(std::optional<float> a_screenFraction,

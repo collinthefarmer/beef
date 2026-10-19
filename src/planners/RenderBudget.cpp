@@ -100,7 +100,7 @@ std::string AllowanceText(const BudgetState &a_state) {
 }
 
 std::uint64_t MarginOf(std::uint64_t a_budget) noexcept {
-  return std::max(kMinBudgetMargin, a_budget / kBudgetMarginDivisor);
+  return std::max(kMinBudgetMargin, a_budget / 20 * kBudgetMarginTwentieths);
 }
 
 std::uint64_t BandOf(std::uint64_t a_allowance) noexcept {

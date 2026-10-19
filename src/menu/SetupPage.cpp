@@ -68,9 +68,9 @@ void MarkReapply(bool a_changed) {
   });
 }
 
-[[nodiscard]] bool TextureScaleWidget(TextureScale &a_value,
-                                      const SettingDesc &a_desc,
-                                      const char *a_label) {
+template <class Choice>
+[[nodiscard]] bool ChoiceWidget(Choice &a_value, const SettingDesc &a_desc,
+                                const char *a_label) {
   bool changed = false;
   const std::size_t selected = IndexOf(a_value);
   const std::string preview = selected < a_desc.items.size()
@@ -80,7 +80,7 @@ void MarkReapply(bool a_changed) {
     for (std::size_t i = 0; i < a_desc.items.size(); ++i) {
       const std::string item{a_desc.items[i]};
       if (ImGui::Selectable(item.c_str(), selected == i)) {
-        a_value = FromIndex<TextureScale>(i);
+        a_value = FromIndex<Choice>(i);
         changed = true;
       }
     }
@@ -101,8 +101,8 @@ void MarkReapply(bool a_changed) {
       changed = ImGui::SliderFloat(
           a_label, &(a_settings.*a_member), a_desc.min, a_desc.max,
           a_desc.max - a_desc.min > 10 ? "%.2f" : "%.3f", 0);
-    } else if constexpr (std::is_same_v<T, TextureScale>) {
-      changed = TextureScaleWidget(a_settings.*a_member, a_desc, a_label);
+    } else if constexpr (std::is_enum_v<T>) {
+      changed = ChoiceWidget(a_settings.*a_member, a_desc, a_label);
     } else {
       int v = static_cast<int>(a_settings.*a_member);
       if (ImGui::SliderInt(a_label, &v, static_cast<int>(a_desc.min),

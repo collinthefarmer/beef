@@ -16,6 +16,8 @@ namespace {
 using W = SettingDesc::Widget;
 
 constexpr std::string_view kTextureScaleNames[]{"Quarter", "Half", "Full"};
+constexpr std::string_view kNpcResolutionNames[]{"Full", "Half", "Quarter",
+                                                 "Eighth"};
 
 constexpr std::array kTable{
     SettingDesc{"General", "PlayerOnly", "Player only",
@@ -103,6 +105,13 @@ constexpr std::array kTable{
                 "Runtime texture resolution relative to the armor's own maps.",
                 &Settings::textureScale, 0, 0, W::kCombo, true,
                 kTextureScaleNames},
+    SettingDesc{"General", "NpcResolution", "NPC resolution",
+                "The finest resolution of an NPC's effects when it fills the "
+                "screen. The player and the actor inspected in the studio may "
+                "always draw at full. Each finer step holds four times the "
+                "video memory.",
+                &Settings::npcResolution, 0, 0, W::kCombo, false,
+                kNpcResolutionNames},
     SettingDesc{"General", "EvictDistance", "Evict distance",
                 "Game units past which a non-player actor's effects are "
                 "dropped and restored on approach; 0 disables eviction.",
@@ -143,9 +152,12 @@ void Assign(Settings &a_settings, const SettingDesc &a_desc,
       if (const auto f = ParseFloat(a_value)) {
         a_settings.*a_member = std::clamp(*f, a_desc.min, a_desc.max);
       }
-    } else if constexpr (std::is_same_v<T, TextureScale>) {
-      if (const auto scale = TextureScaleFromString(a_value)) {
-        a_settings.*a_member = *scale;
+    } else if constexpr (std::is_enum_v<T>) {
+      const std::string wanted = Lower(Trim(a_value));
+      for (std::size_t i = 0; i < a_desc.items.size(); ++i) {
+        if (wanted == Lower(a_desc.items[i])) {
+          a_settings.*a_member = FromIndex<T>(i);
+        }
       }
     } else {
       if (const auto f = ParseFloat(a_value)) {
@@ -163,8 +175,10 @@ std::string Format(const Settings &a_settings, const SettingDesc &a_desc) {
       return a_settings.*a_member ? "true" : "false";
     } else if constexpr (std::is_same_v<T, float>) {
       return std::format("{:.4g}", a_settings.*a_member);
-    } else if constexpr (std::is_same_v<T, TextureScale>) {
-      return std::string{TextureScaleName(a_settings.*a_member)};
+    } else if constexpr (std::is_enum_v<T>) {
+      const std::size_t index = IndexOf(a_settings.*a_member);
+      return index < a_desc.items.size() ? std::string{a_desc.items[index]}
+                                         : std::string{};
     } else {
       return std::to_string(a_settings.*a_member);
     }

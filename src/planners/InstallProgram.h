@@ -180,9 +180,10 @@ inline constexpr std::string_view kSurfaceNotBound = "the surface is not bound";
 inline constexpr std::string_view kStackNotLowered = "stack was not lowered";
 inline constexpr std::string_view kNoEligibleLight = "no eligible light output";
 
-[[nodiscard]] SurfacePlan PlanSurfaces(const ActorMatches &a_matches,
-                                       std::span<const Recipe> a_store,
-                                       const OutputFilter &a_filter = {});
+[[nodiscard]] SurfacePlan
+PlanSurfaces(const ActorMatches &a_matches, std::span<const Recipe> a_store,
+             const OutputFilter &a_filter = {},
+             std::span<const OutputAnimation> a_animated = {});
 [[nodiscard]] OutputActivation
 ActivateOutputs(const SurfacePlan &a_plan,
                 std::span<const BoundSurfaces> a_bound,

@@ -25,6 +25,13 @@ enum class TextureScale {
   kFull,
 };
 
+enum class NpcResolution {
+  kFull,
+  kHalf,
+  kQuarter,
+  kEighth,
+};
+
 [[nodiscard]] std::string_view TextureScaleName(TextureScale a_scale) noexcept;
 [[nodiscard]] std::optional<TextureScale>
 TextureScaleFromString(std::string_view a_text);
@@ -52,6 +59,7 @@ struct Settings {
   float animationSpeed = 1.0f;
   float evictDistance = 0.0f;
   TextureScale textureScale = TextureScale::kFull;
+  NpcResolution npcResolution = NpcResolution::kHalf;
 
   [[nodiscard]] std::uint32_t TickIntervalMS() const noexcept {
     return 1000u / std::clamp(animationFPS, kMinAnimationFPS, kMaxAnimationFPS);
@@ -64,7 +72,8 @@ struct Settings {
 struct SettingDesc {
   using Member =
       std::variant<bool Settings::*, float Settings::*,
-                   std::uint32_t Settings::*, TextureScale Settings::*>;
+                   std::uint32_t Settings::*, TextureScale Settings::*,
+                   NpcResolution Settings::*>;
 
   enum class Widget {
     kCheckbox,

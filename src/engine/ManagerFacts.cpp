@@ -186,6 +186,10 @@ Manager::SightingOf(RE::FormID a_actorID, const Settings &a_settings,
     return sighting;
   }
   sighting.role = RoleOf(*actor);
+  sighting.finest =
+      a_inspected == a_actorID
+          ? ResolutionLevel::kFull
+          : FromIndex<ResolutionLevel>(IndexOf(a_settings.npcResolution));
   sighting.loaded3D = Loaded3D(*actor);
   sighting.name = NameOf(*actor);
   sighting.distance = DistanceToPlayer(*actor);

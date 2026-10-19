@@ -182,8 +182,23 @@ void ADueStepDownStepsOneLevel() {
         "the player steps up to full and never down");
 }
 
+void NpcLevelStopsAtItsFinest() {
+  const ActorVisibility capped{0.9f, true, ActorRole::kOther,
+                               ResolutionLevel::kHalf};
+  Check(LevelFor(capped) == ResolutionLevel::kHalf,
+        "an NPC filling the screen stops at its finest level");
+  const ActorVisibility small{0.1f, true, ActorRole::kOther,
+                              ResolutionLevel::kHalf};
+  Check(LevelFor(small) == IdealLevel(0.1f),
+        "a level coarser than the finest is kept as it is");
+  const ActorVisibility player{0.9f, true, ActorRole::kPlayer,
+                               ResolutionLevel::kEighth};
+  Check(LevelFor(player) == ResolutionLevel::kFull, "the player is not capped");
+}
+
 int main() {
   IdealLevelHalvesWithScreenSize();
+  NpcLevelStopsAtItsFinest();
   InViewStepsUpAtOnce();
   OutOfViewNeverStepsUp();
   SmallActorsStepDownAfterTheHold();
