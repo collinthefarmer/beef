@@ -117,7 +117,8 @@ TickOutput RunBudget(World a_world, const TickFacts &a_facts) {
   const BudgetState before = output.world.budget;
   const std::uint64_t held =
       sample.heldBytes.value_or(PlannedBytesOf(output.world));
-  ApplyBudget(output, NextBudget(before, AllowanceOf(sample), held));
+  ApplyBudget(output, NextBudget(before, AllowanceOf(sample), held,
+                                 ShedLineOf(sample)));
   RecordPressure(output, sample, before);
 
   RespondToBudget(output, a_facts);
@@ -140,7 +141,8 @@ void RecordPressure(TickOutput &a_output, const BudgetSample &a_sample,
            {{"action", "budget_pressure"},
             {"pressure", isOver ? "true" : "false"},
             {"planned_bytes", std::to_string(now.planned)},
-            {"allowance_bytes", std::to_string(now.allowance.value_or(0))}});
+            {"allowance_bytes", std::to_string(now.allowance.value_or(0))},
+            {"shed_bytes", std::to_string(ShedLine(now))}});
 }
 
 void RespondToBudget(TickOutput &a_output, const TickFacts &a_facts) {
@@ -152,7 +154,7 @@ void RespondToBudget(TickOutput &a_output, const TickFacts &a_facts) {
     MakeRoomForWaitingStepUp(a_output);
     return;
   }
-  RelieveBudget(a_output, PressureGoal(*budget.allowance), a_facts);
+  RelieveBudget(a_output, PressureGoal(ShedLine(budget)), a_facts);
 }
 
 void MakeRoomForWaitingStepUp(TickOutput &a_output) {

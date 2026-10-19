@@ -136,6 +136,26 @@ AllowanceOf(const BudgetSample &a_sample) noexcept {
                    : std::nullopt;
 }
 
+std::uint64_t ShedMarginOf(std::uint64_t a_budget) noexcept {
+  return std::max(kMinBudgetMargin, a_budget / 20 * kShedMarginTwentieths);
+}
+
+std::optional<std::uint64_t> ShedLineOf(const BudgetSample &a_sample) noexcept {
+  if (!a_sample.memory || a_sample.memory->budget == 0) {
+    return std::nullopt;
+  }
+  const VideoMemory &memory = *a_sample.memory;
+  const std::uint64_t plugin = std::min(a_sample.pluginBytes, memory.usage);
+  const std::uint64_t room = Sum(plugin, FreeVideoMemory(memory));
+  const std::uint64_t margin = ShedMarginOf(memory.budget);
+  const std::uint64_t line = room < margin ? plugin : room - margin;
+  return a_sample.capBytes > 0 ? std::min(line, a_sample.capBytes) : line;
+}
+
+std::uint64_t ShedLine(const BudgetState &a_state) noexcept {
+  return a_state.shed.value_or(a_state.allowance.value_or(0));
+}
+
 bool IsOver(Pressure a_pressure) noexcept {
   return a_pressure != Pressure::kNone;
 }
@@ -146,17 +166,19 @@ std::uint64_t PressureGoal(std::uint64_t a_allowance) noexcept {
 
 BudgetState NextBudget(const BudgetState &a_current,
                        std::optional<std::uint64_t> a_allowance,
-                       std::uint64_t a_planned) noexcept {
+                       std::uint64_t a_planned,
+                       std::optional<std::uint64_t> a_shed) noexcept {
   if (!a_allowance) {
-    return {std::nullopt, a_planned, Pressure::kNone};
+    return {std::nullopt, a_planned, Pressure::kNone, std::nullopt};
   }
+  const std::uint64_t line = a_shed.value_or(*a_allowance);
   if (IsOver(a_current.pressure)) {
-    const bool ends = a_planned < PressureGoal(*a_allowance);
-    return {a_allowance, a_planned,
-            ends ? Pressure::kNone : a_current.pressure};
+    const bool ends = a_planned < PressureGoal(line);
+    return {a_allowance, a_planned, ends ? Pressure::kNone : a_current.pressure,
+            a_shed};
   }
   return {a_allowance, a_planned,
-          a_planned > *a_allowance ? Pressure::kOver : Pressure::kNone};
+          a_planned > line ? Pressure::kOver : Pressure::kNone, a_shed};
 }
 
 Admission AdmitGrowth(const BudgetState &a_state,
@@ -314,17 +336,17 @@ std::string PressureStartLine(const BudgetSample &a_sample,
           ? std::format("cap {}", Mebibytes(a_sample.capBytes))
           : std::string{"no cap"};
   return std::format("render target budget: pressure starts: planned {} is "
-                     "over the allowance {} ({}, plugin targets {}, {})",
-                     Mebibytes(a_state.planned), AllowanceText(a_state), memory,
-                     Mebibytes(a_sample.pluginBytes), cap);
+                     "over the shedding line {} ({}, plugin targets {}, {})",
+                     Mebibytes(a_state.planned), Mebibytes(ShedLine(a_state)),
+                     memory, Mebibytes(a_sample.pluginBytes), cap);
 }
 
 std::string PressureEndLine(const BudgetState &a_state) {
-  const std::uint64_t allowance = a_state.allowance.value_or(0);
+  const std::uint64_t line = ShedLine(a_state);
   return std::format("render target budget: pressure ends: planned {} is "
-                     "under the allowance {} less the band {}",
-                     Mebibytes(a_state.planned), AllowanceText(a_state),
-                     Mebibytes(BandOf(allowance)));
+                     "under the shedding line {} less the band {}",
+                     Mebibytes(a_state.planned), Mebibytes(line),
+                     Mebibytes(BandOf(line)));
 }
 
 namespace {

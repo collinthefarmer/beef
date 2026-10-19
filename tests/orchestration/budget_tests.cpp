@@ -236,7 +236,9 @@ void PressureStartsAndEndsWithItsRecords() {
                       {{"action", "budget_pressure"},
                        {"pressure", "true"},
                        {"planned_bytes", std::to_string(MiB(400))},
-                       {"allowance_bytes", std::to_string(MiB(350))}}),
+                       {"allowance_bytes", std::to_string(MiB(350))},
+                       {"shed_bytes",
+                        std::to_string(ShedLine(started.world.budget))}}),
         "the pressure start writes its trace record");
 
   World still = started.world;

@@ -3822,12 +3822,25 @@ The method and its prototype comparison are in
   (`MarginOf`). The plugin samples once a second and cannot see the game's
   own allocations between two samples, for example the textures of a new
   cell. The margin keeps that room free. The 15 % term scales the room with
-  the card's memory. Until 2026-10-19 it was 5 %: in that day's usage session
-  every step up fit the allowance, and the process still reached 93 % of the
-  budget (12.85 of 13.77 GiB) as the game's own usage rose and Windows cut the
+  the card's memory. The allowance gates growth only: step ups
+  (`AdmitGrowth`), install headroom (`HeadroomOf`) and the radius's ring.
+  Until 2026-10-19 the margin was 5 %: in that day's usage session every step
+  up fit the allowance, and the process still reached 93 % of the budget
+  (12.85 of 13.77 GiB) as the game's own usage rose and Windows cut the
   budget from 15.2 to 13.7 GiB. An external profile counted 0.45 hitches per
   second above 85 % against 0.16 below it, with driver stalls in whichever
   D3D call came next.
+- **Pressure** compares the planned bytes with a separate **shedding line**
+  (`ShedLineOf`, `BudgetState::shed`): the plugin's bytes plus free video
+  memory less the larger of 512 MiB and 5 % of the budget
+  (`ShedMarginOf`). When that is negative, the game alone is past the line
+  by more than the plugin holds, and the line is the plugin's current
+  holdings: shedding every effect could not bring usage back under it, so the
+  plugin keeps what it has and only stops growing. A single 15 % line, used
+  for both growth and shedding on 2026-10-19, gave an allowance of 0 MiB
+  while the game held 12.0-12.8 of a 13.8-14.1 GiB budget and the plugin
+  37-169 MiB; pressure started six times in six minutes and the radius
+  evicted down to 44 units, each eviction freeing 12-17 MiB.
 - The setting `RenderTargetBudgetMiB` caps the allowance; 0 sets no cap. The
   run file field `renderTargetBudgetMiB` replaces the setting for one
   regression run. The cap applies only while the DXGI reading is known.

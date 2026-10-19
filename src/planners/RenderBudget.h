@@ -18,6 +18,7 @@ namespace BetterEnchantmentEffects {
 inline constexpr std::uint64_t kMebibyte = std::uint64_t{1} << 20;
 inline constexpr std::uint64_t kMinBudgetMargin = 512 * kMebibyte;
 inline constexpr std::uint64_t kBudgetMarginTwentieths = 3;
+inline constexpr std::uint64_t kShedMarginTwentieths = 1;
 inline constexpr std::uint64_t kMinPressureBand = 256 * kMebibyte;
 inline constexpr std::uint64_t kPressureBandDivisor = 10;
 
@@ -48,6 +49,7 @@ struct BudgetState {
   std::optional<std::uint64_t> allowance;
   std::uint64_t planned = 0;
   Pressure pressure = Pressure::kNone;
+  std::optional<std::uint64_t> shed;
   [[nodiscard]] bool operator==(const BudgetState &) const = default;
 };
 
@@ -151,10 +153,15 @@ FreeVideoMemory(const VideoMemory &a_memory) noexcept;
 LimitedAllowanceOf(const BudgetSample &a_sample) noexcept;
 [[nodiscard]] std::optional<std::uint64_t>
 AllowanceOf(const BudgetSample &a_sample) noexcept;
+[[nodiscard]] std::uint64_t ShedMarginOf(std::uint64_t a_budget) noexcept;
+[[nodiscard]] std::optional<std::uint64_t>
+ShedLineOf(const BudgetSample &a_sample) noexcept;
+[[nodiscard]] std::uint64_t ShedLine(const BudgetState &a_state) noexcept;
 [[nodiscard]] bool IsOver(Pressure a_pressure) noexcept;
-[[nodiscard]] BudgetState NextBudget(const BudgetState &a_current,
-                                     std::optional<std::uint64_t> a_allowance,
-                                     std::uint64_t a_planned) noexcept;
+[[nodiscard]] BudgetState
+NextBudget(const BudgetState &a_current,
+           std::optional<std::uint64_t> a_allowance, std::uint64_t a_planned,
+           std::optional<std::uint64_t> a_shed = std::nullopt) noexcept;
 [[nodiscard]] std::uint64_t PressureGoal(std::uint64_t a_allowance) noexcept;
 [[nodiscard]] Admission AdmitGrowth(const BudgetState &a_state,
                                     std::uint64_t a_added) noexcept;

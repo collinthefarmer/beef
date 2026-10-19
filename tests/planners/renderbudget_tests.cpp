@@ -63,6 +63,29 @@ void AllowanceIsFreeVideoMemoryLessMargin() {
         "a cap above the allowance changes nothing");
 }
 
+void GrowthStopsBeforeSheddingStarts() {
+  const BudgetSample busy{VideoMemory{14 * kGiB, 13 * kGiB + 512 * kMebibyte},
+                          40 * kMebibyte, 0};
+  Equal(AllowanceOf(busy), std::optional<std::uint64_t>{0},
+        "a card past the growth margin leaves no room to grow");
+  Equal(ShedLineOf(busy), std::optional<std::uint64_t>{40 * kMebibyte},
+        "when shedding everything cannot reach the shed margin, the plugin "
+        "keeps what it holds");
+  const BudgetState held =
+      NextBudget({}, AllowanceOf(busy), 40 * kMebibyte, ShedLineOf(busy));
+  Check(held.pressure == Pressure::kNone &&
+            AdmitGrowth(held, 1) != Admission::kAdmitted,
+        "the game's own memory blocks growth without evicting effects");
+  const BudgetSample close{VideoMemory{20 * kGiB, 19 * kGiB + 100 * kMebibyte},
+                           2 * kGiB, 0};
+  const std::uint64_t room = 2 * kGiB + 924 * kMebibyte;
+  Equal(ShedLineOf(close), std::optional<std::uint64_t>{room - 1 * kGiB},
+        "when the plugin can close the gap, it sheds to the 5 % margin");
+  Check(NextBudget({}, AllowanceOf(close), 2 * kGiB, ShedLineOf(close))
+                .pressure == Pressure::kOver,
+        "holdings over the shed line start pressure");
+}
+
 void AllowanceNamesItsLimit() {
   const BudgetSample sample{VideoMemory{3 * kGiB, 1 * kGiB}, 1 * kGiB, 0};
   const std::uint64_t fromMemory = 3 * kGiB - kMinBudgetMargin;
@@ -396,12 +419,14 @@ void LinesCarryTheNumbers() {
   Equal(PressureStartLine({VideoMemory{8 * kGiB, 7 * kGiB}, 2 * kGiB, kGiB},
                           state),
         std::string{"render target budget: pressure starts: planned 2048 MiB "
-                    "is over the allowance 1024 MiB (DXGI budget 8192 MiB, "
+                    "is over the shedding line 1024 MiB (DXGI budget 8192 "
+                    "MiB, "
                     "usage 7168 MiB, plugin targets 2048 MiB, cap 1024 MiB)"},
         "the start line gives the numbers");
   Equal(PressureEndLine({1 * kGiB, 512 * kMebibyte, Pressure::kNone}),
         std::string{"render target budget: pressure ends: planned 512 MiB is "
-                    "under the allowance 1024 MiB less the band 256 MiB"},
+                    "under the shedding line 1024 MiB less the band 256 "
+                    "MiB"},
         "the end line gives the numbers");
   Equal(StepDownLine({0x1A2B,
                       "Vigilant of Stendarr",
@@ -433,6 +458,7 @@ void LinesCarryTheNumbers() {
 
 int main() {
   AllowanceIsFreeVideoMemoryLessMargin();
+  GrowthStopsBeforeSheddingStarts();
   AllowanceNamesItsLimit();
   UnknownBudgetDoesNothing();
   GarbageReadingsStayBounded();
