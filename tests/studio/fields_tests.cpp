@@ -216,6 +216,10 @@ int main() {
         "ValueRelativeRange scales its span with the value magnitude");
   Check(zeroRange.first < 0.0f && zeroRange.second > 0.0f,
         "ValueRelativeRange gives a zero value a usable range");
+  const auto smallRange = ValueRelativeRange(0.02f);
+  Check(test::Near(smallRange.first, 0.0f) &&
+            test::Near(smallRange.second, 0.04f),
+        "ValueRelativeRange spans a small value by its own magnitude");
 
   const std::string expressionHelp = FieldKindHelp(FieldKind::kExpression);
   for (const ExpressionFunction &function : ExpressionFunctions()) {

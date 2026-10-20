@@ -28,6 +28,8 @@ namespace {
 int main() {
   const Names names = SampleNames();
 
+  Check(!CheckSignalValue("0.5, 0.25", names).has_value(),
+        "a literal pair is a valid constant value");
   Check(!CheckSignalValue("1.0", names).has_value(),
         "a bare number is a valid signal value");
   Check(ProblemText(CheckSignalValue("", names)) == "cannot be empty",

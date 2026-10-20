@@ -269,6 +269,14 @@ void FocusCreatedSubject(const Created &a_created, const Frame &a_frame) {
   return true;
 }
 
+void PostCreation(const Frame &a_frame, Studio::Creation a_creation) {
+  Studio::Created made = Studio::Create(std::move(a_creation), *a_frame.recipe);
+  Studio::Post(*a_frame.intents,
+               Studio::EditRecipe{a_frame.recipe->id, std::move(made.edits)});
+  a_frame.state->pendingSelection =
+      Studio::PendingSubject{a_frame.recipe->id, made.subject};
+}
+
 void PostField(const FormField &a_field, const std::string &a_text,
                const Frame &a_frame) {
   if (PostCreate(a_field, a_text, a_frame)) {
@@ -279,6 +287,7 @@ void PostField(const FormField &a_field, const std::string &a_text,
   if (edit) {
     Post(*a_frame.intents,
          EditRecipe{a_frame.recipe->id, {*edit}, a_field.expectedRevision});
+    NoteFieldPost(*a_frame.state, a_frame.recipe->id);
   } else {
     Refuse(a_field.name, a_text);
   }
@@ -379,13 +388,10 @@ std::optional<std::string> CatalogInput(const FormField &a_field,
   const FieldScope fieldScope(a_field.name);
   auto &state = Studio::State();
   const Studio::FieldKey key = Studio::HashFieldKey(state.fieldScope, "value");
-  auto mode = state.comboMode.find(key);
-  if (mode == state.comboMode.end()) {
-    const bool known =
-        a_field.text.empty() || KnownCatalogValue(a_field, a_frame);
-    mode = state.comboMode.emplace(key, known).first;
-  }
-  ModeBadge(a_field.kind, mode->second, key,
+  const bool known =
+      a_field.text.empty() || KnownCatalogValue(a_field, a_frame);
+  bool &combo = ComboModeFor(state, key, known);
+  ModeBadge(a_field.kind, combo, key,
             {.combo = "click: pick from the list",
              .text = "click: type a custom value"});
   ImGui::SameLine(0.0f, 0.0f);
@@ -400,7 +406,7 @@ std::optional<std::string> CatalogInput(const FormField &a_field,
     return diagnostic ? std::optional<std::string>{ProblemText(diagnostic)}
                       : std::nullopt;
   };
-  if (!mode->second) {
+  if (!combo) {
     return TextField("value", a_field.text, {a_width, a_frame.scale}, check);
   }
   NextItemWidth(a_width, a_frame.scale);
@@ -483,16 +489,24 @@ void DrawTunableField(const FormField &a_field, const Frame &a_frame) {
 void DrawRowField(const char *a_key, const FormField &a_field,
                   const Frame &a_frame) {
   if (a_frame.recipe == nullptr || a_frame.names == nullptr ||
-      a_frame.intents == nullptr) {
+      a_frame.intents == nullptr || a_frame.state == nullptr) {
     return;
   }
   ImGui::PushID(a_key);
   RevealProperty(a_field, a_frame);
+  Studio::MenuState &state = *a_frame.state;
+  const Studio::FieldKey key =
+      Studio::HashFieldKey(state.fieldScope, a_key, a_field.name);
+  state.drawingField = key;
   if (FieldTunable(a_field, a_frame)) {
     DrawTunableField(a_field, a_frame);
   } else {
     DrawFieldInput(a_field, a_frame);
     DrawWearerValue(a_frame, a_field);
+  }
+  state.drawingField = Studio::kNoField;
+  if (const Diagnostic *refused = Studio::FieldRefusalOf(state, key)) {
+    Problem(std::format("not applied: {}", ProblemText(*refused)));
   }
   ImGui::PopID();
 }
@@ -740,7 +754,9 @@ void DrawSelector(const SelectorView &a_selector, std::size_t a_output,
       [&]() {
         if (ImGui::Button("Add match")) {
           PostSelector(a_frame, a_output, a_light,
-                       SelectorWithClause(current, SelectorKind::kGeometry));
+                       SelectorWithGeometry(
+                           current, a_frame.geometry ? a_frame.geometry->name
+                                                     : std::string{}));
         }
         Tooltip("restrict the output to geometries whose addon, name or "
                 "texture matches; with no match it applies to every geometry");

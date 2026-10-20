@@ -1,5 +1,6 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #include "studio/FieldCheck.h"
+#include "studio/FieldParsing.h"
 
 #include "recipe/Expression.h"
 #include "recipe/Recipe.h"
@@ -224,6 +225,9 @@ std::optional<Diagnostic> CheckSignalValue(std::string_view a_text,
   }
   if (const std::optional<Param> param = ParseParam(a_text);
       param && Get<float>(*param)) {
+    return std::nullopt;
+  }
+  if (LiteralPair(a_text)) {
     return std::nullopt;
   }
   if (const std::optional<Vec3Param> colour = ParseVec3Param(a_text)) {

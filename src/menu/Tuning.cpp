@@ -125,7 +125,8 @@ void DrawRangeSlider(const SliderScope &a_scope, float a_value,
     NextItemWidth(Studio::Width::Px(slider));
     if (ImGui::SliderFloat("##tune", &a_value, a_scope.range.span.first,
                            a_scope.range.span.second,
-                           a_scope.field.integral ? "%.0f" : "%.3f")) {
+                           a_scope.field.integral ? "%.0f" : "%.4g",
+                           ImGuiMCP::ImGuiSliderFlags_NoRoundToFormat)) {
       if (a_scope.field.integral) {
         a_value = std::round(a_value);
       }
@@ -170,9 +171,12 @@ void UpdateTuning(const Studio::FormField &a_field, const Frame &a_frame,
   }
   gesture.value = a_value;
   const std::string text = ParamText(Param{a_value});
-  if (Studio::CheckField(a_field, text, *a_frame.names)) {
+  if (const std::optional<Diagnostic> refused =
+          Studio::CheckField(a_field, text, *a_frame.names)) {
+    gesture.refusal = ProblemText(refused);
     return;
   }
+  gesture.refusal.reset();
   if (const auto edit = gesture.bind ? gesture.bind(text) : std::nullopt) {
     manager->Editor().UpdateGesture(gesture.id, property, {{*edit}});
   }
@@ -275,6 +279,10 @@ void DrawRecipeTuning(const Studio::FormField &a_field, const Frame &a_frame) {
         HoldSpan(state, key, range.span);
       },
       [&] { ObserveTuningItem(state, key); });
+  if (owned && state.tuning->refusal) {
+    Problem(std::format("{} is not applied: {}", ParamText(Param{value}),
+                        *state.tuning->refusal));
+  }
   if (a_frame.snapshot && a_frame.snapshot->gesture && owned &&
       a_frame.snapshot->gesture->error) {
     Problem(*a_frame.snapshot->gesture->error);

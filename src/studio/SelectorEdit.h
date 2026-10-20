@@ -5,6 +5,7 @@
 
 #include <cstddef>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace BetterEnchantmentEffects::Studio {
@@ -22,6 +23,8 @@ struct SelectorView {
 [[nodiscard]] SelectorView SelectorViewOf(const Selector &a_selector);
 [[nodiscard]] Selector SelectorWithClause(const Selector &a_selector,
                                           SelectorKind a_kind);
+[[nodiscard]] Selector SelectorWithGeometry(const Selector &a_selector,
+                                            std::string_view a_geometry);
 [[nodiscard]] Selector SelectorWithoutClause(const Selector &a_selector,
                                              std::size_t a_index);
 [[nodiscard]] Selector SelectorWithKind(const Selector &a_selector,

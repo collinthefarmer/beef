@@ -799,6 +799,8 @@ void ResolveEditorSelection(MenuState &a_state, const Snapshot &a_snapshot) {
     a_state.revealedProperty.reset();
     a_state.selection.layer.reset();
     a_state.pendingSelection.reset();
+    a_state.fieldRefusal.reset();
+    a_state.unappliedTexts.clear();
   } else if (previous.geometry != a_state.selection.geometry) {
     a_state.navigation = Navigation{};
   }
@@ -839,16 +841,55 @@ void FollowRenumbering(MenuState &a_state, std::string_view a_recipeID,
   RenumberPreviews(a_state.previews, a_recipeID, *a_renumbering);
 }
 
+void NoteFieldResult(MenuState &a_state, const RecipeEditResult &a_result) {
+  if (!a_state.fieldPost || a_state.fieldPost->request != a_result.requestID) {
+    return;
+  }
+  if (a_result.error) {
+    a_state.fieldRefusal = FieldRefusal{a_state.fieldPost->field,
+                                        a_result.recipeID, *a_result.error};
+  }
+  a_state.fieldPost.reset();
+}
+
 void NoteNewEditResult(MenuState &a_state, const RecipeEditResult &a_result) {
   if (a_result.requestID <= a_state.seenEditResult) {
     return;
   }
   a_state.seenEditResult = a_result.requestID;
+  NoteFieldResult(a_state, a_result);
   if (a_result.error && a_state.pendingSelection &&
       a_state.pendingSelection->recipeID == a_result.recipeID) {
     a_state.pendingSelection.reset();
   }
 }
+}
+
+void NoteFieldPost(MenuState &a_state, std::string a_recipeID) {
+  if (a_state.drawingField == kNoField) {
+    return;
+  }
+  if (a_state.fieldRefusal &&
+      a_state.fieldRefusal->field == a_state.drawingField) {
+    a_state.fieldRefusal.reset();
+  }
+  a_state.fieldPost = FieldPost{a_state.drawingField, std::move(a_recipeID)};
+}
+
+void NoteFieldRequest(MenuState &a_state, std::string_view a_recipeID,
+                      std::uint64_t a_request) {
+  if (a_state.fieldPost && a_state.fieldPost->request == 0 &&
+      a_state.fieldPost->recipeID == a_recipeID) {
+    a_state.fieldPost->request = a_request;
+  }
+}
+
+const Diagnostic *FieldRefusalOf(const MenuState &a_state, FieldKey a_field) {
+  if (!a_state.fieldRefusal || a_state.fieldRefusal->field != a_field ||
+      a_state.fieldRefusal->recipeID != a_state.selection.recipeID) {
+    return nullptr;
+  }
+  return &a_state.fieldRefusal->problem;
 }
 
 void TrackEditorChange(MenuState &a_state, std::uint64_t a_request,

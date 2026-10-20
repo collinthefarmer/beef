@@ -2,6 +2,7 @@
 #pragma once
 
 #include "menu/Frame.h"
+#include "studio/Create.h"
 #include "studio/Fields.h"
 #include "studio/Forms.h"
 #include "studio/Navigation.h"
@@ -24,6 +25,7 @@ namespace BetterEnchantmentEffects::Menu {
 FieldInput(const Studio::FormField &a_field, float a_scale,
            const Studio::Names &a_names,
            const Studio::Width &a_width = Studio::Width::Fill());
+void PostCreation(const Frame &a_frame, Studio::Creation a_creation);
 void PostField(const Studio::FormField &a_field, const std::string &a_text,
                const Frame &a_frame);
 [[nodiscard]] bool IsCatalogField(const Studio::FormField &a_field,

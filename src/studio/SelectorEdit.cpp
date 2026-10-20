@@ -50,6 +50,13 @@ Selector SelectorWithClause(const Selector &a_selector, SelectorKind a_kind) {
   return out;
 }
 
+Selector SelectorWithGeometry(const Selector &a_selector,
+                              std::string_view a_geometry) {
+  Selector out = SelectorWithClause(a_selector, SelectorKind::kGeometry);
+  out.anyOf.back().operand = std::string{a_geometry};
+  return out;
+}
+
 Selector SelectorWithoutClause(const Selector &a_selector,
                                std::size_t a_index) {
   if (a_index >= a_selector.anyOf.size()) {

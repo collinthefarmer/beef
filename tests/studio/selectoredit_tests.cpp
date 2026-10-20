@@ -68,6 +68,12 @@ void TestAddAndRemove() {
   Check(one.anyOf.size() == 1 && one.anyOf[0].kind == SelectorKind::kGeometry &&
             Get<std::string>(one.anyOf[0].operand) != nullptr,
         "a default geometry clause appends with a glob operand");
+  const Selector seeded = SelectorWithGeometry(Selector{}, "Cuirass:0");
+  const std::string *glob = seeded.anyOf.empty()
+                                ? nullptr
+                                : Get<std::string>(seeded.anyOf[0].operand);
+  Check(glob && *glob == "Cuirass:0",
+        "a seeded geometry clause carries the selected geometry's name");
   const Selector two = SelectorWithClause(one, SelectorKind::kAddon);
   Check(two.anyOf.size() == 2 && two.anyOf[1].kind == SelectorKind::kAddon &&
             two.anyOf[1].Form() != nullptr,

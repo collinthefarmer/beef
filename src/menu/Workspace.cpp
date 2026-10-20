@@ -122,14 +122,6 @@ std::string SurfaceScope(Surface a_surface) {
   return std::format("surface-{}", SurfaceName(a_surface));
 }
 
-void PostCreation(const Frame &a_frame, Studio::Creation a_creation) {
-  Studio::Created made = Studio::Create(std::move(a_creation), *a_frame.recipe);
-  Studio::Post(*a_frame.intents,
-               Studio::EditRecipe{a_frame.recipe->id, std::move(made.edits)});
-  a_frame.state->pendingSelection =
-      Studio::PendingSubject{a_frame.recipe->id, made.subject};
-}
-
 void DrawSlotChoices(const Frame &a_frame, Surface a_surface) {
   for (const Slot slot : SlotsOf(a_surface, a_frame.recipe->shellMaterial)) {
     if (ImGui::Selectable(std::string{SlotName(slot)}.c_str())) {
@@ -496,13 +488,28 @@ void SurfaceLabel(std::string_view a_text, bool a_lit) {
   }
 }
 
+void PostSurfaceRemoval(const Frame &a_frame, Surface a_surface);
+
 void DrawSurfaceRemove(const Frame &a_frame, Surface a_surface) {
   ImGui::PushID(SurfaceScope(a_surface).c_str());
-  const bool clicked = RemoveButton(0);
-  ImGui::PopID();
-  if (!clicked) {
-    return;
+  const std::string title =
+      std::format("Remove the {}?###remove-surface", SurfaceName(a_surface));
+  if (RemoveButton(0)) {
+    ImGui::OpenPopup(title.c_str());
   }
+  const auto outputs = std::ranges::count_if(
+      a_frame.recipe->outputs, [&](const Studio::OutputRow &a_output) {
+        return IsSurfaceOutput(a_output, a_surface);
+      });
+  ConfirmModal(title.c_str(),
+               std::format("Remove all {} output(s) on the {}? Undo restores "
+                           "them.",
+                           outputs, SurfaceName(a_surface)),
+               "Remove", [&] { PostSurfaceRemoval(a_frame, a_surface); });
+  ImGui::PopID();
+}
+
+void PostSurfaceRemoval(const Frame &a_frame, Surface a_surface) {
   std::vector<Studio::RecipeEdit> edits;
   if (a_surface == Surface::kShell) {
     edits.emplace_back(Studio::ResetShell{});
@@ -739,18 +746,34 @@ void DrawLayerInspector(const Studio::LayerSubject &a_layer,
          ItemSpacingX() + RowButtonWidth();
 }
 
-void DrawResourceRemoveButton(std::string_view a_name, std::size_t a_references,
+void DrawResourceRemoveButton(const Frame &a_frame, const ResourceRef &a_ref,
+                              std::size_t a_references,
                               const std::function<void(bool)> &a_post);
 
-void DrawResourceRemove(std::string_view a_name, std::size_t a_references,
+void DrawResourceRemove(const Frame &a_frame, const ResourceRef &a_ref,
+                        std::size_t a_references,
                         const std::function<void(bool)> &a_post) {
   ImGui::PushID("remove");
-  DrawResourceRemoveButton(a_name, a_references, a_post);
+  DrawResourceRemoveButton(a_frame, a_ref, a_references, a_post);
   ImGui::PopID();
 }
 
-void DrawResourceRemoveButton(std::string_view a_name, std::size_t a_references,
+std::string CascadeMessage(const Frame &a_frame, const ResourceRef &a_ref,
+                           std::size_t a_references) {
+  const Studio::RecipeRow &recipe = *a_frame.recipe;
+  const std::string removes = Studio::CascadeSummary(
+      Studio::PlanCascade(recipe.relationships, a_ref), recipe.outputs);
+  return std::format(
+      "Remove '{}'? It is used in {} place(s).{}{} Any other use is reset to "
+      "its default.",
+      a_ref.name, a_references,
+      removes.empty() ? "" : " Also removes: ", removes);
+}
+
+void DrawResourceRemoveButton(const Frame &a_frame, const ResourceRef &a_ref,
+                              std::size_t a_references,
                               const std::function<void(bool)> &a_post) {
+  const std::string_view a_name = a_ref.name;
   if (a_references == 0) {
     if (RemoveButton(0)) {
       a_post(false);
@@ -765,13 +788,8 @@ void DrawResourceRemoveButton(std::string_view a_name, std::size_t a_references,
   Tooltip(std::format(
       "used in {} place(s) — remove it and everything that depends on it",
       a_references));
-  ConfirmModal(
-      title.c_str(),
-      std::format("Remove '{}'? It is used in {} place(s): rows that depend on "
-                  "it are removed too, and any other use is reset to its "
-                  "default.",
-                  a_name, a_references),
-      "Remove", [&] { a_post(true); });
+  ConfirmModal(title.c_str(), CascadeMessage(a_frame, a_ref, a_references),
+               "Remove", [&] { a_post(true); });
 }
 
 void DrawSourceClusters(const std::string &a_name,
@@ -794,10 +812,12 @@ void DrawSourceInspector(const Studio::SourceSubject &a_source,
           return Studio::RenameSource{row->name, std::move(a_name)};
         });
         ImGui::SameLine();
-        DrawResourceRemove(row->name, row->references, [&](bool a_cascade) {
-          Studio::Post(*a_frame.intents, recipe.id,
-                       Studio::RemoveSource{row->name, a_cascade});
-        });
+        DrawResourceRemove(a_frame, {ResourceKind::kSource, row->name},
+                           row->references, [&](bool a_cascade) {
+                             Studio::Post(
+                                 *a_frame.intents, recipe.id,
+                                 Studio::RemoveSource{row->name, a_cascade});
+                           });
       }));
   const std::string type = DescribeSource(
       Studio::SourceKindOf(*row).value_or(SourceKind{MaterialSource{}}));
@@ -927,10 +947,12 @@ void DrawSignalInspector(const Studio::SignalSubject &a_signal,
           return Studio::RenameSignal{row->name, std::move(a_name)};
         });
         ImGui::SameLine();
-        DrawResourceRemove(row->name, row->references, [&](bool a_cascade) {
-          Studio::Post(*a_frame.intents, recipe.id,
-                       Studio::RemoveSignal{row->name, a_cascade});
-        });
+        DrawResourceRemove(a_frame, {ResourceKind::kSignal, row->name},
+                           row->references, [&](bool a_cascade) {
+                             Studio::Post(
+                                 *a_frame.intents, recipe.id,
+                                 Studio::RemoveSignal{row->name, a_cascade});
+                           });
         if (canFire) {
           ImGui::SameLine();
           FirePopup(*row, a_frame);
@@ -985,11 +1007,13 @@ void DrawMaskInspector(const Studio::MaskSubject &a_mask,
           return Studio::RenameMask{row->name, std::move(a_name)};
         });
         ImGui::SameLine();
-        DrawResourceRemove(row->name, row->references, [&](bool a_cascade) {
-          Studio::Post(
-              *a_frame.intents, a_frame.recipe->id,
-              Studio::RemoveMask{.name = row->name, .cascade = a_cascade});
-        });
+        DrawResourceRemove(
+            a_frame, {ResourceKind::kMask, row->name}, row->references,
+            [&](bool a_cascade) {
+              Studio::Post(
+                  *a_frame.intents, a_frame.recipe->id,
+                  Studio::RemoveMask{.name = row->name, .cascade = a_cascade});
+            });
       },
       [&]() {
         const std::optional<std::string> renamed =
@@ -1023,10 +1047,12 @@ void DrawCurveInspector(const Studio::CurveSubject &a_curve,
           return Studio::RenameCurve{row->name, std::move(a_name)};
         });
         ImGui::SameLine();
-        DrawResourceRemove(row->name, row->references, [&](bool a_cascade) {
-          Studio::Post(*a_frame.intents, a_frame.recipe->id,
-                       Studio::RemoveCurve{row->name, a_cascade});
-        });
+        DrawResourceRemove(a_frame, {ResourceKind::kCurve, row->name},
+                           row->references, [&](bool a_cascade) {
+                             Studio::Post(
+                                 *a_frame.intents, a_frame.recipe->id,
+                                 Studio::RemoveCurve{row->name, a_cascade});
+                           });
       }));
   const ResourceCells cells{
       .name = row->name,

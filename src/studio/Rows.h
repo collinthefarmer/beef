@@ -3,10 +3,13 @@
 
 #include "recipe/Recipe.h"
 #include "recipe/Signals.h"
+#include "studio/Relationships.h"
 #include "studio/Snapshot.h"
 
 #include <cstddef>
 #include <optional>
+#include <span>
+#include <string>
 #include <vector>
 
 namespace BetterEnchantmentEffects::Studio {
@@ -31,4 +34,8 @@ ScalarRowsOf(const Recipe &a_recipe, const SurfaceOutput &a_output);
 [[nodiscard]] SourceRow SourceRowOf(const Source &a_source,
                                     std::size_t a_references);
 [[nodiscard]] std::optional<SourceKind> SourceKindOf(const SourceRow &a_row);
+
+inline constexpr std::size_t kMaxListedCascade = 8;
+[[nodiscard]] std::string CascadeSummary(const CascadePlan &a_plan,
+                                         std::span<const OutputRow> a_outputs);
 }

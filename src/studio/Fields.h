@@ -150,6 +150,8 @@ BindSourceMember(std::string a_source, SourceKind a_record, Outer S::*a_outer,
   };
 }
 
+inline constexpr float kZeroValueSpan = 1.0f;
+inline constexpr float kMinValueSpan = 0.001f;
 [[nodiscard]] std::pair<float, float> ValueRelativeRange(float a_value);
 
 [[nodiscard]] FormField ValueField(ValueFieldSpec a_spec);

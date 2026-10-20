@@ -404,7 +404,8 @@ void CommonMaskOperations() {
   Check(test::Near(value(), 0.6f), "NOT subtracts the second term");
   Reduce(flow.state, MuteTerm{1, true});
   Reduce(flow.state, SoloTerm{1, true});
-  Check(test::Near(value(), 0.25f), "Solo overrides mute");
+  Check(test::Near(value(), 0.75f),
+        "Solo overrides mute, and a soloed not term shows its inverse");
   Reduce(flow.state, MoveTerm{1, 0});
   Check(flow.state.mask.solo == 0 && flow.state.mask.muted.contains(0) &&
             test::Near(value(), 0.25f),

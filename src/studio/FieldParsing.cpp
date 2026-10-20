@@ -96,6 +96,20 @@ std::optional<Vec3> LiteralColor(std::string_view a_text) {
   return Vec3{*x, *y, *z};
 }
 
+std::optional<Vec2> LiteralPair(std::string_view a_text) {
+  const auto param = ParseVec2Param(a_text);
+  const auto *parts = param ? Get<std::array<Param, 2>>(*param) : nullptr;
+  if (parts == nullptr) {
+    return std::nullopt;
+  }
+  const float *x = Get<float>((*parts)[0]);
+  const float *y = Get<float>((*parts)[1]);
+  if (x == nullptr || y == nullptr) {
+    return std::nullopt;
+  }
+  return Vec2{*x, *y};
+}
+
 std::string LiteralColorText(const Vec3 &a_color) {
   return Vec3ParamText(std::array<Param, 3>{a_color.x, a_color.y, a_color.z});
 }

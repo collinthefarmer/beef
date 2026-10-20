@@ -2905,6 +2905,21 @@ them outside as separate passes.
   static assertion; `MenuState::textBuffers`, `numberBuffers` and `comboMode`
   are keyed by it, and `kNoField` (zero) is "no field", matching how ImGui
   itself reads a zero ID.
+- A field's combo or text mode (`ComboChoice`) remembers the default it was
+  derived from (`basis`: the value is a reference, or a catalog name). When
+  the model changes that default (an undo turns `@tint` into a literal), the
+  mode is derived again; a badge click survives as long as the model keeps
+  its kind.
+- A text field commits on Enter and also when it loses focus with valid,
+  changed text (`IsItemDeactivatedAfterEdit`). Invalid text left behind stays
+  in the field, marked "not applied", in `MenuState::unappliedTexts` until it
+  is fixed, Escape is pressed on it, or the recipe or piece changes.
+- An edit the engine refuses shows under the field that posted it.
+  `DrawRowField` names the field being drawn (`drawingField`), `PostField`
+  records it (`NoteFieldPost`), the performer attaches the request id
+  (`NoteFieldRequest`), and the first result for that request sets
+  `fieldRefusal` when it carries an error. The next post from the field, or
+  a recipe or piece change, clears it.
 - The menu frame (`menu/Frame.h`) borrows the snapshot, selected rows, names,
   a `Studio::MenuState*` and the outgoing `Studio::Intents*` collection.
   Widget scale comes from `Frame::scale`; geometry bone coverage comes from
@@ -3285,7 +3300,9 @@ cancel by the user instead of the load.
   16 per preset. A file with no `presets` array is zero presets, not an error.
 - `BuildMask` emits into the recipe expression language: `and`→`a * b`,
   `or`→`max(a, b)`, `not`→`a * (1 - b)`; a single whole-parenthesised term is
-  unwrapped; growth stops at `kMaxExpressionLength`.
+  unwrapped; growth stops at `kMaxExpressionLength`. A `not` term that is the
+  first one shown (the terms before it muted, or it soloed) emits `1 - b`, so
+  the preview shows what the term leaves rather than what it removes.
 - Mask-editor term and analysis names come from `mesh/`: partition label =
   `SlotCoverage.name` (fallback `BipedSlotName`), bone label = raw
   `BoneCoverage.name`/`MeshIsland.dominantBone`, material label =
@@ -3298,8 +3315,17 @@ cancel by the user instead of the load.
   `FormField.range` is a hard limit (`FieldCheck` rejects out-of-range typed
   input, "Allowed range"); `workingRange` is only the slider span (typed input
   unrestricted). `ResolveTuningRange` (`menu/Tuning.cpp`) prefers
-  `workingRange`, then `range`, then a stored custom range, then the eased
-  `ValueRelativeRange`. Declaring either hides the "Range" adjust button. The
+  `workingRange`, then `range`, then a stored custom range, then
+  `ValueRelativeRange`: `[v - span, v + span]` with `span = |v|` (at least
+  `kMinValueSpan`, 0.001), and `kZeroValueSpan` (1) for zero, as the UI v2
+  plan's S3 set it. The earlier rule (`round(sqrt|v|)` clamped to [1, 100],
+  integer bounds) gave 0.02 the span [-1, 1]. Declaring either hides the
+  "Range" adjust button. Every numeric mask-term setting uses this slider,
+  in the term table (its own `term-settings` field scope) and in the tuning
+  pane; a setting that is not a number stays a text field. The slider shows
+  `%.4g` without rounding to the format, so 0.0004 reads 0.0004. A typed
+  value the field refuses (outside a hard range) shows "not applied" under
+  the slider for the rest of the gesture (`TuningGesture::refusal`). The
   constants (`studio/Forms.cpp`), derived from where each value is consumed:
   - light `intensity` `{0,16}` — `fade = intensity·share/4` (`render/Light.cpp`),
     so `fade=1` at intensity 4 (one vanilla light); above ~16 only radius grows.

@@ -79,7 +79,8 @@ std::string BuildMask(std::span<const Term> a_terms,
     }
     std::string next;
     if (built.empty()) {
-      next = std::format("({})", term.text);
+      next = term.op == TermOp::kNot ? std::format("(1 - ({}))", term.text)
+                                     : std::format("({})", term.text);
     } else {
       switch (term.op) {
       case TermOp::kSet:

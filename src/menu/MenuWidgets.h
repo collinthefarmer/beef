@@ -161,6 +161,8 @@ struct EntryModeTips {
   std::string_view combo;
   std::string_view text;
 };
+[[nodiscard]] bool &ComboModeFor(Studio::MenuState &a_state,
+                                 Studio::FieldKey a_key, bool a_reference);
 void ModeBadge(Studio::FieldKind a_kind, bool &a_combo, Studio::FieldKey a_key,
                const EntryModeTips &a_tips);
 [[nodiscard]] const char *BlendGlyph(Blend a_blend);

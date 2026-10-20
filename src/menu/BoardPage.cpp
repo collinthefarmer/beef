@@ -1,6 +1,7 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #include "menu/BoardPage.h"
 
+#include "menu/FormDraw.h"
 #include "menu/MenuWidgets.h"
 #include "menu/PreviewWindows.h"
 #include "studio/Edits.h"
@@ -135,8 +136,8 @@ void DrawCell(const Cell *a_cell, const Frame &a_frame) {
     return;
   case CellState::kEmpty:
     if (ImGui::Button("+", ImVec2{side, side})) {
-      Studio::Post(*a_frame.intents, a_frame.recipe->id,
-                   AddOutput{a_cell->surface, a_cell->slot, {}});
+      PostCreation(a_frame,
+                   Studio::NewOutput{a_cell->surface, a_cell->slot, {}});
     }
     Tooltip(std::format("add an output on {} of the {}", SlotName(a_cell->slot),
                         SurfaceName(a_cell->surface)));

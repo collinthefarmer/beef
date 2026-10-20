@@ -277,15 +277,6 @@ void ClickableBadge(const BadgeStyle &a_style, bool &a_combo,
           std::string{a_combo ? a_tips.text : a_tips.combo});
 }
 
-bool &ComboModeFor(Studio::MenuState &a_state, Studio::FieldKey a_key,
-                   bool a_reference) {
-  auto mode = a_state.comboMode.find(a_key);
-  if (mode == a_state.comboMode.end()) {
-    mode = a_state.comboMode.emplace(a_key, a_reference).first;
-  }
-  return mode->second;
-}
-
 void DrawValueBadge(const BadgeStyle &a_style, bool a_takesSignal,
                     bool &a_combo, Studio::FieldKey a_key) {
   if (a_takesSignal) {
@@ -357,6 +348,15 @@ DrawRuleControls(std::span<const Studio::RuleButton> a_buttons,
   }
   return result;
 }
+}
+
+bool &ComboModeFor(Studio::MenuState &a_state, Studio::FieldKey a_key,
+                   bool a_reference) {
+  Studio::ComboChoice &choice = a_state.comboMode[a_key];
+  if (choice.basis != a_reference) {
+    choice = {a_reference, a_reference};
+  }
+  return choice.combo;
 }
 
 Table Table::Begin(const char *a_id,
@@ -506,13 +506,14 @@ std::optional<std::string> TextField(const char *a_key,
   const Studio::FieldKey key = KeyOf(a_key);
   auto &buffer = state.textBuffers[key];
   const bool fits = a_model.size() < buffer.size();
-  if (state.activeField != key) {
+  const bool unapplied = state.unappliedTexts.contains(key);
+  if (state.activeField != key && !unapplied) {
     const auto n = (std::min)(a_model.size(), buffer.size() - 1);
     std::memcpy(buffer.data(), a_model.data(), n);
     buffer[n] = '\0';
   }
   const std::optional<std::string> problem =
-      (a_check && state.activeField == key)
+      (a_check && (state.activeField == key || unapplied))
           ? a_check(std::string{buffer.data()})
           : std::nullopt;
   ImGui::PushID(NonNull(a_key));
@@ -524,6 +525,7 @@ std::optional<std::string> TextField(const char *a_key,
                     (fits ? 0 : ImGuiMCP::ImGuiInputTextFlags_ReadOnly);
   const bool committed =
       ImGui::InputText("##text", buffer.data(), buffer.size(), flags) && fits;
+  const bool left = !committed && fits && ImGui::IsItemDeactivatedAfterEdit();
   if (problem) {
     ImGui::PopStyleColor();
   }
@@ -533,18 +535,27 @@ std::optional<std::string> TextField(const char *a_key,
   }
   TrackActive(key);
   if (problem) {
-    ProblemLabel(*problem);
+    ProblemLabel(unapplied ? std::format("not applied: {}", *problem)
+                           : *problem);
   }
   std::optional<std::string> result;
-  if (committed) {
+  if (committed || left) {
     std::string text{buffer.data()};
-    if (a_check && a_check(text)) {
+    if (!a_check || !a_check(text)) {
+      state.unappliedTexts.erase(key);
+      state.activeField = Studio::kNoField;
+      if (committed || text != a_model) {
+        result = std::move(text);
+      }
+    } else if (committed) {
       state.activeField = key;
       ImGui::SetKeyboardFocusHere(-1);
     } else {
-      state.activeField = Studio::kNoField;
-      result = std::move(text);
+      state.unappliedTexts.insert(key);
     }
+  } else if (unapplied && ImGui::IsItemDeactivated() &&
+             ImGui::IsKeyPressed(ImGuiMCP::ImGuiKey_Escape, false)) {
+    state.unappliedTexts.erase(key);
   }
   ImGui::PopID();
   return result;

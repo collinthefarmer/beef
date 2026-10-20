@@ -7,6 +7,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <span>
 #include <string_view>
 #include <vector>
 
@@ -82,4 +83,7 @@ struct CascadePlan {
 };
 [[nodiscard]] CascadePlan PlanCascade(const Recipe &a_recipe,
                                       const ResourceRef &a_seed);
+[[nodiscard]] CascadePlan
+PlanCascade(std::span<const Relationship> a_relationships,
+            const ResourceRef &a_seed);
 }

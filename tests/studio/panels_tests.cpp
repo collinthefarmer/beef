@@ -756,6 +756,10 @@ void TestHelpers() {
         "LiteralColor parses a three-part literal");
   Check(!LiteralColor("@signal").has_value(),
         "LiteralColor rejects a reference");
+  const auto pair = SignalValueEdit("glow", "0.5, 0.25");
+  const auto *pairConstant = pair ? Get<SetConstant>(*pair) : nullptr;
+  Check(pairConstant && pairConstant->value == Value{Vec2{0.5f, 0.25f}},
+        "SignalValueEdit makes a pair constant from the text it shows");
   const auto edit = SignalValueEdit("glow", "0.5");
   Check(edit.has_value() && std::holds_alternative<SetConstant>(*edit),
         "SignalValueEdit makes a scalar constant");

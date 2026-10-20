@@ -624,6 +624,18 @@ void RecipeNameLabel(const Frame &a_frame) {
   }
 }
 
+std::string IsolatedOutputLabel(const Studio::RecipeRow &a_recipe,
+                                const Studio::Isolation &a_isolation,
+                                std::size_t a_output) {
+  const Studio::OutputRow *output =
+      FindBy(a_recipe.outputs, a_output, &Studio::OutputRow::index);
+  if (!output || a_recipe.id != a_isolation.recipeID) {
+    return std::format("output {}", a_output + 1);
+  }
+  return std::format("{} / {}", SurfaceName(output->surface),
+                     SlotName(output->slot));
+}
+
 void SoloRecipeButton(const Studio::RecipeRow &a_recipe,
                       const Studio::View &a_view, Studio::Intents &a_out) {
   const bool isolating = a_view.Isolating();
@@ -632,10 +644,11 @@ void SoloRecipeButton(const Studio::RecipeRow &a_recipe,
   if (isolating) {
     text = "isolating " + a_view.isolation.recipeID;
     if (a_view.isolation.output.has_value()) {
-      text += std::format(" output {}", *a_view.isolation.output);
+      text += " " + IsolatedOutputLabel(a_recipe, a_view.isolation,
+                                        *a_view.isolation.output);
     }
     if (a_view.isolation.layer.has_value()) {
-      text += std::format(" layer {}", *a_view.isolation.layer);
+      text += std::format(" layer {}", *a_view.isolation.layer + 1);
     }
   }
   ImGui::PushID("recipe-solo");

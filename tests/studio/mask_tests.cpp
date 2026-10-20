@@ -32,6 +32,10 @@ int main() {
 
   const std::vector<Term> notted{a, Termed(TermOp::kNot, "b")};
   Check(BuildMask(notted) == "(a) * (1 - (b))", "kNot subtracts the operand");
+  Check(BuildMask(notted, std::nullopt, std::set<std::size_t>{0}) == "1 - (b)",
+        "a not term left first by a mute still inverts");
+  Check(BuildMask(notted, std::optional<std::size_t>{1}) == "1 - (b)",
+        "a soloed not term inverts");
 
   Check(BuildMask(pair, std::optional<std::size_t>{0}) == "a",
         "solo keeps only the soloed term");

@@ -1565,7 +1565,7 @@ std::vector<Relationship> RelationshipsOf(const Recipe &a_recipe) {
 }
 
 namespace {
-void CollectDependents(const std::vector<Relationship> &a_relationships,
+void CollectDependents(std::span<const Relationship> a_relationships,
                        const ResourceRef &a_driver, CascadePlan &a_plan,
                        std::vector<ResourceRef> &a_pending) {
   for (const Relationship &relationship : a_relationships) {
@@ -1593,14 +1593,18 @@ void CollectDependents(const std::vector<Relationship> &a_relationships,
 }
 
 CascadePlan PlanCascade(const Recipe &a_recipe, const ResourceRef &a_seed) {
-  const std::vector<Relationship> relationships = RelationshipsOf(a_recipe);
+  return PlanCascade(RelationshipsOf(a_recipe), a_seed);
+}
+
+CascadePlan PlanCascade(std::span<const Relationship> a_relationships,
+                        const ResourceRef &a_seed) {
   CascadePlan plan;
   plan.resources.push_back(a_seed);
   std::vector<ResourceRef> pending{a_seed};
   while (!pending.empty()) {
     const ResourceRef driver = pending.back();
     pending.pop_back();
-    CollectDependents(relationships, driver, plan, pending);
+    CollectDependents(a_relationships, driver, plan, pending);
   }
   return plan;
 }

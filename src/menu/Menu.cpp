@@ -61,6 +61,7 @@ struct IntentPerformer {
         a_intent.recipeID, EditBatch{a_intent.edits},
         a_intent.expectedRevision);
     TrackEditorChange(state, request, a_intent);
+    NoteFieldRequest(state, a_intent.recipeID, request);
     if (CanRenumber(a_intent.edits)) {
       state.pendingIndexedEdit = PendingIndexedEdit{request, a_intent.recipeID};
     }

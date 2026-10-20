@@ -1,6 +1,8 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #include "studio/Rows.h"
 
+#include <format>
+
 #include <optional>
 #include <string>
 #include <utility>
@@ -183,5 +185,52 @@ OutputRow OutputRowOf(const Recipe &a_recipe, std::size_t a_index) {
     row.layers.push_back(LayerRowOf(a_recipe, layer, material->slot));
   }
   return row;
+}
+
+namespace {
+[[nodiscard]] std::string LayerName(const LayerOwner &a_layer,
+                                    std::span<const OutputRow> a_outputs) {
+  const OutputRow *output =
+      FindBy(a_outputs, a_layer.output, &OutputRow::index);
+  if (!output) {
+    return std::format("output {} layer {}", a_layer.output + 1,
+                       a_layer.layer + 1);
+  }
+  return std::format("{} layer {}", SlotName(output->slot), a_layer.layer + 1);
+}
+
+[[nodiscard]] std::string ListOf(std::span<const std::string> a_names) {
+  std::string text;
+  for (std::size_t i = 0; i < a_names.size() && i < kMaxListedCascade; ++i) {
+    text += std::format("{}{}", i == 0 ? "" : ", ", a_names[i]);
+  }
+  if (a_names.size() > kMaxListedCascade) {
+    text += std::format(" and {} more", a_names.size() - kMaxListedCascade);
+  }
+  return text;
+}
+}
+
+std::string CascadeSummary(const CascadePlan &a_plan,
+                           std::span<const OutputRow> a_outputs) {
+  std::vector<std::string> layers;
+  for (const LayerOwner &layer : a_plan.layers) {
+    layers.push_back(LayerName(layer, a_outputs));
+  }
+  std::vector<std::string> resources;
+  for (std::size_t i = 1; i < a_plan.resources.size(); ++i) {
+    const ResourceRef &ref = a_plan.resources[i];
+    resources.push_back(
+        std::format("{} {}", kResourceKindNames[IndexOf(ref.kind)], ref.name));
+  }
+  std::string summary;
+  if (!layers.empty()) {
+    summary = std::format("layers {}", ListOf(layers));
+  }
+  if (!resources.empty()) {
+    summary +=
+        std::format("{}{}", summary.empty() ? "" : "; ", ListOf(resources));
+  }
+  return summary;
 }
 }

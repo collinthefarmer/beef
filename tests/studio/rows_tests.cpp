@@ -142,5 +142,27 @@ int main() {
   Check(missing.index == 99 && missing.layers.empty(),
         "an out-of-range output index is inert, not a crash");
 
+  OutputRow emissive;
+  emissive.index = 0;
+  emissive.slot = Slot::kEmissive;
+  const std::vector<OutputRow> outputs{emissive};
+  CascadePlan plan;
+  plan.resources = {{ResourceKind::kSignal, "pulse"},
+                    {ResourceKind::kMask, "edge"}};
+  plan.layers = {{0, 1}, {4, 0}};
+  Check(CascadeSummary(plan, outputs) ==
+            "layers emissive layer 2, output 5 layer 1; mask edge",
+        "a cascade summary names its layers and the resources beyond the "
+        "removed one");
+  plan.layers.clear();
+  plan.resources.resize(1);
+  Check(CascadeSummary(plan, outputs).empty(),
+        "a removal that takes nothing else has an empty summary");
+  for (std::size_t i = 0; i < kMaxListedCascade + 2; ++i) {
+    plan.layers.push_back({0, i});
+  }
+  Check(CascadeSummary(plan, outputs).ends_with(" and 2 more"),
+        "a long cascade lists the first entries and counts the rest");
+
   return test::Finish("studio_rows");
 }

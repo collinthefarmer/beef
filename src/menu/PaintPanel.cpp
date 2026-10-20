@@ -141,6 +141,33 @@ void PostTermKind(std::size_t a_index, const Studio::TermKind &a_kind,
                                    std::move(placed.edits), a_remember});
 }
 
+[[nodiscard]] bool IsNumberField(const Studio::FormField &a_field) {
+  const std::optional<Param> param = ParseParam(a_field.text);
+  return a_field.kind == Studio::FieldKind::kScalar && param &&
+         Get<float>(*param) != nullptr;
+}
+
+void DrawTermValue(std::size_t a_index, const Studio::TermField &a_field,
+                   const Frame &a_frame) {
+  if (!IsNumberField(a_field.field)) {
+    if (const auto text = TermFieldInput(a_field.field, a_frame)) {
+      CommitTermField(a_index, a_field, *text, a_frame);
+    }
+    return;
+  }
+  DrawTuning(
+      a_field.field, a_frame,
+      TuningSink{
+          [a_index, &a_field, &a_frame](float a_value, bool a_remember) {
+            const std::string text =
+                a_field.field.integral ? std::to_string(static_cast<long long>(
+                                             std::llround(a_value)))
+                                       : ParamText(Param{a_value});
+            CommitTermField(a_index, a_field, text, a_frame, a_remember);
+          },
+          [&a_frame] { Studio::Post(*a_frame.intents, Studio::UndoMask{}); }});
+}
+
 void DrawTermSettings(std::size_t a_index, const Studio::Term &a_term,
                       const Frame &a_frame) {
   const std::vector<Studio::TermField> form = Studio::TermForm(
@@ -155,15 +182,14 @@ void DrawTermSettings(std::size_t a_index, const Studio::Term &a_term,
   if (!table.Open()) {
     return;
   }
+  const FieldScope scope("term-settings");
   for (const auto &setting : form) {
     ImGui::PushID(setting.field.name.c_str());
     table.Cell();
     ImGui::AlignTextToFramePadding();
     ImGui::TextUnformatted(setting.field.name.c_str());
     table.Cell();
-    if (const auto text = TermFieldInput(setting.field, a_frame)) {
-      CommitTermField(a_index, setting, *text, a_frame);
-    }
+    DrawTermValue(a_index, setting, a_frame);
     ImGui::PopID();
   }
   table.End();
@@ -409,7 +435,8 @@ void KeepMaskPopup(const Frame &a_frame) {
     const auto expression = Studio::CheckedBuildMask(mask.terms);
     const bool ready = painting && state.paint->ready && expression &&
                        !state.paint->pendingCommit && IsName(name) &&
-                       name != std::string{Studio::kScratchMask};
+                       name != Studio::kScratchMask &&
+                       name != Studio::kPeekMask;
     if (painting && !state.paint->assignment && !mask.editing.empty()) {
       Dim("Keeping this name updates the shared mask and all of its "
           "consumers.");
@@ -634,7 +661,8 @@ void EditMaskAsTerms(const Studio::TextRow &a_mask, const Frame &a_frame,
   Studio::Post(*a_frame.intents, Studio::SetMode{Studio::Mode::kPaint});
   std::optional<Studio::PaintAssignment> assignment;
   if (const auto *layer =
-          Get<Studio::LayerSubject>(SelectionOf(a_frame).subject)) {
+          Get<Studio::LayerSubject>(SelectionOf(a_frame).subject);
+      layer && !a_created) {
     assignment = Studio::PaintAssignment{layer->output, layer->layer,
                                          a_frame.recipe->documentRevision};
   }
@@ -784,26 +812,7 @@ void DrawTermParameter(std::size_t a_index, const Studio::TermField &a_field,
   ImGui::AlignTextToFramePadding();
   ImGui::TextUnformatted(a_field.field.name.c_str());
   a_table.Cell();
-  const bool tunable = a_field.field.kind == Studio::FieldKind::kScalar &&
-                       (a_field.field.range || a_field.field.workingRange);
-  if (tunable) {
-    DrawTuning(
-        a_field.field, a_preview,
-        TuningSink{
-            [a_index, &a_field, &a_preview](float a_value, bool a_remember) {
-              const std::string text =
-                  a_field.field.integral
-                      ? std::to_string(
-                            static_cast<long long>(std::llround(a_value)))
-                      : ParamText(Param{a_value});
-              CommitTermField(a_index, a_field, text, a_preview, a_remember);
-            },
-            [&a_preview] {
-              Studio::Post(*a_preview.intents, Studio::UndoMask{});
-            }});
-  } else if (const auto text = TermFieldInput(a_field.field, a_preview)) {
-    CommitTermField(a_index, a_field, *text, a_preview);
-  }
+  DrawTermValue(a_index, a_field, a_preview);
   ImGui::PopID();
 }
 

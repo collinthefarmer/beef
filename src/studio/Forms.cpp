@@ -732,7 +732,7 @@ SourceFieldOf(const Inspector &a_inspector,
 
 [[nodiscard]] FormField ColourFieldOf(const Inspector &a_inspector) {
   FormField colour = ValueField(
-      {.name = "colour",
+      {.name = "color",
        .kind = FieldKind::kColor,
        .text = a_inspector.row.color,
        .names = a_inspector.colorSignals,
@@ -745,7 +745,7 @@ SourceFieldOf(const Inspector &a_inspector,
   colour.create = [current = a_inspector.row.color, bind = colour.bind](
                       const std::string &a_creator, const RecipeRow &a_recipe) {
     return CreateValue({.creator = a_creator,
-                        .field = "colour",
+                        .field = "color",
                         .current = current,
                         .colour = true,
                         .recipe = a_recipe,
@@ -840,6 +840,9 @@ std::optional<RecipeEdit> SignalValueEdit(const std::string &a_signal,
   }
   if (const auto colour = LiteralColor(a_text)) {
     return SetConstant{a_signal, *colour};
+  }
+  if (const auto pair = LiteralPair(a_text)) {
+    return SetConstant{a_signal, *pair};
   }
   if (!a_text.empty() && Program::Parse(a_text)) {
     return SetExpression{a_signal, a_text};

@@ -24,6 +24,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 
 namespace BetterEnchantmentEffects::Studio {
@@ -65,8 +66,26 @@ struct TuningGesture {
   float value = 0.0f;
   std::function<std::optional<RecipeEdit>(const std::string &)> bind;
   std::optional<std::pair<float, float>> span;
+  std::optional<std::string> refusal;
   bool seen = false;
   bool finishing = false;
+};
+
+struct ComboChoice {
+  bool combo = false;
+  bool basis = false;
+};
+
+struct FieldPost {
+  FieldKey field = kNoField;
+  std::string recipeID;
+  std::uint64_t request = 0;
+};
+
+struct FieldRefusal {
+  FieldKey field = kNoField;
+  std::string recipeID;
+  Diagnostic problem;
 };
 
 struct PendingEditorChange {
@@ -90,6 +109,9 @@ struct MenuState {
   std::optional<PendingIndexedEdit> pendingRecipeFile;
   std::optional<PendingEditorChange> pendingEditorChange;
   std::optional<Diagnostic> creationRefusal;
+  FieldKey drawingField = kNoField;
+  std::optional<FieldPost> fieldPost;
+  std::optional<FieldRefusal> fieldRefusal;
   std::optional<TuningGesture> tuning;
   std::optional<FieldKey> termDrag;
   std::unordered_map<FieldKey, std::pair<float, float>> tuningRanges;
@@ -105,9 +127,10 @@ struct MenuState {
   float navigatorShare = 0.34f;
   float footerHeight = 0.0f;
   std::unordered_map<FieldKey, TextBuffer> textBuffers;
+  std::unordered_set<FieldKey> unappliedTexts;
   std::unordered_map<FieldKey, NumberBuffer> numberBuffers;
   FieldKey activeField = kNoField;
-  std::unordered_map<FieldKey, bool> comboMode;
+  std::unordered_map<FieldKey, ComboChoice> comboMode;
   FieldKey focusField = kNoField;
   std::string fieldScope;
   Mode modeDrawn = Mode::kCompose;
@@ -144,6 +167,11 @@ void AcknowledgeEditorOperations(MenuState &a_state,
                                  const Snapshot &a_snapshot);
 void TrackEditorChange(MenuState &a_state, std::uint64_t a_request,
                        const Intent &a_intent);
+void NoteFieldPost(MenuState &a_state, std::string a_recipeID);
+void NoteFieldRequest(MenuState &a_state, std::string_view a_recipeID,
+                      std::uint64_t a_request);
+[[nodiscard]] const Diagnostic *FieldRefusalOf(const MenuState &a_state,
+                                               FieldKey a_field);
 void AcknowledgePaintUpdate(MenuState &a_state,
                             const PaintUpdateResult &a_result);
 [[nodiscard]] std::optional<UpdatePaint>
