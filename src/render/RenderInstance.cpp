@@ -1,6 +1,7 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #include "render/RenderInstance.h"
 
+#include "SettingsFile.h"
 #include "diagnostics/Metrics.h"
 #include "diagnostics/Trace.h"
 #include "mesh/FieldFilter.h"
@@ -563,6 +564,16 @@ ChartChoiceOf(const AreaPickInputs &area, const Arguments &arguments) {
     return std::unexpected("the pick's chart count or floor is unavailable");
   return ChartChoice{*count, area.charts->minCover, *minShare};
 }
+constexpr std::size_t kMaxAreaPickLines = 512;
+void LogAreaPickOnce(std::string line) {
+  static std::unordered_set<std::string> written;
+  if (!GetSettings().verboseLogging || written.contains(line))
+    return;
+  if (written.size() >= kMaxAreaPickLines)
+    written.clear();
+  logger::info("{}", line);
+  written.insert(std::move(line));
+}
 std::expected<TextureLab::ClusterDraw, std::string>
 AreaDrawOf(const AreaPickInputs &area, const MaterialGrouping &grouping,
            const Arguments &arguments) {
@@ -581,17 +592,19 @@ AreaDrawOf(const AreaPickInputs &area, const MaterialGrouping &grouping,
   const std::optional<PickedArea> picked =
       PickArea(settings, place, grouping.analysis, grouping.covers);
   if (!picked) {
-    logger::info("area pick: geometry {} of {} lights nothing (not picked, or "
-                 "no group covers a pickable chart)",
-                 place.index + 1, place.count);
+    LogAreaPickOnce(std::format("area pick: geometry {} of {} lights nothing "
+                                "(not picked, or no group covers a pickable "
+                                "chart)",
+                                place.index + 1, place.count));
     return TextureLab::ClusterDraw{.picked = kNoPickedGroup};
   }
-  logger::info("area pick: geometry {} of {} lights material group {} on {}, "
-               "{:.1f}% of the geometry",
-               place.index + 1, place.count, picked->group,
-               picked->charts ? std::format("{} chart(s)", picked->litCharts)
-                              : std::string{"every chart"},
-               picked->share * 100.0f);
+  LogAreaPickOnce(std::format(
+      "area pick: geometry {} of {} lights material group {} on {}, {:.1f}% "
+      "of the geometry",
+      place.index + 1, place.count, picked->group,
+      picked->charts ? std::format("{} chart(s)", picked->litCharts)
+                     : std::string{"every chart"},
+      picked->share * 100.0f));
   TextureLab::ClusterDraw draw{.picked = picked->group};
   if (picked->charts && area.charts) {
     const auto *chartIds = arguments.Find<TextureView>(area.charts->chartIds);

@@ -3538,6 +3538,13 @@ The method and its prototype comparison are in
   charts, of the group's cover of the chart times the chart's share of the
   labelled raster (`ChartCover::chartShare`), so it measures how much of
   the geometry glows before masks narrow it.
+- The line is written only with `VerboseLogging` on, and each distinct line
+  once per session (`LogAreaPickOnce`, at most 512 remembered, then the set
+  starts again). Every cluster-draw step wrote it before, at every plan
+  build, resize and reinstall, so one geometry's line came four times (one
+  step per size) and again each time: 2,707 lines in the 2026-10-20 session.
+  Each line flushes the log file, and that flush appeared in a hitch stack on
+  2026-10-19. Two actors whose picks read the same share one line.
 - `seed` is required, with no default. A default from the piece identity
   would hide which value fixes the pick; an author mixes `rand()` and
   `@itemHash` in a signal when the item should change the pick.
