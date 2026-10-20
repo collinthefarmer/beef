@@ -165,4 +165,28 @@ std::optional<RecipeEdit> ResourceRename(const InspectorSubject &a_subject,
   }
   return std::nullopt;
 }
+
+EditBatch StarterEdits(std::string_view a_geometry) {
+  Selector selector;
+  if (!a_geometry.empty()) {
+    selector.anyOf.push_back(
+        SelectorClause{SelectorKind::kGeometry, std::string{a_geometry}});
+  }
+  Layer glow;
+  glow.source = Vec3{1.0f, 1.0f, 1.0f};
+  glow.opacity = Ref{std::string{kStarterPulse}};
+  glow.color = Ref{std::string{kStarterColour}};
+  EditBatch batch;
+  batch.edits = {
+      AddSignal{std::string{kStarterColour}},
+      SetSignal{std::string{kStarterColour},
+                ConstantSignal{Vec3{0.35f, 0.6f, 1.0f}}},
+      AddSignal{std::string{kStarterPulse}},
+      SetSignal{std::string{kStarterPulse},
+                ExprSignal{"0.7 + 0.3 * sin(time * 2)"}},
+      AddOutput{Surface::kMaterial, Slot::kEmissive, std::move(selector)},
+      AddLayer{0, std::move(glow), std::nullopt},
+  };
+  return batch;
+}
 }

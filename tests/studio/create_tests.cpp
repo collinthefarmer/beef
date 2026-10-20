@@ -1,6 +1,10 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #include "studio/Create.h"
+#include "studio/Edits.h"
 #include "test_support.h"
+
+#include <algorithm>
+#include <optional>
 
 using namespace BetterEnchantmentEffects;
 using namespace BetterEnchantmentEffects::Studio;
@@ -31,7 +35,35 @@ RecipeRow Document() {
 }
 }
 
+void StarterGlows() {
+  Recipe recipe;
+  recipe.id = "starter";
+  recipe.keys.push_back(
+      RecipeKey{KeyKind::kArmor, FormRef::From("ArmorIronCuirass")});
+  const std::optional<Diagnostic> refused = Apply(recipe, StarterEdits({}));
+  Check(!refused, "the starter applies to a new recipe");
+  const auto errors = std::ranges::count_if(
+      Validate(recipe), [](const Diagnostic &a_diagnostic) {
+        return a_diagnostic.severity == Severity::kError;
+      });
+  Check(errors == 0, "the starter recipe validates without errors");
+  const auto *surface =
+      recipe.outputs.empty() ? nullptr : Get<SurfaceOutput>(recipe.outputs[0]);
+  Check(surface && surface->slot == Slot::kEmissive &&
+            surface->stack.size() == 1 && surface->selector.anyOf.empty(),
+        "the starter is one emissive layer over every geometry of the piece");
+  Check(surface && IsAnimated(recipe, Output{*surface}), "the starter pulses");
+  Recipe placed;
+  placed.id = "placed";
+  static_cast<void>(Apply(placed, StarterEdits("Cuirass")));
+  const auto *one =
+      placed.outputs.empty() ? nullptr : Get<SurfaceOutput>(placed.outputs[0]);
+  Check(one && one->selector.anyOf.size() == 1,
+        "a named geometry selects only that geometry");
+}
+
 int main() {
+  StarterGlows();
   const RecipeRow recipe = Document();
   {
     const Created made =

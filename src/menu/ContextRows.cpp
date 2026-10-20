@@ -501,7 +501,8 @@ void DrawNewRecipeForm(const Frame &a_frame) {
   Dim(chosen ? std::format("Keyed by {}", chosen->key.ToString())
              : std::string{"Choose what the recipe applies to."});
   table.End();
-  Dim("Creates an empty recipe. Add outputs to make an effect.");
+  Dim("Creates a pulsing glow over the whole piece. Change its colour in "
+      "glowColor and its pulse in glowPulse.");
   RightAligned(ButtonWidth("Create"), [&] {
     Disabled(problem.has_value() || !chosen, [&] {
       if (ImGui::Button("Create") && chosen && !problem) {

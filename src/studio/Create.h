@@ -43,6 +43,9 @@ struct NewCopy {
 using Creation = std::variant<NewOutput, NewLight, NewLayer, NewSignal,
                               NewSource, NewMask, NewCurve, NewCopy>;
 
+inline constexpr std::string_view kStarterColour = "glowColor";
+inline constexpr std::string_view kStarterPulse = "glowPulse";
+
 struct Created {
   std::vector<RecipeEdit> edits;
   InspectorSubject subject;
@@ -51,6 +54,7 @@ struct Created {
 
 [[nodiscard]] Created Create(const Creation &a_request,
                              const RecipeRow &a_recipe);
+[[nodiscard]] EditBatch StarterEdits(std::string_view a_geometry);
 [[nodiscard]] std::optional<std::string>
 ResourceName(const InspectorSubject &a_subject);
 [[nodiscard]] std::optional<RecipeEdit>

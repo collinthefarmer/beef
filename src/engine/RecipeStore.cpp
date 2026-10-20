@@ -11,6 +11,7 @@
 #include "recipe/Importer.h"
 #include "recipe/Recipe.h"
 #include "recipe/RecipeCatalog.h"
+#include "studio/Create.h"
 #include "studio/Edits.h"
 #include "studio/PaintSession.h"
 #include "studio/Presets.h"
@@ -869,13 +870,10 @@ std::optional<Diagnostic> NewRecipe(std::string_view a_id, RecipeKey a_key,
   recipe.id = id;
   recipe.metadata.name = recipe.id;
   recipe.keys.push_back(std::move(a_key));
-  if (!a_geometry.empty()) {
-    Selector selector;
-    selector.anyOf.push_back(
-        SelectorClause{SelectorKind::kGeometry, std::string{a_geometry}});
-    [[maybe_unused]] const auto refused = Studio::Apply(
-        recipe, Studio::AddOutput{Surface::kMaterial, Slot::kEmissive,
-                                  std::move(selector)});
+  if (const auto refused =
+          Studio::Apply(recipe, Studio::StarterEdits(a_geometry))) {
+    logger::warn("new recipe '{}': the starter glow was not added: {}", id,
+                 refused->message);
   }
   LoadedRecipe loaded;
   loaded.recipe = std::move(recipe);
