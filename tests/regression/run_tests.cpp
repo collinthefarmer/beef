@@ -61,6 +61,14 @@ void ParsesValidRunFile() {
       kNow);
   test::Check(unscaled && unscaled->screenResolution == false,
               "a run can turn screen resolution off");
+  test::Check(!parsed->diagnosticLogging,
+              "a run keeps the trace setting unless it asks");
+  const auto traced = ParseRunFile(
+      RunFileText(
+          R"("suite":["soak"],"notAfter":1800000600,"diagnosticLogging":true)"),
+      kNow);
+  test::Check(traced && traced->diagnosticLogging,
+              "a run can turn the diagnostic trace on");
   test::Check(!parsed->renderTargetBudgetMiB,
               "a run keeps the render target budget setting unless it asks");
   const auto budgeted = ParseRunFile(

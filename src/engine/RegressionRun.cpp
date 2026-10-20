@@ -254,6 +254,9 @@ void ReadRegressionRun(const RunSetup &a_setup) {
   std::filesystem::path results =
       *directory / Identity::RegressionResultsFileName(request->run);
   const std::lock_guard lock{runLock};
+  if (request->diagnosticLogging) {
+    Trace::Get().Enable(true);
+  }
   verifyRenderPlans.store(request->verifyRenderPlans);
   screenResolution.store(OverrideOf(request->screenResolution));
   budgetOverride.store(BudgetOverrideOf(request->renderTargetBudgetMiB));

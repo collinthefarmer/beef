@@ -351,6 +351,9 @@ def check_budgets(trace: Path, budgets: Path) -> tuple[str, list[str]]:
     if not trace.is_file():
         return '', [f'trace {trace} is missing']
     events = trace_events(trace)
+    if not events:
+        return '', [f'trace {trace} has no events, so no budget was checked; '
+                    'run with --diagnostic-logging on']
     measured = measurements(events)
     table = '\n'.join([f'recipe set: {line}' for line in recipe_sets(events)]
                       + ([format_measurements(measured)] if measured else []))

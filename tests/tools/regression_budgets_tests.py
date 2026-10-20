@@ -173,6 +173,16 @@ class RegressionBudgetTests(unittest.TestCase):
         self.assertIn('last heartbeat: 10.0 s before this report', lines)
         self.assertIn('last trace actions: post', lines)
 
+    def test_an_empty_trace_fails(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as folder:
+            trace = Path(folder) / 'trace.jsonl'
+            trace.write_text('', encoding='utf-8')
+            table, failures = budgets.check_budgets(trace, Path(folder) / 'budgets.json')
+        self.assertEqual(table, '')
+        self.assertEqual(len(failures), 1)
+        self.assertIn('no budget was checked', failures[0])
+
     def test_missing_data_fails_instead_of_passing(self):
         def edge(time_ms, case, window, kind):
             return {'unix_ms': time_ms, 'fields': {'action': 'regression.window',

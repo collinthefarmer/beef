@@ -87,9 +87,11 @@ def read_settings(environ: dict[str, str], local: dict[str, str],
 def run_file(run: str, save: str, suite: list[str], now: float,
              verify_render_plans: bool = False, measured_seconds: int | None = None,
              screen_resolution: bool | None = None,
-             render_target_budget_mib: int | None = None) -> dict:
+             render_target_budget_mib: int | None = None,
+             diagnostic_logging: bool = True) -> dict:
     request = {'format': 1, 'run': run, 'save': save, 'suite': suite,
-               'notAfter': int(now) + RUN_FILE_LIFETIME_SECONDS}
+               'notAfter': int(now) + RUN_FILE_LIFETIME_SECONDS,
+               'diagnosticLogging': diagnostic_logging}
     if verify_render_plans:
         request['verifyRenderPlans'] = True
     if measured_seconds is not None:
@@ -299,6 +301,9 @@ def main() -> int:
     parser.add_argument('--render-target-budget', type=budget_mib, metavar='MIB',
                         help='use this RenderTargetBudgetMiB for this run in place of the '
                              'INI value; 0 sets no cap; the start line records the value used')
+    parser.add_argument('--diagnostic-logging', choices=('on', 'off'), default='on',
+                        help='turn the diagnostic trace on for this run (the default) or '
+                             'leave the INI value; without the trace no budget is checked')
     parser.add_argument('--manual', action='store_true',
                         help='write the run file and wait; start the game yourself')
     args = parser.parse_args()
@@ -349,7 +354,8 @@ def main() -> int:
         passed.append(launch(settings, f'{stamp}-{index + 1}', cases, args.save, args.timeout,
                              args.manual, tasklist, args.verify_render_plans, args.quick,
                              screen_resolution_of(args.screen_resolution),
-                             args.render_target_budget))
+                             args.render_target_budget,
+                             args.diagnostic_logging == 'on'))
     if len(passed) > 1:
         print(f'launches passed: {sum(passed)} of {len(passed)}')
     return 0 if all(passed) else 1
@@ -369,9 +375,10 @@ def start_game(settings: Settings) -> None:
 def launch(settings: Settings, run: str, cases: list[str], save: str, timeout: float,
            manual: bool, tasklist: str, verify_render_plans: bool = False,
            measured_seconds: int | None = None, screen_resolution: bool | None = None,
-           render_target_budget_mib: int | None = None) -> bool:
+           render_target_budget_mib: int | None = None,
+           diagnostic_logging: bool = True) -> bool:
     request = run_file(run, save, cases, time.time(), verify_render_plans, measured_seconds,
-                       screen_resolution, render_target_budget_mib)
+                       screen_resolution, render_target_budget_mib, diagnostic_logging)
     (settings.log_dir / RUN_FILE).write_text(json.dumps(request) + '\n', encoding='utf-8')
     print(f'run {run}: {" ".join(cases)} from save {save}')
     if measured_seconds is not None:

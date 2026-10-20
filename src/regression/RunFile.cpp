@@ -142,6 +142,8 @@ std::expected<RunFile, std::string> ParseRunFile(std::string_view a_text,
   const std::optional<bool> screenResolution =
       reader.Boolean("screenResolution");
   const std::optional<int> budgetMiB = reader.Integer("renderTargetBudgetMiB");
+  const std::optional<bool> diagnosticLogging =
+      reader.Boolean("diagnosticLogging");
   reader.Finish();
   if (!problems.empty()) {
     return std::unexpected(problems.front().message);
@@ -184,7 +186,8 @@ std::expected<RunFile, std::string> ParseRunFile(std::string_view a_text,
                  verifyRenderPlans.value_or(false),
                  *measured,
                  screenResolution,
-                 *budget};
+                 *budget,
+                 diagnosticLogging.value_or(false)};
 }
 
 std::string StartLineJson(const StartLine &a_start) {

@@ -18,6 +18,7 @@ struct RunFile {
   std::optional<std::uint32_t> measuredSeconds;
   std::optional<bool> screenResolution;
   std::optional<std::uint32_t> renderTargetBudgetMiB;
+  bool diagnosticLogging = false;
 };
 
 inline constexpr std::size_t kMaxSuiteCases = 64;

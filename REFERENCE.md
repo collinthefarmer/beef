@@ -5110,6 +5110,13 @@ read and refuses it after `notAfter`, so an ordinary later start never
 repeats a run. The plan is
 `docs/plans/unattended-regression-2026-10-01.md`.
 
+The run file field `diagnosticLogging` turns the diagnostic trace on for the
+run (`Trace::Enable`), whatever the INI says; the game quits after the run,
+so nothing restores it. `tools/regression-run.py` sends it on by default
+(`--diagnostic-logging off` leaves the INI value). Every budget and core
+check reads the trace, so a run with the trace off used to pass without
+checking any budget; `check_budgets` now fails on a trace with no events.
+
 The player-update hook does not run at the main menu, so a `MenuOpenCloseEvent`
 sink on `RE::UI` starts the load. The load runs as an SKSE task through
 `BGSSaveLoadManager::Load(name, false)`; `false` skips the missing-content

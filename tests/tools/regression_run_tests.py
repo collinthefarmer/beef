@@ -41,7 +41,11 @@ class RegressionRunTests(unittest.TestCase):
     def test_run_request_matches_the_plugin_format(self):
         request = host.run_file('20261001T120000', 'BEEFRegression', ['lifecycle'], 1000.5)
         self.assertEqual(request, {'format': 1, 'run': '20261001T120000', 'save': 'BEEFRegression',
-                                   'suite': ['lifecycle'], 'notAfter': 1600})
+                                   'suite': ['lifecycle'], 'notAfter': 1600,
+                                   'diagnosticLogging': True})
+        quiet = host.run_file('r', 'BEEFRegression', ['lifecycle'], 1000.5,
+                              diagnostic_logging=False)
+        self.assertIs(quiet['diagnosticLogging'], False)
         verifying = host.run_file('r', 'BEEFRegression', ['lifecycle'], 1000.5, True)
         self.assertTrue(verifying['verifyRenderPlans'])
         self.assertNotIn('measuredSeconds', verifying)
