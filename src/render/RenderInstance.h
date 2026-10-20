@@ -32,6 +32,8 @@ struct GroupingRequest {
   MeshAnalysis analysis;
   std::uint64_t meshHash = 0;
   ClusterSettings settings;
+  std::optional<std::uint64_t> identity;
+  std::shared_ptr<const MaterialGrouping> known;
   std::optional<GroupingTicket> ticket;
 };
 struct RenderScratch {

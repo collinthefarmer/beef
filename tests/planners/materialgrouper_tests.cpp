@@ -6,7 +6,9 @@
 #include <chrono>
 #include <memory>
 #include <optional>
+#include <string>
 #include <thread>
+#include <vector>
 
 using namespace BetterEnchantmentEffects;
 using test::Check;
@@ -81,6 +83,41 @@ int main() {
         evicted && back && *back && (**back)->settings.smoothing == 20 &&
             g_runs.load() == runs + 1,
         "an evicted result is computed again for the ticket that still waits");
+  }
+  {
+    MaterialGrouper grouper(&CountingWork, 4, 4);
+    Check(grouper.Known(7) == nullptr, "an unseen identity is unknown");
+    GroupingTicket ticket = TicketFor(30);
+    ticket.job.identity = 7;
+    const auto grouped = Settled(grouper, ticket);
+    const std::shared_ptr<const MaterialGrouping> known = grouper.Known(7);
+    Check(grouped && *grouped && known && known == **grouped,
+          "a settled grouping is found again by the identity of its maps");
+    GroupingTicket broken = TicketFor(99);
+    broken.job.identity = 8;
+    static_cast<void>(Settled(grouper, broken));
+    Check(grouper.Known(8) == nullptr,
+          "a failed grouping is not served by identity");
+  }
+  {
+    MaterialPixels pixels{2, std::vector<std::uint8_t>(16, 128),
+                          std::vector<std::uint8_t>(16, 64)};
+    const MaterialSample sample = MaterialSampleOf(pixels);
+    Check(sample.width == 2 && sample.texels.size() == 4 &&
+              sample.texels.front().roughness == 128.0f / 255.0f &&
+              sample.texels.front().diffuse.x == 64.0f / 255.0f,
+          "raw map bytes convert to a sample on the worker");
+    MaterialPixels changed = pixels;
+    changed.diffuse[5] = 65;
+    Check(GroupingKeyOf(pixels, 1, {}) == GroupingKeyOf(pixels, 1, {}) &&
+              GroupingKeyOf(pixels, 1, {}) != GroupingKeyOf(changed, 1, {}) &&
+              GroupingKeyOf(pixels, 1, {}) != GroupingKeyOf(pixels, 2, {}),
+          "the content key follows every byte and the mesh");
+    const std::vector<std::string> maps{"a:0:rmaos.dds", "b:0:diffuse.dds"};
+    const std::vector<std::string> other{"a:0:rmaos.dds", "c:0:diffuse.dds"};
+    Check(IdentityKeyOf(maps, 1, {}) != IdentityKeyOf(other, 1, {}) &&
+              IdentityKeyOf(maps, 1, {}) != IdentityKeyOf(maps, 2, {}),
+          "the identity key follows each map and the mesh");
   }
   return test::Finish("planners_materialgrouper");
 }

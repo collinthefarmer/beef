@@ -400,7 +400,8 @@ TextureLab::ReadMaterialSample(MaterialReadback &a_readback, bool a_wait) {
   }
   meter.Succeeded(rmaos->size() + diffuse->size());
   a_readback.pending = false;
-  return MaterialSampleResult{SampleOf(*rmaos, *diffuse)};
+  return MaterialSampleResult{
+      MaterialPixels{kSampleSide, std::move(*rmaos), std::move(*diffuse)}};
 }
 
 std::optional<std::vector<std::uint8_t>>
@@ -437,32 +438,6 @@ PackedRgba(const ReadMapping &a_mapping, std::uint32_t a_side) {
   return packed;
 }
 
-MaterialSample SampleOf(const std::vector<std::uint8_t> &a_rmaos,
-                        const std::vector<std::uint8_t> &a_diffuse) {
-  MaterialSample sample;
-  sample.width = TextureLab::kSampleSide;
-  sample.height = TextureLab::kSampleSide;
-  const std::size_t texels =
-      std::min({static_cast<std::size_t>(TextureLab::kSampleSide) *
-                    TextureLab::kSampleSide,
-                a_rmaos.size() / 4, a_diffuse.size() / 4});
-  sample.texels.reserve(texels);
-  constexpr float scale = 1.0f / 255.0f;
-  for (std::size_t i = 0; i < texels; ++i) {
-    const std::uint8_t *m = a_rmaos.data() + i * 4;
-    const std::uint8_t *d = a_diffuse.data() + i * 4;
-    MaterialTexel texel;
-    texel.roughness = m[0] * scale;
-    texel.metallic = m[1] * scale;
-    texel.occlusion = m[2] * scale;
-    texel.reflectance = m[3] * scale;
-    texel.luma = (0.2126f * d[0] + 0.7152f * d[1] + 0.0722f * d[2]) * scale;
-    texel.diffuse = Vec3{d[0] * scale, d[1] * scale, d[2] * scale};
-    texel.detail = d[3] * scale;
-    sample.texels.push_back(texel);
-  }
-  return sample;
-}
 }
 
 std::shared_ptr<TextureLab::Lookup>

@@ -8,7 +8,9 @@
 #include "planners/MaterialGrouper.h"
 #include "render/MeshReader.h"
 #include "render/SourceSampling.h"
+#include "render/TextureRef.h"
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cmath>
 #include <iterator>
@@ -505,6 +507,18 @@ StepResult ExecuteNormalSlopeStep(const NormalSlopeStep &step,
     return std::unexpected("normal slope draw failed");
   return View(target);
 }
+std::optional<std::uint64_t>
+MaterialIdentityOf(const MaterialInputs &material,
+                   const GroupingRequest &grouping) {
+  const auto isFile = [](const TextureRef &a_map) {
+    return a_map.get() != nullptr && a_map.Target() == nullptr;
+  };
+  if (!isFile(material.rmaos) || !isFile(material.diffuse))
+    return std::nullopt;
+  const std::array maps{TextureIdentity(material.rmaos),
+                        TextureIdentity(material.diffuse)};
+  return IdentityKeyOf(maps, grouping.meshHash, grouping.settings);
+}
 StepResult ExecuteSubmitMaterialSampleStep(const SubmitMaterialSampleStep &step,
                                            StepExecution &execution) {
   const auto *material =
@@ -520,6 +534,13 @@ StepResult ExecuteSubmitMaterialSampleStep(const SubmitMaterialSampleStep &step,
     grouping.mesh = (*mesh)->mesh;
     grouping.analysis = (*mesh)->analysis;
     grouping.meshHash = (*mesh)->hash;
+  }
+  grouping.identity = MaterialIdentityOf(*material, grouping);
+  if (grouping.identity) {
+    grouping.known = MaterialGrouper::GetSingleton().Known(*grouping.identity);
+  }
+  if (grouping.known) {
+    return RenderValue{Value{0.0f}};
   }
   if (!execution.lab.SubmitMaterialSample(MapsOf(*material),
                                           execution.scratch.material))
@@ -1520,6 +1541,12 @@ void RenderInstance::CollectReadback(RenderInputId input) {
 void RenderInstance::CollectGrouping(RenderInputId input,
                                      RenderScratch &scratch) {
   GroupingRequest &request = scratch.grouping;
+  if (request.known) {
+    if (!UpdateInput(input, RenderValue{request.known}))
+      execution_.UnsetInput(input);
+    request.known.reset();
+    return;
+  }
   if (!request.ticket) {
     auto *lab = TextureLab::GetSingleton();
     if (!lab)
@@ -1534,9 +1561,9 @@ void RenderInstance::CollectGrouping(RenderInputId input,
     }
     const std::uint64_t key =
         GroupingKeyOf(**collected, request.meshHash, request.settings);
-    request.ticket =
-        GroupingTicket{GroupingJob{key, std::move(**collected), request.mesh,
-                                   request.analysis, request.settings}};
+    request.ticket = GroupingTicket{
+        GroupingJob{key, request.identity, std::move(**collected), request.mesh,
+                    request.analysis, request.settings}};
   }
   std::optional<GroupingResult> result =
       MaterialGrouper::GetSingleton().Poll(*request.ticket);
@@ -1564,7 +1591,8 @@ bool RenderInstance::AwaitingFirstReadback() const {
       continue;
     const auto &scratch = execution_.Steps()[binding->submission].scratch;
     if (!PendingNewestFirst(scratch.reduction.ring).empty() ||
-        scratch.material.pending || scratch.grouping.ticket)
+        scratch.material.pending || scratch.grouping.ticket ||
+        scratch.grouping.known)
       return true;
   }
   return false;

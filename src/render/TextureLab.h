@@ -322,12 +322,12 @@ public:
     RE::NiSourceTexture *diffuse = nullptr;
     RE::NiSourceTexture *normal = nullptr;
   };
-  using MaterialSampleResult = std::expected<MaterialSample, std::string>;
+  using MaterialSampleResult = std::expected<MaterialPixels, std::string>;
   [[nodiscard]] bool SubmitMaterialSample(const MaterialMaps &a_maps,
                                           MaterialReadback &a_readback);
   [[nodiscard]] std::optional<MaterialSampleResult>
   CollectMaterialSample(MaterialReadback &a_readback);
-  [[nodiscard]] std::optional<MaterialSample>
+  [[nodiscard]] std::optional<MaterialPixels>
   SampleMaterial(const MaterialMaps &a_maps);
   bool DrawDiffuseDetail(RenderTarget &a_target, const MaterialMaps &a_maps,
                          float a_diffuseMip);

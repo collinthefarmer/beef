@@ -83,6 +83,32 @@ Chroma ChromaOf(const Vec3 &a_diffuse) noexcept {
                 Clamp01(0.5f + green - 0.5f * (red + blue))};
 }
 
+MaterialSample MaterialSampleOf(const MaterialPixels &a_pixels) {
+  MaterialSample sample;
+  sample.width = a_pixels.side;
+  sample.height = a_pixels.side;
+  const std::size_t texels =
+      std::min({static_cast<std::size_t>(a_pixels.side) * a_pixels.side,
+                kMaxSampleTexels, a_pixels.rmaos.size() / 4,
+                a_pixels.diffuse.size() / 4});
+  sample.texels.reserve(texels);
+  constexpr float kScale = 1.0f / 255.0f;
+  for (std::size_t i = 0; i < texels; ++i) {
+    const std::uint8_t *m = a_pixels.rmaos.data() + i * 4;
+    const std::uint8_t *d = a_pixels.diffuse.data() + i * 4;
+    MaterialTexel texel;
+    texel.roughness = m[0] * kScale;
+    texel.metallic = m[1] * kScale;
+    texel.occlusion = m[2] * kScale;
+    texel.reflectance = m[3] * kScale;
+    texel.luma = (0.2126f * d[0] + 0.7152f * d[1] + 0.0722f * d[2]) * kScale;
+    texel.diffuse = Vec3{d[0] * kScale, d[1] * kScale, d[2] * kScale};
+    texel.detail = d[3] * kScale;
+    sample.texels.push_back(texel);
+  }
+  return sample;
+}
+
 std::string DescribeTexel(const MaterialTexel &a_texel) {
   const MaterialTexel texel = Sanitised(a_texel);
   std::string out;

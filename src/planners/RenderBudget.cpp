@@ -148,7 +148,8 @@ std::optional<std::uint64_t> ShedLineOf(const BudgetSample &a_sample) noexcept {
   const std::uint64_t plugin = std::min(a_sample.pluginBytes, memory.usage);
   const std::uint64_t room = Sum(plugin, FreeVideoMemory(memory));
   const std::uint64_t margin = ShedMarginOf(memory.budget);
-  const std::uint64_t line = room < margin ? plugin : room - margin;
+  const std::uint64_t line =
+      std::max(room < margin ? plugin : room - margin, kMinShedLine);
   return a_sample.capBytes > 0 ? std::min(line, a_sample.capBytes) : line;
 }
 

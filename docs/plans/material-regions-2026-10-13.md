@@ -92,3 +92,21 @@ The prototype (`proto.py`, `hybrid.py`) compares three methods on nine dumps: to
 | D2 | Where the fit runs. | CPU at 256 px with the coverage mask; labelling on the GPU at full resolution. |
 | D3 | Group count control. | BIC picks k; the merge share is the only count control. A fixed `clusters` override is left out until a recipe needs it. |
 
+
+## Sampling a material an earlier recipe changed
+
+A recipe can apply after another recipe on the same armor. When the earlier recipe has rewritten a material's maps, those maps are the plugin's render targets, not files.
+
+| Fact | Consequence |
+|---|---|
+| A render target's `Generation` changes only when the pool leases it, not when it is drawn again. | `TextureIdentity` stays the same while the content changes. A grouping cached by texture identity alone goes stale. |
+| A stack result carries `contentVersion`, and a view carries `drawStamp`. | The content of a produced map has a version that a cache key can use. |
+
+The readback cache therefore keys by the sampled content: a file texture by `TextureIdentity`, and a produced texture by its producing step's content key and version. Produced textures are not cached yet; they take the content-hash path, which is never stale.
+
+Decided (2026-10-20): a sample of a material that an animated earlier recipe produces is refused. A static earlier recipe stays sampleable.
+
+Open:
+
+1. Merged chains. Two recipes on one slot of one geometry draw as one pass (`MergeSlotChains`), so the version after the earlier recipe never exists as a texture. Sampling it needs that link unmerged and its result held.
+2. Which version is sampled today. `MaterialInputs::From` reads the material's current layout, so the answer depends on when sampling runs relative to publishing. Not confirmed; needs a test in game.

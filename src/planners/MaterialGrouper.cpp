@@ -17,7 +17,7 @@ constexpr std::uint64_t kWordPrime = 0x100000001b3ull;
 }
 
 [[nodiscard]] std::vector<std::uint16_t> ChartsOf(const GroupingJob &a_job) {
-  const std::uint32_t side = a_job.sample.width;
+  const std::uint32_t side = a_job.pixels.side;
   std::vector<std::uint16_t> charts;
   if (a_job.mesh) {
     charts = ChartRasterOf(*a_job.mesh, a_job.analysis, side);
@@ -31,26 +31,42 @@ constexpr std::uint64_t kWordPrime = 0x100000001b3ull;
 }
 }
 
-std::uint64_t GroupingKeyOf(const MaterialSample &a_sample,
+std::uint64_t GroupingKeyOf(const MaterialPixels &a_pixels,
                             std::uint64_t a_meshHash,
                             const ClusterSettings &a_settings) noexcept {
   std::uint64_t hash = kHashBasis;
-  for (const MaterialTexel &texel : a_sample.texels) {
-    const float values[]{texel.roughness,   texel.metallic,  texel.occlusion,
-                         texel.reflectance, texel.luma,      texel.diffuse.x,
-                         texel.diffuse.y,   texel.diffuse.z, texel.detail};
-    for (const float value : values) {
-      hash = MixWord(hash, std::bit_cast<std::uint32_t>(value));
+  for (const std::vector<std::uint8_t> *map :
+       {&a_pixels.rmaos, &a_pixels.diffuse}) {
+    for (std::size_t i = 0; i + 4 <= map->size(); i += 4) {
+      std::uint32_t word = 0;
+      std::memcpy(&word, map->data() + i, sizeof(word));
+      hash = MixWord(hash, word);
     }
   }
-  hash = MixWord(hash, a_sample.width);
+  hash = MixWord(hash, a_pixels.side);
+  hash = MixWord(hash, a_meshHash);
+  hash = MixWord(hash, std::bit_cast<std::uint32_t>(a_settings.merge));
+  return MixWord(hash, a_settings.smoothing);
+}
+
+std::uint64_t IdentityKeyOf(std::span<const std::string> a_maps,
+                            std::uint64_t a_meshHash,
+                            const ClusterSettings &a_settings) noexcept {
+  std::uint64_t hash = kHashBasis;
+  for (const std::string &map : a_maps) {
+    for (const char c : map) {
+      hash = MixWord(hash, static_cast<unsigned char>(c));
+    }
+    hash = MixWord(hash, map.size());
+  }
   hash = MixWord(hash, a_meshHash);
   hash = MixWord(hash, std::bit_cast<std::uint32_t>(a_settings.merge));
   return MixWord(hash, a_settings.smoothing);
 }
 
 GroupingResult GroupJob(const GroupingJob &a_job) {
-  auto grouping = GroupMaterial(a_job.sample, ChartsOf(a_job), a_job.settings);
+  auto grouping = GroupMaterial(MaterialSampleOf(a_job.pixels), ChartsOf(a_job),
+                                a_job.settings);
   if (!grouping) {
     return std::unexpected(grouping.error());
   }
@@ -73,6 +89,9 @@ MaterialGrouper::Poll(const GroupingTicket &a_ticket) {
   const std::scoped_lock held{lock_};
   CollectLocked();
   const std::uint64_t key = a_ticket.job.key;
+  if (a_ticket.job.identity) {
+    RememberIdentityLocked(*a_ticket.job.identity, key);
+  }
   if (const auto found = done_.find(key); found != done_.end()) {
     return found->second;
   }
@@ -88,6 +107,30 @@ MaterialGrouper::Poll(const GroupingTicket &a_ticket) {
     return std::nullopt;
   }
   return GroupingResult{std::unexpected("the grouping worker is unavailable")};
+}
+
+std::shared_ptr<const MaterialGrouping>
+MaterialGrouper::Known(std::uint64_t a_identity) {
+  const std::scoped_lock held{lock_};
+  CollectLocked();
+  const auto identity = identities_.find(a_identity);
+  if (identity == identities_.end()) {
+    return nullptr;
+  }
+  const auto found = done_.find(identity->second);
+  return found != done_.end() && found->second ? *found->second : nullptr;
+}
+
+void MaterialGrouper::RememberIdentityLocked(std::uint64_t a_identity,
+                                             std::uint64_t a_key) {
+  if (!identities_.contains(a_identity)) {
+    identityOrder_.push_back(a_identity);
+  }
+  identities_.insert_or_assign(a_identity, a_key);
+  while (identityOrder_.size() > cacheSize_) {
+    identities_.erase(identityOrder_.front());
+    identityOrder_.pop_front();
+  }
 }
 
 bool MaterialGrouper::IsPendingLocked(std::uint64_t a_key) const {

@@ -68,9 +68,18 @@ void GrowthStopsBeforeSheddingStarts() {
                           40 * kMebibyte, 0};
   Equal(AllowanceOf(busy), std::optional<std::uint64_t>{0},
         "a card past the growth margin leaves no room to grow");
-  Equal(ShedLineOf(busy), std::optional<std::uint64_t>{40 * kMebibyte},
+  Equal(ShedLineOf(busy), std::optional<std::uint64_t>{kMinShedLine},
         "when shedding everything cannot reach the shed margin, the plugin "
-        "keeps what it holds");
+        "keeps what it holds, at least the floor");
+  const BudgetSample edge{VideoMemory{14 * kGiB, 13 * kGiB + 320 * kMebibyte},
+                          8 * kMebibyte, 0};
+  Check(NextBudget({}, AllowanceOf(edge), 67 * kMebibyte, ShedLineOf(edge))
+                .pressure == Pressure::kNone,
+        "a few dozen MiB planned at the shed margin start no pressure");
+  BudgetSample capped = busy;
+  capped.capBytes = 16 * kMebibyte;
+  Equal(ShedLineOf(capped), std::optional<std::uint64_t>{16 * kMebibyte},
+        "a cap below the floor still sheds");
   const BudgetState held =
       NextBudget({}, AllowanceOf(busy), 40 * kMebibyte, ShedLineOf(busy));
   Check(held.pressure == Pressure::kNone &&

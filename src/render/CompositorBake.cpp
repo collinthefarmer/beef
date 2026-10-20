@@ -108,7 +108,7 @@ Compositor::AnalyseMaterial(const MaterialInputs &a_material,
     job.analysis = a_mesh->analysis;
   }
   job.key = GroupingKeyOf(*sample, a_mesh ? a_mesh->hash : 0, job.settings);
-  job.sample = std::move(*sample);
+  job.pixels = std::move(*sample);
   record.ticket = GroupingTicket{std::move(job)};
   Settle(record);
   if (GetSettings().verboseLogging) {

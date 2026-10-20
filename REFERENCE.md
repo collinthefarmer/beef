@@ -3429,10 +3429,24 @@ The method and its prototype comparison are in
   result evicted before its consumer polled is computed again. Only a worker
   that cannot start is a failure. `MaterialGrouper` lives in `planners/` so
   native tests reach it.
-- `MaterialGrouper` keys a result by the sample's values, the mesh hash and
+- `MaterialGrouper` keys a result by the sample's bytes, the mesh hash and
   the settings, so actors that wear the same piece share one grouping. It
-  keeps the last 32 results and takes 8 jobs at a time. The key mixes one
-  32-bit word at a time. Each cluster draw reuses the odds textures of its
+  keeps the last 64 results and takes 8 jobs at a time. The key mixes one
+  32-bit word of the raw RMAOS and diffuse bytes at a time
+  (`GroupingKeyOf`); the worker converts the bytes to a sample
+  (`MaterialSampleOf`). Until 2026-10-20 the main thread converted all
+  65,536 texels and hashed nine floats a texel; the 2026-10-19 session's
+  profiler put that (`SampleOf`, `GroupingKeyOf`) in 13 hitches at 21-34 %
+  of the main-thread samples.
+- The grouper also maps an **identity key** to a result: the
+  `TextureIdentity` of both maps, the mesh hash and the settings
+  (`IdentityKeyOf`, `Known`). `SubmitMaterialSampleStep` asks `Known` first
+  and, on a hit, submits no copy and reads nothing back; `CollectGrouping`
+  hands the known grouping to the input. Only file textures have an identity
+  key. A render target's `Generation` changes when the pool leases it, not
+  when it is drawn, so a map an earlier recipe produced keeps its identity
+  while its content changes; such maps take the content key (see the
+  material-regions plan for sampling a changed material). Each cluster draw reuses the odds textures of its
   grouping from a 16-entry cache (`GroupOddsOf`).
 - The studio's grouping (`Compositor::AnalyseMaterial`) is keyed by the
   material's maps and the mesh hash (`MaterialKeyOf`), as the game's
@@ -3841,6 +3855,12 @@ The method and its prototype comparison are in
   while the game held 12.0-12.8 of a 13.8-14.1 GiB budget and the plugin
   37-169 MiB; pressure started six times in six minutes and the radius
   evicted down to 44 units, each eviction freeing 12-17 MiB.
+- The shedding line is never below 256 MiB (`kMinShedLine`); a cap set in the
+  INI still applies below it. The line is built from the bytes the plugin
+  holds and compared with the planned bytes, which include intermediates not
+  yet drawn. On 2026-10-19 the game sat at the 5 % margin and the line came
+  out at 8-35 MiB against 17-67 MiB planned; pressure started 28 times and
+  evicted a follower 18 times, 13-17 MiB each.
 - The setting `RenderTargetBudgetMiB` caps the allowance; 0 sets no cap. The
   run file field `renderTargetBudgetMiB` replaces the setting for one
   regression run. The cap applies only while the DXGI reading is known.

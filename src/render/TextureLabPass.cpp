@@ -1414,7 +1414,7 @@ bool TextureLab::DrawDiffuseDetail(RenderTarget &a_target,
   return true;
 }
 
-std::optional<MaterialSample>
+std::optional<MaterialPixels>
 TextureLab::SampleMaterial(const MaterialMaps &a_maps) {
   MaterialReadback readback;
   if (!SubmitMaterialSample(a_maps, readback)) {

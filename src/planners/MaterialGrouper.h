@@ -16,15 +16,17 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <span>
 #include <string>
 
 namespace BetterEnchantmentEffects {
 inline constexpr std::size_t kGroupingJobCapacity = 8;
-inline constexpr std::size_t kGroupingCacheSize = 32;
+inline constexpr std::size_t kGroupingCacheSize = 64;
 
 struct GroupingJob {
   std::uint64_t key = 0;
-  MaterialSample sample;
+  std::optional<std::uint64_t> identity;
+  MaterialPixels pixels;
   std::shared_ptr<const MeshData> mesh;
   MeshAnalysis analysis;
   ClusterSettings settings;
@@ -38,7 +40,10 @@ struct GroupingTicket {
 };
 
 [[nodiscard]] std::uint64_t
-GroupingKeyOf(const MaterialSample &a_sample, std::uint64_t a_meshHash,
+GroupingKeyOf(const MaterialPixels &a_pixels, std::uint64_t a_meshHash,
+              const ClusterSettings &a_settings) noexcept;
+[[nodiscard]] std::uint64_t
+IdentityKeyOf(std::span<const std::string> a_maps, std::uint64_t a_meshHash,
               const ClusterSettings &a_settings) noexcept;
 [[nodiscard]] GroupingResult GroupJob(const GroupingJob &a_job);
 
@@ -50,10 +55,13 @@ public:
   [[nodiscard]] static MaterialGrouper &GetSingleton();
   [[nodiscard]] std::optional<GroupingResult>
   Poll(const GroupingTicket &a_ticket);
+  [[nodiscard]] std::shared_ptr<const MaterialGrouping>
+  Known(std::uint64_t a_identity);
 
 private:
   void CollectLocked();
   void RememberLocked(std::uint64_t a_key, GroupingResult a_result);
+  void RememberIdentityLocked(std::uint64_t a_identity, std::uint64_t a_key);
   [[nodiscard]] bool IsPendingLocked(std::uint64_t a_key) const;
 
   std::mutex lock_;
@@ -62,5 +70,7 @@ private:
   std::map<JobId, std::uint64_t> pending_;
   std::map<std::uint64_t, GroupingResult> done_;
   std::deque<std::uint64_t> order_;
+  std::map<std::uint64_t, std::uint64_t> identities_;
+  std::deque<std::uint64_t> identityOrder_;
 };
 }

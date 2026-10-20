@@ -42,6 +42,13 @@ struct MaterialSample {
   [[nodiscard]] bool operator==(const MaterialSample &) const = default;
 };
 
+struct MaterialPixels {
+  std::uint32_t side = 0;
+  std::vector<std::uint8_t> rmaos;
+  std::vector<std::uint8_t> diffuse;
+  [[nodiscard]] bool operator==(const MaterialPixels &) const = default;
+};
+
 struct MaterialCluster {
   std::uint8_t id = 0;
   MaterialTexel centroid;
@@ -55,6 +62,7 @@ struct MaterialAnalysis {
   [[nodiscard]] bool operator==(const MaterialAnalysis &) const = default;
 };
 
+[[nodiscard]] MaterialSample MaterialSampleOf(const MaterialPixels &a_pixels);
 [[nodiscard]] std::string DescribeTexel(const MaterialTexel &a_texel);
 [[nodiscard]] std::optional<std::uint8_t>
 PickCluster(const MaterialAnalysis &a_analysis, float a_pick,
