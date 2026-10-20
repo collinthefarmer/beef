@@ -135,14 +135,7 @@ ReferenceEntries(const std::string &a_current,
 }
 
 [[nodiscard]] std::optional<std::string>
-SignalCombo(const Studio::FormField &a_field) {
-  const std::string preview = a_field.text.starts_with('@')
-                                  ? a_field.text
-                                  : std::string{"Choose a signal"};
-  NextItemWidth(Studio::Width::Fill());
-  if (!ImGui::BeginCombo("##combo", preview.c_str())) {
-    return std::nullopt;
-  }
+SignalEntries(const Studio::FormField &a_field) {
   std::optional<std::string> chosen = ReferenceEntries(
       a_field.text, a_field.names, a_field.allowEmpty, a_field.creators);
   if (Studio::CanConnectInput(a_field)) {
@@ -154,6 +147,19 @@ SignalCombo(const Studio::FormField &a_field) {
       chosen = std::string{kWhenHitChoice};
     }
   }
+  return chosen;
+}
+
+[[nodiscard]] std::optional<std::string>
+SignalCombo(const Studio::FormField &a_field) {
+  const std::string preview = a_field.text.starts_with('@')
+                                  ? a_field.text
+                                  : std::string{"Choose a signal"};
+  NextItemWidth(Studio::Width::Fill());
+  if (!ImGui::BeginCombo("##combo", preview.c_str())) {
+    return std::nullopt;
+  }
+  std::optional<std::string> chosen = SignalEntries(a_field);
   ImGui::EndCombo();
   return chosen;
 }
@@ -348,6 +354,27 @@ DrawRuleControls(std::span<const Studio::RuleButton> a_buttons,
   }
   return result;
 }
+}
+
+std::optional<std::string>
+SignalChoiceButton(const Studio::FormField &a_field) {
+  if (a_field.names.empty() && a_field.creators.empty()) {
+    return std::nullopt;
+  }
+  const float side = ImGui::GetFrameHeight();
+  if (ImGui::Button("@", ImVec2{side, side})) {
+    ImGui::OpenPopup("signal-choice");
+  }
+  Tooltip("Drive this value with a signal.");
+  if (!ImGui::BeginPopup("signal-choice")) {
+    return std::nullopt;
+  }
+  std::optional<std::string> chosen = SignalEntries(a_field);
+  if (chosen) {
+    ImGui::CloseCurrentPopup();
+  }
+  ImGui::EndPopup();
+  return chosen;
 }
 
 bool &ComboModeFor(Studio::MenuState &a_state, Studio::FieldKey a_key,

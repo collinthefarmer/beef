@@ -39,6 +39,7 @@ struct LoadedRecipe {
   bool dirty = false;
   bool transient = false;
   bool ownsFile = false;
+  std::optional<std::filesystem::file_time_type> fileTime;
   Studio::SignalHolds holds;
   Studio::ReferenceCounts references{};
   Recipe saved{};
@@ -71,6 +72,14 @@ void DropStaleGraph(LoadedRecipe &a_loaded) {
   a_loaded.graph.reset();
   a_loaded.variantGraphs.clear();
   a_loaded.compiledFrom.reset();
+}
+
+std::optional<std::filesystem::file_time_type>
+FileTimeOf(const std::filesystem::path &a_path) {
+  std::error_code ec;
+  const std::filesystem::file_time_type time =
+      std::filesystem::last_write_time(a_path, ec);
+  return ec ? std::nullopt : std::optional{time};
 }
 
 Diagnostic Refusal(std::string_view a_id, std::string a_message) {
@@ -287,6 +296,7 @@ void LoadFile(const std::filesystem::path &a_path, RecipeClass a_class) {
   loaded.recipe = std::move(*result.recipe);
   loaded.path = a_path;
   loaded.ownsFile = true;
+  loaded.fileTime = FileTimeOf(a_path);
   loaded.recipeClass = a_class;
   loaded.diagnostics = std::move(result.diagnostics);
   loaded.inputDiagnostics = std::move(result.inputDiagnostics);
@@ -465,6 +475,7 @@ void ImportMissing(const std::filesystem::path &a_folder) {
     loaded.recipe = std::move(recipe);
     loaded.path = path;
     loaded.ownsFile = true;
+    loaded.fileTime = FileTimeOf(path);
     g_loaded.push_back(std::move(loaded));
   }
 }
@@ -739,6 +750,13 @@ SaveRecipe(std::string_view a_id) {
     if (!claim) {
       return std::unexpected(std::move(claim.error()));
     }
+  } else if (const auto changed = FileTimeOf(path);
+             changed && loaded->fileTime && *changed != *loaded->fileTime) {
+    loaded->fileTime = changed;
+    return std::unexpected(Refusal(
+        a_id, std::format("{} changed on disk after it loaded; Save again to "
+                          "replace it, or Revert to load it",
+                          path.string())));
   }
   auto written = WriteRecipeFile(path, loaded->recipe, promoteImported);
   if (!written) {
@@ -753,6 +771,7 @@ SaveRecipe(std::string_view a_id) {
   loaded->recipe = std::move(*written);
   loaded->path = path;
   loaded->ownsFile = true;
+  loaded->fileTime = FileTimeOf(path);
   loaded->saved = loaded->recipe;
   loaded->dirty = false;
   loaded->inputDiagnostics.clear();
@@ -1034,6 +1053,7 @@ std::optional<Diagnostic> RevertRecipe(std::string_view a_id) {
   }
   LoadResult result = std::move(*read);
   ResolveForms(*result.recipe, result.diagnostics);
+  loaded.fileTime = FileTimeOf(loaded.path);
   loaded.recipe = std::move(*result.recipe);
   loaded.diagnostics = std::move(result.diagnostics);
   loaded.inputDiagnostics = std::move(result.inputDiagnostics);

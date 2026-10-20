@@ -221,12 +221,20 @@ struct ReduceVisitor {
 
   void operator()(const PickPiece &a_i) {
     state.pendingPiece.reset();
+    state.awaitedPiece.reset();
     if (state.paint) {
       operator()(SetMode{Mode::kCompose});
     }
-    selection = Selection{};
+    Selection next;
+    next.piece = a_i.piece;
+    next.recipeID = selection.recipeID;
+    next.target = selection.target;
+    next.slot = selection.slot;
+    next.layer = selection.layer;
+    next.subject = selection.subject;
+    next.property = selection.property;
+    selection = std::move(next);
     state.navigation = Navigation{};
-    selection.piece = a_i.piece;
     if (!state.paint) {
       mask = MaskStack{};
     }
@@ -767,6 +775,34 @@ bool AcceptIntent(const MenuState &a_state, const Intent &a_intent) {
 }
 
 namespace {
+[[nodiscard]] const PieceRow *FindPiece(const Snapshot &a_snapshot,
+                                        const PieceRef &a_piece) {
+  const auto found =
+      std::ranges::find(a_snapshot.pieces, a_piece, &PieceRow::ref);
+  return found == a_snapshot.pieces.end() ? nullptr : &*found;
+}
+
+void FollowChosenPiece(MenuState &a_state, const Snapshot &a_snapshot) {
+  Selection &selection = a_state.selection;
+  if (a_state.awaitedPiece) {
+    if (FindPiece(a_snapshot, a_state.awaitedPiece->piece)) {
+      selection.piece = a_state.awaitedPiece->piece;
+      selection.recipeID = a_state.awaitedPiece->recipeID;
+      a_state.awaitedPiece.reset();
+    }
+    return;
+  }
+  if (selection.piece.actorID == 0 || a_snapshot.pieces.empty()) {
+    return;
+  }
+  if (const PieceRow *present = FindPiece(a_snapshot, selection.piece)) {
+    a_state.pieceLabel = PieceLabel(*present);
+    return;
+  }
+  a_state.awaitedPiece =
+      AwaitedPiece{selection.piece, selection.recipeID, a_state.pieceLabel};
+}
+
 void AdoptPendingPiece(MenuState &a_state, const Snapshot &a_snapshot) {
   if (!a_state.pendingPiece) {
     return;
@@ -790,6 +826,7 @@ void ResolveEditorSelection(MenuState &a_state, const Snapshot &a_snapshot) {
   }
   const Selection previous = a_state.selection;
   AdoptPendingPiece(a_state, a_snapshot);
+  FollowChosenPiece(a_state, a_snapshot);
   ResolveSelection(a_state.selection, a_snapshot);
   if (previous.piece != a_state.selection.piece ||
       previous.recipeID != a_state.selection.recipeID) {

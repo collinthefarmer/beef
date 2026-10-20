@@ -480,6 +480,12 @@ void DrawTypedValueOpener(const FormField &a_field, const Frame &a_frame) {
 }
 
 void DrawTunableField(const FormField &a_field, const Frame &a_frame) {
+  if (const auto chosen = SignalChoiceButton(a_field)) {
+    CommitField(a_field, *chosen, a_frame);
+  }
+  if (!a_field.names.empty() || !a_field.creators.empty()) {
+    ImGui::SameLine(0.0f, 0.0f);
+  }
   DrawTypedValueOpener(a_field, a_frame);
   ImGui::SameLine(0.0f, 0.0f);
   DrawWearerValue(a_frame, a_field);

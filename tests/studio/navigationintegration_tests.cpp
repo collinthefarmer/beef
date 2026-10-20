@@ -32,6 +32,42 @@ int main() {
   }
   {
     MenuState state = EditingLayer();
+    PieceRow chosen;
+    chosen.ref = state.selection.piece;
+    chosen.actorName = "Belrand";
+    chosen.armorName = "Cuirass";
+    RecipeRow glow;
+    glow.id = "glow";
+    chosen.recipes.push_back(glow);
+    PieceRow player;
+    player.ref = PieceRef{0x14, 7, false};
+    player.isPlayer = true;
+    RecipeRow other;
+    other.id = "other";
+    player.recipes.push_back(other);
+    Snapshot both;
+    both.pieces = {player, chosen};
+    ResolveEditorSelection(state, both);
+    Snapshot gone;
+    gone.pieces = {player};
+    ResolveEditorSelection(state, gone);
+    Check(state.awaitedPiece &&
+              state.awaitedPiece->label == "Belrand / Cuirass (3rd)" &&
+              state.awaitedPiece->recipeID == "glow",
+          "a vanished piece is remembered with its label and recipe");
+    ResolveEditorSelection(state, gone);
+    Check(state.awaitedPiece.has_value(),
+          "the studio keeps waiting while the piece is away");
+    ResolveEditorSelection(state, both);
+    Check(!state.awaitedPiece && state.selection.piece == chosen.ref &&
+              state.selection.recipeID == "glow",
+          "the studio returns to the piece and recipe when it is back");
+    ResolveEditorSelection(state, gone);
+    Reduce(state, PickPiece{player.ref});
+    Check(!state.awaitedPiece, "picking another piece stops the wait");
+  }
+  {
+    MenuState state = EditingLayer();
     const Intent create = CreateRecipe{"paint", {}, {}};
     TrackEditorChange(state, 5, create);
     Reduce(state, create);
@@ -146,11 +182,29 @@ int main() {
           "document changes clear the previous inspector and Back path");
     state = EditingLayer();
     Reduce(state, PickPiece{PieceRef{9, 8, false}});
-    Check(state.selection.piece.actorID == 9 &&
-              state.selection.recipeID.empty() &&
-              Is<RecipeSubject>(state.selection.subject) &&
+    Check(state.selection.piece.actorID == 9 && !state.selection.document &&
+              state.selection.recipeID == "glow" &&
               state.navigation.back.empty(),
-          "wearer changes cannot inherit an old document inspector");
+          "a wearer change keeps the recipe until the snapshot shows whether "
+          "the new piece carries it");
+    Snapshot carries;
+    PieceRow piece;
+    piece.ref = PieceRef{9, 8, false};
+    RecipeRow glow;
+    glow.id = "glow";
+    piece.recipes.push_back(glow);
+    carries.pieces.push_back(piece);
+    ResolveEditorSelection(state, carries);
+    Check(state.selection.recipeID == "glow" &&
+              state.selection.subject == InspectorSubject{LayerSubject{0, 1}},
+          "a new piece that carries the recipe keeps the recipe and subject");
+    Snapshot lacks = carries;
+    lacks.pieces.front().recipes.front().id = "other";
+    ResolveEditorSelection(state, lacks);
+    Check(state.selection.recipeID == "other" &&
+              Is<RecipeSubject>(state.selection.subject),
+          "a new piece without the recipe takes its own and resets the "
+          "inspector");
   }
   {
     MenuState state = EditingLayer();

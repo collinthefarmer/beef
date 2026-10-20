@@ -10,6 +10,8 @@
 #include "studio/PaintSession.h"
 #include "test_support.h"
 
+#include <chrono>
+#include <filesystem>
 #include <limits>
 #include <stdexcept>
 #include <tuple>
@@ -648,6 +650,13 @@ void SaveKeepsUnloadedFile(const std::filesystem::path &root,
         "save keeps the unreadable user file aside and writes its own");
   Check(UnappliedRecipes().empty(),
         "a file set aside by a save leaves the unapplied list");
+  std::filesystem::last_write_time(
+      unread, std::filesystem::last_write_time(unread) + std::chrono::hours{1});
+  const auto changed = SaveRecipe("fresh");
+  Check(!changed && changed.error().message.contains("changed on disk"),
+        "a save refuses once to replace a file changed on disk");
+  Check(SaveRecipe("fresh").has_value(),
+        "a second save replaces the changed file");
   Check(NewRecipe("FRESH", RecipeKey{}, {}).has_value() &&
             BetterEnchantmentEffects::DuplicateRecipe(kID, "Fresh").has_value(),
         "an id that differs from a loaded one only by case is refused");

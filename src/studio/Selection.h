@@ -68,6 +68,7 @@ struct GeometryChoice {
   std::optional<std::size_t> selected;
 };
 
+[[nodiscard]] std::string PieceLabel(const PieceRow &a_piece);
 [[nodiscard]] const PieceRow *
 SelectedPiece(const Snapshot &a_snapshot,
               const Selection &a_selection) noexcept;

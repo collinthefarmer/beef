@@ -1,6 +1,8 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #include "studio/Selection.h"
 
+#include <format>
+
 #include "recipe/Precedence.h"
 #include "recipe/Recipe.h"
 #include "studio/Rows.h"
@@ -8,6 +10,7 @@
 #include "studio/View.h"
 
 #include <algorithm>
+#include <format>
 #include <set>
 #include <string>
 #include <string_view>
@@ -64,6 +67,11 @@ DefaultPiece(const Snapshot &a_snapshot) noexcept {
   }
   return a_snapshot.pieces.empty() ? nullptr : &a_snapshot.pieces.front();
 }
+}
+
+std::string PieceLabel(const PieceRow &a_piece) {
+  return std::format("{} / {} ({})", a_piece.actorName, a_piece.armorName,
+                     a_piece.ref.firstPerson ? "1st" : "3rd");
 }
 
 const PieceRow *SelectedPiece(const Snapshot &a_snapshot,

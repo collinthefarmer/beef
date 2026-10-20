@@ -71,6 +71,12 @@ struct TuningGesture {
   bool finishing = false;
 };
 
+struct AwaitedPiece {
+  PieceRef piece;
+  std::string recipeID;
+  std::string label;
+};
+
 struct ComboChoice {
   bool combo = false;
   bool basis = false;
@@ -138,6 +144,8 @@ struct MenuState {
   History<MaskStack> maskHistory;
   ClusterMemo clusterMemo;
   std::optional<PieceRef> pendingPiece;
+  std::optional<AwaitedPiece> awaitedPiece;
+  std::string pieceLabel;
   ClusterMemo sourceClusterMemo;
 };
 

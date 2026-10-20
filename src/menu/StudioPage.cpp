@@ -16,6 +16,7 @@
 #include "menu/Workspace.h"
 
 #include "engine/Manager.h"
+#include "studio/ActivePreviews.h"
 #include "studio/EditResult.h"
 #include "studio/Forms.h"
 #include "studio/Intent.h"
@@ -169,17 +170,14 @@ constexpr float kPieceComboWidth = 480.0f;
 void DrawPieceCombo(const Frame &a_frame) {
   const Studio::PieceRow *piece = a_frame.piece;
   const std::string preview =
-      piece ? std::format("{} / {} ({})", piece->actorName, piece->armorName,
-                          piece->ref.firstPerson ? "1st" : "3rd")
-            : std::string{"nothing applied"};
+      piece ? Studio::PieceLabel(*piece) : std::string{"nothing applied"};
   const auto &pieces = a_frame.snapshot->pieces;
   std::vector<std::string> labels;
   std::optional<std::size_t> selected;
   labels.reserve(pieces.size());
   for (std::size_t i = 0; i < pieces.size(); ++i) {
     const Studio::PieceRow &row = pieces[i];
-    labels.push_back(std::format("{} / {} ({})", row.actorName, row.armorName,
-                                 row.ref.firstPerson ? "1st" : "3rd"));
+    labels.push_back(Studio::PieceLabel(row));
     if (row.ref == SelectionOf(a_frame).piece) {
       selected = i;
     }
@@ -241,8 +239,32 @@ void DrawInspectorNav(const Frame &a_frame) {
   });
 }
 
+void DrawActivePreviews(const Frame &a_frame) {
+  const std::vector<Studio::ActivePreview> previews =
+      Studio::ActivePreviewsOf(ViewOf(a_frame), *a_frame.snapshot);
+  const float available = ImGui::GetContentRegionAvail().x;
+  float used = 0.0f;
+  for (std::size_t i = 0; i < previews.size(); ++i) {
+    const Studio::ActivePreview &preview = previews[i];
+    const float width = TextWidth(preview.label) + ItemSpacingX() +
+                        ButtonWidth("x") + ItemSpacingX();
+    if (i > 0 && used + width <= available) {
+      ImGui::SameLine();
+      used += width;
+    } else {
+      used = width;
+    }
+    ImGui::PushID(static_cast<int>(i));
+    Warn(preview.label);
+    ImGui::SameLine();
+    if (ImGui::SmallButton("x")) {
+      Studio::Post(*a_frame.intents, preview.clear);
+    }
+    ImGui::PopID();
+  }
+}
+
 void DrawPieceBar(const Frame &a_frame) {
-  const Studio::View &view = ViewOf(a_frame);
   float trailing = kPieceComboWidth;
   if (a_frame.piece) {
     trailing += ItemSpacingX() + RowButtonWidth();
@@ -261,17 +283,16 @@ void DrawPieceBar(const Frame &a_frame) {
                              a_frame.recipe && a_frame.recipe->outputs.empty();
       DrawApplicationStatus(*status, noOutputs);
     }
-    if (view.Isolating()) {
-      sep();
-      Warn(std::format("Solo: {}", view.isolation.recipeID));
-    }
-    if (!view.muted.empty()) {
-      sep();
-      Warn(std::format("{} muted layer(s)", view.muted.size()));
-    }
     if (Studio::IsFull(a_frame.state->previews)) {
       sep();
       DrawPreviewLimit(*a_frame.state);
+    }
+    if (const auto &awaited = a_frame.state->awaitedPiece) {
+      sep();
+      Warn(std::format("Waiting for {}: it is not loaded, not worn, or no "
+                       "recipe matches it",
+                       awaited->label.empty() ? "the chosen piece"
+                                              : awaited->label));
     }
   };
   static_cast<void>(Rule(
@@ -431,6 +452,7 @@ void DrawStudioFrame(const Frame &frame) {
                            state.pendingEditorChange.has_value() ||
                            RecipeFilePending(frame);
   DrawPieceBar(frame);
+  DrawActivePreviews(frame);
   Disabled(editPending || (state.paint && state.paint->pendingCommit), [&] {
     DrawStudioContext(frame);
     DrawMaskDraftHints(frame);

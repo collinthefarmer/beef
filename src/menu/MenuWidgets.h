@@ -161,6 +161,8 @@ struct EntryModeTips {
   std::string_view combo;
   std::string_view text;
 };
+[[nodiscard]] std::optional<std::string>
+SignalChoiceButton(const Studio::FormField &a_field);
 [[nodiscard]] bool &ComboModeFor(Studio::MenuState &a_state,
                                  Studio::FieldKey a_key, bool a_reference);
 void ModeBadge(Studio::FieldKind a_kind, bool &a_combo, Studio::FieldKey a_key,

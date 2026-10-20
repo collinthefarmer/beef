@@ -2914,6 +2914,19 @@ them outside as separate passes.
   changed text (`IsItemDeactivatedAfterEdit`). Invalid text left behind stays
   in the field, marked "not applied", in `MenuState::unappliedTexts` until it
   is fixed, Escape is pressed on it, or the recipe or piece changes.
+- Active previews (piece solo, recipe isolation with its output and layer,
+  each muted layer) are listed under the piece bar, one entry each with its
+  own clear button (`ActivePreviewsOf`). Freeze, speed and held signals keep
+  their own controls in the footer.
+- A tunable number field has an `@` button that opens the signal list
+  beside the slider, so binding it to a signal is one step.
+- Picking another piece keeps the recipe, the inspector subject and the
+  stack selection; `ResolveEditorSelection` resets them only when the new
+  piece does not carry that recipe.
+- When the selected piece leaves the snapshot, the studio remembers it with
+  its recipe and last label (`AwaitedPiece`), says it is waiting for it in
+  the piece bar, and returns to it when it is back. Picking a piece ends the
+  wait.
 - An edit the engine refuses shows under the field that posted it.
   `DrawRowField` names the field being drawn (`drawingField`), `PostField`
   records it (`NoteFieldPost`), the performer attaches the request id
@@ -3127,6 +3140,11 @@ them outside as separate passes.
   because it does not parse, and only a person wrote it, so the save keeps it
   instead of writing over it. A failed write returns the set-aside file to its
   path.
+- A save over the recipe's own file compares the file's modification time
+  with the time recorded when the store last read or wrote it
+  (`LoadedRecipe::fileTime`). When they differ, the save refuses once and
+  records the new time, so a second Save replaces the file and Revert loads
+  it.
 - The store keeps every file the loader could not use. A file that does not
   read or parse is kept as an unreadable row (`g_unreadable`) with its
   diagnostics; a recipe with recipe-level errors stays loaded but held back
