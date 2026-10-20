@@ -76,5 +76,16 @@ int main() {
         "a dragged value above the range takes the maximum");
   const PresetSliderSpec noStep{.min = 1, .max = 10, .step = 0};
   Check(SliderValueOf(noStep, 7) == 7, "a zero step counts as one");
+  const std::vector<std::size_t> lopsided =
+      ShareRows(std::vector<std::size_t>{1, 9}, 6);
+  Check(lopsided == std::vector<std::size_t>{1, 5},
+        "a nearly empty block gives its unused rows to the other");
+  Check(ShareRows(std::vector<std::size_t>{9, 9}, 6) ==
+            std::vector<std::size_t>{3, 3},
+        "two full blocks share the rows evenly");
+  Check(ShareRows(std::vector<std::size_t>{2, 0}, 6) ==
+            std::vector<std::size_t>{2, 0},
+        "a block shows no more rows than it has");
+
   return test::Finish("studio_widgets");
 }

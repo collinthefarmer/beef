@@ -9,6 +9,7 @@
 #include <array>
 #include <format>
 #include <string>
+#include <vector>
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wmismatched-tags"
@@ -98,7 +99,7 @@ struct RelationBlock {
   void (*draw)(const Frame &, const Studio::Relationship &, Table &);
 };
 
-constexpr std::size_t kVisibleRows = 3;
+constexpr std::size_t kSharedRows = 6;
 
 bool IsDriverOf(const Studio::Relationship &a_link,
                 const Studio::InspectorSubject &a_subject);
@@ -110,9 +111,10 @@ void DrawConsumerRow(const Frame &a_frame, const Studio::Relationship &a_link,
                      Table &a_table);
 std::size_t RowCount(const Frame &a_frame, const RelationBlock &a_block,
                      const Studio::InspectorSubject &a_subject);
+std::vector<std::size_t> ShownRows(const Frame &a_frame);
 float BlockHeight(std::size_t a_rows);
 void DrawBlock(const Frame &a_frame, const RelationBlock &a_block,
-               const Studio::InspectorSubject &a_subject);
+               const Studio::InspectorSubject &a_subject, std::size_t a_shown);
 void DrawBlockTable(const Frame &a_frame, const RelationBlock &a_block,
                     const Studio::InspectorSubject &a_subject);
 
@@ -156,12 +158,10 @@ float RelationshipsHeight(const Frame &a_frame) {
   if (!a_frame.recipe) {
     return 0.0f;
   }
-  const Studio::InspectorSubject subject = SelectionOf(a_frame).subject;
   float height = 0.0f;
-  for (const RelationBlock &block : kRelationBlocks) {
-    const std::size_t rows = RowCount(a_frame, block, subject);
-    if (rows > 0) {
-      height += RuleHeight() + BlockHeight(rows);
+  for (const std::size_t shown : ShownRows(a_frame)) {
+    if (shown > 0) {
+      height += RuleHeight() + BlockHeight(shown);
     }
   }
   return height;
@@ -172,8 +172,9 @@ void DrawRelationships(const Frame &a_frame) {
     return;
   }
   const Studio::InspectorSubject subject = SelectionOf(a_frame).subject;
-  for (const RelationBlock &block : kRelationBlocks) {
-    DrawBlock(a_frame, block, subject);
+  const std::vector<std::size_t> shown = ShownRows(a_frame);
+  for (std::size_t i = 0; i < std::size(kRelationBlocks); ++i) {
+    DrawBlock(a_frame, kRelationBlocks[i], subject, shown[i]);
   }
 }
 
@@ -186,20 +187,27 @@ std::size_t RowCount(const Frame &a_frame, const RelationBlock &a_block,
       }));
 }
 
+std::vector<std::size_t> ShownRows(const Frame &a_frame) {
+  const Studio::InspectorSubject subject = SelectionOf(a_frame).subject;
+  std::vector<std::size_t> wanted;
+  for (const RelationBlock &block : kRelationBlocks) {
+    wanted.push_back(RowCount(a_frame, block, subject));
+  }
+  return Studio::ShareRows(wanted, kSharedRows);
+}
+
 float BlockHeight(std::size_t a_rows) {
-  return ImGui::GetFrameHeightWithSpacing() *
-         static_cast<float>((std::min)(a_rows, kVisibleRows) + 1);
+  return ImGui::GetFrameHeightWithSpacing() * static_cast<float>(a_rows + 1);
 }
 
 void DrawBlock(const Frame &a_frame, const RelationBlock &a_block,
-               const Studio::InspectorSubject &a_subject) {
-  const std::size_t rows = RowCount(a_frame, a_block, a_subject);
-  if (rows == 0) {
+               const Studio::InspectorSubject &a_subject, std::size_t a_shown) {
+  if (RowCount(a_frame, a_block, a_subject) == 0) {
     return;
   }
   static_cast<void>(Rule(Studio::RuleSpec{.text = a_block.title}));
-  if (ImGui::BeginChild(a_block.id, ImGui::ImVec2{0.0f, BlockHeight(rows)}, 0,
-                        0)) {
+  if (ImGui::BeginChild(a_block.id, ImGui::ImVec2{0.0f, BlockHeight(a_shown)},
+                        0, 0)) {
     DrawBlockTable(a_frame, a_block, a_subject);
   }
   ImGui::EndChild();

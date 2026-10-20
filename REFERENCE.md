@@ -2914,6 +2914,10 @@ them outside as separate passes.
   changed text (`IsItemDeactivatedAfterEdit`). Invalid text left behind stays
   in the field, marked "not applied", in `MenuState::unappliedTexts` until it
   is fixed, Escape is pressed on it, or the recipe or piece changes.
+- The "Driven by" and "Used by" blocks share six visible rows
+  (`kSharedRows`, `ShareRows`): each block gets an even share, and a block
+  with fewer rows gives the rest to the other, so a nearly empty block never
+  makes the other scroll.
 - Active previews (piece solo, recipe isolation with its output and layer,
   each muted layer) are listed under the piece bar, one entry each with its
   own clear button (`ActivePreviewsOf`). Freeze, speed and held signals keep

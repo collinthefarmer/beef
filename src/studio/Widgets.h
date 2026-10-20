@@ -11,6 +11,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace BetterEnchantmentEffects::Studio {
 enum class WidthMode {
@@ -179,4 +180,6 @@ PresetIndexOf(const PresetSliderSpec &a_spec, std::uint32_t a_value) noexcept;
                                           std::uint32_t a_value);
 [[nodiscard]] std::uint32_t SliderValueOf(const PresetSliderSpec &a_spec,
                                           std::int64_t a_dragged) noexcept;
+[[nodiscard]] std::vector<std::size_t>
+ShareRows(std::span<const std::size_t> a_wanted, std::size_t a_budget);
 }

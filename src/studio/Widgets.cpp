@@ -34,4 +34,22 @@ std::uint32_t SliderValueOf(const PresetSliderSpec &a_spec,
   const std::int64_t snapped = (clamped + step / 2) / step * step;
   return static_cast<std::uint32_t>(std::clamp(snapped, low, high));
 }
+
+std::vector<std::size_t> ShareRows(std::span<const std::size_t> a_wanted,
+                                   std::size_t a_budget) {
+  std::vector<std::size_t> order(a_wanted.size());
+  for (std::size_t i = 0; i < order.size(); ++i) {
+    order[i] = i;
+  }
+  std::ranges::stable_sort(
+      order, {}, [&](std::size_t a_index) { return a_wanted[a_index]; });
+  std::vector<std::size_t> rows(a_wanted.size(), 0);
+  std::size_t left = a_budget;
+  for (std::size_t k = 0; k < order.size(); ++k) {
+    const std::size_t share = left / (order.size() - k);
+    rows[order[k]] = (std::min)(a_wanted[order[k]], share);
+    left -= rows[order[k]];
+  }
+  return rows;
+}
 }
