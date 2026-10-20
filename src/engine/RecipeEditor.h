@@ -64,6 +64,9 @@ public:
   void ChangeView(Studio::ViewCommand a_command);
   void PinRecipe(Studio::PieceRef a_piece, std::string a_recipeID);
   void UpdateView(std::function<void(Studio::View &)> a_change);
+  void HoldSignal(std::string a_id, std::string a_signal,
+                  std::optional<Value> a_value);
+  void ReleaseHolds();
 
   [[nodiscard]] const Studio::View &CurrentView() const noexcept;
   [[nodiscard]] const Studio::History<Recipe> *

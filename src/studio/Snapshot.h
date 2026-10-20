@@ -46,6 +46,7 @@ struct SignalRow {
   std::size_t references = 0;
   SignalKind definition = ConstantSignal{};
   bool live = false;
+  std::optional<Value> held;
 };
 
 struct TextRow {

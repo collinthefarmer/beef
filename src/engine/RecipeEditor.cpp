@@ -787,6 +787,27 @@ void RecipeEditor::PinRecipe(Studio::PieceRef a_piece, std::string a_recipeID) {
   });
 }
 
+void RecipeEditor::HoldSignal(std::string a_id, std::string a_signal,
+                              std::optional<Value> a_value) {
+  runtime_.PostTask(
+      [this, id = std::move(a_id), signal = std::move(a_signal), a_value] {
+        runtime_.ChangeAndRebuildActors(
+            id, [&] { static_cast<void>(SetSignalHold(id, signal, a_value)); });
+      });
+}
+
+void RecipeEditor::ReleaseHolds() {
+  runtime_.PostTask([this] {
+    for (const std::string &id : RecipesWithHolds()) {
+      runtime_.ChangeAndRebuildActors(id, [&] {
+        for (const auto &[signal, value] : SignalHoldsOf(id)) {
+          static_cast<void>(SetSignalHold(id, signal, std::nullopt));
+        }
+      });
+    }
+  });
+}
+
 void RecipeEditor::UpdateView(std::function<void(Studio::View &)> a_change) {
   const Trace::Scope trace{Trace::Operation("editor.UpdateView")};
   runtime_.PostTask([this, change = std::move(a_change)] {

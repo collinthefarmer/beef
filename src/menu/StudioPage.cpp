@@ -142,6 +142,7 @@ void ReturnToLive() {
     a_live.freeze = false;
     a_live.speed = 1.0f;
   });
+  manager->Editor().ReleaseHolds();
 }
 
 void SoloPieceButton(const Frame &a_frame) {
@@ -336,6 +337,19 @@ void DrawClock(const Frame &a_frame) {
   table.End();
 }
 
+std::string HeldSignalsText(const Frame &a_frame) {
+  if (!a_frame.recipe) {
+    return {};
+  }
+  std::string names;
+  for (const Studio::SignalRow &signal : a_frame.recipe->signals) {
+    if (signal.held) {
+      names += (names.empty() ? "" : ", ") + signal.name;
+    }
+  }
+  return names.empty() ? names : "Held: " + names;
+}
+
 void DrawFooter(const Frame &a_frame) {
   const Studio::View &view = ViewOf(a_frame);
   DrawInspectorNav(a_frame);
@@ -348,9 +362,15 @@ void DrawFooter(const Frame &a_frame) {
             ReturnToLive();
           }
         });
-        Tooltip("clear solo and mute, resume the global clock at normal speed");
+        Tooltip("clear solo and mute, release held signals, resume the global "
+                "clock at normal speed");
       },
       [&]() {
+        const std::string held = HeldSignalsText(a_frame);
+        if (!held.empty()) {
+          Warn(held);
+          ImGui::SameLine();
+        }
         if (!view.freeze && view.speed == 1.0f) {
           return;
         }

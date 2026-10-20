@@ -158,7 +158,26 @@ void CheckRelationships() {
 }
 }
 
+void HeldSignalsAreConstants() {
+  Recipe recipe;
+  recipe.id = "held";
+  recipe.signals = {
+      Signal{"pulse", ExprSignal{"sin(time)"}, CurveRef{"x * x"}, {}},
+      Signal{"tint", ConstantSignal{Vec3{1, 0, 0}}, std::nullopt, {}}};
+  const Recipe held = WithHeldSignals(recipe, {{"pulse", 0.25f}});
+  Check(held.signals[0].kind == SignalKind{ConstantSignal{0.25f}} &&
+            !held.signals[0].curve,
+        "a held signal is a constant of the held value with no curve");
+  Check(held.signals[1] == recipe.signals[1],
+        "a signal that is not held is unchanged");
+  Check(WithHeldSignals(recipe, {}) == recipe,
+        "no holds leave the recipe as it is");
+  Check(WithHeldSignals(recipe, {{"missing", 1.0f}}) == recipe,
+        "a hold on a signal the recipe lacks changes nothing");
+}
+
 int main() {
+  HeldSignalsAreConstants();
   CheckRelationships();
   CheckLinkKinds();
   const Recipe &base = Canonical();

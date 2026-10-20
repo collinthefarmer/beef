@@ -50,6 +50,10 @@ VariantGraphFor(const Recipe &a_recipe, const Variant &a_variant);
 ReferencesOf(std::string_view a_id) noexcept;
 
 [[nodiscard]] Recipe *MutableRecipe(std::string_view a_id) noexcept;
+bool SetSignalHold(std::string_view a_id, std::string_view a_signal,
+                   std::optional<Value> a_value);
+[[nodiscard]] Studio::SignalHolds SignalHoldsOf(std::string_view a_id);
+[[nodiscard]] std::vector<std::string> RecipesWithHolds();
 std::span<const Diagnostic> RefreshRecipeDerivedState(std::string_view a_id);
 [[nodiscard]] bool IsDirty(std::string_view a_id) noexcept;
 [[nodiscard]] std::expected<std::filesystem::path, Diagnostic>

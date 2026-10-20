@@ -314,6 +314,10 @@ PrepareEdits(const Recipe &a_recipe, const EditBatch &a_batch);
                                               const EditBatch &a_batch);
 [[nodiscard]] std::string Describe(const EditBatch &a_batch);
 
+using SignalHolds = std::map<std::string, Value, std::less<>>;
+[[nodiscard]] Recipe WithHeldSignals(Recipe a_recipe,
+                                     const SignalHolds &a_holds);
+
 struct ReferenceCounts {
   std::map<std::string, std::size_t> signals;
   std::map<std::string, std::size_t> curves;

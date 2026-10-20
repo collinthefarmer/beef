@@ -1,6 +1,7 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #include "menu/Workspace.h"
 
+#include "engine/Manager.h"
 #include "menu/ClusterChart.h"
 #include "menu/ContextRows.h"
 #include "menu/FormDraw.h"
@@ -849,6 +850,63 @@ void DrawSourceClusters(const std::string &a_name,
   }
 }
 
+void PostHold(const Frame &a_frame, const std::string &a_signal,
+              std::optional<Value> a_value) {
+  if (Manager *manager = Manager::GetSingleton()) {
+    manager->Editor().HoldSignal(a_frame.recipe->id, a_signal, a_value);
+  }
+}
+
+std::optional<Value> EditHeldValue(const Value &a_held) {
+  return Match(
+      a_held,
+      [](float a_value) -> std::optional<Value> {
+        float edited = a_value;
+        NextItemWidth(Studio::Width::Px(160.0f));
+        return ImGui::DragFloat("##held", &edited, 0.01f)
+                   ? std::optional<Value>{edited}
+                   : std::nullopt;
+      },
+      [](const Vec2 &a_value) -> std::optional<Value> {
+        float edited[2]{a_value.x, a_value.y};
+        NextItemWidth(Studio::Width::Px(220.0f));
+        return ImGui::DragFloat2("##held", edited, 0.01f)
+                   ? std::optional<Value>{Vec2{edited[0], edited[1]}}
+                   : std::nullopt;
+      },
+      [](const Vec3 &a_value) -> std::optional<Value> {
+        float edited[3]{a_value.x, a_value.y, a_value.z};
+        NextItemWidth(Studio::Width::Px(260.0f));
+        return ImGui::DragFloat3("##held", edited, 0.01f)
+                   ? std::optional<Value>{Vec3{edited[0], edited[1], edited[2]}}
+                   : std::nullopt;
+      });
+}
+
+void DrawHold(const Studio::SignalRow &a_row, const Frame &a_frame) {
+  ImGui::PushID("hold");
+  if (!a_row.held) {
+    if (ImGui::Button("Hold")) {
+      PostHold(a_frame, a_row.name, a_row.value);
+    }
+    Tooltip("Keep this signal at its current value in the game, for every "
+            "wearer of the recipe. The recipe itself is not changed. Return to "
+            "live releases it.");
+    ImGui::PopID();
+    return;
+  }
+  WarnBadge("Held");
+  ImGui::SameLine();
+  if (const std::optional<Value> edited = EditHeldValue(*a_row.held)) {
+    PostHold(a_frame, a_row.name, *edited);
+  }
+  ImGui::SameLine();
+  if (ImGui::Button("Release")) {
+    PostHold(a_frame, a_row.name, std::nullopt);
+  }
+  ImGui::PopID();
+}
+
 void DrawSignalInspector(const Studio::SignalSubject &a_signal,
                          const Frame &a_frame) {
   const Studio::RecipeRow &recipe = *a_frame.recipe;
@@ -895,6 +953,7 @@ void DrawSignalInspector(const Studio::SignalSubject &a_signal,
   if (const auto *actorValue = Get<ActorValueSignal>(row->definition)) {
     DrawActorValueReadout(a_frame, *actorValue);
   }
+  DrawHold(*row, a_frame);
   DrawResponse(*row, a_frame);
 }
 

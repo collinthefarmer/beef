@@ -47,6 +47,7 @@ constexpr const char *kMenuExports[]{
     "igColorButton",
     "igColorPicker3",
     "igDragFloat",
+    "igDragFloat2",
     "igDragFloat3",
     "igDummy",
     "igEnd",

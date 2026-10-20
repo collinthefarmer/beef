@@ -560,6 +560,36 @@ void CleanRename(const std::filesystem::path &root, const Recipe &fixture) {
         "file");
 }
 
+void HeldSignalStaysOutOfTheDocument(const std::filesystem::path &root,
+                                     const Recipe &fixture) {
+  const auto path = Start(root, "held_signal", fixture);
+  if (fixture.signals.empty()) {
+    return;
+  }
+  const std::string name = fixture.signals.front().name;
+  const auto applied = [&]() -> const Signal * {
+    const std::span<const Recipe> loaded = LoadedRecipes();
+    const Recipe *recipe = FindById(loaded, kID);
+    return recipe ? FindByName(recipe->signals, name) : nullptr;
+  };
+  Check(SetSignalHold(kID, name, Value{0.5f}),
+        "a loaded recipe's signal can be held");
+  const Signal *held = applied();
+  Check(held && held->kind == SignalKind{ConstantSignal{0.5f}},
+        "the applied recipe renders the held value");
+  Check(!IsDirty(kID) && Current() == fixture,
+        "a hold leaves the document unchanged and clean");
+  Check(SaveRecipe(kID).has_value() &&
+            ReadRecipeFile(path, kID)->recipe == fixture,
+        "a save writes the document, not the hold");
+  Check(SignalHoldsOf(kID).size() == 1 && RecipesWithHolds().size() == 1,
+        "the hold is listed until it is released");
+  Check(SetSignalHold(kID, name, std::nullopt) && SignalHoldsOf(kID).empty(),
+        "releasing a hold removes it");
+  Check(applied() && *applied() == fixture.signals.front(),
+        "after release the applied recipe matches the document");
+}
+
 void SaveKeepsUnloadedFile(const std::filesystem::path &root,
                            const Recipe &fixture) {
   Start(root, "unloaded_user_file", fixture);
@@ -1650,6 +1680,7 @@ int main() {
     ShippedOwnership(root, *parsed.recipe);
     ShippedSaveRouting(root, *parsed.recipe);
     SaveKeepsUnloadedFile(root, *parsed.recipe);
+    HeldSignalStaysOutOfTheDocument(root, *parsed.recipe);
     NestedUserSave(root, *parsed.recipe);
     PaintCommitLifecycle(root, *parsed.recipe);
     PaintDiscardAndStaleWork(root, *parsed.recipe);

@@ -3037,6 +3037,18 @@ them outside as separate passes.
   rename/duplicate/delete; imported/shipped files are unpublished, not deleted.
 - `SaveRecipe` / `RevertRecipe` are `RecipeEditor` methods called directly from
   `menu/RecipeActions.cpp`, not intents — persistence, not CRUD.
+- A **held signal** is an audition: `LoadedRecipe::holds` maps a signal name
+  to a value, and the store publishes `WithHeldSignals` of the document (the
+  signal becomes a constant of the held value, with no curve) into the applied
+  catalog, its fingerprint and its compiled graph (`AppliedRecipeOf`). The
+  document, its dirty state, its undo history and every save stay as they
+  are; studio rows are built from the document and mark the held value
+  (`SignalRow::held`). A hold applies to every wearer of the recipe, as a
+  mask peek does. `RecipeEditor::HoldSignal` and `ReleaseHolds` rebuild the
+  recipe's wearers like an edit; Return to live releases every hold, and a
+  recipe load drops them with the loaded entries. `GraphFor` caches the first
+  recipe it is given, so a document row still asks for the graph of the
+  applied copy.
 - Ids collide without case (`IsIdTaken`), because NTFS opens `Recipe.json`
   and `recipe.json` as one file. Rename may change only the case of its own
   id; the file move then refuses, because the destination exists.

@@ -39,6 +39,7 @@ struct LoadedRecipe {
   bool dirty = false;
   bool transient = false;
   bool ownsFile = false;
+  Studio::SignalHolds holds;
   Studio::ReferenceCounts references{};
   Recipe saved{};
   std::vector<Diagnostic> inputDiagnostics;
@@ -56,8 +57,14 @@ std::shared_ptr<const RecipeCatalog> g_appliedWithoutDebug = g_applied;
 RecipeStoreStatus g_status;
 Studio::MaskPresets g_presets;
 
+Recipe AppliedRecipeOf(const LoadedRecipe &a_loaded) {
+  return a_loaded.holds.empty()
+             ? a_loaded.recipe
+             : Studio::WithHeldSignals(a_loaded.recipe, a_loaded.holds);
+}
+
 void DropStaleGraph(LoadedRecipe &a_loaded) {
-  if (a_loaded.compiledFrom == a_loaded.recipe) {
+  if (a_loaded.compiledFrom == AppliedRecipeOf(a_loaded)) {
     return;
   }
   a_loaded.graph.reset();
@@ -82,10 +89,12 @@ void RebuildApplied() {
       ++g_status.heldBack;
       continue;
     }
+    Recipe applied = AppliedRecipeOf(loaded);
     if (!loaded.fingerprint) {
-      loaded.fingerprint = ContentFingerprint(loaded.recipe);
+      loaded.fingerprint = ContentFingerprint(applied);
     }
-    entries.push_back({loaded.recipe, *loaded.fingerprint, loaded.recipeClass});
+    entries.push_back(
+        {std::move(applied), *loaded.fingerprint, loaded.recipeClass});
   }
   const bool anyDebug =
       std::ranges::any_of(entries, [](const CatalogEntry &a_entry) {
@@ -610,6 +619,42 @@ std::span<const Diagnostic> RefreshRecipeDerivedState(std::string_view a_id) {
   loaded.dirty = !loaded.transient && !(loaded.recipe == loaded.saved);
   Republish(*index);
   return loaded.diagnostics;
+}
+
+bool SetSignalHold(std::string_view a_id, std::string_view a_signal,
+                   std::optional<Value> a_value) {
+  const auto index = LoadedIndex(a_id);
+  if (!index) {
+    return false;
+  }
+  LoadedRecipe &loaded = g_loaded[*index];
+  if (a_value) {
+    loaded.holds.insert_or_assign(std::string{a_signal}, *a_value);
+  } else if (const auto held = loaded.holds.find(a_signal);
+             held != loaded.holds.end()) {
+    loaded.holds.erase(held);
+  } else {
+    return false;
+  }
+  loaded.fingerprint.reset();
+  DropStaleGraph(loaded);
+  Republish(*index);
+  return true;
+}
+
+Studio::SignalHolds SignalHoldsOf(std::string_view a_id) {
+  const auto *loaded = Loaded(a_id);
+  return loaded ? loaded->holds : Studio::SignalHolds{};
+}
+
+std::vector<std::string> RecipesWithHolds() {
+  std::vector<std::string> ids;
+  for (const LoadedRecipe &loaded : g_loaded) {
+    if (!loaded.holds.empty()) {
+      ids.push_back(loaded.recipe.id);
+    }
+  }
+  return ids;
 }
 
 const Studio::ReferenceCounts *ReferencesOf(std::string_view a_id) noexcept {

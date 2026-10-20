@@ -381,8 +381,8 @@ private:
   void PublishPieces(Snapshot &a_out,
                      const std::optional<Studio::PieceRef> &a_request) const;
   void PublishDocument(Snapshot &a_out, std::string_view a_document) const;
-  [[nodiscard]] Studio::RecipeRow
-  DocumentRowFor(const Recipe &a_document) const;
+  [[nodiscard]] Studio::RecipeRow DocumentRowFor(const Recipe &a_document,
+                                                 const Recipe &a_applied) const;
   void PublishSnapshot(std::uint32_t a_nowMS);
   void PublishBudgetView(Studio::BudgetView a_view);
 

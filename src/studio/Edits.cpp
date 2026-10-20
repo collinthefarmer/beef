@@ -1651,4 +1651,14 @@ SurfaceOutput DefaultOutput(Surface a_surface, Slot a_slot) {
   }
   return output;
 }
+
+Recipe WithHeldSignals(Recipe a_recipe, const SignalHolds &a_holds) {
+  for (Signal &signal : a_recipe.signals) {
+    if (const auto held = a_holds.find(signal.name); held != a_holds.end()) {
+      signal.kind = ConstantSignal{held->second};
+      signal.curve.reset();
+    }
+  }
+  return a_recipe;
+}
 }

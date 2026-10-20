@@ -32,6 +32,15 @@
 
 namespace BetterEnchantmentEffects {
 namespace {
+void MarkHeldSignals(Studio::RecipeRow &a_row) {
+  const Studio::SignalHolds holds = SignalHoldsOf(a_row.id);
+  for (Studio::SignalRow &signal : a_row.signals) {
+    if (const auto held = holds.find(signal.name); held != holds.end()) {
+      signal.held = held->second;
+    }
+  }
+}
+
 Studio::WornTextures WornTexturesOf(const LiveActor *a_live);
 
 void PublishCatalogs(Studio::Snapshot &a_out, std::uint32_t a_actor,
@@ -401,7 +410,8 @@ struct PieceSnapshotBuilder {
     if (!instance.recipe) {
       return std::nullopt;
     }
-    const Recipe &recipe = *instance.recipe;
+    const Recipe *document = MutableRecipe(instance.recipe->id);
+    const Recipe &recipe = document ? *document : *instance.recipe;
     std::size_t undoDepth = 0;
     std::size_t redoDepth = 0;
     if (const Studio::History<Recipe> *history = editor.HistoryOf(recipe.id)) {
@@ -425,6 +435,7 @@ struct PieceSnapshotBuilder {
          redoDepth, references, instance.graph.get(), instance.signals.get(),
          problems});
     row.documentRevision = editor.DocumentRevisionOf(recipe.id);
+    MarkHeldSignals(row);
     if (!full) {
       return row;
     }
@@ -661,15 +672,18 @@ void Manager::PublishDocument(Snapshot &a_out,
     return;
   }
   const std::span<const Recipe> loaded = LoadedRecipes();
-  if (const Recipe *document = FindById(loaded, a_document)) {
-    a_out.documents.push_back(DocumentRowFor(*document));
+  if (const Recipe *applied = FindById(loaded, a_document)) {
+    const Recipe *document = MutableRecipe(a_document);
+    a_out.documents.push_back(
+        DocumentRowFor(document ? *document : *applied, *applied));
   }
 }
 
-Studio::RecipeRow Manager::DocumentRowFor(const Recipe &a_document) const {
+Studio::RecipeRow Manager::DocumentRowFor(const Recipe &a_document,
+                                          const Recipe &a_applied) const {
   const Studio::ReferenceCounts *references = ReferencesOf(a_document.id);
   const Studio::ReferenceCounts emptyReferences;
-  const std::shared_ptr<const RecipeGraph> graph = GraphFor(a_document);
+  const std::shared_ptr<const RecipeGraph> graph = GraphFor(a_applied);
   const std::optional<RecipeOrigin> origin = OriginOf(a_document);
   const Studio::History<Recipe> *history = editor_.HistoryOf(a_document.id);
   const RecipeKey key =
@@ -688,6 +702,7 @@ Studio::RecipeRow Manager::DocumentRowFor(const Recipe &a_document) const {
        .problems =
            origin ? origin->diagnostics : std::span<const Diagnostic>{}});
   row.documentRevision = editor_.DocumentRevisionOf(a_document.id);
+  MarkHeldSignals(row);
   return row;
 }
 }
