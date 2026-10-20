@@ -122,11 +122,13 @@ struct FileOperationJournal {
     return id;
   }
 
-  void FinishEdit(std::uint64_t a_id, std::optional<Diagnostic> a_error) {
+  void FinishEdit(std::uint64_t a_id, std::optional<Diagnostic> a_error,
+                  std::optional<Studio::Renumbering> a_renumbering) {
     std::scoped_lock guard{lock};
     for (EditEntry &entry : edits) {
       if (entry.result.requestID == a_id && entry.pending) {
         entry.result.error = std::move(a_error);
+        entry.result.renumbering = std::move(a_renumbering);
         entry.pending = false;
         return;
       }
@@ -143,7 +145,7 @@ struct FileOperationJournal {
     }
     const std::uint64_t id = ++nextID;
     results.push_back(
-        {id, a_id, a_action, Studio::FileOperationState::kPending, {}, {}});
+        {id, a_id, a_action, Studio::FileOperationState::kPending, {}, {}, {}});
     return id;
   }
 
@@ -167,7 +169,8 @@ struct FileOperationJournal {
   }
 
   void Finish(std::uint64_t a_id, std::string a_path,
-              std::optional<Diagnostic> a_error) {
+              std::optional<Diagnostic> a_error,
+              std::optional<Studio::Renumbering> a_renumbering) {
     std::scoped_lock guard{lock};
     Studio::FileOperationResult *found =
         FindBy(results, a_id, &Studio::FileOperationResult::requestID);
@@ -178,6 +181,7 @@ struct FileOperationJournal {
                            : Studio::FileOperationState::kSucceeded;
     found->path = std::move(a_path);
     found->error = std::move(a_error);
+    found->renumbering = std::move(a_renumbering);
   }
   std::vector<Studio::RecipeEditResult> EditResults() const {
     std::scoped_lock guard{lock};
@@ -213,12 +217,15 @@ struct PendingFileOperation {
     journal->Finish(id, {},
                     MakeDiagnostic(Severity::kError, "file",
                                    "File operation was canceled before "
-                                   "completion."));
+                                   "completion."),
+                    std::nullopt);
   }
 
-  void Finish(std::string a_path,
-              std::optional<Diagnostic> a_error = std::nullopt) const {
-    journal->Finish(id, std::move(a_path), std::move(a_error));
+  void Finish(
+      std::string a_path, std::optional<Diagnostic> a_error = std::nullopt,
+      std::optional<Studio::Renumbering> a_renumbering = std::nullopt) const {
+    journal->Finish(id, std::move(a_path), std::move(a_error),
+                    std::move(a_renumbering));
   }
 };
 
@@ -256,13 +263,17 @@ struct PendingRecipeEdit {
   PendingRecipeEdit &operator=(PendingRecipeEdit &&) = delete;
 
   ~PendingRecipeEdit() {
-    journal->FinishEdit(id, MakeDiagnostic(Severity::kError, "edit",
-                                           "Recipe edit was canceled before "
-                                           "completion."));
+    journal->FinishEdit(id,
+                        MakeDiagnostic(Severity::kError, "edit",
+                                       "Recipe edit was canceled before "
+                                       "completion."),
+                        std::nullopt);
   }
 
-  void Finish(std::optional<Diagnostic> a_error = std::nullopt) const {
-    journal->FinishEdit(id, std::move(a_error));
+  void Finish(
+      std::optional<Diagnostic> a_error = std::nullopt,
+      std::optional<Studio::Renumbering> a_renumbering = std::nullopt) const {
+    journal->FinishEdit(id, std::move(a_error), std::move(a_renumbering));
   }
 };
 

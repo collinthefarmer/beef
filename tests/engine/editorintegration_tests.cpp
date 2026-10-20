@@ -590,6 +590,39 @@ void HeldSignalStaysOutOfTheDocument(const std::filesystem::path &root,
         "after release the applied recipe matches the document");
 }
 
+void ViewFollowsLayers(const std::filesystem::path &root,
+                       const Recipe &fixture) {
+  Start(root, "view_follows_layers", fixture);
+  if (fixture.outputs.empty() || !Get<SurfaceOutput>(fixture.outputs.front())) {
+    return;
+  }
+  Manager manager;
+  RecipeEditor editor{manager};
+  editor.EditRecipe(kID, {{AddLayer{0, Layer{.opacity = 0.25f}, 0},
+                           AddLayer{0, Layer{.opacity = 0.75f}, 0}}});
+  editor.UpdateView([](View &view) {
+    view.muted.insert({kID, 0, 1});
+    view.isolation = Isolation{}.SoloLayer(kID, 0, 1, true);
+  });
+  manager.Drain();
+  const auto removal = editor.EditRecipe(kID, {{RemoveLayer{0, 0}}});
+  manager.Drain();
+  Check(EditResult(editor, removal).renumbering &&
+            editor.CurrentView().muted == std::set<LayerKey>{{kID, 0, 0}} &&
+            editor.CurrentView().isolation.TargetsLayer(kID, 0, 0),
+        "a mute and a solo move with their layer when an earlier layer goes");
+  const auto undo = editor.UndoRecipe(kID);
+  manager.Drain();
+  Check(EditResult(editor, undo).renumbering &&
+            editor.CurrentView().muted == std::set<LayerKey>{{kID, 0, 1}} &&
+            editor.CurrentView().isolation.TargetsLayer(kID, 0, 1),
+        "undo moves the mute and the solo back with their layer");
+  editor.UndoRecipe(kID);
+  manager.Drain();
+  Check(editor.CurrentView().muted.empty() && !editor.CurrentView().Isolating(),
+        "undoing the layer's creation ends its mute and its solo");
+}
+
 void SaveKeepsUnloadedFile(const std::filesystem::path &root,
                            const Recipe &fixture) {
   Start(root, "unloaded_user_file", fixture);
@@ -1422,8 +1455,8 @@ void ResourceAcknowledgements(const std::filesystem::path &root,
   manager.Drain();
   const auto accepted = EditorResults(editor);
   AcknowledgeResults(state, accepted);
-  Check(!state.pendingEditorChange &&
-            state.pendingSelection ==
+  Check(!state.pendingEditorChange && state.pendingSelection &&
+            state.pendingSelection->subject ==
                 InspectorSubject{MaskSubject{"coverage"}} &&
             Current().FindMask("coverage") && !Current().FindMask("metal"),
         "actual resource rename result schedules the newly named inspector "
@@ -1680,6 +1713,7 @@ int main() {
     ShippedOwnership(root, *parsed.recipe);
     ShippedSaveRouting(root, *parsed.recipe);
     SaveKeepsUnloadedFile(root, *parsed.recipe);
+    ViewFollowsLayers(root, *parsed.recipe);
     HeldSignalStaysOutOfTheDocument(root, *parsed.recipe);
     NestedUserSave(root, *parsed.recipe);
     PaintCommitLifecycle(root, *parsed.recipe);

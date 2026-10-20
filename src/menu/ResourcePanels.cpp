@@ -52,7 +52,8 @@ void PostResourceAdd(const Frame &a_frame, Studio::ResourceTab a_tab) {
   Studio::Created made = Studio::Create(*request, *a_frame.recipe);
   Studio::Post(*a_frame.intents,
                Studio::EditRecipe{a_frame.recipe->id, std::move(made.edits)});
-  a_frame.state->pendingSelection = made.subject;
+  a_frame.state->pendingSelection =
+      Studio::PendingSubject{a_frame.recipe->id, made.subject};
 }
 
 void DrawResourceRename(
@@ -102,7 +103,8 @@ void DrawResourceClone(const Frame &a_frame,
     if (!made.edits.empty()) {
       Studio::Post(*a_frame.intents, Studio::EditRecipe{a_frame.recipe->id,
                                                         std::move(made.edits)});
-      a_frame.state->pendingSelection = made.subject;
+      a_frame.state->pendingSelection =
+          Studio::PendingSubject{a_frame.recipe->id, made.subject};
     }
   }
   Tooltip("Copy this resource under a new name.");

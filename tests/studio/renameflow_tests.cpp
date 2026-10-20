@@ -111,7 +111,9 @@ void ResourceRename(const InspectorSubject &a_from,
           "unrelated results cannot settle rename");
     AcknowledgeEditorOperations(state, Result(7, refused));
     Check(!state.pendingEditorChange, "rename acknowledgment releases gate");
-    Check(refused ? !state.pendingSelection : state.pendingSelection == a_to,
+    Check(refused ? !state.pendingSelection
+                  : state.pendingSelection &&
+                        state.pendingSelection->subject == a_to,
           "only an accepted resource rename follows the new name");
     Check(state.selection.subject == a_from,
           "current subject remains until snapshot navigation");

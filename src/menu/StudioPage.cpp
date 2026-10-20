@@ -408,10 +408,10 @@ void HistoryKeys(const Frame &a_frame) {
     }
     return;
   }
-  if (undo) {
+  if (undo && recipe->undoDepth > 0) {
     Studio::Post(out, Studio::Undo{recipe->id});
   }
-  if (redo) {
+  if (redo && recipe->redoDepth > 0) {
     Studio::Post(out, Studio::Redo{recipe->id});
   }
 }

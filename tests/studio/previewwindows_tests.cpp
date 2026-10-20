@@ -14,6 +14,28 @@ using test::Check;
 namespace {
 constexpr PieceRef kWearer{1, 2, false};
 
+Renumbering Removing(std::optional<LayerPlace> a_layer,
+                     std::optional<std::size_t> a_output = std::nullopt) {
+  Renumbering renumbering;
+  for (std::size_t output = 0; output < 6; ++output) {
+    OutputRenumbering entry;
+    if (output != a_output) {
+      entry.to = a_output && output > *a_output ? output - 1 : output;
+    }
+    for (std::size_t layer = 0; layer < 4; ++layer) {
+      if (!a_layer || a_layer->output != output || layer < a_layer->layer) {
+        entry.layers.emplace_back(layer);
+      } else if (layer == a_layer->layer) {
+        entry.layers.emplace_back(std::nullopt);
+      } else {
+        entry.layers.emplace_back(layer - 1);
+      }
+    }
+    renumbering.outputs.push_back(std::move(entry));
+  }
+  return renumbering;
+}
+
 GeometryRow Armor() {
   GeometryRow geometry;
   geometry.name = "armor";
@@ -193,34 +215,30 @@ void DropsVanishedSubjects() {
         "windows whose resource, geometry or wearer vanished are closed");
 }
 
-void DropsWindowsWhoseIndicesShift() {
+void RenumbersWindowsWithTheirLayers() {
   PreviewWindows windows;
   static_cast<void>(TogglePin(windows, Target(SourceSubject{"pattern"})));
   static_cast<void>(TogglePin(windows, Target(OutputSubject{3})));
   static_cast<void>(TogglePin(windows, Target(LayerSubject{3, 1})));
   static_cast<void>(TogglePin(windows, Target(LayerSubject{4, 0})));
-  const std::vector<RecipeEdit> value{SetLayerOpacity{3, 1, 0.5f}};
-  DropShiftedPreviews(windows, "glow", value);
-  Check(windows.open.size() == 4, "a value edit closes nothing");
-  const std::vector<RecipeEdit> layer{RemoveLayer{3, 0}};
-  DropShiftedPreviews(windows, "other", layer);
-  Check(windows.open.size() == 4, "another recipe's edit closes nothing");
-  DropShiftedPreviews(windows, "glow", layer);
-  Check(windows.open.size() == 3 &&
-            !IsPinned(windows, Target(LayerSubject{3, 1})) &&
+  RenumberPreviews(windows, "other", Removing(LayerPlace{3, 0}));
+  Check(IsPinned(windows, Target(LayerSubject{3, 1})),
+        "another recipe's edit moves nothing");
+  RenumberPreviews(windows, "glow", Removing(LayerPlace{3, 0}));
+  Check(windows.open.size() == 4 &&
+            IsPinned(windows, Target(LayerSubject{3, 0})) &&
             IsPinned(windows, Target(LayerSubject{4, 0})) &&
             IsPinned(windows, Target(OutputSubject{3})),
-        "a layer edit closes only that output's layer windows");
-  const std::vector<RecipeEdit> outputs{RemoveOutput{0}};
-  DropShiftedPreviews(windows, "glow", outputs);
-  Check(windows.open.size() == 1 &&
-            IsPinned(windows, Target(SourceSubject{"pattern"})),
-        "an output edit closes every output and layer window of the recipe");
-  static_cast<void>(TogglePin(windows, Target(OutputSubject{3})));
-  DropIndexedPreviews(windows, "glow");
-  Check(windows.open.size() == 1,
-        "undo closes indexed windows and keeps named ones");
-  static_cast<void>(TogglePin(windows, Target(OutputSubject{3})));
+        "a layer removal moves the later layer's window down");
+  RenumberPreviews(windows, "glow", Removing(LayerPlace{3, 0}));
+  Check(windows.open.size() == 3 &&
+            !IsPinned(windows, Target(LayerSubject{3, 0})),
+        "the removed layer's window closes");
+  RenumberPreviews(windows, "glow", Removing(std::nullopt, 3));
+  Check(windows.open.size() == 2 &&
+            IsPinned(windows, Target(SourceSubject{"pattern"})) &&
+            IsPinned(windows, Target(LayerSubject{3, 0})),
+        "an output removal closes its windows and renumbers later outputs");
   DropAllIndexedPreviews(windows);
   Check(windows.open.size() == 1, "a reload closes every indexed window");
 }
@@ -236,7 +254,15 @@ void MenuStateKeepsWindowsAcrossSelection() {
   Check(state.previews.open.size() == 1,
         "adding a layer keeps the output's window");
   Reduce(state, Undo{"glow"});
-  Check(state.previews.open.empty(), "undo closes the output window");
+  Check(state.previews.open.size() == 1,
+        "undo keeps the output window until the editor answers");
+  state.pendingIndexedEdit = PendingIndexedEdit{3, "glow"};
+  Snapshot answered;
+  answered.editResults.push_back(
+      {3, "glow", std::nullopt, Removing(std::nullopt, 3)});
+  AcknowledgeEditorOperations(state, answered);
+  Check(state.previews.open.empty(),
+        "an undo that removes the output closes its window");
 }
 
 void TiersAndChannels() {
@@ -260,7 +286,7 @@ int main() {
   OffersGeometriesThatCarryTheSubject();
   KeepsWindowsOfPiecesOutOfView();
   DropsVanishedSubjects();
-  DropsWindowsWhoseIndicesShift();
+  RenumbersWindowsWithTheirLayers();
   MenuStateKeepsWindowsAcrossSelection();
   TiersAndChannels();
   return test::Finish("studio_previewwindows");

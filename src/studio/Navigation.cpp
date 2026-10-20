@@ -11,6 +11,15 @@
 
 namespace BetterEnchantmentEffects::Studio {
 namespace {
+[[nodiscard]] bool IsCascade(const RecipeEdit &a_edit) {
+  const auto *signal = Get<RemoveSignal>(a_edit);
+  const auto *curve = Get<RemoveCurve>(a_edit);
+  const auto *mask = Get<RemoveMask>(a_edit);
+  const auto *source = Get<RemoveSource>(a_edit);
+  return (signal && signal->cascade) || (curve && curve->cascade) ||
+         (mask && mask->cascade) || (source && source->cascade);
+}
+
 bool PropertyMatches(const InspectorSubject &a_subject,
                      const PropertyLocation &a_property) {
   return Match(
@@ -83,22 +92,89 @@ void AlignOutputSelection(Selection &a_selection, const RecipeRow &a_recipe) {
                           : std::nullopt;
 }
 
-bool InvalidateIndexedSelection(Selection &a_selection,
-                                std::string_view a_recipeID) {
+[[nodiscard]] std::optional<std::size_t>
+IndexedOutputOf(const InspectorSubject &a_subject) {
+  if (const auto *output = Get<OutputSubject>(a_subject)) {
+    return output->output;
+  }
+  if (const auto *layer = Get<LayerSubject>(a_subject)) {
+    return layer->output;
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] std::optional<InspectorSubject>
+SubjectAfter(const InspectorSubject &a_subject,
+             const Renumbering &a_renumbering) {
+  if (const auto *output = Get<OutputSubject>(a_subject)) {
+    const std::optional<std::size_t> to =
+        OutputAfter(a_renumbering, output->output);
+    return to ? std::optional<InspectorSubject>{OutputSubject{*to}}
+              : std::nullopt;
+  }
+  if (const auto *layer = Get<LayerSubject>(a_subject)) {
+    const std::optional<LayerPlace> to =
+        LayerAfter(a_renumbering, {layer->output, layer->layer});
+    return to ? std::optional<InspectorSubject>{LayerSubject{to->output,
+                                                             to->layer}}
+              : std::nullopt;
+  }
+  return a_subject;
+}
+
+[[nodiscard]] std::optional<PropertyLocation>
+PropertyAfter(PropertyLocation a_property, const Renumbering &a_renumbering) {
+  if (auto *output = Get<OutputOwner>(a_property.owner)) {
+    const std::optional<std::size_t> to =
+        OutputAfter(a_renumbering, output->output);
+    if (!to) {
+      return std::nullopt;
+    }
+    output->output = *to;
+  }
+  if (auto *layer = Get<LayerOwner>(a_property.owner)) {
+    const std::optional<LayerPlace> to =
+        LayerAfter(a_renumbering, {layer->output, layer->layer});
+    if (!to) {
+      return std::nullopt;
+    }
+    *layer = LayerOwner{to->output, to->layer};
+  }
+  return a_property;
+}
+
+[[nodiscard]] std::optional<std::size_t>
+StackLayerAfter(const Selection &a_selection,
+                const Renumbering &a_renumbering) {
+  const std::optional<std::size_t> output =
+      IndexedOutputOf(a_selection.subject);
+  if (!output || !a_selection.layer) {
+    return std::nullopt;
+  }
+  const std::optional<LayerPlace> to =
+      LayerAfter(a_renumbering, {*output, *a_selection.layer});
+  return to ? std::optional{to->layer} : std::nullopt;
+}
+
+bool RenumberSelection(Selection &a_selection, std::string_view a_recipeID,
+                       const Renumbering &a_renumbering) {
   if (a_selection.recipeID != a_recipeID) {
-    return false;
+    return true;
   }
-  a_selection.layer.reset();
-  if (a_selection.property && (Is<OutputOwner>(a_selection.property->owner) ||
-                               Is<LayerOwner>(a_selection.property->owner) ||
-                               Is<VariantOwner>(a_selection.property->owner))) {
+  a_selection.layer = StackLayerAfter(a_selection, a_renumbering);
+  if (a_selection.property) {
+    a_selection.property =
+        PropertyAfter(std::move(*a_selection.property), a_renumbering);
+  }
+  std::optional<InspectorSubject> subject =
+      SubjectAfter(a_selection.subject, a_renumbering);
+  if (!subject) {
+    a_selection.subject = RecipeSubject{};
     a_selection.property.reset();
-  }
-  if (!Is<OutputSubject>(a_selection.subject) &&
-      !Is<LayerSubject>(a_selection.subject)) {
+    a_selection.layer.reset();
     return false;
   }
-  a_selection.subject = RecipeSubject{};
+  a_selection.subject = std::move(*subject);
   return true;
 }
 
@@ -178,23 +254,21 @@ bool Navigate(Navigation &a_navigation, Selection &a_selection,
 }
 
 bool ResolvePendingSubject(Navigation &a_navigation, Selection &a_selection,
-                           std::optional<InspectorSubject> &a_pending,
+                           std::optional<PendingSubject> &a_pending,
                            const RecipeRow *a_recipe) {
-  if (!a_pending) {
+  if (!a_pending || !a_recipe) {
     return false;
   }
-  if (!a_recipe) {
-    return false;
-  }
-  if (a_recipe->id != a_selection.recipeID) {
+  if (a_recipe->id != a_selection.recipeID ||
+      a_pending->recipeID != a_selection.recipeID) {
     a_pending.reset();
     return false;
   }
-  if (!InspectorSubjectExists(*a_pending, *a_recipe)) {
+  if (!InspectorSubjectExists(a_pending->subject, *a_recipe)) {
     return false;
   }
   const bool navigated =
-      Navigate(a_navigation, a_selection, *a_pending, *a_recipe);
+      Navigate(a_navigation, a_selection, a_pending->subject, *a_recipe);
   a_pending.reset();
   return navigated;
 }
@@ -269,25 +343,27 @@ bool GoForward(Navigation &a_navigation, Selection &a_selection,
                      a_recipe);
 }
 
-void InvalidateIndexedSubjects(Navigation &a_navigation, Selection &a_selection,
-                               std::string_view a_recipeID) {
-  if (InvalidateIndexedSelection(a_selection, a_recipeID)) {
+void RenumberIndexedSubjects(Navigation &a_navigation, Selection &a_selection,
+                             std::string_view a_recipeID,
+                             const Renumbering &a_renumbering) {
+  if (!RenumberSelection(a_selection, a_recipeID, a_renumbering)) {
     a_navigation.scroll = 0.0f;
   }
-  const auto stale = [&](InspectorVisit &a_visit) {
-    return InvalidateIndexedSelection(a_visit.selection, a_recipeID);
+  const auto lost = [&](InspectorVisit &a_visit) {
+    return !RenumberSelection(a_visit.selection, a_recipeID, a_renumbering);
   };
-  std::erase_if(a_navigation.back, stale);
-  std::erase_if(a_navigation.forward, stale);
+  std::erase_if(a_navigation.back, lost);
+  std::erase_if(a_navigation.forward, lost);
 }
 
-bool ShouldInvalidateIndexedSubjects(std::span<const RecipeEdit> a_edits) {
+bool CanRenumber(std::span<const RecipeEdit> a_edits) {
   return std::ranges::any_of(a_edits, [](const RecipeEdit &a_edit) {
-    return Is<AddLayer>(a_edit) || Is<RemoveLayer>(a_edit) ||
-           Is<MoveLayer>(a_edit) || Is<ClearLayers>(a_edit) ||
-           Is<ResetOutput>(a_edit) || Is<AddOutput>(a_edit) ||
-           Is<RemoveOutput>(a_edit) || Is<ClearOutputs>(a_edit) ||
-           Is<ClearRecipe>(a_edit) || Is<AddLight>(a_edit);
+    return IsCascade(a_edit) || Is<AddLayer>(a_edit) ||
+           Is<RemoveLayer>(a_edit) || Is<MoveLayer>(a_edit) ||
+           Is<ClearLayers>(a_edit) || Is<ResetOutput>(a_edit) ||
+           Is<AddOutput>(a_edit) || Is<RemoveOutput>(a_edit) ||
+           Is<ClearOutputs>(a_edit) || Is<ClearRecipe>(a_edit) ||
+           Is<AddLight>(a_edit);
   });
 }
 }

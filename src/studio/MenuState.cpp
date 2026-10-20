@@ -66,67 +66,10 @@ IndexAfterRemoval(std::size_t a_at, std::size_t a_removed) {
   return a_at;
 }
 
-void ReduceAddLayer(Selection &a_selection, const AddLayer &a_edit) {
-  if (a_edit.at) {
-    a_selection.layer = *a_edit.at;
-  }
-}
-
-void ReduceRemoveLayer(Selection &a_selection, const RemoveLayer &a_edit) {
-  if (a_selection.layer) {
-    a_selection.layer = IndexAfterRemoval(*a_selection.layer, a_edit.layer);
-  }
-}
-
-void ReduceMoveLayer(Selection &a_selection, const MoveLayer &a_edit) {
-  if (a_selection.layer) {
-    a_selection.layer =
-        IndexAfterMove(*a_selection.layer, a_edit.from, a_edit.to);
-  }
-}
-
 void ReduceAddOutput(Selection &a_selection, const AddOutput &a_edit) {
   a_selection.target = TargetOf(a_edit.surface);
   a_selection.slot = a_edit.slot;
   a_selection.layer.reset();
-}
-
-void ReduceEdit(Selection &a_selection, const RecipeEdit &a_edit) {
-  Match(
-      a_edit, [&](const AddLayer &a_e) { ReduceAddLayer(a_selection, a_e); },
-      [&](const RemoveLayer &a_e) { ReduceRemoveLayer(a_selection, a_e); },
-      [&](const MoveLayer &a_e) { ReduceMoveLayer(a_selection, a_e); },
-      [&](const ClearLayers &) { a_selection.layer.reset(); },
-      [&](const RemoveOutput &) { a_selection.layer.reset(); },
-      [&](const AddOutput &a_e) { ReduceAddOutput(a_selection, a_e); },
-      [](const SetLayerSource &) {}, [](const SetLayerCurve &) {},
-      [](const SetLayerBlend &) {}, [](const SetLayerOpacity &) {},
-      [](const SetLayerColor &) {}, [](const SetLayerMask &) {},
-      [](const SetLayerChannels &) {}, [](const SetScalar &) {},
-      [](const SetColorScalar &) {}, [](const SetOutputReplace &) {},
-      [](const SetOutputResolution &) {}, [](const SetOutputSelector &) {},
-      [](const AddKey &) {}, [](const RemoveKey &) {},
-      [](const ClearOutputs &) {}, [](const ClearResources &) {},
-      [](const ClearRecipe &) {}, [](const SetPriority &) {},
-      [](const SetOverride &) {}, [](const SetClockSpeed &) {},
-      [](const SetConstant &) {}, [](const SetExpression &) {},
-      [](const SetSignal &) {}, [](const SetSignalCurve &) {},
-      [](const SetCurve &) {}, [](const SetMask &) {}, [](const AddSignal &) {},
-      [](const AddCurve &) {}, [](const RenameSignal &) {},
-      [](const RenameCurve &) {}, [](const RemoveSignal &) {},
-      [](const RemoveCurve &) {}, [](const AddMask &) {},
-      [](const RenameMask &) {}, [](const RemoveMask &) {},
-      [](const AddSource &) {}, [](const SetSource &) {},
-      [](const RenameSource &) {}, [](const RemoveSource &) {},
-      [](const AddLight &) {}, [](const SetLightParam &) {},
-      [](const SetLightVector &) {}, [](const SetLightShadow &) {},
-      [](const SetLightBones &) {}, [](const SetLightReplace &) {},
-      [](const SetLightSelector &) {}, [](const ResetLight &) {},
-      [](const ResetOutput &) {}, [](const SetShellParam &) {},
-      [](const SetShellVector &) {}, [](const SetShellPoint &) {},
-      [](const SetShellMaterial &) {}, [](const SetShellBlend &) {},
-      [](const SetShellDepthBias &) {}, [](const SetShellAlphaTest &) {},
-      [](const ResetShell &) {});
 }
 
 template <class Map> void RemapMask(MaskStack &a_mask, const Map &a_map) {
@@ -563,13 +506,13 @@ struct ReduceVisitor {
   void operator()(const EditRecipe &a_i) {
     if (selection.recipeID == a_i.recipeID) {
       for (const RecipeEdit &edit : a_i.edits) {
-        ReduceEdit(selection, edit);
+        if (const auto *output = Get<AddOutput>(edit)) {
+          ReduceAddOutput(selection, *output);
+        }
       }
     }
-    if (ShouldInvalidateIndexedSubjects(a_i.edits)) {
+    if (CanRenumber(a_i.edits)) {
       InvalidateAssignment(a_i.recipeID);
-      InvalidateIndexedSubjects(state.navigation, selection, a_i.recipeID);
-      DropShiftedPreviews(state.previews, a_i.recipeID, a_i.edits);
     }
   }
 
@@ -612,16 +555,8 @@ struct ReduceVisitor {
   void operator()(const SetScrub &) {}
   void operator()(const SetSpeed &) {}
   void operator()(const StepClock &) {}
-  void operator()(const Undo &a_i) {
-    InvalidateAssignment(a_i.recipeID);
-    InvalidateIndexedSubjects(state.navigation, selection, a_i.recipeID);
-    DropIndexedPreviews(state.previews, a_i.recipeID);
-  }
-  void operator()(const Redo &a_i) {
-    InvalidateAssignment(a_i.recipeID);
-    InvalidateIndexedSubjects(state.navigation, selection, a_i.recipeID);
-    DropIndexedPreviews(state.previews, a_i.recipeID);
-  }
+  void operator()(const Undo &a_i) { InvalidateAssignment(a_i.recipeID); }
+  void operator()(const Redo &a_i) { InvalidateAssignment(a_i.recipeID); }
   void operator()(const FireTrigger &) {}
   void operator()(const DumpMaterial &) {}
 };
@@ -863,6 +798,7 @@ void ResolveEditorSelection(MenuState &a_state, const Snapshot &a_snapshot) {
     a_state.selection.property.reset();
     a_state.revealedProperty.reset();
     a_state.selection.layer.reset();
+    a_state.pendingSelection.reset();
   } else if (previous.geometry != a_state.selection.geometry) {
     a_state.navigation = Navigation{};
   }
@@ -889,6 +825,29 @@ RenamedSubject(const RecipeEdit &a_edit, const InspectorSubject &a_subject) {
     return CurveSubject{rename->to};
   }
   return std::nullopt;
+}
+}
+
+namespace {
+void FollowRenumbering(MenuState &a_state, std::string_view a_recipeID,
+                       const std::optional<Renumbering> &a_renumbering) {
+  if (!a_renumbering) {
+    return;
+  }
+  RenumberIndexedSubjects(a_state.navigation, a_state.selection, a_recipeID,
+                          *a_renumbering);
+  RenumberPreviews(a_state.previews, a_recipeID, *a_renumbering);
+}
+
+void NoteNewEditResult(MenuState &a_state, const RecipeEditResult &a_result) {
+  if (a_result.requestID <= a_state.seenEditResult) {
+    return;
+  }
+  a_state.seenEditResult = a_result.requestID;
+  if (a_result.error && a_state.pendingSelection &&
+      a_state.pendingSelection->recipeID == a_result.recipeID) {
+    a_state.pendingSelection.reset();
+  }
 }
 }
 
@@ -929,7 +888,8 @@ void FollowEditorChange(MenuState &a_state,
       subject = *renamed;
     }
   }
-  a_state.pendingSelection = std::move(subject);
+  a_state.pendingSelection =
+      PendingSubject{a_pending.recipeID, std::move(subject)};
 }
 
 void AcknowledgeEditorChange(MenuState &a_state,
@@ -950,7 +910,10 @@ void AcknowledgeEditorChange(MenuState &a_state,
 void AcknowledgeEditorOperations(MenuState &a_state,
                                  const Snapshot &a_snapshot) {
   for (const RecipeEditResult &result : a_snapshot.editResults) {
-    (void)AcknowledgeIndexedEdit(a_state.pendingIndexedEdit, &result);
+    NoteNewEditResult(a_state, result);
+    if (AcknowledgeIndexedEdit(a_state.pendingIndexedEdit, &result)) {
+      FollowRenumbering(a_state, result.recipeID, result.renumbering);
+    }
     AcknowledgeEditorChange(a_state, result);
   }
   for (const FileOperationResult &result : a_snapshot.fileOperations) {
@@ -959,7 +922,7 @@ void AcknowledgeEditorOperations(MenuState &a_state,
         a_state.pendingRecipeFile->requestID == result.requestID &&
         a_state.pendingRecipeFile->recipeID == result.recipeID) {
       if (result.action == FileAction::kRevert) {
-        DropIndexedPreviews(a_state.previews, result.recipeID);
+        FollowRenumbering(a_state, result.recipeID, result.renumbering);
       }
       a_state.pendingRecipeFile.reset();
     }

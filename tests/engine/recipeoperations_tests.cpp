@@ -157,7 +157,7 @@ void BoundedResults() {
   FileOperationJournal journal;
   const auto old = journal.Begin("same", FileAction::kSave);
   const auto current = journal.Begin("same", FileAction::kRevert);
-  journal.Finish(old, "old.json", std::nullopt);
+  journal.Finish(old, "old.json", std::nullopt, std::nullopt);
   Check(journal.FileOperations().size() == 1 &&
             journal.FileOperations().front().requestID == current &&
             journal.FileOperations().front().state ==
@@ -165,10 +165,10 @@ void BoundedResults() {
         "same-recipe file replacement ignores the previous result");
   const auto oldEdit = journal.BeginEdit("same");
   const auto currentEdit = journal.BeginEdit("same");
-  journal.FinishEdit(oldEdit, std::nullopt);
+  journal.FinishEdit(oldEdit, std::nullopt, std::nullopt);
   Check(journal.EditResults().empty(),
         "replaced edit cannot acknowledge a newer request");
-  journal.FinishEdit(currentEdit, std::nullopt);
+  journal.FinishEdit(currentEdit, std::nullopt, std::nullopt);
   Check(journal.EditResults().size() == 1 &&
             journal.EditResults().front().requestID == currentEdit,
         "current edit completion is visible");

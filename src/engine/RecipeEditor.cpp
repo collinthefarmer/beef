@@ -298,18 +298,19 @@ RecipeEditor::EditRecipe(std::string a_id, Studio::EditBatch a_edits,
       operation->Finish(MakeDiagnostic(Severity::kError, id, *error));
       return;
     }
-    if (const auto applied = ApplyEdits(id, edits); !applied) {
+    const EditOutcome applied = ApplyEdits(id, edits);
+    if (!applied) {
       logger::warn("edit refused: {} ({}: {})", Studio::Describe(edits),
                    applied.error().where, applied.error().message);
       operation->Finish(applied.error());
       return;
     }
-    operation->Finish();
+    operation->Finish(std::nullopt, *applied);
   });
   return operation->id;
 }
 
-std::expected<void, Diagnostic>
+RecipeEditor::EditOutcome
 RecipeEditor::ApplyEdits(const std::string &a_id,
                          const Studio::EditBatch &a_edits) {
   FinishActiveGesture(true);
@@ -324,8 +325,10 @@ RecipeEditor::ApplyEdits(const std::string &a_id,
     return std::unexpected(prepared.error());
   }
   if (*prepared == *recipe) {
-    return {};
+    return std::optional<Studio::Renumbering>{};
   }
+  std::optional<Studio::Renumbering> renumbering =
+      Studio::RenumberingOf(*recipe, *prepared);
   runtime_.ChangeAndRebuildActors(a_id, [&] {
     PushHistory(histories_, a_id, *recipe, *prepared);
     *recipe = std::move(*prepared);
@@ -333,29 +336,64 @@ RecipeEditor::ApplyEdits(const std::string &a_id,
                          RefreshRecipeDerivedState(a_id));
     AdvanceDocumentRevision(a_id);
   });
-  return {};
+  FollowRenumbering(a_id, renumbering);
+  return renumbering;
 }
 
-std::optional<std::string> RecipeEditor::RestoreRecipe(const std::string &a_id,
-                                                       bool a_redo) {
+void RecipeEditor::FollowRenumbering(
+    const std::string &a_id,
+    const std::optional<Studio::Renumbering> &a_renumbering) {
+  if (!a_renumbering) {
+    return;
+  }
+  Studio::View next = Studio::RenumberedView(view_, a_id, *a_renumbering);
+  if (view_.ChangesInstalls(next)) {
+    runtime_.ChangeAndRebuildActors({}, [&] { view_ = std::move(next); });
+  } else {
+    view_ = std::move(next);
+  }
+}
+
+RecipeEditor::EditOutcome RecipeEditor::RestoreRecipe(const std::string &a_id,
+                                                      bool a_redo) {
   FinishActiveGesture(true);
   Recipe *recipe = MutableRecipe(a_id);
   const auto history = histories_.find(a_id);
-  if (!recipe)
-    return "Recipe is not loaded.";
-  if (history == histories_.end())
-    return "No recipe history is available.";
+  if (!recipe) {
+    return std::unexpected(
+        MakeDiagnostic(Severity::kError, a_id, "Recipe is not loaded."));
+  }
+  if (history == histories_.end()) {
+    return std::unexpected(MakeDiagnostic(Severity::kError, a_id,
+                                          "No recipe history is available."));
+  }
   auto restored =
       a_redo ? history->second.Redo(*recipe) : history->second.Undo(*recipe);
-  if (!restored)
-    return a_redo ? "Nothing to redo." : "Nothing to undo.";
+  if (!restored) {
+    return std::unexpected(
+        MakeDiagnostic(Severity::kError, a_id,
+                       a_redo ? "Nothing to redo." : "Nothing to undo."));
+  }
+  restored->id = a_id;
+  std::optional<Studio::Renumbering> renumbering =
+      Studio::RenumberingOf(*recipe, *restored);
   runtime_.ChangeAndRebuildActors(a_id, [&] {
     *recipe = std::move(*restored);
-    recipe->id = a_id;
     RefreshRecipeDerivedState(a_id);
     AdvanceDocumentRevision(a_id);
   });
-  return std::nullopt;
+  FollowRenumbering(a_id, renumbering);
+  return renumbering;
+}
+
+void RecipeEditor::FinishRestore(const PendingRecipeEdit &a_operation,
+                                 const std::string &a_id, bool a_redo) {
+  EditOutcome restored = RestoreRecipe(a_id, a_redo);
+  if (!restored) {
+    a_operation.Finish(std::move(restored.error()));
+    return;
+  }
+  a_operation.Finish(std::nullopt, std::move(*restored));
 }
 
 std::uint64_t RecipeEditor::UndoRecipe(std::string a_id) {
@@ -363,7 +401,7 @@ std::uint64_t RecipeEditor::UndoRecipe(std::string a_id) {
   const auto operation =
       std::make_shared<PendingRecipeEdit>(fileOperations_, a_id);
   runtime_.PostTask([this, id = std::move(a_id), operation] {
-    operation->Finish(DiagnosticOf(id, RestoreRecipe(id, false)));
+    FinishRestore(*operation, id, false);
   });
   return operation->id;
 }
@@ -373,7 +411,7 @@ std::uint64_t RecipeEditor::RedoRecipe(std::string a_id) {
   const auto operation =
       std::make_shared<PendingRecipeEdit>(fileOperations_, a_id);
   runtime_.PostTask([this, id = std::move(a_id), operation] {
-    operation->Finish(DiagnosticOf(id, RestoreRecipe(id, true)));
+    FinishRestore(*operation, id, true);
   });
   return operation->id;
 }
@@ -419,6 +457,8 @@ std::uint64_t RecipeEditor::RevertRecipe(std::string a_id) {
       fileOperations_, a_id, Studio::FileAction::kRevert);
   runtime_.PostTask([this, id = std::move(a_id), operation] {
     FinishActiveGesture(true);
+    std::optional<Studio::Renumbering> renumbering;
+    std::optional<std::string> reverted;
     runtime_.ChangeAndRebuildActors(id, [&] {
       Recipe *recipe = MutableRecipe(id);
       if (!recipe) {
@@ -441,11 +481,16 @@ std::uint64_t RecipeEditor::RevertRecipe(std::string a_id) {
         operation->Finish(path, refused);
         return;
       }
+      reverted = path;
       PushHistory(histories_, id, before, *recipe);
       AdvanceDocumentRevision(id);
-      operation->Finish(path);
+      renumbering = Studio::RenumberingOf(before, *recipe);
       logger::info("recipe {}: reverted to its file", id);
     });
+    FollowRenumbering(id, renumbering);
+    if (reverted) {
+      operation->Finish(*reverted, std::nullopt, renumbering);
+    }
   });
   return operation->id;
 }
@@ -466,12 +511,19 @@ void RecipeEditor::ReloadRecipesNow() {
   ResetDocumentRevisions();
   CancelPaintForLoad();
   histories_.clear();
+  const std::vector<Recipe> before{LoadedRecipes().begin(),
+                                   LoadedRecipes().end()};
   LoadRecipes();
   paintReturn_ = {};
   const std::span<const Recipe> loaded = LoadedRecipes();
   for (const std::string &id : view_.RecipeIDs()) {
-    if (!FindLoaded(loaded, id)) {
+    const Recipe *was = FindLoaded(before, id);
+    const Recipe *now = FindLoaded(loaded, id);
+    if (!was || !now) {
       view_.ForgetRecipe(id);
+    } else if (const std::optional<Studio::Renumbering> renumbering =
+                   Studio::RenumberingOf(*was, *now)) {
+      view_ = Studio::RenumberedView(std::move(view_), id, *renumbering);
     }
   }
 }
@@ -650,9 +702,9 @@ void RecipeEditor::UpdatePaint(Studio::PaintUpdateRequest a_request) {
     }
     const auto edits = Studio::PreparePaintUpdate(
         FindLoaded(LoadedRecipes(), Studio::kPaintRecipe), request);
-    const std::expected<void, Diagnostic> applied =
+    const EditOutcome applied =
         edits ? ApplyEdits(std::string{Studio::kPaintRecipe}, *edits)
-              : std::unexpected(edits.error());
+              : EditOutcome{std::unexpected(edits.error())};
     paintUpdate_ =
         Studio::PaintUpdateResult{request.sessionID, request.revision, {}};
     if (!applied) {
@@ -675,9 +727,9 @@ void RecipeEditor::KeepPaint(Studio::PaintCommitRequest a_request) {
         FindLoaded(loaded, Studio::kPaintRecipe),
         FindLoaded(loaded, request.recipeID), request,
         DocumentRevisionOf(request.recipeID));
-    const std::expected<void, Diagnostic> applied =
+    const EditOutcome applied =
         edits ? ApplyEdits(request.recipeID, *edits)
-              : std::unexpected(edits.error());
+              : EditOutcome{std::unexpected(edits.error())};
     paintCommit_ = Studio::PaintCommitResult{request.id, std::nullopt};
     if (!applied) {
       paintCommit_->problem = applied.error();

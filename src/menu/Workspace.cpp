@@ -126,7 +126,8 @@ void PostCreation(const Frame &a_frame, Studio::Creation a_creation) {
   Studio::Created made = Studio::Create(std::move(a_creation), *a_frame.recipe);
   Studio::Post(*a_frame.intents,
                Studio::EditRecipe{a_frame.recipe->id, std::move(made.edits)});
-  a_frame.state->pendingSelection = made.subject;
+  a_frame.state->pendingSelection =
+      Studio::PendingSubject{a_frame.recipe->id, made.subject};
 }
 
 void DrawSlotChoices(const Frame &a_frame, Surface a_surface) {

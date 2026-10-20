@@ -81,7 +81,8 @@ struct MenuState {
   Layout layout;
   Selection selection;
   Navigation navigation;
-  std::optional<InspectorSubject> pendingSelection;
+  std::optional<PendingSubject> pendingSelection;
+  std::uint64_t seenEditResult = 0;
   std::optional<PropertyLocation> revealedProperty;
   std::string referencePopup;
   PreviewWindows previews;

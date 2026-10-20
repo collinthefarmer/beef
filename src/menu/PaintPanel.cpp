@@ -498,7 +498,8 @@ void DrawResumeDraftButton(const Frame &a_frame) {
   Studio::MenuState &state = *a_frame.state;
   const std::string &editing = state.mask.editing;
   if (ImGui::Button("Resume") && !editing.empty()) {
-    state.pendingSelection = Studio::MaskSubject{editing};
+    state.pendingSelection = Studio::PendingSubject{
+        state.selection.recipeID, Studio::MaskSubject{editing}};
   }
   ImGui::SameLine();
 }
@@ -643,7 +644,8 @@ void EditMaskAsTerms(const Studio::TextRow &a_mask, const Frame &a_frame,
                                   a_frame.state->lastPaintReset, assignment,
                                   std::move(a_created)});
   if (!a_mask.name.empty()) {
-    a_frame.state->pendingSelection = Studio::MaskSubject{a_mask.name};
+    a_frame.state->pendingSelection = Studio::PendingSubject{
+        a_frame.recipe->id, Studio::MaskSubject{a_mask.name}};
   }
 }
 

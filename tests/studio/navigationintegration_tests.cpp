@@ -37,10 +37,10 @@ int main() {
           "a settled editor accepts an initial structural command");
     Reduce(state, edit);
     state.pendingIndexedEdit = PendingIndexedEdit{7, "glow"};
-    Check(Is<RecipeSubject>(state.selection.subject) &&
-              !state.selection.layer && state.navigation.back.empty(),
-          "initial reduction invalidates positional subjects before installing "
-          "the pending gate");
+    Check(state.selection.subject == InspectorSubject{LayerSubject{0, 1}} &&
+              state.selection.layer == 1 && state.navigation.back.size() == 1,
+          "a structural edit leaves the inspector in place until the editor "
+          "answers");
     Check(
         !AcceptIntent(state, edit) &&
             !AcceptIntent(state, EditRecipe{"other", {SetClockSpeed{2.0f}}}) &&
@@ -78,15 +78,41 @@ int main() {
               Is<LayerSubject>(state.selection.subject),
           "an edit to another recipe cannot shift the active layer context");
     Reduce(state, Undo{"glow"});
-    Check(!state.selection.layer &&
-              Is<RecipeSubject>(state.selection.subject) &&
-              state.navigation.back.empty(),
-          "undo invalidates positional inspector history");
+    Check(state.selection.layer == 1 &&
+              Is<LayerSubject>(state.selection.subject) &&
+              state.navigation.back.size() == 1,
+          "undo leaves the inspector in place until the editor answers");
+    state.pendingIndexedEdit = PendingIndexedEdit{4, "glow"};
+    Snapshot moved;
+    moved.editResults.push_back({4, "glow", std::nullopt,
+                                 Renumbering{{OutputRenumbering{
+                                     0, {std::size_t{1}, std::size_t{0}}}}}});
+    AcknowledgeEditorOperations(state, moved);
+    Check(state.selection.subject == InspectorSubject{LayerSubject{0, 0}} &&
+              state.selection.layer == 0 &&
+              state.navigation.back.front().selection.subject ==
+                  InspectorSubject{LayerSubject{0, 0}},
+          "the answer's renumbering moves the inspector and Back with the "
+          "layer");
+    AcknowledgeEditorOperations(state, moved);
+    Check(state.selection.subject == InspectorSubject{LayerSubject{0, 0}},
+          "a result already acknowledged renumbers nothing again");
     state = EditingLayer();
-    Reduce(state, Redo{"glow"});
-    Check(Is<RecipeSubject>(state.selection.subject) &&
-              state.navigation.back.empty(),
-          "redo invalidates positional inspector history");
+    state.pendingIndexedEdit = PendingIndexedEdit{5, "glow"};
+    Snapshot unchanged;
+    unchanged.editResults.push_back({5, "glow", std::nullopt, std::nullopt});
+    AcknowledgeEditorOperations(state, unchanged);
+    Check(state.selection.subject == InspectorSubject{LayerSubject{0, 1}} &&
+              state.navigation.back.size() == 1,
+          "an undo that moves no index keeps the inspector and Back");
+    state = EditingLayer();
+    state.pendingSelection = PendingSubject{"glow", LayerSubject{0, 2}};
+    Snapshot refused;
+    refused.editResults.push_back(
+        {6, "glow", MakeDiagnostic(Severity::kError, "glow", "Edit refused")});
+    AcknowledgeEditorOperations(state, refused);
+    Check(!state.pendingSelection,
+          "a refused edit drops the subject waiting for it");
     state = EditingLayer();
     Reduce(state, PickRecipe{"other"});
     Check(Is<RecipeSubject>(state.selection.subject) &&

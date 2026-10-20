@@ -8,6 +8,7 @@
 #include "studio/Gesture.h"
 #include "studio/History.h"
 #include "studio/PaintCommit.h"
+#include "studio/Renumbering.h"
 #include "studio/Snapshot.h"
 #include "studio/View.h"
 
@@ -22,6 +23,7 @@ namespace BetterEnchantmentEffects {
 class Manager;
 struct FileOperationJournal;
 struct PendingFileOperation;
+struct PendingRecipeEdit;
 
 class RecipeEditor {
 public:
@@ -91,8 +93,13 @@ private:
   std::optional<Studio::GestureResult> gestureStatus_;
   Studio::DocumentRevisions revisions_;
   std::shared_ptr<FileOperationJournal> fileOperations_;
-  [[nodiscard]] std::expected<void, Diagnostic>
-  ApplyEdits(const std::string &a_id, const Studio::EditBatch &a_edits);
+  using EditOutcome =
+      std::expected<std::optional<Studio::Renumbering>, Diagnostic>;
+  [[nodiscard]] EditOutcome ApplyEdits(const std::string &a_id,
+                                       const Studio::EditBatch &a_edits);
+  void
+  FollowRenumbering(const std::string &a_id,
+                    const std::optional<Studio::Renumbering> &a_renumbering);
   void FinishPaint();
   void InstallPaintRecipe(Recipe a_paint,
                           const Studio::PaintStartRequest &a_request);
@@ -102,8 +109,9 @@ private:
   void SaveRecipeNow(const std::string &a_id,
                      const PendingFileOperation &a_operation);
   void ReloadRecipesNow();
-  [[nodiscard]] std::optional<std::string>
-  RestoreRecipe(const std::string &a_id, bool a_redo);
+  [[nodiscard]] EditOutcome RestoreRecipe(const std::string &a_id, bool a_redo);
+  void FinishRestore(const PendingRecipeEdit &a_operation,
+                     const std::string &a_id, bool a_redo);
 
   Manager &runtime_;
   WarningHistory loggedDiagnostics_;

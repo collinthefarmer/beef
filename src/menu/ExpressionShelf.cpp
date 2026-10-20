@@ -60,7 +60,8 @@ void PromoteLiteral(const Studio::FormField &a_field,
   Studio::Post(*a_frame.intents,
                Studio::EditRecipe{a_frame.recipe->id, std::move(made.edits),
                                   a_field.expectedRevision});
-  a_frame.state->pendingSelection = made.subject;
+  a_frame.state->pendingSelection =
+      Studio::PendingSubject{a_frame.recipe->id, made.subject};
 }
 
 Studio::FormField ExpressionDraft(const Studio::FormField &a_field,

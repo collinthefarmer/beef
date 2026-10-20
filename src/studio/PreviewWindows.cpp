@@ -9,49 +9,27 @@
 
 namespace BetterEnchantmentEffects::Studio {
 namespace {
-struct LayerShift {
-  std::size_t output = 0;
-};
-struct OutputShift {};
-struct NoShift {};
-using IndexShift = std::variant<NoShift, LayerShift, OutputShift>;
-
-[[nodiscard]] IndexShift ShiftOf(const RecipeEdit &a_edit) {
-  if (const auto *add = Get<AddLayer>(a_edit)) {
-    return LayerShift{add->output};
-  }
-  if (const auto *remove = Get<RemoveLayer>(a_edit)) {
-    return LayerShift{remove->output};
-  }
-  if (const auto *move = Get<MoveLayer>(a_edit)) {
-    return LayerShift{move->output};
-  }
-  if (const auto *clear = Get<ClearLayers>(a_edit)) {
-    return LayerShift{clear->output};
-  }
-  if (const auto *reset = Get<ResetOutput>(a_edit)) {
-    return LayerShift{reset->output};
-  }
-  if (Is<AddOutput>(a_edit) || Is<RemoveOutput>(a_edit) ||
-      Is<ClearOutputs>(a_edit) || Is<ClearRecipe>(a_edit) ||
-      Is<AddLight>(a_edit)) {
-    return OutputShift{};
-  }
-  return NoShift{};
-}
-
 [[nodiscard]] bool IsIndexed(const PreviewSubject &a_subject) noexcept {
   return Is<OutputSubject>(a_subject) || Is<LayerSubject>(a_subject);
 }
 
-[[nodiscard]] bool IsShiftedBy(const PreviewTarget &a_target,
-                               const IndexShift &a_shift) {
-  if (Is<OutputShift>(a_shift)) {
-    return IsIndexed(a_target.subject);
+[[nodiscard]] std::optional<PreviewSubject>
+PreviewSubjectAfter(const PreviewSubject &a_subject,
+                    const Renumbering &a_renumbering) {
+  if (const auto *output = Get<OutputSubject>(a_subject)) {
+    const std::optional<std::size_t> to =
+        OutputAfter(a_renumbering, output->output);
+    return to ? std::optional<PreviewSubject>{OutputSubject{*to}}
+              : std::nullopt;
   }
-  const auto *layers = Get<LayerShift>(a_shift);
-  const auto *layer = Get<LayerSubject>(a_target.subject);
-  return layers && layer && layer->output == layers->output;
+  if (const auto *layer = Get<LayerSubject>(a_subject)) {
+    const std::optional<LayerPlace> to =
+        LayerAfter(a_renumbering, {layer->output, layer->layer});
+    return to ? std::optional<PreviewSubject>{LayerSubject{to->output,
+                                                           to->layer}}
+              : std::nullopt;
+  }
+  return a_subject;
 }
 
 [[nodiscard]] const OutputRow *OutputOf(const GeometryRow &a_geometry,
@@ -304,21 +282,20 @@ void DropVanishedPreviews(PreviewWindows &a_windows,
   });
 }
 
-void DropShiftedPreviews(PreviewWindows &a_windows, std::string_view a_recipeID,
-                         std::span<const RecipeEdit> a_edits) {
-  for (const RecipeEdit &edit : a_edits) {
-    const IndexShift shift = ShiftOf(edit);
-    DropWhere(a_windows, [&](const PreviewTarget &a_target) {
-      return a_target.recipeID == a_recipeID && IsShiftedBy(a_target, shift);
-    });
+void RenumberPreviews(PreviewWindows &a_windows, std::string_view a_recipeID,
+                      const Renumbering &a_renumbering) {
+  std::vector<PreviewWindow> kept;
+  kept.reserve(a_windows.open.size());
+  for (PreviewWindow &window : a_windows.open) {
+    if (window.target.recipeID != a_recipeID) {
+      kept.push_back(std::move(window));
+    } else if (std::optional<PreviewSubject> subject =
+                   PreviewSubjectAfter(window.target.subject, a_renumbering)) {
+      window.target.subject = std::move(*subject);
+      kept.push_back(std::move(window));
+    }
   }
-}
-
-void DropIndexedPreviews(PreviewWindows &a_windows,
-                         std::string_view a_recipeID) {
-  DropWhere(a_windows, [&](const PreviewTarget &a_target) {
-    return a_target.recipeID == a_recipeID && IsIndexed(a_target.subject);
-  });
+  a_windows.open = std::move(kept);
 }
 
 void DropAllIndexedPreviews(PreviewWindows &a_windows) {

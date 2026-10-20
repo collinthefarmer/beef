@@ -37,6 +37,28 @@ Selection Context() {
   selection.geometry = "armor";
   return selection;
 }
+
+Renumbering Removing(std::optional<LayerPlace> a_layer,
+                     std::optional<std::size_t> a_output = std::nullopt) {
+  Renumbering renumbering;
+  for (std::size_t output = 0; output < 6; ++output) {
+    OutputRenumbering entry;
+    if (output != a_output) {
+      entry.to = a_output && output > *a_output ? output - 1 : output;
+    }
+    for (std::size_t layer = 0; layer < 4; ++layer) {
+      if (!a_layer || a_layer->output != output || layer < a_layer->layer) {
+        entry.layers.emplace_back(layer);
+      } else if (layer == a_layer->layer) {
+        entry.layers.emplace_back(std::nullopt);
+      } else {
+        entry.layers.emplace_back(layer - 1);
+      }
+    }
+    renumbering.outputs.push_back(std::move(entry));
+  }
+  return renumbering;
+}
 }
 
 int main() {
@@ -63,9 +85,12 @@ int main() {
     Check(!NavigateProperty(navigation, selection, {OutputSubject{3}, second},
                             linked),
           "a property cannot be paired with a different owner");
-    InvalidateIndexedSubjects(navigation, selection, "glow");
-    Check(!selection.property && Is<RecipeSubject>(selection.subject),
-          "structural changes clear positional property focus");
+    RenumberIndexedSubjects(navigation, selection, "glow",
+                            Removing(LayerPlace{3, 0}));
+    Check(selection.property ==
+                  PropertyLocation{LayerOwner{3, 0}, "opacity", {}} &&
+              selection.subject == InspectorSubject{LayerSubject{3, 0}},
+          "a layer removal moves the property focus with its layer");
     Check(NavigateProperty(navigation, selection, {LayerSubject{3, 1}, second},
                            linked),
           "a surviving consumer can be selected again");
@@ -150,22 +175,33 @@ int main() {
         Navigate(navigation, selection, LayerSubject{3, 0}, recipe) &&
             Navigate(navigation, selection, SignalSubject{"strength"}, recipe),
         "a layer origin can be retained behind a resource inspector");
-    InvalidateIndexedSubjects(navigation, selection, "glow");
-    Check(Is<SignalSubject>(selection.subject) && !selection.layer,
-          "structural invalidation preserves a named inspector but clears its "
-          "layer context");
+    RenumberIndexedSubjects(navigation, selection, "glow",
+                            Removing(LayerPlace{3, 0}));
+    Check(Is<SignalSubject>(selection.subject),
+          "a layer removal preserves a named inspector");
     Check(GoBack(navigation, selection, recipe) &&
               Is<RecipeSubject>(selection.subject),
-          "Back cannot revisit an index whose layer may have moved");
+          "Back skips a visit whose layer was removed");
     Check(Navigate(navigation, selection, OutputSubject{3}, recipe),
-          "an output may be explicitly selected after invalidation");
+          "an output may be selected after a removal");
     navigation.scroll = 50.0f;
-    InvalidateIndexedSubjects(navigation, selection, "other");
+    RenumberIndexedSubjects(navigation, selection, "other",
+                            Removing(std::nullopt, 3));
     Check(Is<OutputSubject>(selection.subject) && navigation.scroll == 50.0f,
           "edits to another document do not disturb the current subject");
-    InvalidateIndexedSubjects(navigation, selection, "glow");
+    RenumberIndexedSubjects(navigation, selection, "glow",
+                            Removing(LayerPlace{3, 0}));
+    Check(selection.subject == InspectorSubject{OutputSubject{3}} &&
+              navigation.scroll == 50.0f,
+          "a layer removal keeps the output inspector in place");
+    RenumberIndexedSubjects(navigation, selection, "glow",
+                            Removing(std::nullopt, 2));
+    Check(selection.subject == InspectorSubject{OutputSubject{2}},
+          "removing an earlier output renumbers the output inspector");
+    RenumberIndexedSubjects(navigation, selection, "glow",
+                            Removing(std::nullopt, 2));
     Check(Is<RecipeSubject>(selection.subject) && navigation.scroll == 0.0f,
-          "current index subjects are cleared before a structural edit");
+          "removing the inspected output returns to the recipe");
   }
   {
     Selection selection = Context();
@@ -185,25 +221,36 @@ int main() {
   }
   {
     const std::vector<RecipeEdit> structural{
-        AddLayer{},     RemoveLayer{}, MoveLayer{},
-        ClearLayers{},  AddOutput{},   RemoveOutput{},
-        ClearOutputs{}, ClearRecipe{}, AddLight{}};
+        AddLayer{},
+        RemoveLayer{},
+        MoveLayer{},
+        ClearLayers{},
+        AddOutput{},
+        RemoveOutput{},
+        ClearOutputs{},
+        ClearRecipe{},
+        AddLight{},
+        RemoveSignal{.name = "strength", .cascade = true},
+        RemoveCurve{.name = "response", .cascade = true},
+        RemoveMask{.name = "spine", .cascade = true},
+        RemoveSource{.name = "pattern", .cascade = true}};
     for (const RecipeEdit &edit : structural) {
-      Check(
-          ShouldInvalidateIndexedSubjects(std::span{&edit, std::size_t{1}}),
-          "structural edits invalidate positional subjects before publication");
+      Check(CanRenumber(std::span{&edit, std::size_t{1}}),
+            "structural edits and cascade removals can renumber layers");
     }
     const std::vector<RecipeEdit> values{
-        SetLayerOpacity{},   SetScalar{},    SetExpression{}, SetSource{},
-        SetOutputSelector{}, RenameSignal{}, ResetLight{}};
-    Check(!ShouldInvalidateIndexedSubjects(values) &&
-              !ShouldInvalidateIndexedSubjects({}),
-          "value edits and empty batches preserve positional subjects");
+        SetLayerOpacity{},   SetScalar{},
+        SetExpression{},     SetSource{},
+        SetOutputSelector{}, RenameSignal{},
+        ResetLight{},        RemoveSignal{.name = "strength"}};
+    Check(!CanRenumber(values) && !CanRenumber({}),
+          "value edits, plain removals and empty batches renumber nothing");
   }
   {
     Selection selection = Context();
     Navigation navigation;
-    std::optional<InspectorSubject> pending = SignalSubject{"pending"};
+    std::optional<PendingSubject> pending =
+        PendingSubject{"glow", SignalSubject{"pending"}};
     RecipeRow absent = recipe;
     Check(!ResolvePendingSubject(navigation, selection, pending, &absent) &&
               pending.has_value(),
@@ -215,12 +262,16 @@ int main() {
     Check(ResolvePendingSubject(navigation, selection, pending, &arrived) &&
               Is<SignalSubject>(selection.subject) && !pending,
           "a pending subject navigates once its resource appears");
-    pending = SourceSubject{"pattern"};
+    pending = PendingSubject{"glow", SourceSubject{"pattern"}};
     RecipeRow other = recipe;
     other.id = "elsewhere";
     Check(!ResolvePendingSubject(navigation, selection, pending, &other) &&
               !pending,
           "a pending subject is dropped when the document changes");
+    pending = PendingSubject{"elsewhere", SourceSubject{"pattern"}};
+    Check(!ResolvePendingSubject(navigation, selection, pending, &recipe) &&
+              !pending && !Is<SourceSubject>(selection.subject),
+          "a pending subject of another recipe never applies to this one");
   }
   return test::Finish("studio_navigation");
 }

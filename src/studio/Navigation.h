@@ -2,12 +2,14 @@
 #pragma once
 
 #include "studio/Edits.h"
+#include "studio/Renumbering.h"
 #include "studio/Selection.h"
 
 #include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <span>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -23,6 +25,11 @@ struct Navigation {
   std::vector<InspectorVisit> back;
   std::vector<InspectorVisit> forward;
   float scroll = 0.0f;
+};
+
+struct PendingSubject {
+  std::string recipeID;
+  InspectorSubject subject;
 };
 
 struct PropertyTarget {
@@ -41,7 +48,7 @@ enum class HistoryDirection : std::uint8_t { kBack, kForward };
                             const RecipeRow &a_recipe);
 [[nodiscard]] bool
 ResolvePendingSubject(Navigation &a_navigation, Selection &a_selection,
-                      std::optional<InspectorSubject> &a_pending,
+                      std::optional<PendingSubject> &a_pending,
                       const RecipeRow *a_recipe);
 [[nodiscard]] bool NavigateProperty(Navigation &a_navigation,
                                     Selection &a_selection,
@@ -58,8 +65,8 @@ ReachableVisit(InspectorVisit a_visit, const Selection &a_current,
                           const RecipeRow &a_recipe);
 [[nodiscard]] bool GoForward(Navigation &a_navigation, Selection &a_selection,
                              const RecipeRow &a_recipe);
-void InvalidateIndexedSubjects(Navigation &a_navigation, Selection &a_selection,
-                               std::string_view a_recipeID);
-[[nodiscard]] bool
-ShouldInvalidateIndexedSubjects(std::span<const RecipeEdit> a_edits);
+void RenumberIndexedSubjects(Navigation &a_navigation, Selection &a_selection,
+                             std::string_view a_recipeID,
+                             const Renumbering &a_renumbering);
+[[nodiscard]] bool CanRenumber(std::span<const RecipeEdit> a_edits);
 }

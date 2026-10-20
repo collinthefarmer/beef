@@ -116,8 +116,8 @@ void EditRecipeRemapsSelectedLayer() {
   std::vector<RecipeEdit> edits;
   edits.push_back(RemoveLayer{0, 0});
   Reduce(state, EditRecipe{"aurora", std::move(edits)});
-  Check(!state.selection.layer,
-        "a structural edit clears the selected index until publication");
+  Check(state.selection.layer == 2,
+        "a structural edit keeps the selected index until the editor answers");
 }
 
 void RenameRecipeFollowsSelection() {

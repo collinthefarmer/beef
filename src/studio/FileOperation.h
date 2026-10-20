@@ -2,6 +2,7 @@
 #pragma once
 
 #include "recipe/Recipe.h"
+#include "studio/Renumbering.h"
 
 #include <array>
 #include <cstdint>
@@ -34,5 +35,6 @@ struct FileOperationResult {
   FileOperationState state = FileOperationState::kPending;
   std::string path;
   std::optional<Diagnostic> error;
+  std::optional<Renumbering> renumbering;
 };
 }

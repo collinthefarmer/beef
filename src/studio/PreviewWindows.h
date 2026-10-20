@@ -3,6 +3,7 @@
 
 #include "Core.h"
 #include "studio/Edits.h"
+#include "studio/Renumbering.h"
 #include "studio/Selection.h"
 #include "studio/Snapshot.h"
 #include "studio/View.h"
@@ -100,9 +101,7 @@ PreviewGeometries(const Snapshot &a_snapshot, const PreviewTarget &a_target);
                                        const PreviewTarget &a_target);
 void DropVanishedPreviews(PreviewWindows &a_windows,
                           const Snapshot &a_snapshot);
-void DropShiftedPreviews(PreviewWindows &a_windows, std::string_view a_recipeID,
-                         std::span<const RecipeEdit> a_edits);
-void DropIndexedPreviews(PreviewWindows &a_windows,
-                         std::string_view a_recipeID);
+void RenumberPreviews(PreviewWindows &a_windows, std::string_view a_recipeID,
+                      const Renumbering &a_renumbering);
 void DropAllIndexedPreviews(PreviewWindows &a_windows);
 }

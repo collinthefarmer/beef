@@ -61,7 +61,7 @@ struct IntentPerformer {
         a_intent.recipeID, EditBatch{a_intent.edits},
         a_intent.expectedRevision);
     TrackEditorChange(state, request, a_intent);
-    if (ShouldInvalidateIndexedSubjects(a_intent.edits)) {
+    if (CanRenumber(a_intent.edits)) {
       state.pendingIndexedEdit = PendingIndexedEdit{request, a_intent.recipeID};
     }
   }

@@ -204,9 +204,6 @@ void DrawRecipeSaveRevert(const Frame &a_frame) {
             std::format("Replace the current edits to {} with its saved file?",
                         recipe.id),
             "Revert edits", [&] {
-              Studio::InvalidateIndexedSubjects(a_frame.state->navigation,
-                                                a_frame.state->selection,
-                                                recipe.id);
               a_frame.state->pendingRecipeFile = Studio::PendingIndexedEdit{
                   manager->Editor().RevertRecipe(recipe.id), recipe.id};
             });

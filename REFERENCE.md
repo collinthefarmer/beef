@@ -2988,13 +2988,11 @@ them outside as separate passes.
   window whose piece is published without geometry (`PieceNotViewed`) waits
   with a message; it closes only when its piece, recipe, geometry or subject
   is gone from a snapshot.
-- Output and layer windows name their subject by index. A layer edit
-  (`AddLayer`, `RemoveLayer`, `MoveLayer`, `ClearLayers`, `ResetOutput`)
-  closes that output's layer windows; an output edit (`AddOutput`,
-  `RemoveOutput`, `ClearOutputs`, `ClearRecipe`, `AddLight`), an undo, a redo
-  or a file revert closes every output and layer window of the recipe; a
-  paint reset closes every indexed window. Source and mask windows are named
-  and survive all of these. A rename closes a source or mask window, because
+- Output and layer windows name their subject by index. They follow the
+  recipe's renumbering (see "Index renumbering" below): a window moves with
+  its output or layer and closes when that output or layer is gone. A paint
+  reset closes every indexed window. Source and mask windows are named and
+  survive all of these. A rename closes a source or mask window, because
   the snapshot that still carries the old name arrives after the rename
   intent.
 - Previews are keyed by side as well as texture, channel and context. A
@@ -3012,6 +3010,46 @@ them outside as separate passes.
   composited up to that layer. A partial composite needs a stack draw over
   the first N passes outside the render plan; `RenderOutput::LayerTexture`
   has no such target.
+
+### Index renumbering (`studio/Renumbering.h`, `engine/RecipeEditor.cpp`, `studio/MenuState.cpp`)
+
+- Mutes, solos, the inspector subject, the stack's selected layer, Back and
+  Forward visits and pinned preview windows name outputs and layers by
+  index. One rule moves them all: `RenumberingOf(before, after)` compares
+  the recipe before and after a change and maps each old output and layer
+  index to its new index, or to nothing when it is gone.
+- The comparison needs no record of the edit, so the same rule covers an
+  edit batch, a cascade removal, undo, redo, revert and reload.
+- Matching, per list (outputs, then the layers of each matched output):
+  1. the longest common run of equal entries;
+  2. an unmatched old entry takes the first unmatched equal new entry (a
+     move);
+  3. between two matched entries, unmatched old and new entries pair in
+     order when their counts are equal (a value edit). When the counts
+     differ, an old entry pairs only with the one similar new entry that is
+     similar to it alone. Outputs are similar when they have the same
+     surface and slot; any two layers are similar.
+  An old entry left unpaired is gone. Two equal layers align in order. A
+  list longer than `kMaxRenumberedEntries` (256) maps to nothing.
+- `RenumberingOf` returns nothing when no old index moved, so an appended
+  layer or output and every value edit leave all indexed state untouched.
+- The engine applies the renumbering to its `View` (mutes and isolation)
+  when the recipe changes, and publishes it in `RecipeEditResult` (edit,
+  undo, redo) and `FileOperationResult` (revert). A solo whose layer or
+  output is gone ends through `SoloLayer`/`SoloOutput` off, so a recipe
+  isolation the solo introduced ends with it.
+- The menu applies the published renumbering once, when it acknowledges the
+  pending indexed edit or the revert. Until then it keeps the old indices;
+  `pendingIndexedEdit` blocks further edits, undo, solo and mute meanwhile.
+  `CanRenumber` decides which edit batches take that gate: the structural
+  edits and every removal with `cascade`.
+- A stack layer selection with a subject that names no output (the recipe,
+  a signal) cannot be renumbered and is cleared when the recipe's indices
+  move.
+- `pendingSelection` names its recipe. It is dropped when the selected
+  recipe or piece changes and when an edit result for its recipe reports an
+  error; `seenEditResult` makes each result count once.
+- Ctrl+Z and Ctrl+Y post nothing when the recipe's undo or redo depth is 0.
 
 ### Recipe CRUD travels one pipeline (`studio/Intent.h`, `engine/RecipeEditor.*`, `engine/RecipeStore.*`)
 

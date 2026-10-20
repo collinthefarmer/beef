@@ -2,6 +2,7 @@
 #pragma once
 
 #include "recipe/Recipe.h"
+#include "studio/Renumbering.h"
 
 #include <cstdint>
 #include <optional>
@@ -13,6 +14,7 @@ struct RecipeEditResult {
   std::uint64_t requestID = 0;
   std::string recipeID;
   std::optional<Diagnostic> error;
+  std::optional<Renumbering> renumbering;
 };
 
 struct PendingIndexedEdit {

@@ -249,7 +249,8 @@ void FocusCreatedSubject(const Created &a_created, const Frame &a_frame) {
                     Studio::CreatedMask{mask->name, a_created.unwire});
     return;
   }
-  a_frame.state->pendingSelection = a_created.subject;
+  a_frame.state->pendingSelection =
+      Studio::PendingSubject{a_frame.recipe->id, a_created.subject};
 }
 
 [[nodiscard]] bool PostCreate(const FormField &a_field,
