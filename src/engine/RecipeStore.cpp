@@ -51,6 +51,7 @@ static_assert(std::is_nothrow_move_constructible_v<Studio::ReferenceCounts> ||
 constexpr std::size_t kMaxVariantGraphs = 16;
 
 std::vector<LoadedRecipe> g_loaded;
+std::vector<Studio::UnappliedRecipeRow> g_unreadable;
 std::shared_ptr<const RecipeCatalog> g_applied =
     std::make_shared<const RecipeCatalog>(RecipeCatalog::Of({}));
 std::shared_ptr<const RecipeCatalog> g_appliedWithoutDebug = g_applied;
@@ -238,21 +239,29 @@ void LogDiagnostics(const std::string &a_id,
   }
 }
 
+void NoteUnreadable(const std::filesystem::path &a_path, std::string a_id,
+                    std::vector<Diagnostic> a_diagnostics) {
+  logger::error("recipe {}: unreadable ({})", a_path.string(),
+                a_diagnostics.empty() ? "" : a_diagnostics.front().message);
+  ++g_status.withErrors;
+  g_unreadable.push_back({.id = std::move(a_id),
+                          .path = a_path.string(),
+                          .reason = Studio::UnappliedReason::kUnreadable,
+                          .diagnostics = std::move(a_diagnostics)});
+}
+
 void LoadFile(const std::filesystem::path &a_path, RecipeClass a_class) {
   const auto id = a_path.stem().string();
   const auto text = ReadText(a_path);
   if (!text || text->empty()) {
-    logger::error("recipe {}: unreadable ({})", a_path.string(),
-                  text ? "empty" : text.error());
-    ++g_status.withErrors;
+    NoteUnreadable(a_path, id,
+                   {MakeDiagnostic(Severity::kError, "file",
+                                   text ? "the file is empty" : text.error())});
     return;
   }
   auto result = ParseRecipe(*text, id);
   if (!result.recipe) {
-    logger::error(
-        "recipe {}: unreadable ({})", a_path.string(),
-        result.diagnostics.empty() ? "" : result.diagnostics.front().message);
-    ++g_status.withErrors;
+    NoteUnreadable(a_path, id, std::move(result.diagnostics));
     return;
   }
   ResolveForms(*result.recipe, result.diagnostics);
@@ -328,6 +337,12 @@ const LoadedRecipe *RecipeForEffectShader(const FormKey &a_key) {
     });
   });
   return found == g_loaded.end() ? nullptr : &*found;
+}
+
+bool IsLoadedId(std::string_view a_id) {
+  return std::ranges::any_of(g_loaded, [&](const LoadedRecipe &a_loaded) {
+    return a_loaded.recipe.id == a_id;
+  });
 }
 
 std::unordered_map<std::string_view, Recipe> LoadImportTemplates() {
@@ -411,6 +426,12 @@ void ImportMissing(const std::filesystem::path &a_folder) {
                    covering->recipe.id);
       continue;
     }
+    if (IsLoadedId(RecipeIdFor(record))) {
+      logger::info("armor enchantment shader {:08X}: recipe {} is loaded "
+                   "without this shader as a key; not imported",
+                   shader->GetFormID(), RecipeIdFor(record));
+      continue;
+    }
     const std::string_view templateId = ImportTemplateId(record);
     const auto found = templates.find(templateId);
     if (found == templates.end()) {
@@ -452,6 +473,7 @@ void ImportMissing(const std::filesystem::path &a_folder) {
 
 RecipeStoreStatus LoadRecipes() {
   g_loaded.clear();
+  g_unreadable.clear();
   g_applied = std::make_shared<const RecipeCatalog>(RecipeCatalog::Of({}));
   g_appliedWithoutDebug = g_applied;
   g_status = {};
@@ -497,6 +519,20 @@ RecipeStoreStatus GetRecipeStoreStatus() noexcept { return g_status; }
 
 std::span<const Recipe> LoadedRecipes() noexcept {
   return g_applied->Recipes();
+}
+
+std::vector<Studio::UnappliedRecipeRow> UnappliedRecipes() {
+  std::vector<Studio::UnappliedRecipeRow> rows;
+  for (const LoadedRecipe &loaded : g_loaded) {
+    if (HeldBack(loaded)) {
+      rows.push_back({.id = loaded.recipe.id,
+                      .path = loaded.path.string(),
+                      .reason = Studio::UnappliedReason::kHeldBack,
+                      .diagnostics = loaded.diagnostics});
+    }
+  }
+  rows.insert(rows.end(), g_unreadable.begin(), g_unreadable.end());
+  return rows;
 }
 
 std::shared_ptr<const RecipeCatalog>
@@ -667,6 +703,11 @@ bool IsDirty(std::string_view a_id) noexcept {
   return loaded && loaded->dirty;
 }
 
+bool HasRecipeFile(std::string_view a_id) noexcept {
+  const auto *loaded = Loaded(a_id);
+  return loaded && loaded->ownsFile;
+}
+
 namespace {
 using Claim = std::expected<std::optional<std::filesystem::path>, Diagnostic>;
 Claim ClaimDestination(const std::filesystem::path &a_path,
@@ -767,6 +808,9 @@ Claim ClaimDestination(const std::filesystem::path &a_path,
                         "exists too; move one of them first",
                         a_path.string(), a_path.string(), kSetAsideSuffix)));
   }
+  std::erase_if(g_unreadable, [&](const Studio::UnappliedRecipeRow &a_row) {
+    return IsSameFile(a_row.path, a_path);
+  });
   return aside;
 }
 
@@ -854,7 +898,7 @@ std::optional<Diagnostic> DeleteRecipe(std::string_view a_id) {
   }
   if (!owned) {
     logger::info("delete {}: {} is not the user's file and stays on disk; it "
-                 "loads again under its id at the next start",
+                 "loads again under its id at the next reload or start",
                  a_id, loaded.path.string());
   }
   logger::info("recipe {} deleted", a_id);

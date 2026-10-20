@@ -131,11 +131,20 @@ std::optional<Diagnostic> DeleteRecipeFile(const std::filesystem::path &a_path,
   if (!exists) {
     return std::nullopt;
   }
+  std::filesystem::path deleted = a_path;
+  deleted += kDeletedSuffix;
   std::error_code ec;
-  std::filesystem::remove(a_path, ec);
+  std::filesystem::remove(deleted, ec);
   if (ec) {
     return FileRefusal(a_id, a_path,
-                       std::format("could not remove ({})", ec.message()));
+                       std::format("could not replace {} ({})",
+                                   deleted.string(), ec.message()));
+  }
+  std::filesystem::rename(a_path, deleted, ec);
+  if (ec) {
+    return FileRefusal(a_id, a_path,
+                       std::format("could not move to {} ({})",
+                                   deleted.string(), ec.message()));
   }
   return std::nullopt;
 }

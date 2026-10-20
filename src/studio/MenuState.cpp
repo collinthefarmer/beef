@@ -856,6 +856,12 @@ void TrackEditorChange(MenuState &a_state, std::uint64_t a_request,
   std::string recipe;
   if (const auto *rename = Get<RenameRecipe>(a_intent)) {
     recipe = rename->from;
+  } else if (const auto *create = Get<CreateRecipe>(a_intent)) {
+    recipe = create->recipeID;
+    a_state.creationRefusal.reset();
+  } else if (const auto *duplicate = Get<DuplicateRecipe>(a_intent)) {
+    recipe = duplicate->to;
+    a_state.creationRefusal.reset();
   } else if (const auto *remove = Get<DeleteRecipe>(a_intent)) {
     recipe = remove->recipeID;
   } else if (const auto *edit = Get<EditRecipe>(a_intent);
@@ -903,6 +909,10 @@ void AcknowledgeEditorChange(MenuState &a_state,
   a_state.pendingEditorChange.reset();
   if (!a_result.error) {
     FollowEditorChange(a_state, pending);
+    return;
+  }
+  if (Is<CreateRecipe>(pending.intent) || Is<DuplicateRecipe>(pending.intent)) {
+    a_state.creationRefusal = a_result.error;
   }
 }
 }

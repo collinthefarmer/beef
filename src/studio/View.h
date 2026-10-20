@@ -80,6 +80,11 @@ struct View {
     return !isolation.recipeID.empty();
   }
 
+  [[nodiscard]] bool IsLive() const noexcept {
+    return !Isolating() && !soloPiece && muted.empty() && !freeze &&
+           speed == 1.0f;
+  }
+
   [[nodiscard]] bool PieceShown(FormID a_actor, FormID a_armor) const noexcept {
     return !soloPiece || soloPiece->SamePiece(PieceRef{a_actor, a_armor});
   }

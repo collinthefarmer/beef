@@ -534,6 +534,10 @@ void RenameAndDelete(const std::filesystem::path &root, const Recipe &fixture) {
             editor.CurrentView().RecipeIDs().empty() &&
             editor.DocumentRevisionOf(renamed) > deleteRevision,
         "delete retry removes owned file, history and view references");
+  std::filesystem::path kept = target;
+  kept += kDeletedSuffix;
+  Check(test::ReadFile(kept) == SerializeRecipe(fixture),
+        "delete keeps the owned file beside it with the deleted suffix");
   editor.NewRecipe(renamed, RecipeKey{}, {});
   manager.Drain();
   const Recipe recreated = Current(renamed);
@@ -630,6 +634,11 @@ void SaveKeepsUnloadedFile(const std::filesystem::path &root,
   const auto aside = std::filesystem::path{unread.string() + ".unloaded"};
   Check(WriteText(unread, "{ not json"), "seed an unreadable user file");
   Check(LoadRecipes().loaded == 1, "the unreadable user file does not load");
+  const std::vector<UnappliedRecipeRow> unapplied = UnappliedRecipes();
+  Check(unapplied.size() == 1 && unapplied.front().id == "fresh" &&
+            unapplied.front().reason == UnappliedReason::kUnreadable &&
+            !unapplied.front().diagnostics.empty(),
+        "the unreadable file is listed with its error");
   Check(!NewRecipe("fresh", RecipeKey{}, {}),
         "a new recipe may take the id of a file that did not load");
   const auto saved = SaveRecipe("fresh");
@@ -637,6 +646,8 @@ void SaveKeepsUnloadedFile(const std::filesystem::path &root,
   Check(saved && test::ReadFile(aside) == "{ not json" && written &&
             written->recipe && written->recipe->id == "fresh",
         "save keeps the unreadable user file aside and writes its own");
+  Check(UnappliedRecipes().empty(),
+        "a file set aside by a save leaves the unapplied list");
   Check(NewRecipe("FRESH", RecipeKey{}, {}).has_value() &&
             BetterEnchantmentEffects::DuplicateRecipe(kID, "Fresh").has_value(),
         "an id that differs from a loaded one only by case is refused");

@@ -32,6 +32,31 @@ int main() {
   }
   {
     MenuState state = EditingLayer();
+    const Intent create = CreateRecipe{"paint", {}, {}};
+    TrackEditorChange(state, 5, create);
+    Reduce(state, create);
+    Check(state.selection.recipeID == "glow",
+          "a tracked create leaves the selection until the editor answers");
+    Snapshot refused;
+    refused.editResults.push_back(
+        {5, "paint",
+         MakeDiagnostic(Severity::kError, "recipe paint",
+                        "the name is reserved")});
+    AcknowledgeEditorOperations(state, refused);
+    Check(state.selection.recipeID == "glow" && state.creationRefusal &&
+              !state.pendingEditorChange,
+          "a refused create keeps the selection and records the refusal");
+    const Intent duplicate = DuplicateRecipe{"glow", "glow-copy"};
+    TrackEditorChange(state, 6, duplicate);
+    Check(!state.creationRefusal, "a new create clears the old refusal");
+    Snapshot made;
+    made.editResults.push_back({6, "glow-copy", std::nullopt});
+    AcknowledgeEditorOperations(state, made);
+    Check(state.selection.recipeID == "glow-copy" && state.selection.document,
+          "an accepted duplicate focuses the copy");
+  }
+  {
+    MenuState state = EditingLayer();
     const Intent edit = EditRecipe{"glow", {MoveLayer{0, 1, 0}}};
     Check(AcceptIntent(state, edit),
           "a settled editor accepts an initial structural command");

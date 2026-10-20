@@ -277,6 +277,7 @@ struct RecipeRow {
   float clockSpeed = 1.0f;
   float time = 0.0f;
   bool dirty = false;
+  bool hasFile = false;
   bool pinned = false;
   ShellMaterial shellMaterial = ShellMaterial::kPbrCopy;
   std::vector<SignalRow> signals;
@@ -333,8 +334,18 @@ struct LoadedRecipeRow {
   std::size_t masks = 0;
   std::size_t outputs = 0;
   bool imported = false;
+  bool dirty = false;
   std::vector<Diagnostic> diagnostics;
   std::string path;
+};
+
+enum class UnappliedReason : std::uint8_t { kHeldBack, kUnreadable };
+
+struct UnappliedRecipeRow {
+  std::string id;
+  std::string path;
+  UnappliedReason reason = UnappliedReason::kUnreadable;
+  std::vector<Diagnostic> diagnostics;
 };
 
 struct Status {
@@ -376,6 +387,7 @@ struct Snapshot {
   std::vector<WornPieceRow> worn;
   std::vector<std::string> loaded;
   std::vector<LoadedRecipeRow> loadedRecipes;
+  std::vector<UnappliedRecipeRow> unappliedRecipes;
   std::vector<RecipeRow> documents;
   std::optional<GestureResult> gesture;
   std::array<std::shared_ptr<const GameObjectCatalog>, kGameObjectKindCount>

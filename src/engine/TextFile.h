@@ -12,6 +12,7 @@
 namespace BetterEnchantmentEffects {
 inline constexpr std::size_t kMaxTextFileBytes = 4u * 1024u * 1024u;
 inline constexpr std::string_view kSetAsideSuffix = ".unloaded";
+inline constexpr std::string_view kDeletedSuffix = ".deleted";
 
 enum class Created : std::uint8_t { kWritten, kExists, kFailed };
 

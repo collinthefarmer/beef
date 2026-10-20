@@ -1,5 +1,6 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #include "engine/Manager.h"
+#include "Identity.h"
 #include "diagnostics/Trace.h"
 
 #include "SettingsFile.h"
@@ -9,6 +10,8 @@
 #include "render/Compositor.h"
 #include "render/TextureLab.h"
 
+#include <format>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -71,6 +74,17 @@ void Manager::ReleaseIdleCameraForMenu() {
   }
 }
 
+void Manager::NoteMenuClosed() const {
+  if (editor_.CurrentView().IsLive() && RecipesWithHolds().empty()) {
+    return;
+  }
+  const std::string notice =
+      std::format("{}: a studio preview is still on. Return to live in the "
+                  "studio ends it.",
+                  Identity::kMenuTitle);
+  RE::DebugNotification(notice.c_str());
+}
+
 void Manager::QueueForget(RE::FormID a_actorID) {
   if (a_actorID == 0) {
     return;
@@ -125,6 +139,7 @@ void Manager::Clear() {
   editor_.CancelFileOperationsForLoad();
   SweepRetiredMaterialTextures();
   editor_.CancelPaintForLoad();
+  editor_.ResetViewForLoad();
   loggedNonPBRArmor_.clear();
   warningHistory_.Clear();
   carriedInstances_.Clear();

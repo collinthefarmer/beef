@@ -178,6 +178,7 @@ public:
   void SetEmissivePathEnabled(bool a_enabled);
   void HoldIdleCameraForMenu();
   void ReleaseIdleCameraForMenu();
+  void NoteMenuClosed() const;
 
   [[nodiscard]] RecipeEditor &Editor() noexcept;
 

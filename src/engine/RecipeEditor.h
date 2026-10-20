@@ -61,6 +61,7 @@ public:
   void EndPaint(std::uint64_t a_sessionID = 0);
   void CancelPaintForLoad();
   void CancelFileOperationsForLoad();
+  void ResetViewForLoad();
   void Isolate(Studio::Isolation a_isolation);
   void ShowRecipeSet(std::vector<std::string> a_recipes);
   void ChangeView(Studio::ViewCommand a_command);

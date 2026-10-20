@@ -3070,7 +3070,21 @@ them outside as separate passes.
     until saved.
   - `RenameRecipe{from, to}` — change id; moves the user file; retargets history,
     view pin/isolation, paint.
-  - `DeleteRecipe{recipeID}` — delete the user file, unpublish, `View::ForgetRecipe`.
+  - `DeleteRecipe{recipeID}` — move the user file to `<file>.deleted`
+    (`kDeletedSuffix`, replacing an older one), unpublish,
+    `View::ForgetRecipe`. The loader reads only `.json` files, so the kept
+    copy never loads; the user renames it back to restore it.
+- Create, duplicate, rename and delete are tracked editor changes
+  (`TrackEditorChange`): the menu's reduction (the focus on the new recipe,
+  the retargeted selection) runs only when the editor accepts the request.
+  A refused create or duplicate keeps the selection and sets
+  `MenuState::creationRefusal`, which the recipe context row shows until
+  the next create.
+- Revert is disabled for a recipe that has no file yet
+  (`RecipeRow::hasFile`, from `LoadedRecipe::ownsFile`).
+- Reload asks first when a loaded recipe has unsaved edits, and names up to
+  `kMaxNamedUnsaved` (6) of them (`UnsavedRecipesText`), because it drops
+  every unsaved edit and every undo history.
 - Guards: ids are file stems (`IsStem`) and unused; the paint recipe refuses
   rename/duplicate/delete; imported/shipped files are unpublished, not deleted.
 - `SaveRecipe` / `RevertRecipe` are `RecipeEditor` methods called directly from
@@ -3098,7 +3112,29 @@ them outside as separate passes.
   because it does not parse, and only a person wrote it, so the save keeps it
   instead of writing over it. A failed write returns the set-aside file to its
   path.
+- The store keeps every file the loader could not use. A file that does not
+  read or parse is kept as an unreadable row (`g_unreadable`) with its
+  diagnostics; a recipe with recipe-level errors stays loaded but held back
+  from the applied catalog. `UnappliedRecipes()` lists both, and the
+  snapshot publishes them (`Snapshot::unappliedRecipes`). The recipe combo
+  ends with a "Not applied" section, one line each (`UnappliedSummary`: the
+  reason, the first error's `where` and message, and a count of the
+  rest); the Recipes page lists every diagnostic and the file. They are not
+  selectable, because repair in game is not supported. A save that sets an
+  unreadable file aside removes its row.
+- The importer skips a shader whose recipe id is already loaded, also when
+  that recipe no longer carries the shader as a key (a user override that
+  dropped the key). Importing again under the same id loaded two recipes
+  with one id.
 
+
+On a load, `ResetViewForLoad` returns the view to live (no isolation,
+piece solo, mute, pin, recipe set, freeze or speed) and releases every held
+signal. A piece solo from the old save could name a form the new save does
+not have, and then every effect stays hidden. When the menu closes with a
+preview still on (`View::IsLive` is false, or a signal is held),
+`Manager::NoteMenuClosed` shows one game notification; the preview itself
+stays on, so it can be watched in play.
 
 On a load, `CancelFileOperationsForLoad` records the load as an active
 gesture's reason (`AbandonGesture`) before `FinishActiveGesture` rolls the

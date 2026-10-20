@@ -133,8 +133,9 @@ struct IntentPerformer {
         manager->Editor().RedoRecipe(a_intent.recipeID), a_intent.recipeID};
   }
   void operator()(const CreateRecipe &a_intent) const {
-    manager->Editor().NewRecipe(a_intent.recipeID, a_intent.key,
-                                a_intent.geometry);
+    const std::uint64_t request = manager->Editor().NewRecipe(
+        a_intent.recipeID, a_intent.key, a_intent.geometry);
+    TrackEditorChange(state, request, a_intent);
   }
   void operator()(const Studio::RenameRecipe &a_intent) const {
     const std::uint64_t request =
@@ -147,7 +148,9 @@ struct IntentPerformer {
     TrackEditorChange(state, request, a_intent);
   }
   void operator()(const Studio::DuplicateRecipe &a_intent) const {
-    manager->Editor().DuplicateRecipe(a_intent.from, a_intent.to);
+    const std::uint64_t request =
+        manager->Editor().DuplicateRecipe(a_intent.from, a_intent.to);
+    TrackEditorChange(state, request, a_intent);
   }
   void operator()(const BeginPaint &a_intent) const {
     manager->Editor().BeginPaint({a_intent.recipeID, a_intent.key,
@@ -349,6 +352,7 @@ void __stdcall OnMenuEvent(SKSEMenuFramework::Model::EventType a_event) {
     OnGameThread([] {
       if (Manager *manager = Manager::GetSingleton()) {
         manager->ReleaseIdleCameraForMenu();
+        manager->NoteMenuClosed();
       }
     });
   }

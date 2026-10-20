@@ -32,7 +32,8 @@
 
 namespace BetterEnchantmentEffects {
 namespace {
-void MarkHeldSignals(Studio::RecipeRow &a_row) {
+void MarkStoreState(Studio::RecipeRow &a_row) {
+  a_row.hasFile = HasRecipeFile(a_row.id);
   const Studio::SignalHolds holds = SignalHoldsOf(a_row.id);
   for (Studio::SignalRow &signal : a_row.signals) {
     if (const auto held = holds.find(signal.name); held != holds.end()) {
@@ -435,7 +436,7 @@ struct PieceSnapshotBuilder {
          redoDepth, references, instance.graph.get(), instance.signals.get(),
          problems});
     row.documentRevision = editor.DocumentRevisionOf(recipe.id);
-    MarkHeldSignals(row);
+    MarkStoreState(row);
     if (!full) {
       return row;
     }
@@ -525,6 +526,7 @@ void AppendLoadedRecipes(Manager::Snapshot &snapshot) {
     row.masks = recipe.masks.size();
     row.outputs = recipe.outputs.size();
     row.imported = !recipe.metadata.imported.empty();
+    row.dirty = IsDirty(recipe.id);
     if (const std::optional<RecipeOrigin> origin = OriginOf(recipe)) {
       row.diagnostics.assign(origin->diagnostics.begin(),
                              origin->diagnostics.end());
@@ -533,6 +535,7 @@ void AppendLoadedRecipes(Manager::Snapshot &snapshot) {
     snapshot.loaded.push_back(recipe.id);
     snapshot.loadedRecipes.push_back(std::move(row));
   }
+  snapshot.unappliedRecipes = UnappliedRecipes();
 }
 
 }
@@ -702,7 +705,7 @@ Studio::RecipeRow Manager::DocumentRowFor(const Recipe &a_document,
        .problems =
            origin ? origin->diagnostics : std::span<const Diagnostic>{}});
   row.documentRevision = editor_.DocumentRevisionOf(a_document.id);
-  MarkHeldSignals(row);
+  MarkStoreState(row);
   return row;
 }
 }

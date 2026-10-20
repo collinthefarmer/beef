@@ -89,6 +89,7 @@ struct MenuState {
   std::optional<PendingIndexedEdit> pendingIndexedEdit;
   std::optional<PendingIndexedEdit> pendingRecipeFile;
   std::optional<PendingEditorChange> pendingEditorChange;
+  std::optional<Diagnostic> creationRefusal;
   std::optional<TuningGesture> tuning;
   std::optional<FieldKey> termDrag;
   std::unordered_map<FieldKey, std::pair<float, float>> tuningRanges;

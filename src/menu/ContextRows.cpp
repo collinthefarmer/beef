@@ -43,6 +43,16 @@ using ImGuiMCP::ImVec2;
 namespace BetterEnchantmentEffects::Menu {
 namespace {
 
+void DrawUnappliedEntries(const Studio::Snapshot &a_snapshot) {
+  if (a_snapshot.unappliedRecipes.empty()) {
+    return;
+  }
+  ImGui::SeparatorText("Not applied");
+  for (const Studio::UnappliedRecipeRow &row : a_snapshot.unappliedRecipes) {
+    Dim(std::format("{}  {}", row.id, Studio::UnappliedSummary(row)));
+  }
+}
+
 void RecipeCombo(const Frame &a_frame, const char *a_label) {
   const std::string preview = a_frame.recipe ? RecipeLabel(*a_frame.recipe)
                                              : SelectionOf(a_frame).recipeID;
@@ -60,6 +70,7 @@ void RecipeCombo(const Frame &a_frame, const char *a_label) {
       }
     }
   }
+  DrawUnappliedEntries(*a_frame.snapshot);
   ImGui::EndCombo();
 }
 
@@ -525,10 +536,11 @@ void DeleteRecipeButton(const Studio::RecipeRow &a_recipe,
   }
   Tooltip("delete this recipe");
   ConfirmModal(title.c_str(),
-               std::format("Delete '{}'? A recipe in the user folder loses its "
-                           "file; a recipe from another folder is unloaded "
-                           "and loads again at the next start.",
-                           a_recipe.id),
+               std::format("Delete '{}'? A recipe in the user folder moves "
+                           "to {}.json.deleted beside it, replacing an older "
+                           "one; a recipe from another folder is unloaded and "
+                           "loads again at the next Reload or start.",
+                           a_recipe.id, a_recipe.id),
                "Delete",
                [&] { Studio::Post(a_out, Studio::DeleteRecipe{a_recipe.id}); });
 }
@@ -566,6 +578,32 @@ void RenameRecipeButton(const Frame &a_frame) {
     ImGui::EndPopup();
   }
   Tooltip("rename the recipe; its file follows when it is the user's");
+}
+
+void DuplicateRecipeButton(const Frame &a_frame) {
+  if (ImGui::Button("Duplicate", ImVec2{ButtonWidth("Duplicate"), 0.0f})) {
+    ImGui::OpenPopup("duplicate-recipe");
+  }
+  if (!ImGui::BeginPopup("duplicate-recipe")) {
+    return;
+  }
+  const std::string proposed = a_frame.recipe->id + "-copy";
+  const std::string_view typed = LiveTextField(
+      "duplicate", proposed.c_str(), Studio::Width::Px(240.0f), a_frame.scale);
+  const std::string name = typed.empty() ? proposed : std::string{typed};
+  const std::optional<std::string> problem =
+      Studio::RecipeNameProblem(name, a_frame.snapshot->loaded);
+  if (problem) {
+    Problem(*problem);
+  }
+  Disabled(problem.has_value(), [&]() {
+    if (ImGui::Button("Duplicate##do") && !problem) {
+      Studio::Post(*a_frame.intents,
+                   Studio::DuplicateRecipe{a_frame.recipe->id, name});
+      ImGui::CloseCurrentPopup();
+    }
+  });
+  ImGui::EndPopup();
 }
 
 void RecipeNameLabel(const Frame &a_frame) {
@@ -607,6 +645,21 @@ void SoloRecipeButton(const Studio::RecipeRow &a_recipe,
   ImGui::PopID();
 }
 
+void DrawRecipeChoice(const Frame &a_frame) {
+  if (a_frame.recipe) {
+    const float solo = RowButtonWidth();
+    const float avail = ImGui::GetContentRegionAvail().x;
+    NextItemWidth(
+        Studio::Width::Px((std::max)(120.0f, avail - solo - ItemSpacingX())));
+    RecipeCombo(a_frame, "##recipe");
+    ImGui::SameLine();
+    SoloRecipeButton(*a_frame.recipe, ViewOf(a_frame), *a_frame.intents);
+  } else {
+    NextItemWidth(Studio::Width::Fill());
+    RecipeCombo(a_frame, "##recipe");
+  }
+}
+
 }
 
 void DrawStudioContext(const Frame &a_frame) {
@@ -631,17 +684,10 @@ void DrawStudioContext(const Frame &a_frame) {
            [&]() { DrawRecipeRuleStatus(a_frame); }));
   NewRecipeButton(a_frame);
   ImGui::SameLine();
-  if (a_frame.recipe) {
-    const float solo = RowButtonWidth();
-    const float avail = ImGui::GetContentRegionAvail().x;
-    NextItemWidth(
-        Studio::Width::Px((std::max)(120.0f, avail - solo - ItemSpacingX())));
-    RecipeCombo(a_frame, "##recipe");
-    ImGui::SameLine();
-    SoloRecipeButton(*a_frame.recipe, ViewOf(a_frame), *a_frame.intents);
-  } else {
-    NextItemWidth(Studio::Width::Fill());
-    RecipeCombo(a_frame, "##recipe");
+  DrawRecipeChoice(a_frame);
+  if (const std::optional<Diagnostic> &refused =
+          a_frame.state->creationRefusal) {
+    Problem(std::format("not created: {}", refused->message));
   }
 }
 
@@ -651,8 +697,13 @@ void DrawRecipeSettings(const Frame &a_frame) {
   }
   const Studio::RecipeRow &recipe = *a_frame.recipe;
   static_cast<void>(Rule(
-      Studio::RuleSpec{.text = "Recipe"}, ButtonWidth("Rename"),
-      [&]() { RenameRecipeButton(a_frame); },
+      Studio::RuleSpec{.text = "Recipe"},
+      ButtonWidth("Rename") + ItemSpacingX() + ButtonWidth("Duplicate"),
+      [&]() {
+        RenameRecipeButton(a_frame);
+        ImGui::SameLine();
+        DuplicateRecipeButton(a_frame);
+      },
       [&]() { RecipeNameLabel(a_frame); }));
   [[maybe_unused]] const std::optional<std::size_t> detail =
       DrawForm("recipe-header", Studio::RecipeHeaderForm(recipe), a_frame);

@@ -7,6 +7,7 @@
 #include "recipe/Signals.h"
 #include "studio/Edits.h"
 #include "studio/Presets.h"
+#include "studio/Snapshot.h"
 
 #include <cstddef>
 #include <expected>
@@ -16,6 +17,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace BetterEnchantmentEffects {
 struct RecipeStoreStatus {
@@ -31,6 +33,7 @@ RecipeStoreStatus LoadRecipes();
 [[nodiscard]] RecipeStoreStatus GetRecipeStoreStatus() noexcept;
 
 [[nodiscard]] std::span<const Recipe> LoadedRecipes() noexcept;
+[[nodiscard]] std::vector<Studio::UnappliedRecipeRow> UnappliedRecipes();
 [[nodiscard]] std::shared_ptr<const RecipeCatalog>
 AppliedCatalog(DebugRecipes a_debug) noexcept;
 [[nodiscard]] const Studio::MaskPresets &LoadedPresets() noexcept;
@@ -56,6 +59,7 @@ bool SetSignalHold(std::string_view a_id, std::string_view a_signal,
 [[nodiscard]] std::vector<std::string> RecipesWithHolds();
 std::span<const Diagnostic> RefreshRecipeDerivedState(std::string_view a_id);
 [[nodiscard]] bool IsDirty(std::string_view a_id) noexcept;
+[[nodiscard]] bool HasRecipeFile(std::string_view a_id) noexcept;
 [[nodiscard]] std::expected<std::filesystem::path, Diagnostic>
 SaveRecipe(std::string_view a_id);
 [[nodiscard]] std::optional<Diagnostic> RevertRecipe(std::string_view a_id);

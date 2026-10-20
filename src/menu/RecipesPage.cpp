@@ -12,12 +12,14 @@
 #include "studio/Intent.h"
 #include "studio/MenuState.h"
 #include "studio/Names.h"
+#include "studio/RecipeSections.h"
 #include "studio/Selection.h"
 #include "studio/Snapshot.h"
 #include "studio/Widgets.h"
 
 #include <cstddef>
 #include <format>
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -72,6 +74,41 @@ void DrawLoadedTable(const Studio::Snapshot &a_snapshot) {
     if (recipe.imported) {
       ImGui::SameLine();
       Dim("imported, not yet edited");
+    }
+    table.Cell();
+    ImGui::TextWrapped("%s", recipe.path.c_str());
+  }
+  table.End();
+}
+
+void DrawUnappliedTable(const Studio::Snapshot &a_snapshot) {
+  if (a_snapshot.unappliedRecipes.empty()) {
+    return;
+  }
+  static_cast<void>(Rule(Studio::RuleSpec{.text = "Not applied"}));
+  auto table = Table::Begin("unapplied",
+                            {{"recipe", Studio::Width::Fill()},
+                             {"state", Studio::Width::Fill()},
+                             {"problems", Studio::Width::Fill()},
+                             {"file", Studio::Width::Fill()}},
+                            Studio::kGridTable);
+  if (!table.Open()) {
+    return;
+  }
+  for (const Studio::UnappliedRecipeRow &recipe : a_snapshot.unappliedRecipes) {
+    table.Cell();
+    ImGui::TextUnformatted(recipe.id.c_str());
+    table.Cell();
+    Problem(Studio::UnappliedReasonName(recipe.reason));
+    table.Cell();
+    for (const Diagnostic &diagnostic : recipe.diagnostics) {
+      const std::string line =
+          std::format("{}: {}", diagnostic.where, diagnostic.message);
+      if (diagnostic.severity == Severity::kError) {
+        Problem(line);
+      } else {
+        Warn(line);
+      }
     }
     table.Cell();
     ImGui::TextWrapped("%s", recipe.path.c_str());
@@ -136,14 +173,30 @@ void DrawResolved(const Studio::PieceRow &a_piece) {
   }
 }
 
-void DrawStoreActions(Manager &a_manager, Studio::MenuState &a_state) {
+void ReloadRecipes(Manager &a_manager, Studio::MenuState &a_state) {
+  a_state.navigation = {};
+  a_state.selection.subject = Studio::RecipeSubject{};
+  Studio::Reduce(a_state, Studio::EndPaint{});
+  a_state.pendingIndexedEdit =
+      Studio::PendingIndexedEdit{a_manager.Editor().ReloadRecipes(), {}};
+}
+
+void DrawStoreActions(Manager &a_manager, Studio::MenuState &a_state,
+                      const Studio::Snapshot &a_snapshot) {
+  const std::optional<std::string> unsaved =
+      Studio::UnsavedRecipesText(a_snapshot.loadedRecipes);
   if (ImGui::Button("Reload recipes")) {
-    a_state.navigation = {};
-    a_state.selection.subject = Studio::RecipeSubject{};
-    Studio::Reduce(a_state, Studio::EndPaint{});
-    a_state.pendingIndexedEdit =
-        Studio::PendingIndexedEdit{a_manager.Editor().ReloadRecipes(), {}};
+    if (unsaved) {
+      ImGui::OpenPopup("Reload recipes?###reload-recipes");
+    } else {
+      ReloadRecipes(a_manager, a_state);
+    }
   }
+  ConfirmModal("Reload recipes?###reload-recipes",
+               std::format("Reload discards the unsaved edits to {}, and the "
+                           "undo history of every recipe.",
+                           unsaved.value_or("")),
+               "Reload", [&] { ReloadRecipes(a_manager, a_state); });
   ImGui::SameLine();
   if (ImGui::Button("Re-apply all")) {
     a_manager.ReapplyAll();
@@ -237,9 +290,10 @@ void __stdcall RenderRecipes() {
   Disabled(state.pendingIndexedEdit.has_value() ||
                state.pendingRecipeFile.has_value() ||
                state.pendingEditorChange.has_value(),
-           [&] { DrawStoreActions(*manager, state); });
+           [&] { DrawStoreActions(*manager, state, *held); });
   static_cast<void>(Rule(Studio::RuleSpec{.text = "Loaded"}));
   DrawLoadedTable(*held);
+  DrawUnappliedTable(*held);
   DrawSelection(*held, state);
   DrawPreviewWindows(*held, state, 1.0f);
 }

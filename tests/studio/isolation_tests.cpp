@@ -103,5 +103,21 @@ int main() {
   pinned.pin = Pin{PieceRef{0x14, 0x800}, "glow"};
   Check(shown.ChangesInstalls(pinned), "a pin changes what is installed");
 
+  View live;
+  Check(live.IsLive(), "a fresh view is live");
+  View frozen = live;
+  frozen.freeze = true;
+  View slowed = live;
+  slowed.speed = 0.5f;
+  View soloed = live;
+  soloed.soloPiece = PieceRef{1, 2};
+  View muting = live;
+  muting.muted.insert(LayerKey{"glow", 0, 0});
+  View isolating = live;
+  isolating.isolation = Isolation::ForRecipe("glow");
+  Check(!frozen.IsLive() && !slowed.IsLive() && !soloed.IsLive() &&
+            !muting.IsLive() && !isolating.IsLive(),
+        "freeze, speed, a piece solo, a mute and isolation are previews");
+
   return test::Finish("studio_isolation");
 }

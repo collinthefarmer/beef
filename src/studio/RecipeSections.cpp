@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <format>
 
 namespace BetterEnchantmentEffects::Studio {
 namespace {
@@ -59,5 +60,53 @@ RecipeSectionsOf(std::span<const LoadedRecipeRow> a_recipes) {
         return Folded(a_left.folder) < Folded(a_right.folder);
       });
   return sections;
+}
+
+std::string_view UnappliedReasonName(UnappliedReason a_reason) {
+  switch (a_reason) {
+  case UnappliedReason::kHeldBack:
+    return "held back";
+  case UnappliedReason::kUnreadable:
+    return "unreadable";
+  }
+  return "not applied";
+}
+
+std::string UnappliedSummary(const UnappliedRecipeRow &a_row) {
+  const auto first = std::ranges::find(a_row.diagnostics, Severity::kError,
+                                       &Diagnostic::severity);
+  std::string summary{UnappliedReasonName(a_row.reason)};
+  if (first == a_row.diagnostics.end()) {
+    return summary;
+  }
+  summary += std::format(": {}: {}", first->where, first->message);
+  const auto errors = std::ranges::count(a_row.diagnostics, Severity::kError,
+                                         &Diagnostic::severity);
+  if (errors > 1) {
+    summary += std::format(" (+{} more)", errors - 1);
+  }
+  return summary;
+}
+
+std::optional<std::string>
+UnsavedRecipesText(std::span<const LoadedRecipeRow> a_recipes) {
+  std::string names;
+  std::size_t count = 0;
+  for (const LoadedRecipeRow &recipe : a_recipes) {
+    if (!recipe.dirty) {
+      continue;
+    }
+    if (count < kMaxNamedUnsaved) {
+      names += std::format("{}'{}'", names.empty() ? "" : ", ", recipe.id);
+    }
+    ++count;
+  }
+  if (count == 0) {
+    return std::nullopt;
+  }
+  if (count > kMaxNamedUnsaved) {
+    names += std::format(" and {} more", count - kMaxNamedUnsaved);
+  }
+  return names;
 }
 }

@@ -41,5 +41,33 @@ int main() {
             sections[0].ids == std::vector<std::string>{"b", "a"},
         "a section keeps its recipes in load order");
 
+  UnappliedRecipeRow heldBack{
+      .id = "frost",
+      .path = "user/frost.json",
+      .reason = UnappliedReason::kHeldBack,
+      .diagnostics = {
+          MakeDiagnostic(Severity::kWarning, "key 0", "unused"),
+          MakeDiagnostic(Severity::kError, "signal glow",
+                         "unknown signal kind"),
+          MakeDiagnostic(Severity::kError, "output 1", "bad slot")}};
+  Check(UnappliedSummary(heldBack) ==
+            "held back: signal glow: unknown signal kind (+1 more)",
+        "a held-back summary names its first error and counts the rest");
+  const UnappliedRecipeRow unreadable{.id = "broken",
+                                      .reason = UnappliedReason::kUnreadable};
+  Check(UnappliedSummary(unreadable) == "unreadable",
+        "a summary without errors names only the reason");
+
+  std::vector<LoadedRecipeRow> unsaved;
+  Check(!UnsavedRecipesText(unsaved), "no edited recipe needs no warning");
+  for (const std::string id : {"a", "b", "c", "d", "e", "f", "g", "h"}) {
+    LoadedRecipeRow row = Row(id, "");
+    row.dirty = id != "b";
+    unsaved.push_back(row);
+  }
+  Check(UnsavedRecipesText(unsaved) ==
+            "'a', 'c', 'd', 'e', 'f', 'g' and 1 more",
+        "the warning names the edited recipes and counts the rest");
+
   return test::Finish("studio_recipesections");
 }

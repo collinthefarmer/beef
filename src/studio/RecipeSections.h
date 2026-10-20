@@ -3,6 +3,8 @@
 
 #include "studio/Snapshot.h"
 
+#include <cstddef>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -20,4 +22,9 @@ struct RecipeSection {
 [[nodiscard]] std::string FolderOf(std::string_view a_path);
 [[nodiscard]] std::vector<RecipeSection>
 RecipeSectionsOf(std::span<const LoadedRecipeRow> a_recipes);
+[[nodiscard]] std::string_view UnappliedReasonName(UnappliedReason a_reason);
+[[nodiscard]] std::string UnappliedSummary(const UnappliedRecipeRow &a_row);
+inline constexpr std::size_t kMaxNamedUnsaved = 6;
+[[nodiscard]] std::optional<std::string>
+UnsavedRecipesText(std::span<const LoadedRecipeRow> a_recipes);
 }

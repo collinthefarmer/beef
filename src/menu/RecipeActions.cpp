@@ -194,11 +194,12 @@ void DrawRecipeSaveRevert(const Frame &a_frame) {
           Tooltip("Save excludes the suspended mask draft.");
         }
         ImGui::SameLine();
-        Disabled(!recipe.dirty, [&] {
+        Disabled(!recipe.dirty || !recipe.hasFile, [&] {
           if (ImGui::Button("Revert")) {
             ImGui::OpenPopup("Revert to file###revert-file");
           }
         });
+
         ConfirmModal(
             "Revert to file###revert-file",
             std::format("Replace the current edits to {} with its saved file?",

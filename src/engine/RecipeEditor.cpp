@@ -848,6 +848,16 @@ void RecipeEditor::HoldSignal(std::string a_id, std::string a_signal,
       });
 }
 
+void RecipeEditor::ResetViewForLoad() {
+  view_ = {};
+  paintReturn_ = {};
+  for (const std::string &id : RecipesWithHolds()) {
+    for (const auto &[signal, value] : SignalHoldsOf(id)) {
+      static_cast<void>(SetSignalHold(id, signal, std::nullopt));
+    }
+  }
+}
+
 void RecipeEditor::ReleaseHolds() {
   runtime_.PostTask([this] {
     for (const std::string &id : RecipesWithHolds()) {
