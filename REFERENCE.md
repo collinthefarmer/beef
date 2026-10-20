@@ -1374,6 +1374,13 @@ on (`CameraViewOf`).
   count `kOutOfView` as pending, so drawing the actor later reports
   `kRendered`. Idle checks count it as settled.
 - The player and the inspected actor are always in view (`InViewOf`).
+- `DrawFirstSlots` refreshes a geometry's render inputs (once per frame,
+  through `BeginFrame`) before it draws the geometry's slots. A fresh install
+  also gets them from `RenderGeometry`, but a restage draws a staged
+  `LiveActor` that `RenderGeometry` never visits. Without the refresh every
+  stack that reads a signal failed with "render input N (value) is
+  unavailable", and the swap published those failed stacks (seen 170 times in
+  trace `...-1792505943744063.jsonl`, 2026-10-20).
 - Skipping the draw frees nothing. A stack output written into a material is
   never released while its actor lives (`Releasable` excludes
   `CompositeStackStep`). Idle intermediate outputs are released only from

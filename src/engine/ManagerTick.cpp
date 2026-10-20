@@ -499,8 +499,15 @@ LiveActor *FirstDrawnOf(LiveActor &a_state) noexcept {
   return a_state.firstDraw ? &a_state : nullptr;
 }
 
+struct FirstDrawClock {
+  std::uint64_t frame = 0;
+  std::uint32_t nowMS = 0;
+  WarningHistory &warnings;
+};
+
 DrawPace DrawFirstSlots(LiveActor &a_state, const SlotRenderView &a_view,
-                        DrawPace a_pace, std::uint64_t a_budgetUs) {
+                        DrawPace a_pace, std::uint64_t a_budgetUs,
+                        const FirstDrawClock &a_clock) {
   TextureLab *lab = TextureLab::GetSingleton();
   if (!a_state.firstDraw || !lab || !MayDrawStack(a_pace, a_budgetUs)) {
     return a_pace;
@@ -517,6 +524,10 @@ DrawPace DrawFirstSlots(LiveActor &a_state, const SlotRenderView &a_view,
     if (!bound || bound->lost || slot.slot >= bound->stackPlan.slots.size()) {
       slot.drawn = true;
       continue;
+    }
+    if (bound->inputs.render &&
+        bound->inputs.render->BeginFrame(a_clock.frame, a_clock.nowMS)) {
+      UpdateRenderInputs(a_state, *bound, a_clock.warnings);
     }
     const Metrics::Stopwatch watch;
     const SlotChain chain = RenderSlotChain(a_state, *bound, a_view,
@@ -876,7 +887,8 @@ Manager::RunDrawUnpublished(const Orchestration::DrawUnpublished &a_command,
       const ResizeInFlight *resize = InFlightOf(state);
       drawn = resize ? DrawnStacks(*resize) : 0;
     } else if (firstDrawn) {
-      pace = DrawFirstSlots(*firstDrawn, slotView, pace, a_command.budgetUs);
+      pace = DrawFirstSlots(*firstDrawn, slotView, pace, a_command.budgetUs,
+                            {renderFrame_, drawNowMS_, warningHistory_});
       drawn = firstDrawn->firstDraw ? DrawnSlots(*firstDrawn->firstDraw) : 0;
     } else {
       ReportDisagreement(id, {"command", "draw_unpublished"},
