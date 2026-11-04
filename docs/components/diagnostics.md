@@ -47,7 +47,7 @@ event its wire name.
 | `kOperation` | A new operation id and its parent, with the reason. | `Trace::Operation` itself (`Trace.cpp`). |
 | `kPage` | The current menu page and selection, de-duplicated. | `Trace::Page` itself (`Trace.cpp`). |
 | `kQueue` | One `SessionQueue` action — `post`, `mark_stale`, `execute_sync`, `sync_rejected`, `equip_finalize` — with the actor and queue generation. | `SessionQueue.cpp`. |
-| `kLoad` | A load transition — `resume`, `clear_begin`, `clear_end` — with the generation and actor count. | `Manager.cpp`. |
+| `kLoad` | A load transition — `resume`, `clear_begin`, `clear_end` — with the generation and actor count. `clear_end` also counts the images dropped from the image store. | `Manager.cpp`. |
 | `kApplication` | An application step — `sync_begin`, `actor_decide`, `installed`, or a phase from `ApplicationPhaseName` — with the actor and recipe. | `ManagerApply.cpp`, `ApplicationService.cpp`. |
 | `kRetire` | Retirement `begin`/`end` for one actor, with its recipe count. | `ManagerApply.cpp`. |
 | `kBinding` | A **binding** install or geometry scope, with the geometry pointer and name. | `Binding.cpp`, `ManagerApply.cpp`. |

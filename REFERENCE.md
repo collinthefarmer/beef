@@ -696,7 +696,7 @@ content, so a pass with no firings paints it black.
 Filter pass (`PSFilter`, cbuffer `FilterParams` b8, `FilterConstants`): two
 draws, horizontal then vertical. The horizontal draw's target is the lab's
 sweep for that size (`FilterSweepFor`): one RGBA16F target per side, kept
-while filters run and released by `ExpireIdleTargets` after 1 s without a
+while filters run and released by `ExpireIdle` after 1 s without a
 filter. Draws run one at a time on the render thread, so one sweep per size
 serves every filter. Before 2026-10-16 each filter run acquired and
 recycled a pool target, which wrote two trace events per run (128,090
@@ -888,6 +888,16 @@ Lab mechanics:
   0x0 for streamed maps, so a texture's real size comes from the D3D
   resource (NOTES 43). `GetTexture` accepts a record's raw path and the
   `textures\` prefixed form (NOTES 7).
+- Channel means (`MeanChannel`, the only caller `MeasureFlatDisplacement` in
+  `MaterialInputs::From`) are kept by `NamedTexture` and channel: the
+  lowercased texture name and its D3D extent (`MeanKeyOf`). The store keeps
+  256 means for 30 s after their last use (`kMeans`). A failed measurement is
+  kept 10 s (`kFailedMeans`) and measured again after that. A texture without
+  a name is measured on each call and not kept. `From` runs once per geometry
+  install, so this costs no tick time. `ExpireIdle` sweeps both stores each
+  tick. Before 2026-11-04 the means were kept by raw texture pointer for the
+  session, so a texture freed and another loaded at its address got the old
+  mean, and a failure stayed 0.5 for the session.
 
 ## Bindings (`Binding.cpp`, `Binding.h`, `PBRMaterial.h`)
 
@@ -1612,7 +1622,7 @@ layout, and so its out-of-view share, did not exist.
   pixels, format and mip chain). When a returned target does not fit, the
   pool lets its oldest idle targets go, not the returned one, because a newer
   shape is the likelier to be asked for again. Each tick,
-  `TextureLab::ExpireIdleTargets` lets go every target idle for 5 s, counted
+  `TextureLab::ExpireIdle` lets go every target idle for 5 s, counted
   from the last `ExpireIdle` before the target returned (`Pool::now`),
   because the deleter that returns a target has no clock of its own. Before
   2026-11-04 the count started at the first sweep that saw the target idle.
@@ -2832,6 +2842,15 @@ them outside as separate passes.
   game's maps loaded for up to 30 s after use (`kMaterialRecords`). A game
   texture reloaded at the same address with the same name is the same file,
   and a plugin target's generation tells a reused target apart.
+- The image store (`LoadImage`) keeps 64 images by `ImageCacheKey` for 30 s
+  after their last use (`kImages`) and a failed load for 10 s
+  (`kFailedImages`). `SweepBoundMeshes` sweeps it every 5 s with the meshes
+  and materials. `Manager::Clear` empties it (`ClearImages`), and the
+  `clear_end` load event records the dropped count as `images`. Before
+  2026-11-04 the store kept every image and every failed load for the
+  session. An evicted image stays alive while an instance holds its
+  `TextureRef`; the next `LoadImage` gets the same texture from the game's
+  texture manager.
 
 ## Recipe format details beyond the schema (`Recipe.h`, `RecipeRead.cpp`, `RecipeWrite.cpp`)
 

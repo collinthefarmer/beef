@@ -492,47 +492,65 @@ TextureLab::ExtentOf(RE::NiSourceTexture *a_source) {
   return extent;
 }
 
-float TextureLab::MeanLuminance(RE::NiSourceTexture *a_source) {
-  if (const auto it = luminance_.find(a_source); it != luminance_.end()) {
-    return it->second;
-  }
-  float result = 0.5f;
-  auto target = Acquire(TextureSize(kMeanSide), "mean");
-  LayerParams params;
-  params.scroll.sourceMip = MeanSourceMip(a_source);
-  if (target && Render(*target, a_source, params)) {
-    result = ReadBackMean(*target).value_or(0.5f);
-  } else {
-    logger::warn("TextureLab: mean luminance render failed; using 0.5");
-  }
-  luminance_[a_source] = result;
-  return result;
-}
-
 float TextureLab::MeanChannel(RE::NiSourceTexture *a_source,
                               ShaderChannel a_channel) {
-  const auto key = std::make_pair(a_source, a_channel);
-  if (const auto it = channelMeans_.find(key); it != channelMeans_.end()) {
-    return it->second;
-  }
-  float result = 0.5f;
-  auto target = Acquire(TextureSize(kMeanSide), "mean");
-  if (target) {
-    LayerParams p;
-    p.mode = Mode::kChannel;
-    p.map = {a_source, MapReading::kRmaos};
-    p.channel.channel = a_channel;
-    p.channel.mapMip = MeanSourceMip(a_source);
-    if (Render(*target, nullptr, p)) {
-      result = ReadBackMean(*target).value_or(0.5f);
-    } else {
-      logger::warn("TextureLab: channel mean render failed; using 0.5");
+  const std::optional<MeanKey> key = MeanKeyOf(a_source, a_channel);
+  if (key) {
+    if (const float *known = means_.Use(*key, sweepClockMs_)) {
+      return *known;
     }
-  } else {
-    logger::warn("TextureLab: no target for channel mean; using 0.5");
+    if (failedMeans_.Find(*key)) {
+      return kUnmeasuredMean;
+    }
   }
-  channelMeans_[key] = result;
-  return result;
+  const std::optional<float> measured = MeasureChannel(a_source, a_channel);
+  if (key && measured) {
+    const std::optional<float> rejected =
+        means_.Insert(*key, *measured, 0, sweepClockMs_);
+  } else if (key) {
+    const std::optional<std::monostate> rejected =
+        failedMeans_.Insert(*key, {}, 0, sweepClockMs_);
+  }
+  return measured.value_or(kUnmeasuredMean);
+}
+
+std::optional<TextureLab::MeanKey>
+TextureLab::MeanKeyOf(RE::NiSourceTexture *a_source, ShaderChannel a_channel) {
+  if (!a_source || !a_source->name.c_str()) {
+    return std::nullopt;
+  }
+  const std::optional<Extent> extent = ExtentOf(a_source);
+  if (!extent) {
+    return std::nullopt;
+  }
+  const std::optional<NamedTexture> named =
+      NamedTextureOf(a_source->name.c_str(), extent->width, extent->height);
+  if (!named) {
+    return std::nullopt;
+  }
+  return MeanKey{*named, a_channel};
+}
+
+std::optional<float> TextureLab::MeasureChannel(RE::NiSourceTexture *a_source,
+                                                ShaderChannel a_channel) {
+  const std::shared_ptr<RenderTarget> target =
+      Acquire(TextureSize(kMeanSide), "mean");
+  if (!target) {
+    logger::warn("TextureLab: no target for channel mean; using {}",
+                 kUnmeasuredMean);
+    return std::nullopt;
+  }
+  LayerParams p;
+  p.mode = Mode::kChannel;
+  p.map = {a_source, MapReading::kRmaos};
+  p.channel.channel = a_channel;
+  p.channel.mapMip = MeanSourceMip(a_source);
+  if (!Render(*target, nullptr, p)) {
+    logger::warn("TextureLab: channel mean render failed; using {}",
+                 kUnmeasuredMean);
+    return std::nullopt;
+  }
+  return ReadBackMean(*target);
 }
 
 namespace {

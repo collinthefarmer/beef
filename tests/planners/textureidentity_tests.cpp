@@ -21,6 +21,16 @@ void CacheKeyIgnoresCase() {
         "separators are part of the identity");
 }
 
+void NamedTextureIgnoresCaseAndKeepsExtent() {
+  Check(!NamedTextureOf("", 512, 512), "a texture without a name has none");
+  Check(NamedTextureOf("Armor\\Iron_M.dds", 512, 512) ==
+            NamedTextureOf("armor\\iron_m.DDS", 512, 512),
+        "two spellings of one name are one texture");
+  Check(NamedTextureOf("armor\\iron_m.dds", 512, 512) !=
+            NamedTextureOf("armor\\iron_m.dds", 1024, 1024),
+        "a reload at another extent is another texture");
+}
+
 void PlaceholderExtentIsTiny() {
   Check(IsPlaceholderExtent(0, 0), "a zero extent is a placeholder");
   Check(IsPlaceholderExtent(4, 4), "the four-texel extent is a placeholder");
@@ -33,6 +43,7 @@ void PlaceholderExtentIsTiny() {
 
 int main() {
   CacheKeyIgnoresCase();
+  NamedTextureIgnoresCaseAndKeepsExtent();
   PlaceholderExtentIsTiny();
   return test::Finish("planners textureidentity");
 }

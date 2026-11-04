@@ -36,7 +36,7 @@ test covers it.
   per tick, the setting `UnpublishedDrawBudgetMs` (4 ms by default), which
   the core passes in the `DrawUnpublished` command (`planners/DrawPacing.h`).
 - `Compositor` (`Compositor.h`) is the process-wide entry point for stack
-  rendering. It also owns the image cache (`LoadImage`), the mesh cache
+  rendering. It also owns the image store (`LoadImage`), the mesh cache
   (`MeshOf`), the material analysis cache (`AnalyseMaterial`) and the studio's
   source and mask inspection (`InspectSource`, `InspectMask`).
 - `GeneratedShaders` (`GeneratedShaders.h`) compiles and caches the pixel
@@ -183,6 +183,7 @@ GPU.
 | `ReductionConstants` | The `PSReduce` constant buffer. Its static asserts pin the `ReductionKind` values: mean, sum, minimum, maximum. | `planners/ShaderConstants.h` |
 | `TextureLab::MaterialReadback` | The RMAOS and diffuse staging copies of one material sample, and a pending flag. `SubmitMaterialSample` and `CollectMaterialSample` use it. | `TextureLab.h` |
 | `TextureLab::Extent` | A texture's width and height. `ExtentOf` reads it. | `TextureLab.h` |
+| `TextureLab::MeanChannel`, `MeanKey` | The mean of one channel of an engine texture, measured on a 64x64 **target**. The lab keeps it under the texture's `NamedTexture` and the channel: 256 means, 30 s after their last use (`kMeans`). It keeps a failed measurement 10 s (`kFailedMeans`) and returns 0.5 for it. A texture without a name is measured and not kept. | `TextureLab.h` |
 | `TextureLab::TimedSpan` | A scope that records one GPU timestamp pair when timing is on. `BeginTimedTick`, `CollectTimings` and `DrainTimings` manage the ticks. | `TextureLab.h` |
 
 Each `PSReduce` pass reduces a 4x4 block to one texel (`kReductionBlock`)

@@ -82,8 +82,11 @@ TextureRef Compositor::LoadImage(std::string_view a_path) {
     return nullptr;
   }
   const std::string key = ImageCacheKey(a_path);
-  if (const auto it = images_.find(key); it != images_.end()) {
-    return it->second;
+  if (const TextureRef *loaded = images_.Use(key, nowMS_)) {
+    return *loaded;
+  }
+  if (failedImages_.Find(key)) {
+    return nullptr;
   }
   RE::NiPointer<RE::NiTexture> texture;
   RE::BSShaderManager::GetTexture(std::string{a_path}.c_str(), true, texture,
@@ -97,8 +100,29 @@ TextureRef Compositor::LoadImage(std::string_view a_path) {
                      : nullptr;
   }
   TextureRef result{source && source->rendererTexture ? source : nullptr};
-  images_[key] = result;
+  if (result) {
+    const std::optional<TextureRef> rejected =
+        images_.Insert(key, result, 0, nowMS_);
+  } else {
+    const std::optional<std::monostate> rejected =
+        failedImages_.Insert(key, {}, 0, nowMS_);
+  }
   return result;
+}
+
+void Compositor::SweepImages(Millis a_now) {
+  const RetainedStore<std::string, TextureRef>::Evicted images =
+      images_.Sweep(a_now, KeepNone{});
+  const RetainedStore<std::string, std::monostate>::Evicted failures =
+      failedImages_.Sweep(a_now, KeepNone{});
+}
+
+std::size_t Compositor::ClearImages() {
+  const RetainedStore<std::string, TextureRef>::Evicted images =
+      images_.Clear();
+  const RetainedStore<std::string, std::monostate>::Evicted failures =
+      failedImages_.Clear();
+  return images.size() + failures.size();
 }
 
 std::uint64_t Compositor::ResidentTargets() const noexcept {

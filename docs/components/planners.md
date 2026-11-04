@@ -486,6 +486,7 @@ engine handle.
 | `Returns` | `Eviction.h` | A `constexpr` function. It tells if an actor with nothing installed returns at an eviction distance. `Actors::InRange` and `RingOf` call it. |
 | `TransformStorage` | `TransformStorage.h` | An engine transform array's base address, `count`, `stride` and `offset`. `TransformStorageIndex` decodes a pointer into a row index. `render/SkinPalette.cpp` uses it. |
 | `ImageCacheKey`, `IsPlaceholderExtent` | `TextureIdentity.h` | `ImageCacheKey` lower-cases a path into a cache key. `IsPlaceholderExtent` reports a width or height at or under `kPlaceholderTextureExtent` (4). |
+| `NamedTexture`, `NamedTextureOf` | `TextureIdentity.h` | The identity of an engine texture: its lowercased name and its extent. A texture without a name has none. `render/TextureLab` keys channel means by it. |
 
 ## How an actor's plans flow
 
@@ -562,7 +563,7 @@ PSGeneratedStack, or PSStack until the compile finishes     render/GeneratedShad
 | `ProgramReference.h`/`.cpp` | Programs | `EvaluateProgramOnCpu` and `QuantizeUnorm8`. |
 | `GpuReduction.h`/`.cpp` | Programs | Reduction levels, `DecodeReduction`, the `ReadbackRing` functions. |
 | `TargetPool.h`, `ConsumptionLeases.h`, `TextureLeases.h`, `OwnedState.h`, `RetainedStore.h` | Resource primitives | The lease and retention templates. |
-| `Eviction.h`, `TransformStorage.h`/`.cpp`, `TextureIdentity.h`/`.cpp` | Resource primitives | `EvictionFor`, `Returns`, `TransformStorageIndex`, `ImageCacheKey`, `IsPlaceholderExtent`. |
+| `Eviction.h`, `TransformStorage.h`/`.cpp`, `TextureIdentity.h`/`.cpp` | Resource primitives | `EvictionFor`, `Returns`, `TransformStorageIndex`, `ImageCacheKey`, `NamedTexture`, `IsPlaceholderExtent`. |
 
 ## See also
 

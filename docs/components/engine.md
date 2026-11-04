@@ -441,6 +441,7 @@ budget. The engine gives it the measured facts.
 | `DefaultSlotResolution`, `ResolutionDivisor` | The per-slot default `Resolution` and its divisor (`kFull` 1, `kHalf` 2, `kQuarter` 4). | `recipe/Recipe.h` |
 | `SurfaceOutput::resolution` | An optional `Resolution` that overrides `DefaultSlotResolution` for that output's slot. | `recipe/Recipe.h` |
 | `Settings::renderTargetBudgetMiB` | The cap on the render target allowance in MiB. 0 sets no cap. `kMaxRenderTargetBudgetMiB` (65536) caps it. A regression run can replace it (`RegressionRenderTargetBudgetMiB`). | `Settings.h` |
+| `Compositor::ClearImages` | Empties the image store at load. `Manager::Clear` calls it and writes the count as `images` on the `clear_end` load event. | `render/Compositor.h` |
 | `Settings::StepDownHoldMS`, `Settings::HiddenReleaseMS` | The settings `StepDownHoldSeconds` (2 s, at most 30 s) and `HiddenReleaseSeconds` (5 s, at most 60 s) in milliseconds. `TickSettingsOf` passes them as `TickSettings::screenStepDownHoldMs` and `outOfViewReleaseDelayMs`. | `Settings.h`, `ManagerFacts.cpp` |
 | `Settings::unpublishedDrawBudgetMs` | The time that one tick may spend on unpublished draws, from 1 to 16 ms (`kMinUnpublishedDrawBudgetMs`, `kMaxUnpublishedDrawBudgetMs`). The core passes it in `DrawUnpublished::budgetUs`. | `Settings.h` |
 | `Manager::SampleBudget` | Reads the DXGI memory, the cap, the measured target bytes and the planned holding (`PlannedTargets`) into a `BudgetSample`. | `ManagerHeartbeat.cpp` |

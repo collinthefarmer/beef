@@ -305,7 +305,7 @@ void TextureLab::InvalidatePreviews() noexcept {
   previews_->InvalidatePreviews();
 }
 
-void TextureLab::ExpireIdleTargets(std::uint64_t a_nowMs) {
+void TextureLab::ExpireIdle(std::uint64_t a_nowMs) {
   sweepClockMs_ = a_nowMs;
   std::erase_if(filterSweeps_, [&](const auto &a_entry) {
     return a_nowMs - a_entry.second.lastUseMs > kFilterSweepIdleMs;
@@ -313,6 +313,10 @@ void TextureLab::ExpireIdleTargets(std::uint64_t a_nowMs) {
   if (targets_) {
     targets_->ExpireIdle(a_nowMs);
   }
+  const RetainedStore<MeanKey, float>::Evicted means =
+      means_.Sweep(a_nowMs, KeepNone{});
+  const RetainedStore<MeanKey, std::monostate>::Evicted failures =
+      failedMeans_.Sweep(a_nowMs, KeepNone{});
 }
 
 void TextureLab::CollectIdleTargets(HolderSet &a_set) const {
@@ -331,8 +335,9 @@ void TextureLab::Clear() {
   ClearPreviews();
   filterSweeps_.clear();
   targets_->ClearUnused();
-  luminance_.clear();
-  channelMeans_.clear();
+  const RetainedStore<MeanKey, float>::Evicted means = means_.Clear();
+  const RetainedStore<MeanKey, std::monostate>::Evicted failures =
+      failedMeans_.Clear();
   reductionLevels_.clear();
   sampleWarned_.clear();
   groupOdds_.clear();

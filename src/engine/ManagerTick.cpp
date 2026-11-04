@@ -397,6 +397,7 @@ void SweepBoundMeshes(
   const BoundMeshes meshes = BoundMeshesOf(a_applied, a_compositor);
   a_compositor.SweepMeshes(a_nowMS, meshes.geometries);
   a_compositor.SweepMaterials(a_nowMS, meshes.materials);
+  a_compositor.SweepImages(a_nowMS);
 }
 
 void FailGeometryOutputs(LiveActor &a_state, const LiveGeometry &a_bound) {
@@ -562,7 +563,7 @@ std::optional<HeartbeatReading> Manager::RunTick(TextureLab &a_lab,
     const SectionTimer sweepTimer{Metrics::Section::kSweep};
     Compositor::GetSingleton()->BeginTick(a_nowMS);
     Compositor::GetSingleton()->SweepStepOutputs(a_nowMS);
-    a_lab.ExpireIdleTargets(a_nowMS);
+    a_lab.ExpireIdle(a_nowMS);
   }
   std::optional<HeartbeatReading> heartbeat;
   if (heartbeatDue_) {

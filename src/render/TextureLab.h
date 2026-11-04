@@ -16,10 +16,12 @@
 #include "planners/GpuReduction.h"
 #include "planners/MipLevel.h"
 #include "planners/RenderPlan.h"
+#include "planners/RetainedStore.h"
 #include "planners/ShaderConstants.h"
 #include "planners/StackShader.h"
 #include "planners/TargetHolders.h"
 #include "planners/TextureDemand.h"
+#include "planners/TextureIdentity.h"
 #include "render/GeneratedShaders.h"
 
 #include <REX/W32/COMPTR.h>
@@ -37,6 +39,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
+#include <variant>
 #include <vector>
 
 namespace BetterEnchantmentEffects {
@@ -377,7 +380,6 @@ public:
   CollectReduction(ReductionKind a_kind, ValueType a_type,
                    ReductionExtent a_extent, ReductionReadback &a_readback);
 
-  float MeanLuminance(RE::NiSourceTexture *a_source);
   float MeanChannel(RE::NiSourceTexture *a_source, ShaderChannel a_channel);
 
   std::shared_ptr<RenderTarget> Preview(RE::NiSourceTexture *a_source,
@@ -400,7 +402,7 @@ public:
   void InvalidatePreviews() noexcept;
 
   void Clear();
-  void ExpireIdleTargets(std::uint64_t a_nowMs);
+  void ExpireIdle(std::uint64_t a_nowMs);
   void CollectIdleTargets(HolderSet &a_set) const;
   void CollectPreviewTargets(HolderSet &a_set);
 
@@ -557,9 +559,18 @@ private:
   REX::W32::ID3D11Device *borrowedDevice_ = nullptr;
   REX::W32::ID3D11DeviceContext *borrowedContext_ = nullptr;
   std::unique_ptr<GpuResources> gpu_;
-  std::unordered_map<RE::NiSourceTexture *, float> luminance_;
-  std::map<std::pair<RE::NiSourceTexture *, ShaderChannel>, float>
-      channelMeans_;
+  using MeanKey = std::pair<NamedTexture, ShaderChannel>;
+  static constexpr float kUnmeasuredMean = 0.5f;
+  static constexpr RetentionPolicy kMeans{
+      .maxCount = 256, .maxBytes = kNoByteBound, .maxIdle = 30000};
+  static constexpr RetentionPolicy kFailedMeans{
+      .maxCount = 256, .maxBytes = kNoByteBound, .maxIdle = 10000};
+  [[nodiscard]] static std::optional<MeanKey>
+  MeanKeyOf(RE::NiSourceTexture *a_source, ShaderChannel a_channel);
+  [[nodiscard]] std::optional<float>
+  MeasureChannel(RE::NiSourceTexture *a_source, ShaderChannel a_channel);
+  RetainedStore<MeanKey, float> means_{kMeans};
+  RetainedStore<MeanKey, std::monostate> failedMeans_{kFailedMeans};
   std::unordered_set<RE::NiSourceTexture *> sampleWarned_;
   std::map<std::pair<std::uint32_t, std::uint32_t>, ReductionLevel>
       reductionLevels_;
