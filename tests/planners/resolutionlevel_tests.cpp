@@ -1,4 +1,5 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
+#include "planners/Hold.h"
 #include "planners/ResolutionLevel.h"
 #include "test_support.h"
 
@@ -73,34 +74,26 @@ void SmallActorsStepDownAfterTheHold() {
         "an actor out of view steps down by its size alone");
 }
 
-std::optional<std::uint32_t> SmallSinceNow(ResolutionLevel a_level,
-                                           float a_fraction,
-                                           std::optional<std::uint32_t> a_since,
-                                           std::uint32_t a_now) {
-  if (!SmallFor(a_fraction, a_level)) {
-    return std::nullopt;
-  }
-  return a_since.value_or(a_now);
-}
+constexpr Millis kStepDownHold = 2000;
 
 void WalkingAwayAndBackSettles() {
   ResolutionLevel level = ResolutionLevel::kQuarter;
-  std::optional<std::uint32_t> since;
-  std::uint32_t now = 100000;
+  Hold small;
+  Millis now = 100000;
   std::size_t changes = 0;
   for (const float fraction :
        {0.26f, 0.24f, 0.51f, 0.45f, 0.42f, 0.41f, 0.52f, 0.45f, 0.41f}) {
     for (int tick = 0; tick < 30; ++tick, now += 100) {
-      since = SmallSinceNow(level, fraction, since, now);
-      const LevelStep step = LevelStepOf(
-          level, Seen(fraction), since && now - *since >= kStepDownHoldMS);
+      small = small.Update(SmallFor(fraction, level), now);
+      const LevelStep step =
+          LevelStepOf(level, Seen(fraction), small.Due(now, kStepDownHold));
       if (const auto *up = std::get_if<StepUpTo>(&step)) {
         level = up->level;
-        since.reset();
+        small = {};
         ++changes;
       } else if (const auto *down = std::get_if<StepDownTo>(&step)) {
         level = down->level;
-        since.reset();
+        small = {};
         ++changes;
       }
     }

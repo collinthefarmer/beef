@@ -44,7 +44,6 @@ template <class T> struct PerLevel {
 };
 
 inline constexpr float kStepDownBand = 0.8f;
-inline constexpr std::uint32_t kStepDownHoldMS = 2000;
 
 struct ActorVisibility {
   std::optional<float> screenFraction;

@@ -3837,15 +3837,15 @@ The method and its prototype comparison are in
   level does not fall because it left the view. It keeps the detail it has
   when the camera turns back to it.
 - An NPC steps down one level when its screen fraction stays below 0.8 of
-  the lower threshold of its level for 2 s (`kStepDownBand`,
-  `kStepDownHoldMS`, `SmallFor`). The cutoffs are 0.4 for full, 0.2 for half
+  the lower threshold of its level for 2 s (`kStepDownBand`, `SmallFor`, the
+  setting `StepDownHoldSeconds`). The cutoffs are 0.4 for full, 0.2 for half
   and 0.1 for quarter. The step-down rule reads the fraction in and out of
   view, so a camera turn does not start the hold.
 - `Shown::smallOnScreen` (a `Hold`) keeps the start of the hold. `SeeActor`
   updates it each tick, and a fraction above the cutoff clears it. A level
   change clears it, because the next `Shown` starts with a new hold.
   `ScreenStepDownDue` reads it with `TickSettings::screenStepDownHoldMs`
-  (`kStepDownHoldMS`). Only `Shown` has the hold.
+  (`Settings::StepDownHoldMS`, at most 30 s). Only `Shown` has the hold.
 - The cutoffs are 0.8 of the step-up thresholds, so an NPC near a threshold
   does not change level back and forth. The 2 s hold is continuous: a
   fraction that rises above the cutoff starts the hold again.
@@ -4177,7 +4177,8 @@ The method and its prototype comparison are in
   (`kept on release` in `planners_templatecost`). The released outputs are
   the static outputs that 7b keeps until the instance goes.
 - Without pressure, an actor in `Shown` that stays out of view for
-  `TickSettings::outOfViewReleaseDelayMs` (5 s) releases
+  `TickSettings::outOfViewReleaseDelayMs` (5 s, the setting
+  `HiddenReleaseSeconds`, at most 60 s) releases
   (`Held::outOfView`, a `Hold`, in `SeeActor`). The core issues
   `ReleaseIntermediates` with `ReleaseReason::kOutOfView`, and the executor
   traces `hidden_release`. A first draw and a resize never release, because

@@ -218,7 +218,7 @@ A plan names texture sizes by **side reference** (`SideRef`, in `TextureDemand.h
 | `IdealLevel` | The level for a screen fraction. |
 | `PerLevel`, `LevelIndex`, `kResolutionLevels` | One value per level, read with `At`; the index of a level; every level from full to eighth. |
 | `ActorVisibility`, `LevelFor` | One actor's optional screen fraction, whether it is **shown** (drawn this tick), and its role; the level its visibility asks for: full for the player, eighth when not shown, `IdealLevel` when shown, and none when the fraction is unmeasured. |
-| `SmallFor`, `kStepDownBand`, `kStepDownHoldMS` | Whether a fraction is under 0.8 of the lower threshold of a level, and the 2 s that it must stay small before a step down. The tick core keeps the start of that hold in `Live::smallOnScreen` (a `Hold`). |
+| `SmallFor`, `kStepDownBand` | Whether a fraction is under 0.8 of the lower threshold of a level. The setting `StepDownHoldSeconds` (2 s) is how long it must stay small before a step down. The tick core keeps the start of that hold in `Live::smallOnScreen` (a `Hold`). |
 | `KeepLevel`, `StepUpTo`, `StepDownTo`, `LevelStep`, `LevelStepOf` | The level change for one tick: a step up straight to the wanted level, one level down when the step-down hold is due, or none. The player never steps down. |
 | `LargerOnScreen` | Orders two optional fractions, larger first and unmeasured last. |
 | `AtLevel` | The `PlanSizes` divided by a level, with 64 as the floor. |

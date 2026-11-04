@@ -76,7 +76,8 @@ Orchestration::TickSettings TickSettingsOf(const Settings &a_settings) {
   settings.publishEffects = a_settings.publishEffects;
   settings.verboseLogging = a_settings.verboseLogging;
   settings.unpublishedDrawBudgetMs = a_settings.unpublishedDrawBudgetMs;
-  settings.screenStepDownHoldMs = kStepDownHoldMS;
+  settings.screenStepDownHoldMs = a_settings.StepDownHoldMS();
+  settings.outOfViewReleaseDelayMs = a_settings.HiddenReleaseMS();
   return settings;
 }
 

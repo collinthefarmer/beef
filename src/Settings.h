@@ -18,6 +18,8 @@ inline constexpr float kMaxEvictDistance = 20000.0f;
 inline constexpr std::uint32_t kMaxRenderTargetBudgetMiB = 65536;
 inline constexpr std::uint32_t kMinUnpublishedDrawBudgetMs = 1;
 inline constexpr std::uint32_t kMaxUnpublishedDrawBudgetMs = 16;
+inline constexpr float kMaxStepDownHoldSeconds = 30.0f;
+inline constexpr float kMaxHiddenReleaseSeconds = 60.0f;
 
 enum class TextureScale {
   kQuarter,
@@ -58,15 +60,33 @@ struct Settings {
   std::uint32_t unpublishedDrawBudgetMs = 4;
   float animationSpeed = 1.0f;
   float evictDistance = 0.0f;
+  float stepDownHoldSeconds = 2.0f;
+  float hiddenReleaseSeconds = 5.0f;
   TextureScale textureScale = TextureScale::kFull;
   NpcResolution npcResolution = NpcResolution::kHalf;
 
   [[nodiscard]] std::uint32_t TickIntervalMS() const noexcept {
     return 1000u / std::clamp(animationFPS, kMinAnimationFPS, kMaxAnimationFPS);
   }
+  [[nodiscard]] std::uint64_t StepDownHoldMS() const noexcept {
+    return MillisOf(stepDownHoldSeconds, kMaxStepDownHoldSeconds);
+  }
+  [[nodiscard]] std::uint64_t HiddenReleaseMS() const noexcept {
+    return MillisOf(hiddenReleaseSeconds, kMaxHiddenReleaseSeconds);
+  }
 
   [[nodiscard]] static Settings Parse(std::string_view a_text);
   [[nodiscard]] std::string Serialize() const;
+
+private:
+  [[nodiscard]] static std::uint64_t MillisOf(float a_seconds,
+                                              float a_maxSeconds) noexcept {
+    if (!(a_seconds > 0.0f)) {
+      return 0;
+    }
+    return static_cast<std::uint64_t>(std::min(a_seconds, a_maxSeconds) *
+                                      1000.0f);
+  }
 };
 
 struct SettingDesc {
