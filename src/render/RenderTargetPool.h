@@ -1,7 +1,7 @@
 // GPL-3.0-only with the additional permission in COPYING.md.
 #pragma once
 
-#include "planners/ResourcePool.h"
+#include "planners/RetainedStore.h"
 #include "planners/TargetPool.h"
 #include "render/TextureLab.h"
 
@@ -37,13 +37,22 @@ public:
   [[nodiscard]] Holdings Held() const;
 
 private:
-  static constexpr std::size_t kMaxIdleTargets = 16;
-  static constexpr std::uint64_t kMaxIdleBytes = 64 * 1024 * 1024;
-  static constexpr std::uint64_t kMaxIdleMs = 5000;
+  static constexpr RetentionPolicy kIdleTargets{
+      .maxCount = 16, .maxBytes = 64 * 1024 * 1024, .maxIdle = 5000};
+  struct IdleShape {
+    std::uint32_t pixels = 0;
+    TextureFormat format = TextureFormat::kRgba8;
+    bool chain = false;
+    [[nodiscard]] bool operator==(const IdleShape &) const = default;
+  };
+  using IdleTargets = RetainedStore<IdleShape, std::unique_ptr<RenderTarget>>;
   struct Pool {
     std::mutex lock;
-    ResourcePool<RenderTarget> targets{kMaxIdleTargets, kMaxIdleBytes};
+    IdleTargets targets{kIdleTargets};
+    Millis now = 0;
   };
+  [[nodiscard]] static IdleShape ShapeOf(const RenderTarget &a_target) noexcept;
+  [[nodiscard]] static IdleShape ShapeOf(const TargetShape &a_shape) noexcept;
 
   bool CreateTarget(REX::W32::ID3D11Device *a_device, RenderTarget &a_target,
                     const TargetShape &a_shape);

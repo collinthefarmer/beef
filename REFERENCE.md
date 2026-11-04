@@ -1600,17 +1600,23 @@ layout, and so its out-of-view share, did not exist.
   instance retires.
 
 - Cache maintenance is driven by `Manager::OnFrame` every five seconds even
-  without applied actors. Material records protect active texture pairs, expire
-  unused entries after 30 seconds, and retain at most 64 unused pairs per pass.
-  These provisional retention values mirror the mesh grace period and preserve
-  short rebuild reuse; they are not measured alpha workload limits. Shared target
-  caches prune expired keys both on adoption and during maintenance.
+  without applied actors. Material records live in a `RetainedStore` under
+  `Compositor::kMaterialRecords`. The sweep keeps and renews the records that
+  bound geometries use, evicts other records after 30 seconds, and keeps at
+  most 64 of them. These provisional retention values mirror the mesh grace
+  period and preserve short rebuild reuse; they are not measured alpha
+  workload limits. Shared target caches prune expired keys both on adoption
+  and during maintenance.
 - The render-target idle pool retains at most 16 targets and 64 MiB
-  (`ResourcePool`). When a returned target does not fit, the pool lets its
-  oldest idle targets go, not the returned one, because a newer shape is the
-  likelier to be asked for again. Each tick, `TextureLab::ExpireIdleTargets`
-  lets go every target idle for 5 s (`kMaxIdleMs`), counted from the first
-  sweep that saw it idle. Before 2026-10-09 the pool refused new targets when
+  (`RenderTargetPool::kIdleTargets`, a `RetainedStore` keyed by `IdleShape`:
+  pixels, format and mip chain). When a returned target does not fit, the
+  pool lets its oldest idle targets go, not the returned one, because a newer
+  shape is the likelier to be asked for again. Each tick,
+  `TextureLab::ExpireIdleTargets` lets go every target idle for 5 s, counted
+  from the last `ExpireIdle` before the target returned (`Pool::now`),
+  because the deleter that returns a target has no clock of its own. Before
+  2026-11-04 the count started at the first sweep that saw the target idle.
+  Before 2026-10-09 the pool refused new targets when
   full and kept old ones until a load, so shapes from earlier resizes could
   hold the pool. The pool returns what it lets go, and the caller destroys it
   after the pool lock is released. Targets held by active consumers,
@@ -2460,7 +2466,7 @@ length-prefixes both parts like every other identity, because it reads nothing b
 every rebuild and every actor drew its own (2026-10-05: 28 `BakeMesh` passes
 per edit for three Vigilants in the same armor). The compositor's step output cache keeps an entry while something else holds
 its target, renewing its time, and evicts it 500 ms after the last holder lets
-go (`StepOutputRetention`, `kStepOutputIdleMs` in `planners/RetainedCache.h`;
+go (`StepOutputRetention`, `kStepOutputIdleMs` in `planners/RetainedStore.h`;
 `StepOutputCache::Sweep` applies it). Plan lowering memoizes each value's identity per
 build (`IdentitySite`: graph, output, instance, geometry), since the binding
 resolver depends on exactly those, and `InlineLayerFields` recounts consumers
@@ -2823,7 +2829,7 @@ them outside as separate passes.
   the analysis and any problem. Before 2026-10-09 the key was the two raw
   pointers, and the record held both textures so that a freed address could
   not be reused by another texture while the record lived; that kept the
-  game's maps loaded for up to 30 s after use (`kMaterialMaxAgeMS`). A game
+  game's maps loaded for up to 30 s after use (`kMaterialRecords`). A game
   texture reloaded at the same address with the same name is the same file,
   and a plugin target's generation tells a reused target apart.
 
@@ -3796,6 +3802,14 @@ The method and its prototype comparison are in
   each old import is set aside and imported again.
 
 ## planners (`planners/ActorMatches.h`, `planners/TargetPool.h`, `planners/StackPlan.h`, `planners/BindingPlan.h`, `planners/ActorPlanning.h`, `planners/TextureIdentity.h`)
+
+- `RetainedStore` (`planners/RetainedStore.h`) returns what it evicts and
+  never destroys a value itself, because a render target's destructor
+  restores the presenter's renderer data and must run outside the pool's
+  lock. A store's count and byte bounds apply only to the entries that the
+  sweep's keep rule does not keep, so the material records' 64 counts unused
+  records. `Get` adds an entry without applying the bounds; the next sweep
+  applies them.
 
 - `ResolutionLevel` (`planners/ResolutionLevel.h`) divides every side of an
   NPC's plan by 1, 2, 4 or 8 from its screen fraction (render-performance 7c,
@@ -5322,7 +5336,7 @@ first application lands; the `settle` window after it holds that cost, and
 section) and idle release (in the compositor section) bound the burst's
 memory. A heartbeat's `targets` and
 `target_bytes` include the targets idle in the reuse pool (at most 16 and 64
-MiB, `RenderTargetPool::kMaxIdleTargets` and `kMaxIdleBytes`).
+MiB, `RenderTargetPool::kIdleTargets`).
 
 The heartbeat is emitted after `OnFrame` ends its frame timer, so its own
 trace writes stay out of `frame_us` and the 8 ms spike count. A load returns

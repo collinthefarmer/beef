@@ -10,7 +10,7 @@
 #include "planners/IdentityFacts.h"
 #include "planners/MaterialGrouper.h"
 #include "planners/RenderPlan.h"
-#include "planners/RetainedCache.h"
+#include "planners/RetainedStore.h"
 #include "planners/StackPlan.h"
 #include "planners/TextureDemand.h"
 #include "recipe/Expression.h"
@@ -172,8 +172,8 @@ public:
   MaterialKeyOf(const MaterialInputs &a_material, std::uint64_t a_meshHash);
   [[nodiscard]] std::uint64_t
   MeshHashOf(RE::BSGeometry *a_geometry) const noexcept;
-  static constexpr std::uint32_t kMaterialMaxAgeMS = 30000;
-  static constexpr std::size_t kMaxUnusedMaterials = 64;
+  static constexpr RetentionPolicy kMaterialRecords{
+      .maxCount = 64, .maxBytes = kNoByteBound, .maxIdle = 30000};
   struct MaterialRecord {
     std::optional<GroupingTicket> ticket;
     std::shared_ptr<const MaterialGrouping> grouping;
@@ -184,7 +184,7 @@ public:
                   const std::shared_ptr<MeshEntry> &a_mesh);
   [[nodiscard]] const MaterialRecord *
   CachedMaterial(const MaterialInputs &a_material, std::uint64_t a_meshHash);
-  void ClearMaterials() noexcept;
+  void ClearMaterials();
   void SweepMaterials(std::uint32_t a_nowMS,
                       std::span<const MaterialKey> a_keep);
 
@@ -204,7 +204,7 @@ private:
 
   std::unordered_map<std::string, TextureRef> images_;
   MeshCache meshes_;
-  RetainedCache<MaterialKey, MaterialRecord> materials_;
+  RetainedStore<MaterialKey, MaterialRecord> materials_{kMaterialRecords};
   StepOutputCache stepOutputs_;
   std::uint32_t nowMS_ = 0;
   std::uint32_t lastSweepMS_ = 0;

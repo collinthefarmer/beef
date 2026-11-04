@@ -34,7 +34,7 @@ The directory owns four groups of decisions.
   shader constant buffer. `GpuReduction` holds the pure half of GPU
   reductions and **readbacks**.
 - **Resource primitives.** `TargetPool`, `ConsumptionLeases`, `TextureLeases`,
-  `OwnedState`, `ResourcePool` and `RetainedCache` manage resource lifetime
+  `OwnedState` and `RetainedStore` manage resource lifetime
   with no engine type. `EvictionFor`, `TransformStorageIndex` and the
   texture-identity helpers are pure decisions the engine layers call.
 
@@ -185,7 +185,7 @@ reads no engine state.
 
 | Function | Description |
 |---|---|
-| `StepOutputRetention` | Whether the step output cache renews, keeps or evicts an entry (`Retention`): renew while another holder has the target, keep while unheld for at most `kStepOutputIdleMs` (500 ms), evict after that (`RetainedCache.h`). |
+| `StepOutputRetention` | Whether the step output cache renews, keeps or evicts an entry (`Retention`): renew while another holder has the target, keep while unheld for at most `kStepOutputIdleMs` (500 ms), evict after that (`RetainedStore.h`). |
 | `PositionBakeIdentity` | The identity of a ripple's shared position bake, built from the mesh identity with the same length-prefixed encoding as every value identity (`ValueIdentity.h`). |
 
 ### Target cost
@@ -471,9 +471,8 @@ out a plain index, and the render layer instantiates them.
 | `ConsumptionLeases<Resource>`, `Ticket` | `ConsumptionLeases.h` | `Retain` holds a resource until the consumer calls `Ticket::Consumed`. It returns null when the pending list reaches the limit. |
 | `TextureLeases<Target>`, `TextureLeaseLookup<Target>` | `TextureLeases.h` | `Register` files a generated texture under its **presenter** address and generation. `Retain` returns the generation and the target if the target is still alive. |
 | `OwnedState<State>` | `OwnedState.h` | Remembers a field group's original value and last written value. `Restore` returns the original only while the current value equals the last write. |
-| `ResourcePool<T>` | `ResourcePool.h` | Keeps idle resources up to a count and a byte limit. `Take` removes the first entry a predicate accepts. `render/RenderTargetPool` keeps idle targets in it. |
-| `RetainedCache<Key, Value>` | `RetainedCache.h` | A `std::map` of values with a last-used time. `Sweep` erases entries older than a maximum age and then the oldest unused entries above a count. `render/Compositor` keeps material records in it. |
-| `SharedResource<T>`, `ResourceCache<T>` | `ResourceCache.h` | A cache of `std::weak_ptr` entries under a string key. `Adopt` returns a live entry or makes and publishes one. Only `tests/planners/resourcecache_tests.cpp` uses it. |
+| `RetentionPolicy`, `kNoByteBound` | `RetainedStore.h` | The bounds of a **retained store**: maximum count, maximum bytes and maximum idle age. `kNoByteBound` states that a store has no byte bound. |
+| `RetainedStore<Key, Value>` | `RetainedStore.h` | Values with a byte cost and a last-used time under a `RetentionPolicy`. `Sweep` renews the entries a keep rule accepts, evicts the others past the idle age, then evicts the oldest until the count and byte bounds hold. `Sweep`, `Take` and `Clear` return what they remove. `render/RenderTargetPool` keeps idle targets in one, and `render/Compositor` keeps material records in one. |
 
 ### Pure engine decisions and texture identity
 
@@ -487,7 +486,6 @@ engine handle.
 | `Returns` | `Eviction.h` | A `constexpr` function. It tells if an actor with nothing installed returns at an eviction distance. `Actors::InRange` and `RingOf` call it. |
 | `TransformStorage` | `TransformStorage.h` | An engine transform array's base address, `count`, `stride` and `offset`. `TransformStorageIndex` decodes a pointer into a row index. `render/SkinPalette.cpp` uses it. |
 | `ImageCacheKey`, `IsPlaceholderExtent` | `TextureIdentity.h` | `ImageCacheKey` lower-cases a path into a cache key. `IsPlaceholderExtent` reports a width or height at or under `kPlaceholderTextureExtent` (4). |
-| `RecipeTextureKey`, `RecipeTextureCache<T>` | `RecipeTextureCache.h` | A key of recipe name, texture name, pixel count and context, and a `std::map` from it to a `shared_ptr`. `FindRecipeTexture` and `LargestRecipeTexture` read it. Only `tests/planners/recipetexturecache_tests.cpp` uses it. |
 
 ## How an actor's plans flow
 
@@ -563,8 +561,8 @@ PSGeneratedStack, or PSStack until the compile finishes     render/GeneratedShad
 | `ProgramShader.h`/`.cpp`, `StackShader.h`/`.cpp` | Programs | The opcode statement table, `GenerateProgramShader`, `ProgramFunction`; `StackShape`, `CheckStackShape`, `GenerateStackShader`. |
 | `ProgramReference.h`/`.cpp` | Programs | `EvaluateProgramOnCpu` and `QuantizeUnorm8`. |
 | `GpuReduction.h`/`.cpp` | Programs | Reduction levels, `DecodeReduction`, the `ReadbackRing` functions. |
-| `TargetPool.h`, `ConsumptionLeases.h`, `TextureLeases.h`, `OwnedState.h`, `ResourcePool.h`, `RetainedCache.h`, `ResourceCache.h` | Resource primitives | The lease, pool and cache templates. |
-| `Eviction.h`, `TransformStorage.h`/`.cpp`, `TextureIdentity.h`/`.cpp`, `RecipeTextureCache.h` | Resource primitives | `EvictionFor`, `Returns`, `TransformStorageIndex`, `ImageCacheKey`, `IsPlaceholderExtent`, the recipe texture key. |
+| `TargetPool.h`, `ConsumptionLeases.h`, `TextureLeases.h`, `OwnedState.h`, `RetainedStore.h` | Resource primitives | The lease and retention templates. |
+| `Eviction.h`, `TransformStorage.h`/`.cpp`, `TextureIdentity.h`/`.cpp` | Resource primitives | `EvictionFor`, `Returns`, `TransformStorageIndex`, `ImageCacheKey`, `IsPlaceholderExtent`. |
 
 ## See also
 
