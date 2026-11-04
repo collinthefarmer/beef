@@ -2160,7 +2160,8 @@ builds the new one beside it, as a resize does.
   The staged render therefore uses the published bindings' surfaces
   (`BoundSurfacesOf(published)`), and the swap hands the material and shell
   bindings over (`HandOverBindings`) after it writes every slot back to its
-  original (`ConcealStackSlots`), so no material points at a freed target.
+  original texture and fallback scalars (`ConcealStackSlots`), so no material
+  points at a freed target.
   The `TickActor` later in the same tick publishes the new stacks.
 - The engine reinstalls instead (`ReinstallFor`: retire, then install, both
   results in one tick) when the staged binding plan differs from the
@@ -3903,8 +3904,10 @@ The method and its prototype comparison are in
   readback that never arrives cannot hold two instances. Its stacks that
   have not drawn can show nothing for a few frames, as a reinstall did.
 - The swap (`FinishResize`) always writes each stack slot as not shown
-  (`ConcealStackSlots`). The slot gets its original texture back, and
-  `written` releases the old instance's target. The `TickActor` later in the
+  (`ConcealStackSlots` in `engine/SlotWrites.h`). It writes the same
+  `EmptyWrite` that the render path writes for a hidden slot. The slot gets
+  its original texture and fallback scalars back, and `written` releases the
+  old instance's target. The `TickActor` later in the
   same tick writes the new stacks when the actor is in view. Before
   2026-10-09 the slots of an actor out of view kept the old textures until
   the actor came into view. In `soak-fight` one NPC stepped down from full

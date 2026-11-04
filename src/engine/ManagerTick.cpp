@@ -10,6 +10,7 @@
 #include "engine/LogOnce.h"
 #include "engine/RegressionRun.h"
 #include "engine/SectionTimer.h"
+#include "engine/SlotWrites.h"
 #include "orchestration/DrawSpread.h"
 #include "orchestration/Tick.h"
 #include "planners/RenderBudget.h"
@@ -31,68 +32,6 @@
 
 namespace BetterEnchantmentEffects {
 namespace {
-struct SlotWrite {
-  Slot slot = Slot::kEmissive;
-  TextureRef texture;
-  bool shown = false;
-  std::array<float, kScalarFieldCount> scalars{};
-  Vec3 color{1.0f, 1.0f, 1.0f};
-
-  [[nodiscard]] float Of(ScalarField a_field) const {
-    return scalars[IndexOf(a_field)];
-  }
-  [[nodiscard]] float Shown(ScalarField a_field) const {
-    return shown ? Of(a_field) : 0.0f;
-  }
-};
-
-SlotWrite EmptyWrite(Slot a_slot) {
-  SlotWrite write;
-  write.slot = a_slot;
-  for (const ScalarField field : ScalarsOf(a_slot)) {
-    write.scalars[IndexOf(field)] = ScalarFallback(field);
-  }
-  const float fallback = ScalarFallback(ScalarField::kColor);
-  write.color = Vec3{fallback, fallback, fallback};
-  return write;
-}
-
-void WriteSlot(SlotTarget &a_target, const SlotWrite &a_write) {
-  a_target.WriteTexture(a_write.slot,
-                        a_write.shown ? a_write.texture : nullptr);
-  switch (a_write.slot) {
-  case Slot::kEmissive:
-    a_target.WriteEmissive(Vec3{1.0f, 1.0f, 1.0f},
-                           a_write.Shown(ScalarField::kStrength));
-    break;
-  case Slot::kFuzz:
-    a_target.WriteFuzz(a_write.color, a_write.Shown(ScalarField::kWeight));
-    break;
-  case Slot::kHeight:
-    a_target.WriteHeightScale(a_write.Shown(ScalarField::kScale));
-    break;
-  case Slot::kGlint:
-    a_target.WriteGlint(
-        {.enabled = a_write.shown,
-         .screenSpaceScale = a_write.Of(ScalarField::kScreenSpaceScale),
-         .logMicrofacetDensity = a_write.Of(ScalarField::kLogMicrofacetDensity),
-         .microfacetRoughness = a_write.Of(ScalarField::kMicrofacetRoughness),
-         .densityRandomization =
-             a_write.Of(ScalarField::kDensityRandomization)});
-    break;
-  case Slot::kCoat:
-    a_target.WriteCoat(a_write.Of(ScalarField::kRoughness),
-                       a_write.Shown(ScalarField::kLevel));
-    break;
-  case Slot::kSubsurface:
-    a_target.WriteSubsurface(a_write.color,
-                             a_write.Shown(ScalarField::kThickness));
-    break;
-  default:
-    break;
-  }
-}
-
 struct SlotRenderView {
   const Studio::View &view;
   bool anyLayerHidden = false;

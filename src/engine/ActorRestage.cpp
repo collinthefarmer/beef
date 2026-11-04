@@ -4,6 +4,7 @@
 #include "Core.h"
 #include "engine/ActorResize.h"
 #include "engine/InstallStages.h"
+#include "engine/SlotWrites.h"
 
 #include <cstddef>
 #include <functional>

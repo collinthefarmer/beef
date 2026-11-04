@@ -3,6 +3,7 @@
 
 #include "diagnostics/Metrics.h"
 #include "engine/LogOnce.h"
+#include "engine/SlotWrites.h"
 #include "render/Compositor.h"
 #include "render/RenderInstance.h"
 #include "render/TextureLab.h"
@@ -89,14 +90,6 @@ std::optional<HiddenSlot> HiddenSlotOf(const LiveActor &a_state,
     flat += geometries;
   }
   return std::nullopt;
-}
-
-void ConcealStackSlots(LiveGeometry &a_geometry) {
-  for (const SlotStackPlan &slot : a_geometry.stackPlan.slots) {
-    if (SlotTarget *target = TargetFor(a_geometry, slot.surface)) {
-      target->WriteTexture(slot.slot, nullptr);
-    }
-  }
 }
 
 bool StacksMatch(const std::vector<StackHolder> &a_holders,
@@ -248,14 +241,6 @@ std::expected<ResizeSwap, std::string> FinishResize(LiveActor &a_state) {
 }
 
 void DropResize(LiveActor &a_state) { a_state.resize.reset(); }
-
-void ConcealStackSlots(LiveActor &a_state) {
-  for (LivePiece &piece : a_state.pieces) {
-    for (LiveGeometry &geometry : piece.geometries) {
-      ConcealStackSlots(geometry);
-    }
-  }
-}
 
 const ResizeInFlight *InFlightOf(const LiveActor &a_state) noexcept {
   return a_state.resize ? &*a_state.resize : nullptr;
