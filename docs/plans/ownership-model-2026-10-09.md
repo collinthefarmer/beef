@@ -1,4 +1,4 @@
-Status: proposed (2026-10-09); decisions D1 to D8 made. No stage is started. Stage 0 is the uncommitted `engine/SlotWrites.*` change in the working tree. Raised by the leak fixes of 2026-10-08 and 2026-10-09 and by three read-only audits on 2026-10-09.
+Status: active (2026-10-09); decisions D1 to D8 made. Stages 0, 1 and 2 are done on `main` (347ad65, 57bda28, 7258765) and ported to branch `pure-tick` (bb165c5, 276fed9, 110f250, 2a01141). The port leaves out `planners/References.h` and `render/Identities.h`, because only the channel-mean key used them and it now uses `NamedTexture`; the `PluginIdentity` rename, which only `Identity<T>` needed; and the failed-resize reset, because the tick core handles `ResizeNotStarted`. Stage 3 is replaced by `docs/plans/pure-tick-2026-10-10.md` (R-5).
 
 # Ownership model
 
