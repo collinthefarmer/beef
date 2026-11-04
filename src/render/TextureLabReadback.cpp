@@ -505,11 +505,9 @@ float TextureLab::MeanChannel(RE::NiSourceTexture *a_source,
   }
   const std::optional<float> measured = MeasureChannel(a_source, a_channel);
   if (key && measured) {
-    const std::optional<float> rejected =
-        means_.Insert(*key, *measured, 0, sweepClockMs_);
+    static_cast<void>(means_.Insert(*key, *measured, 0, sweepClockMs_));
   } else if (key) {
-    const std::optional<std::monostate> rejected =
-        failedMeans_.Insert(*key, {}, 0, sweepClockMs_);
+    static_cast<void>(failedMeans_.Insert(*key, {}, 0, sweepClockMs_));
   }
   return measured.value_or(kUnmeasuredMean);
 }

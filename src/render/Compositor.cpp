@@ -101,11 +101,9 @@ TextureRef Compositor::LoadImage(std::string_view a_path) {
   }
   TextureRef result{source && source->rendererTexture ? source : nullptr};
   if (result) {
-    const std::optional<TextureRef> rejected =
-        images_.Insert(key, result, 0, nowMS_);
+    static_cast<void>(images_.Insert(key, result, 0, nowMS_));
   } else {
-    const std::optional<std::monostate> rejected =
-        failedImages_.Insert(key, {}, 0, nowMS_);
+    static_cast<void>(failedImages_.Insert(key, {}, 0, nowMS_));
   }
   return result;
 }
