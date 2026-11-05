@@ -233,8 +233,10 @@ and moved the actor ID into `ActorStacks`.
 - [x] Run an hour-long crowd soak and an extended authoring/play session
   with repeated preview cycles and save loads. Capture complete evidence.
   The owner reports that the hour-long soak passed.
-- [ ] Rerun using the actual packaged defaults. Eviction currently defaults
-  off; results with eviction enabled do not establish default behavior.
+- [ ] Rerun using the actual packaged defaults. Eviction defaults to 8192
+  units since 2026-11-05. Every run before that used an INI with
+  `EvictDistance=6000`, `AnimationFPS=30` and `VerboseLogging=true`, so it
+  does not establish default behavior; the default ticks at 60.
 
 Done when the supported workload has bounded resource use and acceptable
 application spikes, with no crashes, freezes, stale effects, isolation

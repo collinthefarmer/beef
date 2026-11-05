@@ -59,7 +59,7 @@ struct Settings {
   std::uint32_t animationFPS = 60;
   std::uint32_t unpublishedDrawBudgetMs = 4;
   float animationSpeed = 1.0f;
-  float evictDistance = 0.0f;
+  float evictDistance = 8192.0f;
   float stepDownHoldSeconds = 2.0f;
   float hiddenReleaseSeconds = 5.0f;
   TextureScale textureScale = TextureScale::kFull;

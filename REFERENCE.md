@@ -3985,6 +3985,13 @@ The method and its prototype comparison are in
   radius (`kRestoreFraction`). This hysteresis prevents repeated
   retire/reapply near the boundary; a non-positive radius disables distance
   eviction. The radius is `EvictDistance` or the smaller budget radius.
+- `EvictDistance` defaults to 8192 game units, two exterior cells of 4096
+  (2026-11-05). With vanilla `uGridsToLoad=5` the loaded block reaches at
+  least two cells from the player in every direction; past that, whether an
+  actor is loaded depends on where the player stands in the cell. The
+  default keeps effects on every actor that the game is sure to have loaded,
+  and restores them inside 6554 units. Before 2026-11-05 the default was 0,
+  and eviction was off unless the INI set it.
 - The **render target budget** limits the bytes of the plugin's render
   targets (render-performance 7d, 2026-10-08; `planners/RenderBudget.h`,
   `planners/BudgetRadius.h`, `orchestration/Budget.*`,
