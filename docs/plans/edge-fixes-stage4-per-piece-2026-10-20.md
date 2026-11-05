@@ -1,4 +1,4 @@
-Status: accepted (2026-11-05) on branch `main`. It designs stage 4 of `docs/plans/edge-fixes-2026-10-12.md`. D6, D7 and D8 are decided as recommended; D6 is route 2, a restage driven by the core's geometry change. Nothing is implemented.
+Status: deferred (2026-11-05) by the user, to return to the release work in `docs/plans/alpha-preparation-2026-09-22.md`. The design is accepted: D6, D7 and D8 are decided as recommended, and D6 is route 2, a restage driven by the core's geometry change. Nothing is implemented. An equip still reinstalls the whole actor and blanks its pieces for about 1 s.
 
 # Stage 4: restage an equip from the core's geometry change
 

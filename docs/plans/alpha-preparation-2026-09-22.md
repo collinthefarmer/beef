@@ -230,9 +230,9 @@ and moved the actor ID into `ActorStacks`.
   stage 5. Open: 95 MB stays after the crowd leaves, over the recovery
   budget. Animation-heavy crowds, armor variety and large textures are not
   measured.
-- [ ] Run an hour-long crowd soak and an extended authoring/play session
+- [x] Run an hour-long crowd soak and an extended authoring/play session
   with repeated preview cycles and save loads. Capture complete evidence.
-  The `soak-hour` case exists and has not run.
+  The owner reports that the hour-long soak passed.
 - [ ] Rerun using the actual packaged defaults. Eviction currently defaults
   off; results with eviction enabled do not establish default behavior.
 
