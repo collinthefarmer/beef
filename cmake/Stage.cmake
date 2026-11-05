@@ -1,17 +1,44 @@
 set(DIST_DIR "${CMAKE_SOURCE_DIR}/dist/${PROJECT_NAME}" CACHE PATH "Staged mod directory")
 file(GLOB license_files CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/licenses/*")
+
+set(notice_prefix "${PROJECT_NAME}-")
+set(notice_dir "${CMAKE_BINARY_DIR}/generated/notices")
+set(shipped_license "${notice_prefix}LICENSE")
+set(shipped_copying "${notice_prefix}COPYING.md")
+set(shipped_notices "${notice_prefix}THIRD_PARTY_NOTICES.md")
+set(shipped_licenses "${notice_prefix}licenses")
+function(write_shipped_notice source destination)
+  set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${source}")
+  file(READ "${source}" text)
+  string(REPLACE "[LICENSE](LICENSE)" "[${shipped_license}](${shipped_license})" text "${text}")
+  string(REPLACE "COPYING.md" "${shipped_copying}" text "${text}")
+  string(REPLACE "THIRD_PARTY_NOTICES.md" "${shipped_notices}" text "${text}")
+  string(REPLACE "licenses/" "${shipped_licenses}/" text "${text}")
+  set(existing "")
+  if(EXISTS "${notice_dir}/${destination}")
+    file(READ "${notice_dir}/${destination}" existing)
+  endif()
+  if(NOT existing STREQUAL text)
+    file(WRITE "${notice_dir}/${destination}" "${text}")
+  endif()
+endfunction()
+write_shipped_notice("${CMAKE_SOURCE_DIR}/COPYING.md" "${shipped_copying}")
+write_shipped_notice("${CMAKE_SOURCE_DIR}/THIRD_PARTY_NOTICES.md" "${shipped_notices}")
 add_custom_target(stage
   COMMAND "${CMAKE_COMMAND}" -E make_directory
     "${DIST_DIR}/SKSE/Plugins/${PROJECT_NAME}/templates"
     "${DIST_DIR}/textures/${PROJECT_NAME}/slots"
-    "${DIST_DIR}/licenses"
+    "${DIST_DIR}/${shipped_licenses}"
+  COMMAND "${CMAKE_COMMAND}" -E rm -rf "${DIST_DIR}/LICENSE" "${DIST_DIR}/COPYING.md"
+    "${DIST_DIR}/THIRD_PARTY_NOTICES.md" "${DIST_DIR}/licenses"
   COMMAND "${CMAKE_COMMAND}" -E copy_if_different
     "${BEEF_EFFECTIVE_PROFILE}" "${DIST_DIR}/COMPATIBILITY.json"
   COMMAND "${CMAKE_COMMAND}" -E copy_if_different
-    "${CMAKE_SOURCE_DIR}/LICENSE" "${CMAKE_SOURCE_DIR}/COPYING.md"
-    "${CMAKE_SOURCE_DIR}/THIRD_PARTY_NOTICES.md" "${DIST_DIR}/"
+    "${CMAKE_SOURCE_DIR}/LICENSE" "${DIST_DIR}/${shipped_license}"
   COMMAND "${CMAKE_COMMAND}" -E copy_if_different
-    ${license_files} "${DIST_DIR}/licenses/"
+    "${notice_dir}/${shipped_copying}" "${notice_dir}/${shipped_notices}" "${DIST_DIR}/"
+  COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+    ${license_files} "${DIST_DIR}/${shipped_licenses}/"
   COMMAND "${CMAKE_COMMAND}" -E copy_if_different
     "${CMAKE_SOURCE_DIR}/docs/bug-report.md" "${DIST_DIR}/BUG_REPORT.md"
   COMMAND "${CMAKE_COMMAND}" -E copy_if_different
@@ -51,12 +78,12 @@ package_file("${CMAKE_SOURCE_DIR}/docs/alpha-package.md" "README.md")
 package_file("${CMAKE_SOURCE_DIR}/docs/bug-report.md" "BUG_REPORT.md")
 list(JOIN package_files ",\n" package_entries)
 set(package_files)
-package_file("${CMAKE_SOURCE_DIR}/LICENSE" "LICENSE")
-package_file("${CMAKE_SOURCE_DIR}/COPYING.md" "COPYING.md")
-package_file("${CMAKE_SOURCE_DIR}/THIRD_PARTY_NOTICES.md" "THIRD_PARTY_NOTICES.md")
+package_file("${CMAKE_SOURCE_DIR}/LICENSE" "${shipped_license}")
+package_file("${notice_dir}/${shipped_copying}" "${shipped_copying}")
+package_file("${notice_dir}/${shipped_notices}" "${shipped_notices}")
 foreach(license IN LISTS license_files)
   get_filename_component(filename "${license}" NAME)
-  package_file("${license}" "licenses/${filename}")
+  package_file("${license}" "${shipped_licenses}/${filename}")
 endforeach()
 list(JOIN package_files ",\n" notice_entries)
 file(GENERATE OUTPUT "${CMAKE_BINARY_DIR}/generated/package.json" CONTENT

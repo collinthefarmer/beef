@@ -123,7 +123,11 @@ sharing them.
 Use [BUG_REPORT.md](BUG_REPORT.md) for the report template and collection
 instructions. Copy the plugin log before restarting Skyrim; startup replaces it.
 
-Both archives include `LICENSE`, `COPYING.md`, `THIRD_PARTY_NOTICES.md`, and `licenses/`.
+Both archives include `BetterEnchantmentEffects-LICENSE`,
+`BetterEnchantmentEffects-COPYING.md`,
+`BetterEnchantmentEffects-THIRD_PARTY_NOTICES.md`, and
+`BetterEnchantmentEffects-licenses/`. The plugin name in each name keeps them
+apart from other mods' license files in the game's `Data` folder.
 Matching-source publication, the remaining provenance/licensing review,
 dependency compatibility checks, and in-game acceptance remain release
 prerequisites. This package is for local validation.

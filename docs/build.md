@@ -211,7 +211,13 @@ archive. The demo and regression packagers use the same writer. The
 `stage` target also copies the notice bundle for the developer installer.
 
 Both archives carry `LICENSE`, `COPYING.md`, `THIRD_PARTY_NOTICES.md`, and every
-file in `licenses/`. When a dependency changes, update its row in
+file in `licenses/`, each under a name that starts with `BetterEnchantmentEffects-`
+(`BetterEnchantmentEffects-licenses/` for the folder). Mod Organizer 2 and the
+game merge every mod's root files into one `Data` folder, so a plain `LICENSE`
+would collide with other mods' files. `cmake/Stage.cmake` writes copies of
+`COPYING.md` and `THIRD_PARTY_NOTICES.md` with their links rewritten to the
+shipped names (`build/<preset>/generated/notices/`); the repository keeps the
+plain names. When a dependency changes, update its row in
 `THIRD_PARTY_NOTICES.md` and its text in `licenses/`. Packaging stops on a
 missing input or two entries with the same destination, before it replaces
 either archive.

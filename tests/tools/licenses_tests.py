@@ -23,7 +23,8 @@ class LicenseTests(unittest.TestCase):
         self.assertIn('Community Shaders-derived portions:', derived)
         self.assertIn('COPYING.md', (ROOT / 'cmake/Plugin.cpp.in').read_text().splitlines()[0])
         stage = (ROOT / 'cmake/Stage.cmake').read_text()
-        self.assertIn('package_file("${CMAKE_SOURCE_DIR}/COPYING.md" "COPYING.md")', stage)
+        self.assertIn('package_file("${notice_dir}/${shipped_copying}" "${shipped_copying}")', stage)
+        self.assertIn('set(notice_prefix "${PROJECT_NAME}-")', stage)
         if not (ROOT / '.git').exists():
             return
         tracked = subprocess.run(['git', 'ls-files', '--error-unmatch', 'COPYING.md', 'LICENSE'],
