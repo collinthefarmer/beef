@@ -525,9 +525,10 @@ RE::NiPoint3 AheadSpot(const RE::PlayerCharacter &a_player,
   const std::uint32_t rows = static_cast<std::uint32_t>(kAheadDistances.size());
   const std::uint32_t columns = (a_count + rows - 1) / rows;
   const float distance = kAheadDistances[a_index % rows];
-  const float across = (static_cast<float>(a_index / rows) -
-                        static_cast<float>(columns - 1) / 2.0f) *
-                       kBehindSpacing;
+  const std::uint32_t column = a_index / rows;
+  const float across =
+      (static_cast<float>(column) - static_cast<float>(columns - 1) / 2.0f) *
+      kBehindSpacing;
   const RE::NiPoint3 centre = a_player.GetPosition();
   return RE::NiPoint3{centre.x + forward.x * distance + right.x * across,
                       centre.y + forward.y * distance + right.y * across,

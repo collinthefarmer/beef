@@ -179,7 +179,8 @@ struct Seed {
   for (std::size_t i = 0; i < a_grid.Size(); ++i) {
     if (IsCovered(a_raster, i)) {
       auto &c = centre[a_raster.charts[i]];
-      c.first += static_cast<double>(i / a_grid.side);
+      const std::size_t row = i / a_grid.side;
+      c.first += static_cast<double>(row);
       c.second += static_cast<double>(i % a_grid.side);
       count[a_raster.charts[i]] += 1.0;
     }
@@ -195,7 +196,8 @@ struct Seed {
       if (a_raster.charts[i] != chart) {
         continue;
       }
-      const double dy = static_cast<double>(i / a_grid.side) - cy;
+      const std::size_t row = i / a_grid.side;
+      const double dy = static_cast<double>(row) - cy;
       const double dx = static_cast<double>(i % a_grid.side) - cx;
       const double d = dy * dy + dx * dx;
       if (!nearest || d < nearest->first) {
@@ -308,7 +310,8 @@ void MoveCentres(const FeatureStack &a_stack, const Grid &a_grid,
     }
     const auto k = static_cast<std::size_t>(a_labels[i]);
     count[k] += 1.0;
-    sumY[k] += static_cast<double>(i / a_grid.side);
+    const std::size_t row = i / a_grid.side;
+    sumY[k] += static_cast<double>(row);
     sumX[k] += static_cast<double>(i % a_grid.side);
     const std::span<const float> feature = a_stack.At(i);
     for (std::size_t c = 0; c < a_stack.channels; ++c) {

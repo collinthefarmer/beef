@@ -56,7 +56,8 @@ WhiteningOf(const PreparedGaussian &a_gaussian) {
 class BoxSums {
 public:
   BoxSums(std::uint32_t a_side, const std::vector<double> &a_values)
-      : side_(a_side), sums_((a_side + 1) * (a_side + 1), 0.0) {
+      : side_(a_side),
+        sums_((std::size_t{a_side} + 1) * (std::size_t{a_side} + 1), 0.0) {
     for (std::uint32_t y = 0; y < a_side; ++y) {
       double row = 0.0;
       for (std::uint32_t x = 0; x < a_side; ++x) {
@@ -85,6 +86,17 @@ private:
 };
 
 using Guide = std::array<double, 3>;
+
+template <class Values>
+[[nodiscard]] std::vector<BoxSums>
+BoxSumsEach(std::uint32_t a_side, std::size_t a_count, const Values &a_values) {
+  std::vector<BoxSums> sums;
+  sums.reserve(a_count);
+  for (std::size_t c = 0; c < a_count; ++c) {
+    sums.emplace_back(a_side, a_values(c));
+  }
+  return sums;
+}
 
 [[nodiscard]] std::vector<Guide> GuideOf(const MaterialRaster &a_raster) {
   std::vector<Guide> out;
@@ -134,14 +146,15 @@ Inverse3(const std::array<double, 9> &a_m) noexcept {
 [[nodiscard]] GuideStatistics StatisticsOf(const std::vector<Guide> &a_guide,
                                            std::uint32_t a_side,
                                            std::uint32_t a_r) {
-  std::array<std::optional<BoxSums>, 3> means;
-  for (std::size_t c = 0; c < 3; ++c) {
-    means[c].emplace(a_side, Channel(a_guide, c, std::nullopt));
-  }
-  std::array<std::optional<BoxSums>, 9> products;
+  const std::vector<BoxSums> means =
+      BoxSumsEach(a_side, 3, [&](std::size_t a_c) {
+        return Channel(a_guide, a_c, std::nullopt);
+      });
+  std::vector<BoxSums> products;
+  products.reserve(6);
   for (std::size_t a = 0; a < 3; ++a) {
     for (std::size_t b = a; b < 3; ++b) {
-      products[a * 3 + b].emplace(a_side, Channel(a_guide, a, b));
+      products.emplace_back(a_side, Channel(a_guide, a, b));
     }
   }
   GuideStatistics out;
@@ -152,12 +165,13 @@ Inverse3(const std::array<double, 9> &a_m) noexcept {
       const std::size_t i = static_cast<std::size_t>(y) * a_side + x;
       Guide m{};
       for (std::size_t c = 0; c < 3; ++c) {
-        m[c] = means[c]->Mean(y, x, a_r);
+        m[c] = means[c].Mean(y, x, a_r);
       }
       std::array<double, 9> covariance{};
+      std::size_t product = 0;
       for (std::size_t a = 0; a < 3; ++a) {
         for (std::size_t b = a; b < 3; ++b) {
-          const double value = products[a * 3 + b]->Mean(y, x, a_r) -
+          const double value = products[product++].Mean(y, x, a_r) -
                                m[a] * m[b] + (a == b ? kGuidedEpsilon : 0.0);
           covariance[a * 3 + b] = value;
           covariance[b * 3 + a] = value;
@@ -175,14 +189,14 @@ GuidedFilter(const std::vector<Guide> &a_guide, const GuideStatistics &a_stats,
              const std::vector<double> &a_p, std::uint32_t a_side,
              std::uint32_t a_r) {
   const BoxSums meanP(a_side, a_p);
-  std::array<std::optional<BoxSums>, 3> meanIp;
-  for (std::size_t c = 0; c < 3; ++c) {
-    std::vector<double> product(a_p.size());
-    for (std::size_t i = 0; i < product.size(); ++i) {
-      product[i] = a_guide[i][c] * a_p[i];
-    }
-    meanIp[c].emplace(a_side, product);
-  }
+  const std::vector<BoxSums> meanIp =
+      BoxSumsEach(a_side, 3, [&](std::size_t a_c) {
+        std::vector<double> product(a_p.size());
+        for (std::size_t i = 0; i < product.size(); ++i) {
+          product[i] = a_guide[i][a_c] * a_p[i];
+        }
+        return product;
+      });
   std::array<std::vector<double>, 3> slope;
   for (auto &s : slope) {
     s.resize(a_p.size());
@@ -194,7 +208,7 @@ GuidedFilter(const std::vector<Guide> &a_guide, const GuideStatistics &a_stats,
       const double mp = meanP.Mean(y, x, a_r);
       Guide covariance{};
       for (std::size_t c = 0; c < 3; ++c) {
-        covariance[c] = meanIp[c]->Mean(y, x, a_r) - a_stats.mean[i][c] * mp;
+        covariance[c] = meanIp[c].Mean(y, x, a_r) - a_stats.mean[i][c] * mp;
       }
       const auto &inv = a_stats.inverse[i];
       double b = mp;
@@ -209,17 +223,15 @@ GuidedFilter(const std::vector<Guide> &a_guide, const GuideStatistics &a_stats,
     }
   }
   const BoxSums meanB(a_side, offset);
-  std::array<std::optional<BoxSums>, 3> meanA;
-  for (std::size_t c = 0; c < 3; ++c) {
-    meanA[c].emplace(a_side, slope[c]);
-  }
+  const std::vector<BoxSums> meanA =
+      BoxSumsEach(a_side, 3, [&](std::size_t a_c) { return slope[a_c]; });
   std::vector<double> out(a_p.size());
   for (std::uint32_t y = 0; y < a_side; ++y) {
     for (std::uint32_t x = 0; x < a_side; ++x) {
       const std::size_t i = static_cast<std::size_t>(y) * a_side + x;
       double q = meanB.Mean(y, x, a_r);
       for (std::size_t c = 0; c < 3; ++c) {
-        q += meanA[c]->Mean(y, x, a_r) * a_guide[i][c];
+        q += meanA[c].Mean(y, x, a_r) * a_guide[i][c];
       }
       out[i] = std::clamp(q, 0.0, 1.0);
     }

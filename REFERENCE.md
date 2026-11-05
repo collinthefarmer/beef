@@ -2795,6 +2795,12 @@ them outside as separate passes.
   in the stack step, because the pool may hand it a target whose lower levels
   hold another texture's content. A target the step already held keeps its
   chain between draws, and the mip steps refresh it.
+- `RenderInstance::Render` discards the result of demanding a stack's mip
+  steps. When a mip refresh fails, the stack's base level is already drawn,
+  the target keeps its previous mips, and the next paced refresh tries
+  again; failing the stack for it would hide a drawn effect.
+  `tools/tidy-baseline.txt` keeps the `bugprone-unused-return-value` finding
+  on that line for this reason.
 - The near range covers what the game samples at normal viewing distances:
   the resolution levels already size each target to the piece's share of the
   screen, so the game rarely reads past level 3 of it. This is a design

@@ -65,7 +65,8 @@ std::vector<FilterPass> PassAlong(std::span<const FilterPass> a_input,
   std::vector<FilterPass> out(a_input.size());
   for (std::int32_t y = 0; y < side; ++y) {
     for (std::int32_t x = 0; x < side; ++x) {
-      const auto at = static_cast<std::size_t>(y * side + x);
+      const std::size_t at =
+          static_cast<std::size_t>(y) * a_side + static_cast<std::size_t>(x);
       const bool seams = !a_charts.empty();
       const std::uint16_t chart = seams ? a_charts[at] : 0;
       float sum = 0.0f;
@@ -75,7 +76,8 @@ std::vector<FilterPass> PassAlong(std::span<const FilterPass> a_input,
       for (std::int32_t k = -a_taps; k <= a_taps; ++k) {
         const std::int32_t px = std::clamp(x + a_axis.dx * k, 0, side - 1);
         const std::int32_t py = std::clamp(y + a_axis.dy * k, 0, side - 1);
-        const auto near = static_cast<std::size_t>(py * side + px);
+        const std::size_t near = static_cast<std::size_t>(py) * a_side +
+                                 static_cast<std::size_t>(px);
         if (seams && a_charts[near] != chart) {
           continue;
         }

@@ -27,7 +27,7 @@ constexpr std::uint32_t kAxisInk = 0x80A0A0A0U;
 constexpr std::uint32_t kLabelInk = 0xFFD0D0D0U;
 
 struct ChartArea {
-  ImGui::ImVec2 origin;
+  ImGui::ImVec2 origin{};
   float width = 0.0f;
   float top = 0.0f;
   float bottom = 0.0f;

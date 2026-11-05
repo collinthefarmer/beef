@@ -1,8 +1,9 @@
-# clang-tidy baseline, 150 sources, 9 findings
+# clang-tidy baseline, 150 sources, 10 findings
 # regenerate: python3 tools/tidy.py --update
 
 # readability-function-size                            8
 # readability-function-cognitive-complexity            1
+# bugprone-unused-return-value                         1
 
 src/planners/FieldProgram.cpp:14: [readability-function-size] function 'Encode' exceeds recommended size/complexity thresholds
 src/planners/ProgramReference.cpp:82: [readability-function-size] function 'ApplyOpcode' exceeds recommended size/complexity thresholds
@@ -12,4 +13,5 @@ src/recipe/Expression.cpp:833: [readability-function-size] function 'Evaluate' e
 src/recipe/GraphOperations.cpp:5: [readability-function-size] function 'InputsOf' exceeds recommended size/complexity thresholds
 src/recipe/RecipeGraph.cpp:39: [readability-function-size] function 'Dependencies' exceeds recommended size/complexity thresholds
 src/recipe/RecipeGraphLowering.cpp:172: [readability-function-size] function 'SignalKindOf' exceeds recommended size/complexity thresholds
+src/render/RenderInstance.cpp:1524: [bugprone-unused-return-value] the value returned by this function should not be disregarded; neglecting it may lead to errors
 src/render/TextureLabLifecycle.cpp:97: [readability-function-size] function 'Init' exceeds recommended size/complexity thresholds

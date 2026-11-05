@@ -92,10 +92,15 @@ std::string Joined(const std::vector<std::string> &a_parts) {
 std::string PhaseText(const Orchestration::World &a_world,
                       Orchestration::ActorId a_actor) {
   const auto found = a_world.actors.find(a_actor);
-  if (found == a_world.actors.end() || !found->second.render) {
+  if (found == a_world.actors.end()) {
     return "none";
   }
-  return std::string{Orchestration::PhaseName(found->second.render->phase)};
+  const std::optional<Orchestration::InstalledRender> &render =
+      found->second.render;
+  if (!render) {
+    return "none";
+  }
+  return std::string{Orchestration::PhaseName(render->phase)};
 }
 
 Orchestration::HeldResources HeldOf(const LiveActor &a_state) {

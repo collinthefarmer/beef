@@ -40,8 +40,14 @@ struct ScheduledResizes {
   }
 };
 
-bool RenderLoaded(const TrackedActor &a_record) noexcept {
-  return a_record.render.has_value() && a_record.sight.loaded3D;
+InstalledRender *LoadedRender(TrackedActor &a_record) noexcept {
+  return a_record.render && a_record.sight.loaded3D ? &*a_record.render
+                                                    : nullptr;
+}
+
+const InstalledRender *LoadedRender(const TrackedActor &a_record) noexcept {
+  return a_record.render && a_record.sight.loaded3D ? &*a_record.render
+                                                    : nullptr;
 }
 
 void RecordSightings(World &a_world,
@@ -263,8 +269,9 @@ void ApplyJob(TickOutput &a_out, ActorId a_actor, TrackedActor &a_record,
 
 void RecordRenderedFrames(World &a_world, std::uint64_t a_frame) {
   for (auto &[actor, record] : a_world.actors) {
-    if (RenderLoaded(record) && record.sight.shown) {
-      record.render->renderedFrame = a_frame;
+    InstalledRender *render = LoadedRender(record);
+    if (render && record.sight.shown) {
+      render->renderedFrame = a_frame;
     }
   }
 }
@@ -386,7 +393,7 @@ MaybeActor StartNextResize(TickOutput &a_out, std::size_t a_running) {
 void SeeActors(TickOutput &a_out, const ScheduledResizes &a_scheduled,
                const TickFacts &a_facts) {
   for (auto &[actor, record] : a_out.world.actors) {
-    if (!RenderLoaded(record)) {
+    if (!LoadedRender(record)) {
       continue;
     }
     See(a_out, actor, record, a_facts);
@@ -525,8 +532,8 @@ std::string FractionText(std::optional<float> a_fraction) {
 
 void FinishFirstDraws(TickOutput &a_out, std::uint64_t a_frame) {
   for (auto &[actor, record] : a_out.world.actors) {
-    if (RenderLoaded(record)) {
-      FinishFirstDraw(a_out, actor, *record.render, a_frame);
+    if (InstalledRender *render = LoadedRender(record)) {
+      FinishFirstDraw(a_out, actor, *render, a_frame);
     }
   }
 }
@@ -564,9 +571,10 @@ void ReportFirstDraw(TickOutput &a_out, ActorId a_actor,
 
 void IssueTickActors(TickOutput &a_out, const TickSettings &a_settings) {
   for (const auto &[actor, record] : a_out.world.actors) {
-    if (RenderLoaded(record) && !IsRestageUnanswered(record.render->phase)) {
-      Issue(a_out, TickActorFor(actor, record.render->phase, record.sight,
-                                a_settings));
+    const InstalledRender *render = LoadedRender(record);
+    if (render && !IsRestageUnanswered(render->phase)) {
+      Issue(a_out,
+            TickActorFor(actor, render->phase, record.sight, a_settings));
     }
   }
 }
@@ -596,8 +604,8 @@ UnpublishedDraws(const World &a_world, const ActorSet &a_swapping,
 std::optional<UnpublishedDrawCandidate>
 UnpublishedCandidateOf(ActorId a_actor, const TrackedActor &a_record,
                        const ActorSet &a_swapping) {
-  if (!RenderLoaded(a_record) || !a_record.sight.shown ||
-      !UnpublishedDrawOf(a_record.render->phase) ||
+  const InstalledRender *render = LoadedRender(a_record);
+  if (!render || !a_record.sight.shown || !UnpublishedDrawOf(render->phase) ||
       a_swapping.contains(a_actor)) {
     return std::nullopt;
   }

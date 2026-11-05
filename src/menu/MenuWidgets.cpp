@@ -223,7 +223,7 @@ ColorSwatchPicker(Studio::FieldKey a_key, const std::string &a_current) {
 }
 
 struct BadgeStyle {
-  const char *glyph;
+  std::string glyph;
   bool takesSignal;
   ImVec4 colour;
   std::string help;
@@ -236,7 +236,7 @@ struct BadgeStyle {
     return {"?", false, kDim, "", Studio::Swatch::kNone};
   }
   const ImVec4 colour{row->colour[0], row->colour[1], row->colour[2], 1.0f};
-  return {row->glyph.data(), false, colour, std::string{row->help},
+  return {std::string{row->glyph}, false, colour, std::string{row->help},
           Studio::Swatch::kNone};
 }
 
@@ -274,7 +274,7 @@ void ClickableBadge(const BadgeStyle &a_style, bool &a_combo,
                         ImVec4{a_style.colour.x * 0.7f, a_style.colour.y * 0.7f,
                                a_style.colour.z * 0.7f, 1.0f});
   ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_Text, kBadgeFrame);
-  if (ImGui::Button(a_style.glyph, ImVec2{side, side})) {
+  if (ImGui::Button(a_style.glyph.c_str(), ImVec2{side, side})) {
     a_combo = !a_combo;
     Studio::State().focusField = a_key;
   }
@@ -291,7 +291,8 @@ void DrawValueBadge(const BadgeStyle &a_style, bool a_takesSignal,
                     .text = "click: type a value instead"});
   } else {
     const float side = ImGui::GetFrameHeight();
-    BadgeFrame(a_style.glyph, a_style.colour, false, ImVec2{side, side});
+    BadgeFrame(a_style.glyph.c_str(), a_style.colour, false,
+               ImVec2{side, side});
     Tooltip(a_style.help);
   }
 }
@@ -618,11 +619,14 @@ namespace {
 
 [[nodiscard]] std::optional<std::string>
 DrawNameDraft(const NameLabelSpec &a_spec, Studio::MenuState &a_state) {
+  if (!a_state.nameDraft) {
+    return std::nullopt;
+  }
+  const Studio::NameDraft draft = *a_state.nameDraft;
   Studio::TextBuffer buffer{};
-  const std::string &draft = a_state.nameDraft->text;
-  const std::size_t n = (std::min)(draft.size(), buffer.size() - 1);
-  std::memcpy(buffer.data(), draft.data(), n);
-  if (a_state.nameDraft->awaitingFocus) {
+  const std::size_t n = (std::min)(draft.text.size(), buffer.size() - 1);
+  std::memcpy(buffer.data(), draft.text.data(), n);
+  if (draft.awaitingFocus) {
     ImGui::SetKeyboardFocusHere(0);
   }
   NextItemWidth(a_spec.size.width, a_spec.size.scale);
@@ -636,7 +640,7 @@ DrawNameDraft(const NameLabelSpec &a_spec, Studio::MenuState &a_state) {
   const std::vector<std::string> taken =
       a_spec.taken ? a_spec.taken() : std::vector<std::string>{};
   const Studio::NameStep step = Studio::StepNameDraft(
-      *a_state.nameDraft, input, {.current = a_spec.name, .taken = taken});
+      draft, input, {.current = a_spec.name, .taken = taken});
   return Match(
       step,
       [&](const Studio::KeepNaming &a_keep) -> std::optional<std::string> {
@@ -815,7 +819,8 @@ std::optional<std::string> ReferenceCombo(const char *a_key,
 void Badge(Studio::FieldKind a_kind) {
   const auto style = StyleOf(a_kind);
   const float side = ImGui::GetFrameHeight();
-  BadgeFrame(style.glyph, style.colour, style.takesSignal, ImVec2{side, side});
+  BadgeFrame(style.glyph.c_str(), style.colour, style.takesSignal,
+             ImVec2{side, side});
   Tooltip(style.help);
   ImGui::SameLine(0.0f, 0.0f);
 }
@@ -825,7 +830,7 @@ bool TypedLink(const TypedLinkSpec &a_spec) {
   const BadgeStyle style = Match(
       a_spec.kind, [](Studio::FieldKind a_kind) { return StyleOf(a_kind); },
       [](Studio::LinkKind a_kind) { return StyleOf(a_kind); });
-  BadgeFrame(style.glyph, style.colour, false, ImVec2{side, side});
+  BadgeFrame(style.glyph.c_str(), style.colour, false, ImVec2{side, side});
   Tooltip(style.help);
   ImGui::SameLine(0.0f, 0.0f);
   const std::string label{a_spec.label};
