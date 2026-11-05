@@ -23,10 +23,10 @@ ComPtr<ID3DBlob> CompileEntry(const char *a_entry, const char *a_target) {
   const std::string sourceName{Identity::kName};
   ComPtr<ID3DBlob> out;
   ComPtr<ID3DBlob> errors;
-  const HRESULT hr = D3DCompile(kShaderSource, std::strlen(kShaderSource),
-                                sourceName.c_str(), nullptr, nullptr, a_entry,
-                                a_target, D3DCOMPILE_OPTIMIZATION_LEVEL3, 0,
-                                out.GetAddressOf(), errors.GetAddressOf());
+  const REX::W32::HRESULT hr = D3DCompile(
+      kShaderSource, std::strlen(kShaderSource), sourceName.c_str(), nullptr,
+      nullptr, a_entry, a_target, D3DCOMPILE_OPTIMIZATION_LEVEL3, 0,
+      out.GetAddressOf(), errors.GetAddressOf());
   if (Failed(hr)) {
     logger::error("TextureLab: {} compile failed: {}", a_entry,
                   errors.Get()
@@ -65,10 +65,7 @@ RE::NiSourceTexture *TextureLab::RenderTarget::Texture() const noexcept {
       presenter && ourData &&
       presenter->rendererTexture ==
           reinterpret_cast<RE::BSGraphics::Texture *>(ourData.get()) &&
-      ourData->texture ==
-          reinterpret_cast<::ID3D11Texture2D *>(texture.Get()) &&
-      ourData->resourceView ==
-          reinterpret_cast<::ID3D11ShaderResourceView *>(srv.Get());
+      ourData->texture == texture.Get() && ourData->resourceView == srv.Get();
   return ours ? presenter.get() : nullptr;
 }
 
@@ -108,7 +105,7 @@ bool TextureLab::Init() {
   }
   initTried_ = true;
   borrowedDevice_ = RE::BSGraphics::Renderer::GetDevice();
-  auto *rendererData = RE::BSGraphics::Renderer::GetRendererData();
+  auto *rendererData = RE::BSGraphics::Renderer::GetRendererDataSingleton();
   borrowedContext_ = rendererData ? rendererData->context : nullptr;
   if (!borrowedDevice_ || !borrowedContext_) {
     logger::error("TextureLab: no D3D11 device/context");
@@ -231,9 +228,9 @@ std::optional<TextureLab::BakePipeline> TextureLab::CreateBakePipeline() {
   const ComPtr<ID3DBlob> bakePixel = CompileEntry("BakePS", "ps_5_0");
   BakePipeline bake;
   const D3D11_INPUT_ELEMENT_DESC elements[2]{
-      {"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 0,
+      {"TEXCOORD", 0, REX::W32::DXGI_FORMAT_R32G32_FLOAT, 0, 0,
        D3D11_INPUT_PER_VERTEX_DATA, 0},
-      {"COLOR", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 8,
+      {"COLOR", 0, REX::W32::DXGI_FORMAT_R32G32B32_FLOAT, 0, 8,
        D3D11_INPUT_PER_VERTEX_DATA, 0},
   };
   if (!bakeVertex.Get() || !bakePixel.Get() ||

@@ -96,10 +96,9 @@ std::shared_ptr<const GameObjectCatalog> BuildActorValueCatalog() {
     catalog->sourceNote = "actor value list unavailable";
     return catalog;
   }
-  for (std::uint32_t i = 0;
-       i < static_cast<std::uint32_t>(RE::ActorValue::kTotal); ++i) {
-    const auto value = static_cast<RE::ActorValue>(i);
-    const RE::ActorValueInfo *info = list->GetActorValue(value);
+  std::uint32_t i = 0;
+  for (const RE::ActorValueInfo *info : list->actorValues) {
+    const auto value = static_cast<RE::ActorValue>(i++);
     if (!info || !info->enumName || info->enumName[0] == '\0' ||
         list->LookupActorValueByName(info->enumName) != value) {
       continue;

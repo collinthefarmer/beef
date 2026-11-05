@@ -163,11 +163,10 @@ struct ShellBinding::Builder {
         Identity::ShellNodeSuffix()};
 
     auto &rt = clone->GetGeometryRuntimeData();
-    auto *property =
-        rt.properties[RE::BSGeometry::States::kEffect]
-            ? netimmerse_cast<RE::BSLightingShaderProperty *>(
-                  rt.properties[RE::BSGeometry::States::kEffect].get())
-            : nullptr;
+    auto *property = rt.shaderProperty
+                         ? netimmerse_cast<RE::BSLightingShaderProperty *>(
+                               rt.shaderProperty.get())
+                         : nullptr;
     if (!property || property == sourceProperty) {
       logger::warn("shell: clone of '{}' {} lighting property; shell dropped",
                    original->name.c_str(), property ? "shares its" : "has no");
@@ -255,10 +254,8 @@ struct ShellBinding::Builder {
       return false;
     }
     const auto *state = RE::BSGraphics::State::GetSingleton();
-    auto *white = state && state->defaultTextureWhite
-                      ? netimmerse_cast<RE::NiSourceTexture *>(
-                            state->defaultTextureWhite.get())
-                      : nullptr;
+    auto *white =
+        state ? state->GetRuntimeData().defaultTextureWhite.get() : nullptr;
     vanilla->diffuseTexture = white ? RE::NiPointer<RE::NiSourceTexture>{white}
                                     : base->diffuseTexture;
     vanilla->normalTexture = base->normalTexture;
@@ -387,7 +384,7 @@ struct ShellBinding::Builder {
     if (!shell.alpha_) {
       return false;
     }
-    rt.properties[RE::BSGeometry::States::kProperty] = shell.alpha_;
+    rt.alphaProperty = shell.alpha_;
     const std::string inflation = PrepareInflation();
     if (!Attach()) {
       return false;
@@ -415,7 +412,7 @@ ShellBinding::Create(RE::BSGeometry *a_original,
   if (!parent) {
     return nullptr;
   }
-  const RE::NiPointer<RE::NiAVObject> cloned{a_original->Clone()};
+  const RE::NiPointer<RE::NiObject> cloned{a_original->Clone()};
   auto *clone = cloned ? cloned->AsGeometry() : nullptr;
   if (!clone) {
     logger::warn("shell: Clone() of '{}' returned {}", a_original->name.c_str(),
@@ -468,9 +465,7 @@ bool ShellBinding::StillOwned() const noexcept {
   const auto *property = property_.get();
   if (!property || !clone_ || !palette_ || !palette_->StillOwned(*clone_) ||
       clone_->parent != parent_.get() ||
-      clone_->GetGeometryRuntimeData()
-              .properties[RE::BSGeometry::States::kEffect]
-              .get() != property) {
+      clone_->GetGeometryRuntimeData().shaderProperty.get() != property) {
     return false;
   }
   if (slots_) {

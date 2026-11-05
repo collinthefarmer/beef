@@ -626,9 +626,8 @@ std::vector<SlotState> MaterialBinding::Slots() const {
 
 bool MaterialBinding::StillOwned() const noexcept {
   return geometry_ &&
-         geometry_->GetGeometryRuntimeData()
-                 .properties[RE::BSGeometry::States::kEffect]
-                 .get() == property_.get() &&
+         geometry_->GetGeometryRuntimeData().shaderProperty.get() ==
+             property_.get() &&
          slots_ && slots_->StillOwned();
 }
 }

@@ -36,7 +36,8 @@ float ActorEnvironment::ActorValue(std::string_view a_name,
   if (it == actorValues_.end()) {
     const auto *list = RE::ActorValueList::GetSingleton();
     const auto value =
-        list ? list->LookupActorValueByName(a_name) : RE::ActorValue::kNone;
+        list ? list->LookupActorValueByName(std::string{a_name}.c_str())
+             : RE::ActorValue::kNone;
     it = actorValues_.emplace(std::string{a_name}, value).first;
   }
   const auto value = it->second;

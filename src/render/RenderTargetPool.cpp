@@ -13,20 +13,20 @@ namespace BetterEnchantmentEffects {
 using namespace REX::W32;
 
 namespace {
-DXGI_FORMAT DxgiFormatOf(TextureFormat a_format) {
+REX::W32::DXGI_FORMAT DxgiFormatOf(TextureFormat a_format) {
   switch (a_format) {
   case TextureFormat::kR8:
-    return DXGI_FORMAT_R8_UNORM;
+    return REX::W32::DXGI_FORMAT_R8_UNORM;
   case TextureFormat::kRgba8:
-    return DXGI_FORMAT_R8G8B8A8_UNORM;
+    return REX::W32::DXGI_FORMAT_R8G8B8A8_UNORM;
   case TextureFormat::kR32Float:
-    return DXGI_FORMAT_R32_FLOAT;
+    return REX::W32::DXGI_FORMAT_R32_FLOAT;
   case TextureFormat::kRgba32Float:
-    return DXGI_FORMAT_R32G32B32A32_FLOAT;
+    return REX::W32::DXGI_FORMAT_R32G32B32A32_FLOAT;
   case TextureFormat::kRgba16Float:
-    return DXGI_FORMAT_R16G16B16A16_FLOAT;
+    return REX::W32::DXGI_FORMAT_R16G16B16A16_FLOAT;
   }
-  return DXGI_FORMAT_R8G8B8A8_UNORM;
+  return REX::W32::DXGI_FORMAT_R8G8B8A8_UNORM;
 }
 
 std::string TextureName(std::string a_name) {
@@ -150,10 +150,8 @@ bool RenderTargetPool::CreateTarget(ID3D11Device *a_device,
   a_target.originalData = DataOf(a_target.presenter.get());
   a_target.ourData = std::make_unique<RE::NiTexture::RendererData>(
       static_cast<std::uint16_t>(pixels), static_cast<std::uint16_t>(pixels));
-  a_target.ourData->texture =
-      reinterpret_cast<::ID3D11Texture2D *>(a_target.texture.Get());
-  a_target.ourData->resourceView =
-      reinterpret_cast<::ID3D11ShaderResourceView *>(a_target.srv.Get());
+  a_target.ourData->texture = a_target.texture.Get();
+  a_target.ourData->resourceView = a_target.srv.Get();
   a_target.presenter->rendererTexture =
       reinterpret_cast<RE::BSGraphics::Texture *>(a_target.ourData.get());
   a_target.size = pixels;

@@ -33,11 +33,23 @@ FetchContent_Declare(rapidcsv
 FetchContent_Declare(CommonLibSSE
   BINARY_DIR "${CMAKE_BINARY_DIR}/_deps/commonlibsse-build"
   SUBBUILD_DIR "${CMAKE_BINARY_DIR}/_deps/commonlibsse-subbuild"
-  GIT_REPOSITORY https://github.com/CharmedBaryon/CommonLibSSE-NG.git
+  GIT_REPOSITORY ${BEEF_COMMONLIB_REPOSITORY}
   GIT_TAG        ${BEEF_COMMONLIB_REVISION}
   SOURCE_SUBDIR  does-not-exist)
 
-FetchContent_MakeAvailable(spdlog rapidcsv CommonLibSSE)
+FetchContent_Declare(directxtk
+  BINARY_DIR "${CMAKE_BINARY_DIR}/_deps/directxtk-build"
+  SUBBUILD_DIR "${CMAKE_BINARY_DIR}/_deps/directxtk-subbuild"
+  GIT_REPOSITORY https://github.com/microsoft/DirectXTK.git
+  GIT_TAG        ${BEEF_DIRECTXTK_REVISION}
+  GIT_SHALLOW    TRUE
+  SOURCE_SUBDIR  does-not-exist
+  OVERRIDE_FIND_PACKAGE)
+
+FetchContent_MakeAvailable(spdlog rapidcsv CommonLibSSE directxtk)
+
+add_library(Microsoft::DirectXTK INTERFACE IMPORTED GLOBAL)
+target_include_directories(Microsoft::DirectXTK SYSTEM INTERFACE "${directxtk_SOURCE_DIR}/Inc")
 
 set(RAPIDCSV_INCLUDE_DIRS "${rapidcsv_SOURCE_DIR}/src" CACHE PATH "" FORCE)
 set(BUILD_TESTS OFF CACHE BOOL "" FORCE)
@@ -45,6 +57,7 @@ set(ENABLE_SKYRIM_SE ${BEEF_COMPILE_SE} CACHE BOOL "" FORCE)
 set(ENABLE_SKYRIM_AE ${BEEF_COMPILE_AE} CACHE BOOL "" FORCE)
 set(ENABLE_SKYRIM_VR ${BEEF_COMPILE_VR} CACHE BOOL "" FORCE)
 set(SKSE_SUPPORT_XBYAK OFF CACHE BOOL "" FORCE)
+set(SKSE_SUPPORT_PATCH_SAFETY OFF CACHE BOOL "" FORCE)
 add_subdirectory("${commonlibsse_SOURCE_DIR}" "${commonlibsse_BINARY_DIR}" EXCLUDE_FROM_ALL)
 
 get_target_property(_clib_links CommonLibSSE INTERFACE_LINK_LIBRARIES)
@@ -56,6 +69,7 @@ foreach(_lib IN LISTS _clib_links)
   list(APPEND _clib_links_fixed "${_lib}")
 endforeach()
 set_target_properties(CommonLibSSE PROPERTIES INTERFACE_LINK_LIBRARIES "${_clib_links_fixed}")
+target_compile_definitions(CommonLibSSE INTERFACE NOMINMAX)
 
 set(CLANG_CL_FLAGS
   /permissive- /EHsc /W4 /utf-8

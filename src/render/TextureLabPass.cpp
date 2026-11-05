@@ -428,7 +428,7 @@ private:
   std::uint32_t vertexStride = 0;
   std::uint32_t vertexOffset = 0;
   REX::W32::ID3D11Buffer *indexBuffer = nullptr;
-  DXGI_FORMAT indexFormat{};
+  REX::W32::DXGI_FORMAT indexFormat{};
   std::uint32_t indexOffset = 0;
   D3D11_PRIMITIVE_TOPOLOGY topology{};
   REX::W32::ID3D11BlendState *blend = nullptr;
@@ -1152,7 +1152,7 @@ void TextureLab::DrawBakeTriangles(const RenderPass &a_pass,
   a_pass.Context().IASetVertexBuffers(0, 1, a_buffers.vertices.GetAddressOf(),
                                       &stride, &offset);
   a_pass.Context().IASetIndexBuffer(a_buffers.indices.Get(),
-                                    DXGI_FORMAT_R32_UINT, 0);
+                                    REX::W32::DXGI_FORMAT_R32_UINT, 0);
   a_pass.Context().IASetPrimitiveTopology(
       D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
   a_pass.Context().VSSetShader(pipeline.vertex.Get(), nullptr, 0);
@@ -1626,7 +1626,7 @@ TextureLab::CreateGroupOdds(const GroupProbabilities &a_odds) {
     desc.height = a_odds.side;
     desc.mipLevels = 1;
     desc.arraySize = 1;
-    desc.format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    desc.format = REX::W32::DXGI_FORMAT_R8G8B8A8_UNORM;
     desc.sampleDesc.count = 1;
     desc.usage = D3D11_USAGE_IMMUTABLE;
     desc.bindFlags = D3D11_BIND_SHADER_RESOURCE;
@@ -1654,7 +1654,7 @@ TextureLab::ReductionLevelFor(ReductionExtent a_extent) {
   desc.height = a_extent.height;
   desc.mipLevels = 1;
   desc.arraySize = 1;
-  desc.format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+  desc.format = REX::W32::DXGI_FORMAT_R32G32B32A32_FLOAT;
   desc.sampleDesc.count = 1;
   desc.usage = D3D11_USAGE_DEFAULT;
   desc.bindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
@@ -1683,8 +1683,8 @@ bool TextureLab::DrawReduction(RenderTarget &a_field, ReductionKind a_kind,
   a_field.texture->GetDesc(&desc);
   const ReductionExtent field{desc.width, desc.height};
   const auto extents = ReductionLevels(field);
-  if ((desc.format != DXGI_FORMAT_R32G32B32A32_FLOAT &&
-       desc.format != DXGI_FORMAT_R32_FLOAT) ||
+  if ((desc.format != REX::W32::DXGI_FORMAT_R32G32B32A32_FLOAT &&
+       desc.format != REX::W32::DXGI_FORMAT_R32_FLOAT) ||
       extents.empty())
     return false;
   std::vector<ReductionLevel *> levels;

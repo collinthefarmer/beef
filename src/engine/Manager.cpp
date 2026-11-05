@@ -82,7 +82,7 @@ void Manager::NoteMenuClosed() const {
       std::format("{}: a studio preview is still on. Return to live in the "
                   "studio ends it.",
                   Identity::kMenuTitle);
-  RE::DebugNotification(notice.c_str());
+  RE::SendHUDMessage::ShowHUDMessage(notice.c_str());
 }
 
 void Manager::QueueForget(RE::FormID a_actorID) {

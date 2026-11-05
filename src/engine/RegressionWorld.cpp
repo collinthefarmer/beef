@@ -151,7 +151,7 @@ Regression::RoleFacts ViewOf(RE::Actor *a_actor, WearerFacts a_facts) {
     }
     runItems.push_back(armor->GetFormID());
     const RE::TESObjectARMO *inSlot =
-        a_actor->GetWornArmor(armor->GetSlotMask());
+        a_actor->GetWornArmor(armor->GetSlotMask().get());
     seen.equipped = a_actor->GetWornArmor(armor->GetFormID()) != nullptr;
     seen.slotTaken = inSlot && inSlot != armor;
     seen.carried = CountOf(*a_actor, *armor) > 0;
@@ -1013,7 +1013,7 @@ void Perform(const Regression::TurnPlayer &, RunWorld &) {
   if (RE::PlayerCharacter *player = RE::PlayerCharacter::GetSingleton()) {
     LogView("before the turn", *player);
     const RE::NiPoint3 angle = player->GetAngle();
-    player->SetRotationZ(angle.z + kHalfTurn);
+    player->SetHeading(angle.z + kHalfTurn);
   }
 }
 

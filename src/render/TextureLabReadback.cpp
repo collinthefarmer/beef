@@ -219,7 +219,7 @@ bool TextureLab::EnsureReductionStaging(ReductionReadback &a_readback) {
   desc.height = 1;
   desc.mipLevels = 1;
   desc.arraySize = 1;
-  desc.format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+  desc.format = REX::W32::DXGI_FORMAT_R32G32B32A32_FLOAT;
   desc.sampleDesc.count = 1;
   desc.usage = D3D11_USAGE_STAGING;
   desc.cpuAccessFlags = D3D11_CPU_ACCESS_READ;
@@ -285,7 +285,8 @@ std::optional<float> TextureLab::ReadBackMean(RenderTarget &a_target) {
   }
   D3D11_TEXTURE2D_DESC desc{};
   a_target.texture->GetDesc(&desc);
-  if (desc.mipLevels == 0 || desc.format != DXGI_FORMAT_R8G8B8A8_UNORM) {
+  if (desc.mipLevels == 0 ||
+      desc.format != REX::W32::DXGI_FORMAT_R8G8B8A8_UNORM) {
     return result;
   }
   if (!LastMipIsOneTexel(desc)) {
@@ -343,7 +344,7 @@ bool TextureLab::EnsureStaging(
   desc.height = a_side;
   desc.mipLevels = 1;
   desc.arraySize = 1;
-  desc.format = DXGI_FORMAT_R8G8B8A8_UNORM;
+  desc.format = REX::W32::DXGI_FORMAT_R8G8B8A8_UNORM;
   desc.sampleDesc.count = 1;
   desc.usage = D3D11_USAGE_STAGING;
   desc.cpuAccessFlags = D3D11_CPU_ACCESS_READ;
@@ -448,7 +449,7 @@ TextureLab::CreateLookup(std::span<const float, 256> a_values) {
   desc.height = 1;
   desc.mipLevels = 1;
   desc.arraySize = 1;
-  desc.format = DXGI_FORMAT_R32_FLOAT;
+  desc.format = REX::W32::DXGI_FORMAT_R32_FLOAT;
   desc.sampleDesc.count = 1;
   desc.usage = D3D11_USAGE_IMMUTABLE;
   desc.bindFlags = D3D11_BIND_SHADER_RESOURCE;
@@ -549,7 +550,7 @@ std::optional<float> TextureLab::MeasureChannel(RE::NiSourceTexture *a_source,
 }
 
 namespace {
-bool Ready(HRESULT a_result) { return a_result == 0; }
+bool Ready(REX::W32::HRESULT a_result) { return a_result == 0; }
 }
 
 TextureLab::TimedSpan::TimedSpan(TextureLab &a_lab, std::string a_key)

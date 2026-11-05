@@ -6,9 +6,11 @@
   "minimum_skse": [2, 0, 17, 0],
   "struct_compatibility": "Independent",
   "dependencies": {
-    "commonlib": "b93280e832f263dbef44e44cbe2936622a02f91a",
+    "commonlib_repository": "https://github.com/alandtse/CommonLibVR.git",
+    "commonlib": "cd21580f7e7cab47df0a7e0fa5e26525527b36bf",
     "spdlog": "v1.15.3",
-    "rapidcsv": "v8.99"
+    "rapidcsv": "v8.99",
+    "directxtk": "may2026"
   },
   "address_library": {"required": true, "edition": "SE and AE", "package_version": null},
   "peers": {

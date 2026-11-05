@@ -62,9 +62,8 @@ RE::BSLightingShaderProperty *LightingPropertyOf(RE::BSGeometry *a_geometry) {
   if (!a_geometry) {
     return nullptr;
   }
-  RE::NiProperty *property = a_geometry->GetGeometryRuntimeData()
-                                 .properties[RE::BSGeometry::States::kEffect]
-                                 .get();
+  RE::NiProperty *property =
+      a_geometry->GetGeometryRuntimeData().shaderProperty.get();
   return property ? netimmerse_cast<RE::BSLightingShaderProperty *>(property)
                   : nullptr;
 }
