@@ -2,7 +2,9 @@ Verbatim copy of src/TruePBR/BSLightingShaderMaterialPBR.h from
 https://github.com/doodlum/skyrim-community-shaders
 commit dd2677fc4020db1da91b39cebef3dbfbe8913983 (2026-08-25).
 The data-member block is byte-identical to the v1.8.3 release tag
-(2f2919a71bed6132b125e41781304c8f6f73d002), which is the installed version.
+(2f2919a71bed6132b125e41781304c8f6f73d002). The whole file is identical in
+v1.9.1 (265c28f5), the installed version. GlintParameters in v1.9.1's
+src/TruePBR.h matches the copy in src/render/PBRMaterial.h.
 Not compiled; src/render/PBRMaterial.h mirrors the layout and static_asserts it.
 The pinned upstream README specifies GPL-3.0-or-later with its Modding
 Exception and GPL-3.0 Linking Exception (with Corresponding Source).

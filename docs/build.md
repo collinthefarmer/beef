@@ -260,9 +260,14 @@ The plugin reaches the engine only through Address Library IDs (CommonLib's
 IDs) and one virtual-function hook whose index is the same in SE and AE. It
 reads Community Shaders by layout, not by version: a material whose texture
 slots are not all `NiSourceTexture` fails the run-time layout check, and the
-plugin turns its effects off. It reads SKSE Menu Framework by its exports. A
-peer version therefore never fails a load by itself; the release notes name
-the versions a candidate was tested with.
+plugin turns its effects off. The check does not see a change inside
+Community Shaders' scalar block that keeps the texture slots in place. Before
+the release notes name a new Community Shaders version as tested, diff that
+release's `src/TruePBR/BSLightingShaderMaterialPBR.h` and `src/TruePBR.h`
+against `src/cs/` and `PBRMaterialLayout`, and record the result in
+`src/cs/SOURCE.txt`. It reads SKSE Menu Framework by its exports. A peer
+version therefore never fails a load by itself; the release notes name the
+versions a candidate was tested with.
 
 `cmake/compatibility/steam-1.6.1170.json` is a targeted profile: it lists one
 runtime, so the loader and the guard accept only Steam 1.6.1170, with a minimum

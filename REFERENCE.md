@@ -916,6 +916,21 @@ Lab mechanics:
   engine material to the pinned PBR layout. `SlotWriter` and `MaterialInputs`
   consume that owning record. Raw layout getters on material and shell bindings
   have been removed; attachment checks remain necessary after construction.
+- The plugin writes Community Shaders' scalar block at 0xA0 to 0xD7:
+  `pbrFlags` on every feature write, the two coat values, the fuzz colour and
+  weight, and `glintParameters`. The run-time layout check
+  (`TextureSlotsValid`) reads only the five texture slots at 0xD8 to 0xF8. A
+  field added to or removed from the scalar block moves those slots, and the
+  check fails. A change that keeps them in place passes the check: a field of
+  4 bytes or less in the padding (0xD4 to 0xD7, or after `glint.enabled`), two
+  fields of one type swapped, a field replaced by another of the same size, or
+  renumbered `pbrFlags` bits. These give wrong visuals. One such change can
+  crash: a pointer that replaces two adjacent floats, because a float write
+  then lands in the pointer. The defence is review, not a run-time check: each
+  new Community Shaders release's header is diffed against `src/cs/` before
+  the release notes name it as tested (`docs/build.md`). The data members are
+  identical in v1.8.3 and v1.9.1 (diffed 2026-11-05 against
+  `reference/community-shaders-src` at 265c28f5).
 - `SweepRetiredMaterialTextures` (`Binding.h`) is called on the engine thread
   whether or not any actor is applied, because a retired texture's material can
   outlive the actor that installed it. It tells a material no engine consumer
