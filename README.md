@@ -34,6 +34,7 @@ enchantment on the piece itself.
 | `docs/ui-api.md` | How is a studio surface built: the `menu/` widget vocabulary, the `Frame`, forms and fields, intents, and navigation? |
 | `docs/ui-design-principles.md` | Which direction does the editor's surface follow? |
 | `docs/in-game-regression.md` | What is the repeatable manual run in the game, and which log line does each step print? |
+| `docs/release-notes.md` | What does each release contain, what does it need, and what are its known limitations? The 0.1.0 alpha entry is a draft until acceptance. |
 | `docs/alpha-package.md` | What does a tester of a local candidate archive need to know? Shipped in the archive as `README.md`. |
 | `docs/bug-report.md` | How is a closed-alpha problem reported, with which evidence? Shipped as `BUG_REPORT.md`. |
 | `docs/plans/`, `docs/checkpoints/`, `docs/history/` | Open work, dated records, and superseded documents. Each document begins with a status line; the folder and the dated filename give its kind and age. Source archives leave these folders out. |
