@@ -58,7 +58,7 @@ editor can still change.
 
 | Requirement | Loads with | Tested with |
 |---|---|---|
-| Skyrim Special Edition | SE 1.5.x, AE 1.6.317 or later; not VR | Steam 1.6.1170 |
+| Skyrim Special Edition | SE 1.5.x, AE 1.6.317 and later 1.6 releases; not 1.7 or VR | Steam 1.6.1170 |
 | SKSE | The build for your Skyrim executable | 2.2.6 |
 | Address Library for SKSE | The edition and version for your executable | All in One v13 |
 | Community Shaders, with TruePBR | Any version whose PBR material layout the plugin recognizes | 1.9.1 |

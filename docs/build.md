@@ -243,9 +243,15 @@ remain outstanding; see the [license checkpoint](checkpoints/licenses-2026-09-23
 
 `cmake/compatibility/address-library.json` is the default profile. It
 declares `SKSE::VersionIndependence::AddressLibrary` to the loader, so one DLL
-loads on every SE (1.5.x) and AE (1.6.317 and later) runtime that Address
-Library covers. The startup guard accepts the same runtime families and
-refuses VR, which is not compiled. Its minimum SKSE is 2.0.17, the oldest SE
+loads on every SE (1.5.x) and AE (1.6.317 and later 1.6) runtime that
+Address Library covers. The startup guard accepts the same runtime families
+and refuses VR, which is not compiled, and 1.7. Address Library gives
+function addresses only: structure layouts come from the pinned CommonLib,
+which names AE runtimes up to 1.6.1330 and already branches one layout at
+1.6.629, and the `PlayerCharacter::Update` hook depends on vtable slot 0xAD.
+A runtime outside what CommonLib describes can move either, and the plugin
+would then read and write the wrong memory. Accepting 1.7 needs a CommonLib
+pin that describes it, an in-game run, and a wider guard. Its minimum SKSE is 2.0.17, the oldest SE
 build: each SKSE build is made for one runtime, so the SKSE that loads on a
 supported runtime is the one that matches it.
 
