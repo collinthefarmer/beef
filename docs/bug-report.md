@@ -99,7 +99,7 @@ Actual result and exact error text:
 - Matching trace segments if diagnostics were enabled:
 - Missing evidence and redactions:
 
-The archive includes `COMPATIBILITY.json` with the candidate runtime and peer
+The archive includes `BetterEnchantmentEffects-COMPATIBILITY.json` with the candidate runtime and peer
 baselines. Include it with reports alongside the exact installed dependency
 versions. The initial profile targets Steam Skyrim 1.6.1170 / SKSE 2.2.6; CS
 1.8.3 and Menu Framework 3.13.0 are preliminary baselines, and the Address

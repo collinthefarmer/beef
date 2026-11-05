@@ -224,7 +224,7 @@ plain names. When a dependency changes, update its row in
 missing input or two entries with the same destination, before it replaces
 either archive.
 
-The mod ZIP carries `COMPATIBILITY.json` (the selected profile) and
+The mod ZIP carries `BetterEnchantmentEffects-COMPATIBILITY.json` (the selected profile) and
 `SKSE/Plugins/BetterEnchantmentEffects-build.json` (the build identity). The
 `.sha256` file identifies the delivered archives; `sha256sum -c` repeats the
 check. Hashes check integrity, not authenticity. Entries have a fixed
@@ -265,7 +265,7 @@ SKSE alone cannot establish a new ABI's compatibility. New runtime families,
 CommonLib revisions, peer headers, and layout assumptions need source review
 and runtime acceptance. See the [profile audit](checkpoints/compatibility-profiles-2026-09-24.md).
 
-The selected profile is copied to `COMPATIBILITY.json` in the mod archive, and
+The selected profile is copied to `BetterEnchantmentEffects-COMPATIBILITY.json` in the mod archive, and
 its name is part of the archive filenames and of `build-identity.json`.
 CMake stops configuration when the profile lacks a field it uses or when a
 vendored peer header differs from the profile's SHA-256; it does not validate

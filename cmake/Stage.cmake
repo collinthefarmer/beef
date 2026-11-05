@@ -9,6 +9,7 @@ set(shipped_notices "${notice_prefix}THIRD_PARTY_NOTICES.md")
 set(shipped_licenses "${notice_prefix}licenses")
 set(shipped_readme "${notice_prefix}README.md")
 set(shipped_bug_report "${notice_prefix}BUG_REPORT.md")
+set(shipped_compatibility "${notice_prefix}COMPATIBILITY.json")
 function(write_shipped_notice source destination)
   set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${source}")
   file(READ "${source}" text)
@@ -33,9 +34,9 @@ add_custom_target(stage
     "${DIST_DIR}/${shipped_licenses}"
   COMMAND "${CMAKE_COMMAND}" -E rm -rf "${DIST_DIR}/LICENSE" "${DIST_DIR}/COPYING.md"
     "${DIST_DIR}/THIRD_PARTY_NOTICES.md" "${DIST_DIR}/licenses"
-    "${DIST_DIR}/BUG_REPORT.md"
+    "${DIST_DIR}/BUG_REPORT.md" "${DIST_DIR}/COMPATIBILITY.json"
   COMMAND "${CMAKE_COMMAND}" -E copy_if_different
-    "${BEEF_EFFECTIVE_PROFILE}" "${DIST_DIR}/COMPATIBILITY.json"
+    "${BEEF_EFFECTIVE_PROFILE}" "${DIST_DIR}/${shipped_compatibility}"
   COMMAND "${CMAKE_COMMAND}" -E copy_if_different
     "${CMAKE_SOURCE_DIR}/LICENSE" "${DIST_DIR}/${shipped_license}"
   COMMAND "${CMAKE_COMMAND}" -E copy_if_different
@@ -76,7 +77,7 @@ foreach(presenter IN LISTS PRESENTER_FILES)
   get_filename_component(filename "${presenter}" NAME)
   package_file("${presenter}" "textures/${PROJECT_NAME}/slots/${filename}")
 endforeach()
-package_file("${BEEF_EFFECTIVE_PROFILE}" "COMPATIBILITY.json")
+package_file("${BEEF_EFFECTIVE_PROFILE}" "${shipped_compatibility}")
 package_file("${CMAKE_SOURCE_DIR}/docs/alpha-package.md" "${shipped_readme}")
 package_file("${CMAKE_SOURCE_DIR}/docs/bug-report.md" "${shipped_bug_report}")
 list(JOIN package_files ",\n" package_entries)

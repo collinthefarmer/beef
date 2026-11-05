@@ -2,7 +2,7 @@
 
 This is a development candidate, not a runtime-validated release.
 `SKSE/Plugins/BetterEnchantmentEffects-build.json` records the build identity,
-and `COMPATIBILITY.json` the declared compatibility. The adjacent `.sha256`
+and `BetterEnchantmentEffects-COMPATIBILITY.json` the declared compatibility. The adjacent `.sha256`
 file holds the archive hashes. Compilation and archive checksums do not
 establish in-game compatibility.
 
@@ -140,7 +140,7 @@ Community Shaders disables effects and is reported in the plugin log and,
 when available, the editor pages. These checks do not certify binary-layout
 compatibility or that TruePBR is enabled.
 
-The archive includes `COMPATIBILITY.json` with the candidate runtime and peer
+The archive includes `BetterEnchantmentEffects-COMPATIBILITY.json` with the candidate runtime and peer
 baselines. Include it with reports alongside the exact installed dependency
 versions. The initial profile targets Steam Skyrim 1.6.1170 / SKSE 2.2.6; CS
 1.8.3 and Menu Framework 3.13.0 are preliminary baselines, and the Address
