@@ -4434,7 +4434,13 @@ The method and its prototype comparison are in
   `live_instances` at the swap. `unplanned` lists, by step kind, format and size, the
   step outputs that hold a target outside the steps `TargetsOf` prices
   (`unplanned`), and priced steps whose targets differ from the price
-  (`mispriced`, with the bytes over the price). `slot_only` lists, per live actor,
+  (`mispriced`, with the bytes over the price). A step output that holds a
+  target a priced step also holds is not counted: a `GenerateMips` step
+  returns its stack's target with the mips filled in, so its outputs name the
+  `CompositeStack` target again. Before 2026-11-05 the census counted each
+  such target twice more, once per mip step, as `unplanned GenerateMips none
+  64` (180 targets and 528 MiB with 12 actors in the run of 2026-11-05, more
+  bytes than the instances held). `slot_only` lists, per live actor,
   the targets that only its material and shell slots still hold, with the
   actor's applied level, whether it is in view, the bytes and the sides. In the session of 2026-10-09 live targets
   ran 120 to 136 above the estimate after resolution swaps, until the

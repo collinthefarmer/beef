@@ -405,6 +405,13 @@ void CollectValuePointers(const RenderValue &value, TargetPointers &set) {
     AddTarget(stack->texture.Target(), set);
   }
 }
+void CollectStepPointers(
+    const StepExecutionState<RenderValue, RenderScratch> &step,
+    TargetPointers &set) {
+  for (const auto &output : step.outputs)
+    if (output.value)
+      CollectValuePointers(*output.value, set);
+}
 void CollectValue(const RenderValue &value, HolderSet &set) {
   TargetPointers targets;
   CollectValuePointers(value, targets);
@@ -1330,11 +1337,19 @@ void RenderInstance::CollectUnplannedOutputs(
     std::map<std::string, HeldTally> &a_unplanned) const {
   const std::vector<RenderStepId> held = HeldSteps(execution_.Plan());
   const auto steps = execution_.Steps();
+  TargetPointers heldTargets;
+  for (const RenderStepId step : held)
+    if (step < steps.size())
+      CollectStepPointers(steps[step], heldTargets);
   for (RenderStepId step = 0; step < steps.size(); ++step) {
     TargetPointers targets;
-    for (const auto &output : steps[step].outputs)
-      if (output.value)
-        CollectValuePointers(*output.value, targets);
+    CollectStepPointers(steps[step], targets);
+    const bool planned = std::ranges::contains(held, step);
+    if (!planned)
+      std::erase_if(targets,
+                    [&heldTargets](const TextureLab::RenderTarget *target) {
+                      return heldTargets.contains(target);
+                    });
     if (targets.empty())
       continue;
     std::uint64_t bytes = 0;
@@ -1344,7 +1359,6 @@ void RenderInstance::CollectUnplannedOutputs(
     const auto requirements = RequirementsOf(kind);
     const TextureSize size = requirements ? SizeOf(sizes_, requirements->side)
                                           : TextureSize{TextureSize::kMin};
-    const bool planned = std::ranges::contains(held, step);
     const std::uint64_t priced =
         planned && requirements
             ? TargetBytes(size, requirements->format, requirements->mipPolicy)
