@@ -126,7 +126,9 @@ this pass before release-candidate validation.
   The [hook safeguard](../checkpoints/hook-startup-2026-09-24.md) then removes
   the zero-address relocation path and exposes its failure before a snapshot.
 - [ ] Refresh `MAP.md`, component sheets, build instructions, and current
-  cross-references. Correct the edit-versus-save flow, variant behavior, and
+  cross-references. 2026-11-05: `MAP.md` is regenerated and every component
+  sheet names every file of its directory, with no name the tree has lost.
+  Build instructions and cross-references are not rechecked. Correct the edit-versus-save flow, variant behavior, and
   native service coverage. Historical documents remain historical.
 - [ ] Verify third-party attribution/license notices, dependency provenance,
   and the source/package contents intended for distribution.
