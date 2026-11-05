@@ -455,9 +455,16 @@ their work across failures and restarts.
   to explicit staging. Record actual archive contents and build identity.
   The [reporting follow-up](../checkpoints/package-verification-2026-09-23.md#reporting-follow-up)
   records byte comparison against the built Windows executable.
-- [ ] Install in a fresh MO2 profile without development leftovers; verify
+- [x] Install in a fresh MO2 profile without development leftovers; verify
   missing-dependency behavior, upgrades, preservation of settings/recipes,
-  disabling, and removal.
+  disabling, and removal. 2026-11-05: profile `beef candidate` (a copy of
+  `Skyrim 2` with the candidate archive and a clean SKSE output mod). With
+  Community Shaders off, the plugin logged `CommunityShaders.dll is not
+  loaded; emissive path disabled, plugin idle` and the run ended BLOCKED; with
+  SKSE Menu Framework off, it logged `editor unavailable` and `lifecycle`
+  passed. The owner decided that a reinstall resetting the INI is intended and
+  that upgrade and removal need no run: the plugin keeps nothing in saves, and
+  studio recipes land in the overwrite folder.
 - [ ] Update and execute `docs/in-game-regression.md` against current source.
   Record PASS/FAIL/BLOCKED per case, fixture/configuration files, expected
   versus actual visuals, logs/traces, and candidate identity.

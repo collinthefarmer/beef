@@ -58,17 +58,20 @@ editor can still change.
 
 | Requirement | Loads with | Tested with |
 |---|---|---|
-| Skyrim Special Edition | SE 1.5.x, AE 1.6.317 or later; not VR | TO FILL at acceptance |
-| SKSE | The build for your Skyrim executable | TO FILL at acceptance |
-| Address Library for SKSE | The edition and version for your executable | TO FILL at acceptance |
-| Community Shaders, with TruePBR | Any version whose PBR material layout the plugin recognizes | TO FILL at acceptance |
-| SKSE Menu Framework (editor only) | Any version with the functions the editor calls | TO FILL at acceptance |
+| Skyrim Special Edition | SE 1.5.x, AE 1.6.317 or later; not VR | Steam 1.6.1170 |
+| SKSE | The build for your Skyrim executable | 2.2.6 |
+| Address Library for SKSE | The edition and version for your executable | All in One v13 |
+| Community Shaders, with TruePBR | Any version whose PBR material layout the plugin recognizes | 1.9.1 |
+| SKSE Menu Framework (editor only) | Any version with the functions the editor calls | 3.13.0 Hotfix 2 |
 | Microsoft Visual C++ x64 runtime | Not bundled | |
 
 One DLL covers every runtime that Address Library covers. The plugin refuses
 no peer version by number: an unrecognized Community Shaders layout turns its
 effects off with a log line, and missing Menu Framework functions turn the
-editor off.
+editor off. Without Community Shaders the plugin logs
+`CommunityShaders.dll is not loaded; emissive path disabled, plugin idle` and
+does nothing; without SKSE Menu Framework it logs `editor unavailable` and
+recipes still play (both checked on 2026-11-05).
 
 ### Install and upgrade
 
