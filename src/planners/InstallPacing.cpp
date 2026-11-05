@@ -8,7 +8,7 @@
 
 namespace BetterEnchantmentEffects {
 namespace {
-enum class InstallRank { kOverdue, kPlayer, kShown, kOther };
+enum class InstallRank : std::uint8_t { kOverdue, kPlayer, kShown, kOther };
 
 std::uint32_t WaitOf(const WaitingInstall &a_entry,
                      std::uint32_t a_nowMS) noexcept {

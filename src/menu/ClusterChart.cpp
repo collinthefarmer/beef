@@ -42,8 +42,7 @@ struct Emphasis {
 
 float AxisX(const ChartArea &a_area, std::size_t a_axis);
 float ValueY(const ChartArea &a_area, float a_value);
-void DrawAxes(ImGui::ImDrawList *a_draw, const ChartArea &a_area,
-              const Studio::ClusterChart &a_chart);
+void DrawAxes(ImGui::ImDrawList *a_draw, const ChartArea &a_area);
 void DrawCluster(ImGui::ImDrawList *a_draw, const ChartArea &a_area,
                  const Studio::ClusterProfile &a_cluster, Emphasis a_emphasis);
 void DrawHistograms(ImGui::ImDrawList *a_draw, const ChartArea &a_area,
@@ -146,7 +145,7 @@ std::optional<ChartClick> DrawClusterChart(const Studio::ClusterChart &a_chart,
   const ChartArea area{origin, width, origin.y + line * 1.5f,
                        origin.y + height - line * 1.5f, a_scale};
 
-  DrawAxes(draw, area, a_chart);
+  DrawAxes(draw, area);
   for (const Studio::ClusterProfile &cluster : a_chart.clusters) {
     if (cluster.id != a_focus.picked && cluster.id != a_focus.compared) {
       DrawCluster(draw, area, cluster, EmphasisOf(cluster.id, a_focus));
@@ -198,9 +197,7 @@ float ValueY(const ChartArea &a_area, float a_value) {
          std::clamp(a_value, 0.0f, 1.0f) * (a_area.bottom - a_area.top);
 }
 
-void DrawAxes(ImGui::ImDrawList *a_draw, const ChartArea &a_area,
-              const Studio::ClusterChart &a_chart) {
-  const float line = ImGui::GetTextLineHeight();
+void DrawAxes(ImGui::ImDrawList *a_draw, const ChartArea &a_area) {
   for (std::size_t i = 0; i < Studio::kClusterAxisCount; ++i) {
     const float x = AxisX(a_area, i);
     ImGui::ImDrawListManager::AddLine(a_draw, {x, a_area.top},

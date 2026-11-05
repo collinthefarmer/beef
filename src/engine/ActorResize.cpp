@@ -231,9 +231,9 @@ std::expected<ResizeSwap, std::string> FinishResize(LiveActor &a_state) {
   }
   SwapRender(a_state, current, inFlight->render);
   ConcealStackSlots(a_state);
-  const ResizeSwap swap{a_state.renderLevel, inFlight->to,
-                        inFlight->stacks.size(), DrawnStacks(*inFlight),
-                        CostOf(inFlight->render->Targets().withIntermediates)};
+  ResizeSwap swap{a_state.renderLevel, inFlight->to, inFlight->stacks.size(),
+                  DrawnStacks(*inFlight),
+                  CostOf(inFlight->render->Targets().withIntermediates)};
   a_state.renderLevel = inFlight->to;
   a_state.holding = IntermediateHolding::kHeld;
   DropResize(a_state);

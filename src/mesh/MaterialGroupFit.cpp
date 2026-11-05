@@ -246,7 +246,7 @@ MostConfused(const Sample &a_sample,
   for (std::size_t i = 0; i < a_ofTexel.size(); ++i) {
     a_ofTexel[i] = IsCovered(a_raster, i) ? 0 : kNoGroup;
   }
-  MaterialGroups out{std::move(a_s), 1, {}, {}, std::move(a_ofTexel)};
+  MaterialGroups out{a_s, 1, {}, {}, std::move(a_ofTexel)};
   auto sample =
       SampleOf(a_raster, out.standardisation, out.ofTexel, kMergeSample);
   if (sample) {
@@ -285,7 +285,7 @@ GroupRegions(const MaterialRaster &a_raster, const Regions &a_regions,
   Standardisation standardisation = StandardisationOf(a_raster);
   std::vector<std::int16_t> unset(grid.Size(), kNoGroup);
   if (a_regions.count < static_cast<std::int32_t>(kMinRegionsForGroups)) {
-    return SingleGroup(a_raster, std::move(standardisation), std::move(unset));
+    return SingleGroup(a_raster, standardisation, std::move(unset));
   }
   auto descriptors = DescriptorsOf(a_raster, a_regions);
   if (!descriptors) {
@@ -296,11 +296,11 @@ GroupRegions(const MaterialRaster &a_raster, const Regions &a_regions,
   search.regularisation = kRegularisation;
   auto mixture = ChooseMixture(*descriptors, search);
   if (!mixture) {
-    return SingleGroup(a_raster, std::move(standardisation), std::move(unset));
+    return SingleGroup(a_raster, standardisation, std::move(unset));
   }
 
   MaterialGroups out;
-  out.standardisation = std::move(standardisation);
+  out.standardisation = standardisation;
   out.fitted = mixture->components.size();
   out.ofTexel =
       GroupOfTexel(a_regions, MostLikelyComponents(*mixture, *descriptors));

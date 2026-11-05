@@ -83,7 +83,7 @@ CreateFolder(const DumpMeta &a_meta, Seconds a_now) {
   }
   const std::string stamp = std::format("{:%Y%m%d-%H%M%S}", a_now);
   for (std::uint32_t attempt = 0; attempt < kMaxDumpFolderAttempts; ++attempt) {
-    const std::filesystem::path folder =
+    std::filesystem::path folder =
         root /
         DumpFolderName(a_meta.armor.name, a_meta.geometry, stamp, attempt);
     if (std::filesystem::create_directory(folder, error)) {

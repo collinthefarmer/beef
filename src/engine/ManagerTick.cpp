@@ -599,7 +599,7 @@ std::optional<HeartbeatReading> Manager::RunTick(TextureLab &a_lab,
   Orchestration::SpreadCommands split =
       Orchestration::SpreadTickActors(std::move(out.commands));
   results_ = Execute(split.now, context);
-  QueueSpreadDraws(std::move(split.spread), context.resuming);
+  QueueSpreadDraws(split.spread, context.resuming);
   DrawSpreadShare(a_settings, a_nowMS, spreadFramesLeft_);
   a_lab.EndTimedTick();
   return heartbeat;
@@ -710,10 +710,10 @@ void Manager::UpdateLights(LiveActor &a_state,
   }
 }
 
-void Manager::QueueSpreadDraws(std::vector<Orchestration::TickActor> a_draws,
-                               bool a_resuming) {
-  for (Orchestration::TickActor &draw : a_draws) {
-    spreadDraws_.push_back({std::move(draw), a_resuming});
+void Manager::QueueSpreadDraws(
+    const std::vector<Orchestration::TickActor> &a_draws, bool a_resuming) {
+  for (const Orchestration::TickActor &draw : a_draws) {
+    spreadDraws_.push_back({draw, a_resuming});
   }
   spreadFramesLeft_ = framesSinceTick_;
   framesSinceTick_ = 0;
@@ -745,7 +745,7 @@ void Manager::DrawSpread(std::size_t a_count, const Settings &a_settings,
                          std::uint32_t a_nowMS) {
   const Studio::View &view = editor_.CurrentView();
   for (std::size_t i = 0; i < a_count && !spreadDraws_.empty(); ++i) {
-    const SpreadDraw draw = std::move(spreadDraws_.front());
+    const SpreadDraw draw = spreadDraws_.front();
     spreadDraws_.pop_front();
     (void)RunTickActor(draw.command,
                        TickFrame{a_settings, view, a_nowMS, draw.resuming});

@@ -25,6 +25,7 @@
 #include "studio/Rows.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <format>
 #include <functional>
 #include <optional>
@@ -792,8 +793,7 @@ void DrawResourceRemoveButton(const Frame &a_frame, const ResourceRef &a_ref,
                "Remove", [&] { a_post(true); });
 }
 
-void DrawSourceClusters(const std::string &a_name,
-                        const MaterialGroupsSource &a_source,
+void DrawSourceClusters(const MaterialGroupsSource &a_source,
                         std::span<const Studio::FormField> a_form,
                         const Frame &a_frame);
 
@@ -836,13 +836,12 @@ void DrawSourceInspector(const Studio::SourceSubject &a_source,
   const std::optional<SourceKind> kind = Studio::SourceKindOf(*row);
   if (const auto *clusters =
           kind ? Get<MaterialGroupsSource>(*kind) : nullptr) {
-    DrawSourceClusters(row->name, *clusters, form, a_frame);
+    DrawSourceClusters(*clusters, form, a_frame);
   }
   DrawFormWithSignals("source", form, a_frame);
 }
 
-void DrawSourceClusters(const std::string &a_name,
-                        const MaterialGroupsSource &a_source,
+void DrawSourceClusters(const MaterialGroupsSource &a_source,
                         std::span<const Studio::FormField> a_form,
                         const Frame &a_frame) {
   if (!a_frame.geometry) {
@@ -1140,7 +1139,7 @@ struct InspectorPass {
   bool editPending = false;
 };
 
-enum class InspectorFooter { kNone, kRelationships, kKeys };
+enum class InspectorFooter : std::uint8_t { kNone, kRelationships, kKeys };
 
 [[nodiscard]] InspectorFooter FooterOf(const Frame &a_frame) {
   if (a_frame.recipe &&

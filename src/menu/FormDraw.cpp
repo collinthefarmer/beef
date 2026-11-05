@@ -269,8 +269,8 @@ void FocusCreatedSubject(const Created &a_created, const Frame &a_frame) {
   return true;
 }
 
-void PostCreation(const Frame &a_frame, Studio::Creation a_creation) {
-  Studio::Created made = Studio::Create(std::move(a_creation), *a_frame.recipe);
+void PostCreation(const Frame &a_frame, const Studio::Creation &a_creation) {
+  Studio::Created made = Studio::Create(a_creation, *a_frame.recipe);
   Studio::Post(*a_frame.intents,
                Studio::EditRecipe{a_frame.recipe->id, std::move(made.edits)});
   a_frame.state->pendingSelection =

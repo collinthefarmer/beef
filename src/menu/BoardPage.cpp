@@ -25,7 +25,6 @@ using ImGuiMCP::ImVec2;
 
 namespace BetterEnchantmentEffects::Menu {
 namespace {
-using Studio::AddOutput;
 using Studio::Board;
 using Studio::Cell;
 using Studio::CellState;

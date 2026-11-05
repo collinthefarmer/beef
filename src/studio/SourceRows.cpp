@@ -13,10 +13,6 @@ namespace BetterEnchantmentEffects::Studio {
 namespace {
 [[nodiscard]] std::string OnOff(bool a_on) { return a_on ? "on" : "off"; }
 
-[[nodiscard]] std::string PointText(const Vec3 &a_point) {
-  return LiteralColorText(a_point);
-}
-
 [[nodiscard]] std::string PartitionText(BipedSlot a_slot) {
   const auto name = BipedSlotName(a_slot);
   return name ? std::string{*name} : std::to_string(std::to_underlying(a_slot));
@@ -368,11 +364,11 @@ FilterKindOf(const FilterSourceRow &a_row) {
   pick.seed = *seed;
   pick.levels.clear();
   if (a_row.geometryLevel) {
-    pick.levels.push_back(GeometryLevel{*geometries});
+    pick.levels.emplace_back(GeometryLevel{*geometries});
   }
-  pick.levels.push_back(GroupLevel{*areaBias, {*merge, *smoothing}});
+  pick.levels.emplace_back(GroupLevel{*areaBias, {*merge, *smoothing}});
   if (a_row.chartLevel) {
-    pick.levels.push_back(ChartLevel{*charts, *minCover, *minShare});
+    pick.levels.emplace_back(ChartLevel{*charts, *minCover, *minShare});
   }
   return SourceKind{pick};
 }

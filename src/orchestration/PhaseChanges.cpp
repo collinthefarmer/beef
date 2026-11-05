@@ -122,7 +122,7 @@ PhaseChange Swapped(ActorId a_actor, const Running &a_running) {
 PhaseChange NotSwapped(ActorId a_actor, const Running &a_running,
                        const EventContext &a_context) {
   PhaseChange failed = FailedResize(a_running.resize, a_context);
-  failed.commands.push_back(AbandonResize{a_actor});
+  failed.commands.emplace_back(AbandonResize{a_actor});
   return failed;
 }
 
@@ -325,7 +325,7 @@ PhaseChange WantLevel(ActorId a_actor, RenderPhase a_phase, Level a_level) {
         }
 
         PhaseChange change = QueuedOrShown(*next);
-        change.commands.push_back(AbandonResize{a_actor});
+        change.commands.emplace_back(AbandonResize{a_actor});
         return change;
       },
       [&](const auto &) { return Unchanged(a_phase); });

@@ -354,7 +354,7 @@ public:
     std::optional<ChartFilter> charts;
   };
   bool RenderClusters(RenderTarget &a_target, const MaterialMaps &a_maps,
-                      const std::shared_ptr<const MaterialGrouping> &a_grouping,
+                      const std::shared_ptr<const MaterialGrouping> &a_owner,
                       const ClusterDraw &a_draw);
   [[nodiscard]] bool ClustersAvailable() const noexcept;
   [[nodiscard]] bool BakingAvailable() const noexcept;

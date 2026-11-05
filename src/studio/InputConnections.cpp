@@ -103,6 +103,7 @@ std::vector<ReadAsOption> ReadAsOptions(const std::string &a_actorValue,
     return a_sample ? SampleAt(*a_sample, a_measure) : std::nullopt;
   };
   std::vector<ReadAsOption> options;
+  options.reserve(std::size(kInputMeasures));
   for (const InputMeasureInfo &info : kInputMeasures) {
     options.push_back(
         {std::string{NameOf(kMeasures, info.measure)},

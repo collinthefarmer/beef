@@ -50,7 +50,7 @@ std::vector<BoneCoverage> SkinBonesOf(std::span<const PieceRow> a_pieces,
 }
 
 namespace {
-[[nodiscard]] GameObjectCandidate NodeCandidate(std::string a_name,
+[[nodiscard]] GameObjectCandidate NodeCandidate(const std::string &a_name,
                                                 std::string a_qualifier) {
   return GameObjectCandidate{a_name, a_name, std::move(a_qualifier)};
 }
@@ -87,8 +87,8 @@ GameObjectCatalog NodeCatalogOf(std::span<const BoneCoverage> a_skin,
     }
   }
   std::ranges::sort(rest, IsBeforeAlphabetically);
-  for (std::string &node : rest) {
-    catalog.candidates.push_back(NodeCandidate(std::move(node), "skeleton"));
+  for (const std::string &node : rest) {
+    catalog.candidates.push_back(NodeCandidate(node, "skeleton"));
   }
   catalog.sourceNote =
       std::format("{} skin bone(s), {} other node(s)", skinCount,

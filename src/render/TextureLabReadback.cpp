@@ -173,9 +173,6 @@ private:
 
 [[nodiscard]] std::optional<std::vector<std::uint8_t>>
 PackedRgba(const ReadMapping &a_mapping, std::uint32_t a_side);
-[[nodiscard]] MaterialSample
-SampleOf(const std::vector<std::uint8_t> &a_rmaos,
-         const std::vector<std::uint8_t> &a_diffuse);
 }
 
 std::vector<std::uint8_t>
@@ -379,12 +376,12 @@ TextureLab::ReadMaterialSample(MaterialReadback &a_readback, bool a_wait) {
   }
   const std::uint32_t flags =
       a_wait ? 0u : static_cast<std::uint32_t>(D3D11_MAP_FLAG_DO_NOT_WAIT);
-  const std::optional<std::vector<std::uint8_t>> rmaos = PackedRgba(
+  std::optional<std::vector<std::uint8_t>> rmaos = PackedRgba(
       ReadMapping{borrowedContext_,
                   reinterpret_cast<ID3D11Resource *>(a_readback.rmaos.Get()),
                   meter, flags},
       kSampleSide);
-  const std::optional<std::vector<std::uint8_t>> diffuse =
+  std::optional<std::vector<std::uint8_t>> diffuse =
       rmaos ? PackedRgba(ReadMapping{borrowedContext_,
                                      reinterpret_cast<ID3D11Resource *>(
                                          a_readback.diffuse.Get()),

@@ -66,6 +66,7 @@ PickName(const char *a_key, const std::string &a_current,
 
 void PickTier(Studio::PreviewWindow &a_window, float a_scale) {
   std::vector<std::string> names;
+  names.reserve(std::size(Studio::kPreviewTiers));
   for (const Studio::PreviewTier tier : Studio::kPreviewTiers) {
     names.emplace_back(Studio::TierName(tier));
   }
@@ -81,6 +82,7 @@ void PickTier(Studio::PreviewWindow &a_window, float a_scale) {
 void PickChannel(Studio::PreviewWindow &a_window, ShaderChannel a_shown,
                  float a_scale) {
   std::vector<std::string> names;
+  names.reserve(std::size(Studio::kPreviewChannels));
   for (const ShaderChannel channel : Studio::kPreviewChannels) {
     names.emplace_back(Studio::PreviewChannelName(channel));
   }
@@ -182,7 +184,8 @@ void PinPreviewButton(const Studio::PreviewSubject &a_subject,
   ImGui::PopID();
 }
 
-void PinSubjectButton(const Frame &a_frame, Studio::PreviewSubject a_subject) {
+void PinSubjectButton(const Frame &a_frame,
+                      const Studio::PreviewSubject &a_subject) {
   if (!a_frame.state) {
     return;
   }

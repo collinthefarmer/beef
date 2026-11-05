@@ -214,6 +214,7 @@ namespace {
 std::string CascadeSummary(const CascadePlan &a_plan,
                            std::span<const OutputRow> a_outputs) {
   std::vector<std::string> layers;
+  layers.reserve(a_plan.layers.size());
   for (const LayerOwner &layer : a_plan.layers) {
     layers.push_back(LayerName(layer, a_outputs));
   }

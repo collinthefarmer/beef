@@ -245,7 +245,7 @@ private:
   [[nodiscard]] CommandResults
   RunTickActor(const Orchestration::TickActor &a_command,
                const TickFrame &a_frame);
-  void QueueSpreadDraws(std::vector<Orchestration::TickActor> a_draws,
+  void QueueSpreadDraws(const std::vector<Orchestration::TickActor> &a_draws,
                         bool a_resuming);
   void DrawSpreadTimed(TextureLab &a_lab, const Settings &a_settings,
                        std::uint32_t a_nowMS, std::uint64_t a_framesLeft);

@@ -555,7 +555,8 @@ struct PlanBuilder {
                                  Is<ChartBake>(operation.bake)},
                 label);
   }
-  std::string GeometryNameOf(const LoweringRequest &request) const {
+  [[nodiscard]] std::string
+  GeometryNameOf(const LoweringRequest &request) const {
     return bindings(request.value, request.geometry).geometry;
   }
   RenderValueRef LowerDistanceOperation(const DistanceOperation &operation,

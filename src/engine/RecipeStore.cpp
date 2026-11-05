@@ -820,7 +820,7 @@ Claim ClaimDestination(const std::filesystem::path &a_path,
   if (!std::filesystem::exists(a_path, ec)) {
     return std::nullopt;
   }
-  const std::optional<std::filesystem::path> aside = SetAside(a_path);
+  std::optional<std::filesystem::path> aside = SetAside(a_path);
   if (!aside) {
     return std::unexpected(Refusal(
         id, std::format("{} exists and did not load, and {}{} "

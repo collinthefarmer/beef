@@ -16,7 +16,7 @@ using AxisValues = std::array<float, kClusterAxisCount>;
 AxisValues AxisValuesOf(const MaterialTexel &a_texel) noexcept;
 float Finite01(float a_value) noexcept;
 ClusterProfile ProfileFrom(const MaterialCluster &a_cluster,
-                           std::vector<AxisValues> a_members);
+                           const std::vector<AxisValues> &a_members);
 AxisBand BandOf(std::vector<float> &a_values, float a_centre);
 AxisHistogram HistogramOf(const std::vector<float> &a_values);
 }
@@ -68,8 +68,7 @@ ClusterChart ChartOf(const MaterialGrouping &a_grouping) {
     }
   }
   for (std::size_t c = 0; c < a_analysis.clusters.size(); ++c) {
-    chart.clusters.push_back(
-        ProfileFrom(a_analysis.clusters[c], std::move(members[c])));
+    chart.clusters.push_back(ProfileFrom(a_analysis.clusters[c], members[c]));
   }
   return chart;
 }
@@ -150,7 +149,7 @@ float Finite01(float a_value) noexcept {
 }
 
 ClusterProfile ProfileFrom(const MaterialCluster &a_cluster,
-                           std::vector<AxisValues> a_members) {
+                           const std::vector<AxisValues> &a_members) {
   ClusterProfile profile;
   profile.id = a_cluster.id;
   profile.share = a_cluster.share;

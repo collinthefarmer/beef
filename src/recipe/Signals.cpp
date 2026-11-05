@@ -1113,7 +1113,8 @@ struct SignalState::Evaluator {
     }
     return Default();
   }
-  std::optional<Efsh::EffectParams> ShaderParams(OutputRef record) const {
+  [[nodiscard]] std::optional<Efsh::EffectParams>
+  ShaderParams(OutputRef record) const {
     const auto *node = state.graph_.NodeAt(record.node);
     const auto *external = node ? Get<ExternalInput>(node->kind) : nullptr;
     if (!external)

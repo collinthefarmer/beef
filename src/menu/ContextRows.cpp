@@ -224,7 +224,7 @@ void PostKeywordKeys(const Studio::RecipeRow &a_recipe,
                      Studio::Intents &a_out) {
   std::vector<Studio::RecipeEdit> edits;
   for (const RecipeKey &key : a_keys) {
-    edits.push_back(Studio::AddKey{key});
+    edits.emplace_back(Studio::AddKey{key});
   }
   Studio::Post(a_out, Studio::EditRecipe{a_recipe.id, std::move(edits)});
 }
