@@ -3801,6 +3801,24 @@ The method and its prototype comparison are in
   finding of its file and check. `--changed` follows `#include` lines through
   `src/`, `src/extern/` and the `/FI` precompiled header to find the
   translation units a changed header reaches.
+- The baseline keeps the size and complexity findings that a split would
+  not make clearer (reviewed 2026-11-05, 74 functions). The limits are 60
+  lines, nesting depth 4, 4 parameters and cognitive complexity 25.
+  - Parameters (44): nearly all have 5, mostly render and orchestration
+    helpers that pass an actor, its record and a context. A record made
+    only to reach 4 would name no concept.
+  - Nesting (21): most are texel, cluster and neighbour loops in `mesh/`;
+    the depth is the algorithm's shape.
+  - Length (9): dispatch tables and field lists (`Manager::Execute`,
+    `ValidateStepKind`, `InputsOf`, `CheckSourceInputs`, `PickFields`,
+    `ParseRunFile`, `Metrics::Drain`, `EmitMetricsHeartbeat`) and the D3D
+    setup in `TextureLab::Init`. One arm per variant is the table the code
+    conventions prefer over a split.
+  - Cognitive complexity (5, scores 26 to 28): the regression fixture scans
+    `RegressionActors` and `CrowdOf`, `TextField`, the mixture model's
+    `Maximise`, and `DownstreamStepsOf`.
+  A new finding in these checks still fails the gate; it is reviewed and
+  either split or added with its reason here.
 - `docs/build.md` owns commands and recovery. `install.sh` copies
   the staged mod while preserving an existing INI and reporting copy errors.
 - `tools/rename.py` drives the `clangd` on `PATH`, which the dev shell

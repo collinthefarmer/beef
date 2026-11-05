@@ -1,17 +1,91 @@
-# clang-tidy baseline, 150 sources, 10 findings
+# clang-tidy baseline, 232 sources, 84 findings
 # regenerate: python3 tools/tidy.py --update
 
-# readability-function-size                            8
-# readability-function-cognitive-complexity            1
+# readability-function-size                            77
+# readability-function-cognitive-complexity            6
 # bugprone-unused-return-value                         1
 
+src/Settings.cpp:154: [readability-function-size] function 'Assign' exceeds recommended size/complexity thresholds
+src/diagnostics/Metrics.cpp:199: [readability-function-size] function 'Drain' exceeds recommended size/complexity thresholds
+src/engine/ActorResize.cpp:22: [readability-function-size] function 'StackHolders' exceeds recommended size/complexity thresholds
+src/engine/ActorResize.cpp:155: [readability-function-size] function 'DrawResize' exceeds recommended size/complexity thresholds
+src/engine/InstallStages.cpp:72: [readability-function-size] function 'SurfacePlanOf' exceeds recommended size/complexity thresholds
+src/engine/ManagerApply.cpp:122: [readability-function-size] function 'MakeGeometry' exceeds recommended size/complexity thresholds
+src/engine/ManagerApply.cpp:307: [readability-function-size] function 'LogStackDiagnostics' exceeds recommended size/complexity thresholds
+src/engine/ManagerApply.cpp:454: [readability-function-size] function 'RenderRequestOf' exceeds recommended size/complexity thresholds
+src/engine/ManagerApply.cpp:511: [readability-function-size] function 'AttachStack' exceeds recommended size/complexity thresholds
+src/engine/ManagerApply.cpp:551: [readability-function-size] function 'ApplyAttachments' exceeds recommended size/complexity thresholds
+src/engine/ManagerApply.cpp:741: [readability-function-size] function 'VerifiedRenderPlan' exceeds recommended size/complexity thresholds
+src/engine/ManagerApply.cpp:853: [readability-function-size] function 'AttachRenderPlan' exceeds recommended size/complexity thresholds
+src/engine/ManagerApply.cpp:880: [readability-function-size] function 'BuildActorRender' exceeds recommended size/complexity thresholds
+src/engine/ManagerApply.cpp:910: [readability-function-size] function 'BuildRequestedRender' exceeds recommended size/complexity thresholds
+src/engine/ManagerApply.cpp:1176: [readability-function-size] function 'LiveActorFor' exceeds recommended size/complexity thresholds
+src/engine/ManagerApply.cpp:1269: [readability-function-size] function 'PlaceInstances' exceeds recommended size/complexity thresholds
+src/engine/ManagerApply.cpp:1418: [readability-function-size] function 'BuildAwaitedRender' exceeds recommended size/complexity thresholds
+src/engine/ManagerCommands.cpp:96: [readability-function-size] function 'Execute' exceeds recommended size/complexity thresholds
+src/engine/ManagerFacts.cpp:253: [readability-function-size] function 'ClaimsOf' exceeds recommended size/complexity thresholds
+src/engine/ManagerHeartbeat.cpp:186: [readability-function-size] function 'EmitMetricsHeartbeat' exceeds recommended size/complexity thresholds
+src/engine/ManagerTick.cpp:403: [readability-function-size] function 'FailGeometryOutputs' exceeds recommended size/complexity thresholds
+src/engine/ManagerTick.cpp:448: [readability-function-size] function 'DrawFirstSlots' exceeds recommended size/complexity thresholds
+src/engine/ManagerTick.cpp:653: [readability-function-size] function 'RenderGeometry' exceeds recommended size/complexity thresholds
+src/engine/RecipeEditor.cpp:861: [readability-function-size] function 'ReleaseHolds' exceeds recommended size/complexity thresholds
+src/engine/RegressionRequests.cpp:218: [readability-function-cognitive-complexity] function 'RegressionActors' has cognitive complexity of 27 (threshold 25)
+src/engine/RegressionRequests.cpp:218: [readability-function-size] function 'RegressionActors' exceeds recommended size/complexity thresholds
+src/engine/RegressionWorld.cpp:710: [readability-function-cognitive-complexity] function 'CrowdOf' has cognitive complexity of 26 (threshold 25)
+src/menu/MenuWidgets.cpp:529: [readability-function-cognitive-complexity] function 'TextField' has cognitive complexity of 27 (threshold 25)
+src/menu/PaintPanel.cpp:106: [readability-function-size] function 'CommitTermField' exceeds recommended size/complexity thresholds
+src/menu/RelationshipPanel.cpp:134: [readability-function-size] function 'Follow' exceeds recommended size/complexity thresholds
+src/menu/Workspace.cpp:83: [readability-function-size] function 'PickSubject' exceeds recommended size/complexity thresholds
+src/menu/Workspace.cpp:106: [readability-function-size] function 'PickSubjectWithRemove' exceeds recommended size/complexity thresholds
+src/menu/Workspace.cpp:1398: [readability-function-size] function 'DrawResourceCrumb' exceeds recommended size/complexity thresholds
+src/mesh/FieldFilter.cpp:36: [readability-function-size] function 'FilteredField' exceeds recommended size/complexity thresholds
+src/mesh/FieldFilter.cpp:60: [readability-function-size] function 'PassAlong' exceeds recommended size/complexity thresholds
+src/mesh/GaussianMixture.cpp:156: [readability-function-size] function 'KMeansLabels' exceeds recommended size/complexity thresholds
+src/mesh/GaussianMixture.cpp:237: [readability-function-cognitive-complexity] function 'Maximise' has cognitive complexity of 28 (threshold 25)
+src/mesh/GaussianMixture.cpp:237: [readability-function-size] function 'Maximise' exceeds recommended size/complexity thresholds
+src/mesh/MaterialGroupFit.cpp:188: [readability-function-size] function 'MostConfused' exceeds recommended size/complexity thresholds
+src/mesh/MaterialScoring.cpp:146: [readability-function-size] function 'StatisticsOf' exceeds recommended size/complexity thresholds
+src/mesh/MaterialScoring.cpp:188: [readability-function-size] function 'GuidedFilter' exceeds recommended size/complexity thresholds
+src/mesh/MaterialScoring.cpp:334: [readability-function-size] function 'LabelWithOdds' exceeds recommended size/complexity thresholds
+src/mesh/MaterialSegments.cpp:128: [readability-function-size] function 'GradientOf' exceeds recommended size/complexity thresholds
+src/mesh/MaterialSegments.cpp:253: [readability-function-size] function 'Assign' exceeds recommended size/complexity thresholds
+src/mesh/MaterialSegments.cpp:355: [readability-function-size] function 'PiecesOf' exceeds recommended size/complexity thresholds
+src/mesh/MaterialSegments.cpp:415: [readability-function-size] function 'AbsorbSmall' exceeds recommended size/complexity thresholds
+src/mesh/MaterialSegments.cpp:443: [readability-function-size] function 'LabelLeftovers' exceeds recommended size/complexity thresholds
+src/mesh/Mesh.cpp:263: [readability-function-size] function 'NoiseSettingsOf' exceeds recommended size/complexity thresholds
+src/mesh/Noise.cpp:60: [readability-function-size] function 'CellularEdge' exceeds recommended size/complexity thresholds
+src/orchestration/Budget.cpp:467: [readability-function-size] function 'InstallBoundsOf' exceeds recommended size/complexity thresholds
+src/orchestration/Lifecycle.cpp:254: [readability-function-size] function 'ApplyJob' exceeds recommended size/complexity thresholds
+src/orchestration/Lifecycle.cpp:488: [readability-function-size] function 'BlockStepUp' exceeds recommended size/complexity thresholds
+src/orchestration/Lifecycle.cpp:501: [readability-function-size] function 'ReportStepUpBlocked' exceeds recommended size/complexity thresholds
+src/orchestration/Lifecycle.cpp:559: [readability-function-size] function 'ReportFirstDraw' exceeds recommended size/complexity thresholds
+src/orchestration/Output.cpp:11: [readability-function-size] function 'TracePhase' exceeds recommended size/complexity thresholds
+src/orchestration/Output.cpp:28: [readability-function-size] function 'ApplyPhaseChange' exceeds recommended size/complexity thresholds
+src/orchestration/Sync.cpp:466: [readability-function-size] function 'DeferredTrace' exceeds recommended size/complexity thresholds
+src/planners/ActorPlanning.cpp:135: [readability-function-size] function 'PlanGeometryPlacement' exceeds recommended size/complexity thresholds
 src/planners/FieldProgram.cpp:14: [readability-function-size] function 'Encode' exceeds recommended size/complexity thresholds
-src/planners/ProgramReference.cpp:82: [readability-function-size] function 'ApplyOpcode' exceeds recommended size/complexity thresholds
-src/recipe/Expression.cpp:741: [readability-function-size] function 'CheckNode' exceeds recommended size/complexity thresholds
-src/recipe/Expression.cpp:833: [readability-function-cognitive-complexity] function 'Evaluate' has cognitive complexity of 59 (threshold 25)
-src/recipe/Expression.cpp:833: [readability-function-size] function 'Evaluate' exceeds recommended size/complexity thresholds
+src/planners/InstallProgram.cpp:66: [readability-function-size] function 'ReplacerRecipeId' exceeds recommended size/complexity thresholds
+src/planners/InstallProgram.cpp:170: [readability-function-size] function 'LocateOutput' exceeds recommended size/complexity thresholds
+src/planners/InstallProgram.cpp:309: [readability-function-size] function 'ActivateOutputs' exceeds recommended size/complexity thresholds
+src/planners/ProgramReference.cpp:85: [readability-function-size] function 'ApplyOpcode' exceeds recommended size/complexity thresholds
+src/planners/RenderPlan.cpp:115: [readability-function-size] function 'InputsOf' exceeds recommended size/complexity thresholds
+src/planners/RenderPlan.cpp:197: [readability-function-cognitive-complexity] function 'DownstreamStepsOf' has cognitive complexity of 28 (threshold 25)
+src/planners/RenderPlan.cpp:570: [readability-function-size] function 'ValidateStepKind' exceeds recommended size/complexity thresholds
+src/recipe/Expression.cpp:826: [readability-function-size] function 'CheckNode' exceeds recommended size/complexity thresholds
+src/recipe/Expression.cpp:947: [readability-function-cognitive-complexity] function 'Evaluate' has cognitive complexity of 59 (threshold 25)
+src/recipe/Expression.cpp:947: [readability-function-size] function 'Evaluate' exceeds recommended size/complexity thresholds
 src/recipe/GraphOperations.cpp:5: [readability-function-size] function 'InputsOf' exceeds recommended size/complexity thresholds
 src/recipe/RecipeGraph.cpp:39: [readability-function-size] function 'Dependencies' exceeds recommended size/complexity thresholds
-src/recipe/RecipeGraphLowering.cpp:172: [readability-function-size] function 'SignalKindOf' exceeds recommended size/complexity thresholds
+src/recipe/RecipeGraphLowering.cpp:212: [readability-function-size] function 'SignalKindOf' exceeds recommended size/complexity thresholds
+src/recipe/Signals.cpp:315: [readability-function-size] function 'CheckSourceInputs' exceeds recommended size/complexity thresholds
+src/regression/RunFile.cpp:124: [readability-function-size] function 'ParseRunFile' exceeds recommended size/complexity thresholds
 src/render/RenderInstance.cpp:1524: [bugprone-unused-return-value] the value returned by this function should not be disregarded; neglecting it may lead to errors
-src/render/TextureLabLifecycle.cpp:97: [readability-function-size] function 'Init' exceeds recommended size/complexity thresholds
+src/render/TextureLabLifecycle.cpp:105: [readability-function-size] function 'Init' exceeds recommended size/complexity thresholds
+src/render/TextureLabLifecycle.cpp:284: [readability-function-size] function 'Preview' exceeds recommended size/complexity thresholds
+src/render/TextureLabPass.cpp:237: [readability-function-size] function 'FillProgramConstants' exceeds recommended size/complexity thresholds
+src/render/TextureLabPass.cpp:1259: [readability-function-size] function 'FilterConstantsOf' exceeds recommended size/complexity thresholds
+src/render/TexturePreviews.cpp:45: [readability-function-size] function 'Preview' exceeds recommended size/complexity thresholds
+src/studio/ActorCatalogs.cpp:33: [readability-function-size] function 'SkinBonesOf' exceeds recommended size/complexity thresholds
+src/studio/Forms.cpp:1805: [readability-function-size] function 'PickFields' exceeds recommended size/complexity thresholds
+src/studio/Renumbering.cpp:85: [readability-function-size] function 'PairGap' exceeds recommended size/complexity thresholds
+src/studio/TermTemplates.cpp:314: [readability-function-size] function 'PlaceTerm' exceeds recommended size/complexity thresholds
