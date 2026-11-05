@@ -88,6 +88,7 @@ const PreviewPicture *
 PictureOf(const std::optional<PreviewContent> &a_content) {
   return a_content ? Get<PreviewPicture>(*a_content) : nullptr;
 }
+const PreviewPicture *PictureOf(std::optional<PreviewContent> &&) = delete;
 
 void PinsToggleAndStopAtTheLimit() {
   PreviewWindows windows;
@@ -143,18 +144,21 @@ void TargetsNeedALiveGeometry() {
 
 void ResolvesEachSubject() {
   const Snapshot snapshot = Live();
-  const PreviewPicture *source =
-      PictureOf(ResolvePreview(snapshot, Target(SourceSubject{"pattern"})));
+  const std::optional<PreviewContent> sourceContent =
+      ResolvePreview(snapshot, Target(SourceSubject{"pattern"}));
+  const PreviewPicture *source = PictureOf(sourceContent);
   Check(source && source->texture == TextureHandle{11} &&
             source->channel == ShaderChannel::kR,
         "a source shows its texture in its own channel");
-  const PreviewPicture *output =
-      PictureOf(ResolvePreview(snapshot, Target(OutputSubject{3})));
+  const std::optional<PreviewContent> outputContent =
+      ResolvePreview(snapshot, Target(OutputSubject{3}));
+  const PreviewPicture *output = PictureOf(outputContent);
   Check(output && output->texture == TextureHandle{13} && output->animated &&
             output->channel == ShaderChannel::kRgb,
         "an output shows its composite in colour");
-  const PreviewPicture *layer =
-      PictureOf(ResolvePreview(snapshot, Target(LayerSubject{3, 1})));
+  const std::optional<PreviewContent> layerContent =
+      ResolvePreview(snapshot, Target(LayerSubject{3, 1}));
+  const PreviewPicture *layer = PictureOf(layerContent);
   Check(layer && layer->texture == TextureHandle{14} && layer->animated,
         "a layer shows its own texture and follows its output's animation");
   Check(!ResolvePreview(snapshot, Target(LayerSubject{3, 2})),

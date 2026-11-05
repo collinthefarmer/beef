@@ -275,8 +275,9 @@ void OutOfViewActorsStepDownFirst() {
   behind.visibility.shown = false;
   const std::vector<BudgetActor> actors =
       Numbered({Npc(ResolutionLevel::kFull, 0.3f, 4 * kGiB), behind});
-  const StepDown *stepDown =
-      Get<StepDown>(RespondToPressure(10 * kGiB, 1 * kGiB, actors, false).next);
+  const BudgetResponse response =
+      RespondToPressure(10 * kGiB, 1 * kGiB, actors, false);
+  const StepDown *stepDown = Get<StepDown>(response.next);
   Check(stepDown && stepDown->actor == 2,
         "a large actor out of view steps down before a visible one that "
         "frees more");

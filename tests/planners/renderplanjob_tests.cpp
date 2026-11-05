@@ -56,7 +56,8 @@ PlanBuildInput InputOf(const std::shared_ptr<const Recipe> &a_recipe,
 
 void APlanBuildsFromOwnedInputs() {
   const auto recipe = std::make_shared<const Recipe>(MaterialEmissive());
-  const PlanBuildOutput output = BuildPlanFrom(InputOf(recipe, "mesh:1"));
+  const PlanBuildInput shared = InputOf(recipe, "mesh:1");
+  const PlanBuildOutput output = BuildPlanFrom(shared);
   Check(output.plan.has_value(), "the owned input lowers to a plan");
   if (!output.plan) {
     return;
@@ -65,7 +66,7 @@ void APlanBuildsFromOwnedInputs() {
         "the plan binds the requested stack");
   Check(output.phases.demands > 0, "sample-dependent layers become demands");
   Check(output.warnings.empty(), "a clean recipe has no warnings");
-  const PlanBuildOutput again = BuildPlanFrom(InputOf(recipe, "mesh:1"));
+  const PlanBuildOutput again = BuildPlanFrom(shared);
   Check(again.plan && SameStructure(*output.plan, *again.plan),
         "the same input lowers to the same plan");
 }

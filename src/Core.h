@@ -220,6 +220,10 @@ template <class T, class Variant>
 }
 
 template <class T, class Variant>
+  requires(!std::is_lvalue_reference_v<Variant>)
+const T *Get(Variant &&a_variant) = delete;
+
+template <class T, class Variant>
 [[nodiscard]] bool Is(const Variant &a_variant) noexcept {
   return std::holds_alternative<T>(a_variant);
 }

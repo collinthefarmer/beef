@@ -29,6 +29,7 @@ namespace {
   }
   return nullptr;
 }
+const FormField *Field(std::vector<FormField> &&, const std::string &) = delete;
 
 [[nodiscard]] SignalRow ConstantRow(std::string a_name, float a_value) {
   SignalRow row;
@@ -128,7 +129,8 @@ void TestClusterPickRoundTrip() {
   Check(picked && picked->pick == clusters.pick &&
             picked->areaBias == clusters.areaBias,
         "a cluster pick and area bias survive the studio row");
-  const auto *field = Field(SourceForm(row, SignalNames{}), "pick");
+  const std::vector<FormField> form = SourceForm(row, SignalNames{});
+  const auto *field = Field(form, "pick");
   Check(field && field->allowEmpty, "the pick field may be left empty");
   MaterialGroupsSourceRow tooBiased =
       Get<MaterialGroupsSourceRow>(row.kind)

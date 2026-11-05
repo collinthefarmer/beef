@@ -323,7 +323,7 @@ int main() {
           "a firing's own node overrides the declared one");
 
     TriggerSignal unanchored;
-    Check(Get<std::monostate>(AnchorOf(unanchored, carried)) != nullptr,
+    Check(Is<std::monostate>(AnchorOf(unanchored, carried)),
           "an unanchored trigger's payload is just a value");
   }
 
