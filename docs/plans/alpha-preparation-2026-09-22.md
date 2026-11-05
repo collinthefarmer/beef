@@ -401,9 +401,13 @@ does not prove a leak or complete runtime acceptance.
   working; the long run also preserved edited variants. Complete per-case
   acceptance, save/reload and solo/stacked checks remain open; cookbook validation
   does not close these rendered checks.
-- [ ] Document key ownership, priority versus merge, load order, import and
+- [x] Document key ownership, priority versus merge, load order, import and
   save locations, preset status, known limitations, and alpha format-change
   expectations. State the supported format and migration policy explicitly.
+  `docs/alpha-package.md` (shipped as `README.md`) states them as of
+  2026-11-05. Glow Be Gone Redone NG is listed as a known limitation: it
+  removes enchantment effect shaders at run time, so `effectShader` recipes
+  match nothing.
 
 Done when a tester can modify an example, understand a refusal, and retain
 their work across failures and restarts.

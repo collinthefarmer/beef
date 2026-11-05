@@ -37,6 +37,84 @@ on reload. Subsequent save, revert and delete operate on that user copy. Deletin
 the override reveals the shipped definition again after reload. Recipes already
 under `recipes/user/` keep their existing path when saved.
 
+## Where recipes live and how they load
+
+| Path under `SKSE/Plugins/BetterEnchantmentEffects/` | Written by | Holds |
+|---|---|---|
+| `recipes/<any folder>/*.json` | You or another mod | Recipes. The loader reads every `.json` file below `recipes/`, in all subfolders. |
+| `recipes/imported/*.json` | The importer | One recipe for each armor-enchantment effect shader that no recipe covers. |
+| `recipes/user/*.json` | The studio | Recipes that you saved in the editor. |
+| `templates/fill.json`, `templates/bare.json` | The package | The templates that the importer fills in. They are not recipes. |
+| `presets.json` | The package | The mask editor's presets. There is no other preset system. |
+
+- The loader sorts the file paths. It loads every file outside `recipes/user/`
+  first, then the files in `recipes/user/`.
+- A recipe's identity is its filename without `.json`. The folder and the
+  display name do not change the identity.
+- When two files have the same identity, the one that loads later replaces
+  the earlier one completely.
+- A file that cannot be read as a recipe is skipped, and the log names it.
+  A recipe with errors in the recipe itself loads but does not apply, and
+  the log and the editor report its errors.
+- The importer never writes over a file. When an imported file covers no
+  effect shader, because it did not load or its key was edited away, the
+  importer renames it to `<id>.json.unloaded` and imports again. The log names
+  both paths. A recipe format change is repaired the same way.
+
+## How recipes combine on one armor piece
+
+- Every recipe whose keys match a worn piece applies to it. Two recipes can
+  match the same key; a key does not belong to one recipe.
+- All `keyword` keys of a recipe must match. When the recipe also has other
+  keys, at least one of those must match too.
+- A match by `enchanted`, enchantment, magic effect or effect shader hides
+  the recipes that match only by `default`.
+- A match by enchantment, magic effect or effect shader also hides the
+  recipes that match only by `enchanted`.
+- Recipes on one piece apply in order of priority, lowest first. A recipe's
+  `priority` sets it. Without `priority`, the key that matched sets it:
+
+| Key | Priority |
+|---|---:|
+| `default` | 0 |
+| `enchanted` | 5 |
+| `material` | 10 |
+| `keyword` | 20 |
+| `armor` | 30 |
+| `effectShader` | 40 |
+| `enchantment` | 50 |
+| `magicEffect` | 60 |
+
+- Two recipes with the same priority apply in load order.
+- `merge` sets how a recipe combines with the recipes before it:
+  `stack` adds its layers on top; `replace` removes the earlier layers of the
+  slots it writes; `sampled` puts the recipe in a pool, and each piece takes
+  one recipe from the pool. The choice depends on the actor, so one NPC
+  always shows the same choice.
+
+## Recipe format
+
+- This candidate reads recipe format 1 only. A recipe must state
+  `"format": 1`. The loader refuses a file with another format and logs why.
+- The format can change during the alpha. A change can make your recipes
+  fail to load. Keep your recipes, and expect to edit them after an update.
+  Imported recipes are imported again; recipes that you wrote are not
+  converted.
+
+## Known limitations
+
+- An equip or an unequip reinstalls all effects of that actor. Its armor
+  shows no effect for about one second while the new effects draw.
+- An NPC farther than 8192 game units (two exterior cells) loses its effects
+  until it comes within 6554 units. `EvictDistance` in the INI sets the
+  distance; 0 turns eviction off.
+- Glow Be Gone Redone NG removes the effect shaders of enchantments while
+  the game runs. Recipes that match by `effectShader`, which includes every
+  imported recipe, then match nothing.
+- When the plugin needs more video memory than it has, NPC effects draw at a
+  lower resolution and far NPCs lose their effects first. The player's
+  effects keep full resolution.
+
 The Windows validator is at
 `SKSE/Plugins/BetterEnchantmentEffects/beef-validate.exe`; run it without arguments
 for usage, or pass one or more recipe JSON paths. It checks recipe data, not rendered output or game ABI
