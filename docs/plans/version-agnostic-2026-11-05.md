@@ -54,7 +54,7 @@ them, and needs no rebuild for a new peer version.
 
 ## State when this plan was written
 
-- `main` is at c8ddb85 plus this plan and `tools/address-library-ids.py` (uncommitted when written). The release gate passed on c8ddb85: 190 sanitized suites, the Windows build, tidy at the 84-finding baseline.
+- `main` is at ca83b46: c8ddb85 plus this plan and `tools/address-library-ids.py`. The release gate passed on c8ddb85: 190 sanitized suites, the Windows build, tidy at the 84-finding baseline.
 - The candidate archive `BetterEnchantmentEffects-0.1.0-address-library-c8ddb8547bf4-Release.zip` (SHA-256 `307610362c5558e711ca5a994c5e77f3e60e6f4e9cad1a67fce9bae74b9107ce`) is installed in the MO2 mod `BetterEnchantmentEffects 0.1.0 candidate`, used by the profile `beef candidate`.
 - Not yet seen in game: the new peer messages of 8ac7ead. Two launches of `beef candidate`, one with Community Shaders off and one with SKSE Menu Framework off, show them; restore `modlist.txt` after each (it has CRLF line endings).
 - Still open for the alpha, outside this plan: the crowd-fight environment fault (fighters never draw weapons, with any build since 2026-11-05 04:00), the owner's visual pass, the supported-workload draft, and the squashed public history.
