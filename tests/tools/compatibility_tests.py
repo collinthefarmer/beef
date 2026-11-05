@@ -54,6 +54,34 @@ class CompatibilityTests(unittest.TestCase):
         self.assertEqual(self.configure(PROFILE).returncode, 0)
         self.assertEqual(header.stat().st_mtime_ns, written)
 
+    def test_address_library_profile_accepts_every_runtime_of_a_compiled_family(self) -> None:
+        library = json.loads((ROOT / 'cmake/compatibility/address-library.json').read_text())
+        self.assertEqual(library['runtimes'], 'address_library')
+        result = self.configure(library)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        generated = self.root / library['id'] / 'generated'
+        declaration = (generated / 'Plugin.cpp').read_text()
+        self.assertIn('.RuntimeCompatibility = SKSE::VersionIndependence::AddressLibrary,',
+                      declaration)
+        test = generated / 'test.cpp'
+        test.write_text('#include "BuildCompatibility.h"\n'
+                        'using namespace BetterEnchantmentEffects::BuildCompatibility;\n'
+                        'static_assert(SupportsRuntime(0x01050610));\n'
+                        'static_assert(SupportsRuntime(0x010613D0));\n'
+                        'static_assert(SupportsRuntime(0x01064920));\n'
+                        'static_assert(SupportsRuntime(0x01064930));\n'
+                        'static_assert(!SupportsRuntime(0x010613C0));\n'
+                        'static_assert(!SupportsRuntime(0x010400F0));\n')
+        subprocess.run([os.environ.get('NATIVE_CXX', 'c++'), '-std=c++17', '-fsyntax-only', str(test)],
+                       check=True)
+
+    def test_address_library_profile_needs_a_compiled_family(self) -> None:
+        library = json.loads((ROOT / 'cmake/compatibility/address-library.json').read_text())
+        library.update(id='no-family', compiled={'se': False, 'ae': False, 'vr': True})
+        result = self.configure(library)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('address_library needs the SE or AE family compiled', result.stderr)
+
     def test_second_profile_lists_every_runtime(self) -> None:
         alternate = copy.deepcopy(PROFILE)
         alternate.update(id='test-two', runtimes=[{'version': [1, 5, 97, 0]}, {'version': [1, 6, 640, 0]}])

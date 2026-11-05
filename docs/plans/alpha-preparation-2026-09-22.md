@@ -440,9 +440,12 @@ their work across failures and restarts.
   declarations, runtime guards, package labels, and configuration-sensitive
   identity. Initial target: Steam 1.6.1170 / SKSE 2.2.6. See the
   [profile audit](../checkpoints/compatibility-profiles-2026-09-24.md).
-- [ ] Accept the initial profile in game and record exact Address Library,
-  Community Shaders/TruePBR, and menu versions with candidate archive checksums.
-  Compiled SE/AE support and candidate peer baselines do not establish tested support.
+- [ ] Accept the default profile in game and record the exact Skyrim, SKSE,
+  Address Library, Community Shaders/TruePBR and menu versions tested, with the
+  candidate archive checksums. Since 2026-11-05 the default profile is
+  `address-library`: one DLL loads on every SE and AE runtime that Address
+  Library covers, and no peer version is refused by number. A tested version
+  is evidence, not a requirement.
 
 - [ ] Create a versioned archive containing the DLL, corrected INI,
   templates, presets, presenter textures, validator, and concise setup and

@@ -11,7 +11,7 @@ has checked out its dependencies, commit everything, then run:
 
 ```sh
 cmake --preset windows-release
-python3 tools/source-archive.py --profile steam-1.6.1170
+python3 tools/source-archive.py --profile address-library
 ```
 
 The script refuses a tree with uncommitted or untracked files, because the

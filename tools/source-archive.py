@@ -60,7 +60,7 @@ def create(profile_name: str, dependencies: Path, output: Path) -> Path:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--profile', default='steam-1.6.1170')
+    parser.add_argument('--profile', default='address-library')
     parser.add_argument('--dependencies', type=Path, default=ROOT / 'build/Release/_deps')
     parser.add_argument('--output', type=Path, default=ROOT / 'dist/archives')
     args = parser.parse_args()

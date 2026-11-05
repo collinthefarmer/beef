@@ -99,9 +99,8 @@ Actual result and exact error text:
 - Matching trace segments if diagnostics were enabled:
 - Missing evidence and redactions:
 
-The archive includes `BetterEnchantmentEffects-COMPATIBILITY.json` with the candidate runtime and peer
-baselines. Include it with reports alongside the exact installed dependency
-versions. The initial profile targets Steam Skyrim 1.6.1170 / SKSE 2.2.6; CS
-1.8.3 and Menu Framework 3.13.0 are preliminary baselines, and the Address
-Library AE package version still needs recording. These are not tested-support
-claims. Runtime acceptance must identify the exact archive checksum and installed peers.
+The archive includes `BetterEnchantmentEffects-COMPATIBILITY.json`, the build's
+compatibility profile: the runtime rule, the minimum SKSE and the peer headers
+it was built against. Include it with reports alongside the exact installed
+Skyrim, SKSE, Address Library, Community Shaders and SKSE Menu Framework
+versions.

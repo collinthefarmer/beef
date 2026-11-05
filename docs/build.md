@@ -241,19 +241,36 @@ remain outstanding; see the [license checkpoint](checkpoints/licenses-2026-09-23
 
 ### SKSE and targeted releases
 
-`cmake/compatibility/steam-1.6.1170.json` is the initial candidate profile:
-Steam Skyrim 1.6.1170, minimum SKSE 2.2.6, Address Library AE (package version
-still unverified), Community Shaders 1.8.3 / TruePBR source baseline, and
-SKSE Menu Framework 3.13.0 editor baseline. These are candidate constraints,
-not an in-game acceptance result.
+`cmake/compatibility/address-library.json` is the default profile. It
+declares `SKSE::VersionIndependence::AddressLibrary` to the loader, so one DLL
+loads on every SE (1.5.x) and AE (1.6.317 and later) runtime that Address
+Library covers. The startup guard accepts the same runtime families and
+refuses VR, which is not compiled. Its minimum SKSE is 2.0.17, the oldest SE
+build: each SKSE build is made for one runtime, so the SKSE that loads on a
+supported runtime is the one that matches it.
 
-The profile owns CommonLib/spdlog/rapidcsv pins, compiled families, the explicit
-runtime whitelist, minimum SKSE, and peer-header fingerprints. CMake generates
-both the loader declaration and startup guard from it. SE/AE are compiled;
-only the listed runtime is accepted. Address Library remains required for
-relocations despite the explicit whitelist in the loader declaration.
+The plugin reaches the engine only through Address Library IDs (CommonLib's
+`RE::VTABLE_*` and `RE::NiRTTI_*`, and `REL::RelocationID` with SE and AE
+IDs) and one virtual-function hook whose index is the same in SE and AE. It
+reads Community Shaders by layout, not by version: a material whose texture
+slots are not all `NiSourceTexture` fails the run-time layout check, and the
+plugin turns its effects off. It reads SKSE Menu Framework by its exports. A
+peer version therefore never fails a load by itself; the release notes name
+the versions a candidate was tested with.
 
-Select a reviewed profile in its own build directory:
+`cmake/compatibility/steam-1.6.1170.json` is a targeted profile: it lists one
+runtime, so the loader and the guard accept only Steam 1.6.1170, with a minimum
+SKSE of 2.2.6. A `runtimes` list selects that form; the word
+`"address_library"` selects the other.
+
+Every profile owns the CommonLib/spdlog/rapidcsv pins, the compiled families,
+the runtime rule, the minimum SKSE, and the peer-header fingerprints. The
+fingerprints check at configure time that the headers copied from Community
+Shaders and SKSE Menu Framework are the reviewed ones; they do not constrain
+the installed peer. CMake generates both the loader declaration and the
+startup guard from the profile.
+
+Select another profile in its own build directory:
 
 ```sh
 nix develop -c cmake --preset windows-release -B build/steam-1.6.1170 -DBEEF_COMPATIBILITY_PROFILE=steam-1.6.1170

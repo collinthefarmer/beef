@@ -16,11 +16,13 @@ The Windows binaries dynamically import the Microsoft Visual C++ runtime
 matching x64 runtime prerequisites are installed; they are not bundled.
 
 Use the SKSE build matching your exact Skyrim executable and storefront,
-plus the corresponding Address Library. Community Shaders with the matching
-TruePBR layout is required; SKSE Menu Framework is needed for the editor. Confirm the
-candidate's tested dependency versions with its release notes before running;
-this candidate has no verified runtime matrix yet. Do not infer support for
-all SE/AE runtimes from the compiled CommonLib runtime families.
+plus the corresponding Address Library. The plugin loads on Skyrim SE 1.5.x
+and AE 1.6.317 or later wherever Address Library covers the executable; it
+does not load on VR. Community Shaders with a TruePBR layout that the plugin
+recognizes is required: with another layout the plugin logs that the layout
+check failed and turns its effects off. SKSE Menu Framework is needed for the
+editor. The release notes name the versions this candidate was tested with;
+other versions are not refused, only untested.
 
 Before upgrading, back up your mod's INI and the entire
 `SKSE/Plugins/BetterEnchantmentEffects` directory, including authored recipes.
@@ -140,12 +142,11 @@ Community Shaders disables effects and is reported in the plugin log and,
 when available, the editor pages. These checks do not certify binary-layout
 compatibility or that TruePBR is enabled.
 
-The archive includes `BetterEnchantmentEffects-COMPATIBILITY.json` with the candidate runtime and peer
-baselines. Include it with reports alongside the exact installed dependency
-versions. The initial profile targets Steam Skyrim 1.6.1170 / SKSE 2.2.6; CS
-1.8.3 and Menu Framework 3.13.0 are preliminary baselines, and the Address
-Library AE package version still needs recording. These are not tested-support
-claims. Runtime acceptance must identify the exact archive checksum and installed peers.
+The archive includes `BetterEnchantmentEffects-COMPATIBILITY.json`, the build's
+compatibility profile: the runtime rule, the minimum SKSE and the peer headers
+it was built against. Include it with reports alongside the exact installed
+Skyrim, SKSE, Address Library, Community Shaders and SKSE Menu Framework
+versions.
 
 Texture streaming plugins can replace the textures this plugin writes into
 armor materials. The plugin shows each effect through files under
