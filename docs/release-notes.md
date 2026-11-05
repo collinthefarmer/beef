@@ -58,14 +58,16 @@ editor can still change.
 
 | Requirement | Loads with | Tested with |
 |---|---|---|
-| Skyrim Special Edition | SE 1.5.x, AE 1.6.317 and later 1.6 releases; not 1.7 or VR | Steam 1.6.1170 |
+| Skyrim Special Edition | SE 1.5.x and AE 1.6.317 to 1.7.104; not VR | Steam 1.6.1170 |
 | SKSE | The build for your Skyrim executable | 2.2.6 |
 | Address Library for SKSE | The edition and version for your executable | All in One v13 |
 | Community Shaders, with TruePBR | Any version whose PBR material layout the plugin recognizes | 1.9.1 |
 | SKSE Menu Framework (editor only) | Any version with the functions the editor calls | 3.13.0 Hotfix 2 |
 | Microsoft Visual C++ x64 runtime | Not bundled | |
 
-One DLL covers every runtime that Address Library covers. The plugin refuses
+One DLL covers SE 1.5.x and every AE runtime from 1.6.317 to the newest one
+that its CommonLib describes, which is 1.7.104 for this build. 1.7 loads but
+has not been tested in game. The plugin refuses
 no peer version by number: an unrecognized Community Shaders layout turns its
 effects off with a log line, and missing Menu Framework functions turn the
 editor off. Each case writes one line to the plugin log that names the

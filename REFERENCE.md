@@ -1069,9 +1069,12 @@ Lab mechanics:
   shared with the source skin.
 - Lights: Address Library IDs (SE, AE) for `NiPointLight`'s constructor and
   the shadow scene node's light registration come from powerof3's
-  CommonLibSSE fork; the pinned CommonLibSSE-NG does not wrap them (NOTES
-  29). `ShadowSceneNode::LIGHT_CREATE_PARAMS` uses powerof3's field names;
-  the pinned header has the same 0x30-byte layout under placeholder names.
+  CommonLibSSE fork (NOTES 29). The pinned CommonLib does not wrap the
+  `NiPointLight` constructor or `SetAttenuation`. It wraps
+  `ShadowSceneNode::AddLight` and `RemoveLight` with the same IDs (99692 and
+  99698 on SE, 106326 and 106332 on AE), and its `LIGHT_CREATE_PARAMS` has
+  the same 0x30-byte layout and field names as `Light.cpp`'s
+  `LightCreateParams`. `Light.cpp` keeps its own relocations. All four SE IDs exist in VR's 1.4.15 Address Library.
   CS Light Limit Fix keeps per-light flag bits in the `NiLight`'s
   `ambient.red`; inverse-square lighting (ISL) reads flags in
   `ambient.red`, cutoff in `ambient.green`, source size in `radius.z` (CS
@@ -3435,6 +3438,11 @@ cancel by the user instead of the load.
 
 ### Viewed-actor catalogs (`studio/ActorCatalogs.h`, `engine/GameObjectService.cpp`, `engine/ManagerSnapshot.cpp`)
 
+- The actor-value catalog (`BuildActorValueCatalog`) reads
+  `ActorValueList::actorValues` directly. The pinned CommonLib's
+  `GetActorValueInfo` calls an engine function (26569 on SE, 27202 on AE)
+  whose ID the version-agnostic ID check did not cover; the array needs no
+  relocation beyond the list's singleton.
 - The node, texture and anim-event catalogs depend on the viewed actor.
   `IsViewedActorKind` marks them. `GameObjectCatalogOf` returns an empty
   catalog for them. `PublishCatalogs` builds them on every snapshot publish.
@@ -3756,11 +3764,25 @@ The method and its prototype comparison are in
   `cmake/Windows.cmake` owns dependencies and the SKSE DLL. Native setup does
   not require the Windows SDK. The native preset selects `NATIVE_CXX`, the
   Nix host compiler wrapper; unwrapped clang++ cannot locate the host CRT.
-- Windows dependency details remain deliberate: spdlog uses
+- Windows dependency details remain deliberate: spdlog and DirectXTK use
   `OVERRIDE_FIND_PACKAGE` for CommonLib's `find_package`; rapidcsv's include
   cache variable short-circuits `find_path`; the pinned CommonLib revision
   supports the target runtime; import libraries are lowercased for xwin's
   case-sensitive layout; delayed template parsing supports CommonLib code.
+- CommonLib is `alandtse/CommonLibVR`, branch `ng`. Its `RE/S/State.h`
+  includes DirectXTK's `SimpleMath.h`, so `Microsoft::DirectXTK` is a
+  header-only target over DirectXTK's `Inc/`; the link needs nothing from
+  `SimpleMath.cpp`. `SimpleMath.h` includes `<dxgi1_2.h>`, so every
+  translation unit that includes `RE/Skyrim.h` also sees the Windows headers.
+  CommonLib's interface therefore defines `NOMINMAX`, and render files that
+  open `using namespace REX::W32` write `REX::W32::HRESULT` and
+  `REX::W32::DXGI_FORMAT*`, because the Windows headers declare the same
+  names globally. `SKSE_SUPPORT_PATCH_SAFETY` is off: it checks trampoline
+  writes, the plugin writes none, and it would fetch MinHook's hde64. The
+  fork's prebuilt-binary path runs only in CI or with `COMMONLIB_PREBUILT`,
+  so this build compiles CommonLib from source. The fork is GPL-3.0-or-later
+  with its own exceptions since 2026-08-20; `THIRD_PARTY_NOTICES.md` holds
+  its terms.
   Third-party install rules stay disabled. FetchContent uses its standard
   per-build source storage (unless explicitly overridden), and dependency
   binary directories always belong to the current configuration.
@@ -5102,7 +5124,13 @@ The approved behavior and compatibility change live in
 ## Compatibility profiles
 
 Target profiles in `cmake/compatibility` drive pins, loader declarations, startup
-checks, and package identity. CommonLib structure independence covers its Skyrim
+checks, and package identity. The `address_library` rule generates
+`SupportsRuntime(runtime, newestAE)` and `SupportedRuntimes(newestAE)`;
+`main.cpp` passes `SKSE::RUNTIME_SSE_LATEST_AE`, so the generated header stays
+free of CommonLib and compiles in the native test. The upper bound compares
+`runtime | 0xF` with `newestAE | 0xF`: the low four bits of a packed version
+hold the build field, which storefront builds set (GOG 1.6.1179 is
+1.6.1179.1). CommonLib structure independence covers its Skyrim
 structure boundary, not the mirrored CS PBR ABI. Explicit runtime whitelists still
 require Address Library for relocations. See the
 [profile audit](docs/checkpoints/compatibility-profiles-2026-09-24.md) for the

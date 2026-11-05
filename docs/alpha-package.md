@@ -17,8 +17,9 @@ matching x64 runtime prerequisites are installed; they are not bundled.
 
 Use the SKSE build matching your exact Skyrim executable and storefront,
 plus the corresponding Address Library. The plugin loads on Skyrim SE 1.5.x
-and AE 1.6.317 and later 1.6 releases wherever Address Library covers the
-executable; it does not load on 1.7 or VR. Community Shaders with a TruePBR layout that the plugin
+and on AE 1.6.317 to 1.7.104 wherever Address Library covers the executable.
+It does not load on VR. 1.7 has not been tested in game. Community Shaders
+with a TruePBR layout that the plugin
 recognizes is required: with another layout the plugin logs that the layout
 check failed and turns its effects off. SKSE Menu Framework is needed for the
 editor. The release notes name the versions this candidate was tested with;

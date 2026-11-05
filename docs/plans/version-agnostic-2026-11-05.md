@@ -1,4 +1,4 @@
-Status: active (2026-11-05) on branch `commonlib-fork`, so `main` and its candidate stay releasable. Steps 1 and 2 are done (9aac44f), step 3 (a0aa8f5) and step 4 (e99ea2b). Step 5 is decided: VR is deferred to `docs/plans/vr-support-2026-11-05.md`. Step 6 is closed with no code change: a header review at each Community Shaders release replaces a run-time scalar check. Step 7 ran in game on 2026-11-05 (see the step 7 record); step 8 is open.
+Status: done (2026-11-05) on branch `commonlib-fork`, not merged into `main`. Steps 1 and 2 are done (9aac44f), step 3 (a0aa8f5), step 4 (e99ea2b) and step 8. Step 5 is decided: VR is deferred to `docs/plans/vr-support-2026-11-05.md`. Step 6 is closed with no code change: a header review at each Community Shaders release replaces a run-time scalar check. Step 7 ran in game on 2026-11-05; see the step 7 record. The "How it works today" table describes the code before step 1.
 
 # A version-agnostic plugin
 

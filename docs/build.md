@@ -242,16 +242,22 @@ remain outstanding; see the [license checkpoint](checkpoints/licenses-2026-09-23
 ### SKSE and targeted releases
 
 `cmake/compatibility/address-library.json` is the default profile. It
-declares `SKSE::VersionIndependence::AddressLibrary` to the loader, so one DLL
-loads on every SE (1.5.x) and AE (1.6.317 and later 1.6) runtime that
-Address Library covers. The startup guard accepts the same runtime families
-and refuses VR, which is not compiled, and 1.7. Address Library gives
-function addresses only: structure layouts come from the pinned CommonLib,
-which names AE runtimes up to 1.6.1330 and already branches one layout at
-1.6.629, and the `PlayerCharacter::Update` hook depends on vtable slot 0xAD.
-A runtime outside what CommonLib describes can move either, and the plugin
-would then read and write the wrong memory. Accepting 1.7 needs a CommonLib
-pin that describes it, an in-game run, and a wider guard. Its minimum SKSE is 2.0.17, the oldest SE
+declares `SKSE::VersionIndependence::AddressLibrary` to the loader, so the
+loader accepts every SE and AE runtime that Address Library covers. The
+startup guard is narrower. It accepts SE 1.5.x and AE runtimes from 1.6.317
+to `SKSE::RUNTIME_SSE_LATEST_AE`, the newest AE runtime that the pinned
+CommonLib names. For `alandtse/CommonLibVR` at `cd21580` that runtime is
+1.7.104. The guard ignores the build field of the version, because GOG and
+Epic builds of one runtime set it. The guard refuses VR, which no profile
+compiles; `docs/plans/vr-support-2026-11-05.md` holds that work.
+
+Address Library gives function addresses only. Structure layouts come from
+the pinned CommonLib, which branches them per runtime: for example, 1.7.99
+moves `PlayerCharacter` members by 8 bytes. The `PlayerCharacter::Update` hook
+depends on vtable slot 0xAD. A runtime outside what CommonLib describes can
+move either, and the plugin would then read and write the wrong memory. The
+guard's upper bound therefore moves only with the CommonLib pin. 1.7 loads
+but has not been tested in game. Its minimum SKSE is 2.0.17, the oldest SE
 build: each SKSE build is made for one runtime, so the SKSE that loads on a
 supported runtime is the one that matches it.
 
@@ -274,7 +280,8 @@ runtime, so the loader and the guard accept only Steam 1.6.1170, with a minimum
 SKSE of 2.2.6. A `runtimes` list selects that form; the word
 `"address_library"` selects the other.
 
-Every profile owns the CommonLib/spdlog/rapidcsv pins, the compiled families,
+Every profile owns the CommonLib repository and revision, the spdlog,
+rapidcsv and DirectXTK pins, the compiled families,
 the runtime rule, the minimum SKSE, and the peer-header fingerprints. The
 fingerprints check at configure time that the headers copied from Community
 Shaders and SKSE Menu Framework are the reviewed ones; they do not constrain
