@@ -108,9 +108,6 @@ under `recipes/user/` keep their existing path when saved.
 - An NPC farther than 8192 game units (two exterior cells) loses its effects
   until it comes within 6554 units. `EvictDistance` in the INI sets the
   distance; 0 turns eviction off.
-- Glow Be Gone Redone NG removes the effect shaders of enchantments while
-  the game runs. Recipes that match by `effectShader`, which includes every
-  imported recipe, then match nothing.
 - When the plugin needs more video memory than it has, NPC effects draw at a
   lower resolution and far NPCs lose their effects first. The player's
   effects keep full resolution.

@@ -405,9 +405,7 @@ does not prove a leak or complete runtime acceptance.
   save locations, preset status, known limitations, and alpha format-change
   expectations. State the supported format and migration policy explicitly.
   `docs/alpha-package.md` (shipped as `README.md`) states them as of
-  2026-11-05. Glow Be Gone Redone NG is listed as a known limitation: it
-  removes enchantment effect shaders at run time, so `effectShader` recipes
-  match nothing.
+  2026-11-05.
 
 Done when a tester can modify an example, understand a refusal, and retain
 their work across failures and restarts.
