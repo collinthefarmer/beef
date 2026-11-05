@@ -27,7 +27,7 @@ int main() {
   const Settings operation = publication.Read();
   draft.animationFPS = 30;
   Check(operation.animationFPS == 15, "publication copies the draft");
-  Check(initial.animationFPS == 60 && !initial.playerOnly,
+  Check(initial.animationFPS == Settings{}.animationFPS && !initial.playerOnly,
         "old snapshots survive publication");
   publication.Publish(draft);
   Check(operation.animationFPS == 15 && operation.animationSpeed == 2.0f,

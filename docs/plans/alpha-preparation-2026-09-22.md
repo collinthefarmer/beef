@@ -240,7 +240,9 @@ and moved the actor ID into `ActorStacks`.
 - [ ] Rerun using the actual packaged defaults. Eviction defaults to 8192
   units since 2026-11-05. Every run before that used an INI with
   `EvictDistance=6000`, `AnimationFPS=30` and `VerboseLogging=true`, so it
-  does not establish default behavior; the default ticks at 60.
+  does not establish default behavior. The default `AnimationFPS` is 30
+  since 2026-11-05: at 60, the 2026-11-05 candidate run's `soak-large`
+  spent 9,959 us of plugin time per frame against a 4,000 us budget.
 
 Done when the supported workload has bounded resource use and acceptable
 application spikes, with no crashes, freezes, stale effects, isolation

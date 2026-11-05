@@ -66,6 +66,12 @@ only the preferences with a live consumer — the scope switches (`playerOnly`,
 and diff alike. The animation-speed clamp constants (`kMinAnimationSpeed`
 0.05, `kMaxAnimationSpeed` 4.0) bound `animationSpeed`.
 
+`animationFPS` defaults to 30 ticks per second (2026-11-05). Every regression
+run before that date used 30. The first run of the candidate at the old
+default of 60 (`20261105T043901-1`) spent 9,959 us of plugin time per frame in
+`soak-large/steady` against a 4,000 us budget, and its longest tick took
+115,780 us against 50,000 us.
+
 `textureScale` is the frozen absolute `runtimeTextureSize` reborn as a
 `TextureScale` enum — a resolution *relative* to the armor's own maps
 (`kQuarter`, `kHalf`, `kFull`), not a pixel count. It serialises to the INI as
@@ -2639,9 +2645,9 @@ them outside as separate passes.
 - `RenderInstance::BeginFrame` runs once per render tick and releases a
   texture or bake-buffer step whose value no executing consumer and no
   inspection read for 30 ticks (`kReleaseAfterIdleTicks`). A render tick runs
-  at most at `animationFPS` (60 by default) and at most once per game frame.
+  at most at `animationFPS` (30 by default) and at most once per game frame.
   Stack results are never released, because they are the published textures.
-  Thirty ticks is half a second at 60 ticks per second: long enough that a
+  Thirty ticks is one second at the default 30 ticks per second: long enough that a
   chain animated by a signal keeps its static inputs, short enough that a
   static chain returns its targets soon after equip. The three
   demo recipes produce 45 texture steps per geometry at 2048, about 960 MiB

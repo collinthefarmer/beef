@@ -56,7 +56,7 @@ struct Settings {
   bool sizeByScreen = true;
   bool showDebugRecipes = false;
   std::uint32_t renderTargetBudgetMiB = 0;
-  std::uint32_t animationFPS = 60;
+  std::uint32_t animationFPS = 30;
   std::uint32_t unpublishedDrawBudgetMs = 4;
   float animationSpeed = 1.0f;
   float evictDistance = 8192.0f;
