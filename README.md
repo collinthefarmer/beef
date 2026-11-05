@@ -56,7 +56,8 @@ enchantment on the piece itself.
 | `docs/plans/edge-fixes-stage2-swap-2026-10-12.md` | How does a reinstall restage the render beside the published one, as a resize does, so an edit never shows the vanilla look, and which decisions are open? (proposed) |
 | `docs/plans/source-families-2026-10-14.md` | How are sources and signals grouped by origin, which recipe keys change, how do item facts reach a recipe, and how does the nested geometry, material group and chart pick work? (proposed) |
 | `docs/plans/studio-review-2026-10-16.md` | What does the studio do wrong or make hard, against its intended behaviour and design principles, and in which order are the findings fixed? |
-| `docs/plans/version-agnostic-2026-11-05.md` | How does one DLL load on every Skyrim runtime and peer version it can support, and what does the CommonLib move for 1.7 take? (proposed) |
+| `docs/plans/version-agnostic-2026-11-05.md` | How does one DLL load on every Skyrim runtime and peer version it can support, and what does the CommonLib move for 1.7 take? |
+| `docs/plans/vr-support-2026-11-05.md` | What would Skyrim VR support take, what is already in place, and what waits for a VR install? (deferred) |
 | `docs/plans/code-review-backlog-2026-10-11.md` | What did the code walk find, in which order is it worked through, and what needs the user's decision? |
 | `docs/checkpoints/render-performance-review-2026-09-30.md` | What did the review of the layer-field and generated-shader commits find, and which findings are fixed? |
 | `docs/checkpoints/actor-core-review-2026-10-03.md` | What did the review of the actor-core branch find, what must be fixed before it merges, and how is each fix proven? |

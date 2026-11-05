@@ -1,4 +1,4 @@
-Status: proposed (2026-11-05) on branch `main`. Nothing is implemented beyond the `address-library` profile (be45788) and the peer messages (8ac7ead). The work starts on a branch, `commonlib-fork`, so `main` and its candidate stay releasable.
+Status: active (2026-11-05) on branch `commonlib-fork`, so `main` and its candidate stay releasable. Steps 1 and 2 are done (9aac44f), step 3 (a0aa8f5) and step 4 (e99ea2b). Step 5 is decided: VR is deferred to `docs/plans/vr-support-2026-11-05.md`. Nothing is seen in game yet.
 
 # A version-agnostic plugin
 
@@ -38,7 +38,7 @@ them, and needs no rebuild for a new peer version.
 | 2 | Fix the plugin's compile errors from the two-year CommonLib jump. | Windows build; `tools/tidy.py --check` |
 | 3 | Add the fork's and DirectXTK's licenses and provenance: `THIRD_PARTY_NOTICES.md`, `licenses/`, `tools/source-archive.py`, the license tests. | `tests/tools/licenses_tests.py`, `source_archive_tests.py` |
 | 4 | Widen the guard to the newest AE runtime the pinned CommonLib names, read from `SKSE::RUNTIME_SSE_LATEST_AE` in `main.cpp`, so a CommonLib bump widens it and nothing else can. The supported-runtime text then names the range up to that runtime. | `tests/tools/compatibility_tests.py`; a native message test |
-| 5 | Decide VR (open question Q1). | |
+| 5 | VR: deferred by the user to `docs/plans/vr-support-2026-11-05.md`. The guard keeps refusing VR. | |
 | 6 | Make the Community Shaders check cover what the plugin writes (open question Q2). | |
 | 7 | Regression: native and sanitized suites, the release gate, and the full in-game suite on 1.6.1170 with `--timeout 3600`, against the 2026-11-05 run of the c8ddb85 candidate. 1.7 is "loads, not tested in game" unless a 1.7 install is available. | `tools/regression-run.py`, census scan |
 | 8 | Docs: the release notes' "Loads with" column, the tester README, `docs/build.md`'s profile section, and `REFERENCE.md` for each fact found. | review |
@@ -47,7 +47,7 @@ them, and needs no rebuild for a new peer version.
 
 | # | Question | Notes |
 |---|---|---|
-| Q1 | Build VR as well? | The fork supports VR. The plugin then needs VR's hook slot (it differs from 0xAD), VR's flattened-tree offsets (0x150/0x158 per REFERENCE.md), and VR IDs for its own relocation; Community Shaders' VR layout is unknown. |
+| Q1 | Build VR as well? Deferred: see `docs/plans/vr-support-2026-11-05.md`. | The fork supports VR. The plugin then needs VR's hook slot (it differs from 0xAD), VR's flattened-tree offsets (0x150/0x158 per REFERENCE.md), and VR IDs for its own relocation; Community Shaders' VR layout is unknown. |
 | Q2 | Should the layout check verify the scalar fields the plugin writes, not only the texture slot types? | V8: a Community Shaders release could move a scalar and pass the check. |
 | Q3 | Is a 1.7 install available for an in-game run? | Without one, 1.7 support rests on V1 to V5. |
 | Q4 | Does the GOG runtime need anything? | Not examined. Address Library publishes per-executable databases; the guard reads the runtime version only. |
