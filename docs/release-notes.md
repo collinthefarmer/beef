@@ -100,7 +100,7 @@ of each case of `docs/in-game-regression.md` (PASS, FAIL or BLOCKED).
 
 ### Reporting a problem
 
-Use `BUG_REPORT.md` in the archive. Include the build identity from
+Use `BetterEnchantmentEffects-BUG_REPORT.md` in the archive. Include the build identity from
 `SKSE/Plugins/BetterEnchantmentEffects-build.json`, `COMPATIBILITY.json`,
 the effective INI, the recipe, the steps, and the plugin log. Copy the log
 before you restart Skyrim, because startup replaces it.

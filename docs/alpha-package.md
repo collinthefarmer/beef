@@ -120,7 +120,7 @@ SKSE and Community Shaders versions, effective INI, recipe input, reproduction
 steps, and relevant plugin log/trace. Review logs for personal paths before
 sharing them.
 
-Use [BUG_REPORT.md](BUG_REPORT.md) for the report template and collection
+Use [BetterEnchantmentEffects-BUG_REPORT.md](BetterEnchantmentEffects-BUG_REPORT.md) for the report template and collection
 instructions. Copy the plugin log before restarting Skyrim; startup replaces it.
 
 Both archives include `BetterEnchantmentEffects-LICENSE`,

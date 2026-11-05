@@ -214,7 +214,9 @@ Both archives carry `LICENSE`, `COPYING.md`, `THIRD_PARTY_NOTICES.md`, and every
 file in `licenses/`, each under a name that starts with `BetterEnchantmentEffects-`
 (`BetterEnchantmentEffects-licenses/` for the folder). Mod Organizer 2 and the
 game merge every mod's root files into one `Data` folder, so a plain `LICENSE`
-would collide with other mods' files. `cmake/Stage.cmake` writes copies of
+would collide with other mods' files. The tester documents ship the same way,
+as `BetterEnchantmentEffects-README.md` (`docs/alpha-package.md`) and
+`BetterEnchantmentEffects-BUG_REPORT.md` (`docs/bug-report.md`). `cmake/Stage.cmake` writes copies of
 `COPYING.md` and `THIRD_PARTY_NOTICES.md` with their links rewritten to the
 shipped names (`build/<preset>/generated/notices/`); the repository keeps the
 plain names. When a dependency changes, update its row in

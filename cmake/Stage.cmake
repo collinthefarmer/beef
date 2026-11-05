@@ -7,6 +7,8 @@ set(shipped_license "${notice_prefix}LICENSE")
 set(shipped_copying "${notice_prefix}COPYING.md")
 set(shipped_notices "${notice_prefix}THIRD_PARTY_NOTICES.md")
 set(shipped_licenses "${notice_prefix}licenses")
+set(shipped_readme "${notice_prefix}README.md")
+set(shipped_bug_report "${notice_prefix}BUG_REPORT.md")
 function(write_shipped_notice source destination)
   set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${source}")
   file(READ "${source}" text)
@@ -31,6 +33,7 @@ add_custom_target(stage
     "${DIST_DIR}/${shipped_licenses}"
   COMMAND "${CMAKE_COMMAND}" -E rm -rf "${DIST_DIR}/LICENSE" "${DIST_DIR}/COPYING.md"
     "${DIST_DIR}/THIRD_PARTY_NOTICES.md" "${DIST_DIR}/licenses"
+    "${DIST_DIR}/BUG_REPORT.md"
   COMMAND "${CMAKE_COMMAND}" -E copy_if_different
     "${BEEF_EFFECTIVE_PROFILE}" "${DIST_DIR}/COMPATIBILITY.json"
   COMMAND "${CMAKE_COMMAND}" -E copy_if_different
@@ -40,7 +43,7 @@ add_custom_target(stage
   COMMAND "${CMAKE_COMMAND}" -E copy_if_different
     ${license_files} "${DIST_DIR}/${shipped_licenses}/"
   COMMAND "${CMAKE_COMMAND}" -E copy_if_different
-    "${CMAKE_SOURCE_DIR}/docs/bug-report.md" "${DIST_DIR}/BUG_REPORT.md"
+    "${CMAKE_SOURCE_DIR}/docs/bug-report.md" "${DIST_DIR}/${shipped_bug_report}"
   COMMAND "${CMAKE_COMMAND}" -E copy_if_different
     "$<TARGET_FILE:${PROJECT_NAME}>" "$<TARGET_PDB_FILE:${PROJECT_NAME}>"
     "${CMAKE_SOURCE_DIR}/${PROJECT_NAME}.ini" "${DIST_DIR}/SKSE/Plugins/"
@@ -74,8 +77,8 @@ foreach(presenter IN LISTS PRESENTER_FILES)
   package_file("${presenter}" "textures/${PROJECT_NAME}/slots/${filename}")
 endforeach()
 package_file("${BEEF_EFFECTIVE_PROFILE}" "COMPATIBILITY.json")
-package_file("${CMAKE_SOURCE_DIR}/docs/alpha-package.md" "README.md")
-package_file("${CMAKE_SOURCE_DIR}/docs/bug-report.md" "BUG_REPORT.md")
+package_file("${CMAKE_SOURCE_DIR}/docs/alpha-package.md" "${shipped_readme}")
+package_file("${CMAKE_SOURCE_DIR}/docs/bug-report.md" "${shipped_bug_report}")
 list(JOIN package_files ",\n" package_entries)
 set(package_files)
 package_file("${CMAKE_SOURCE_DIR}/LICENSE" "${shipped_license}")

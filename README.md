@@ -35,8 +35,8 @@ enchantment on the piece itself.
 | `docs/ui-design-principles.md` | Which direction does the editor's surface follow? |
 | `docs/in-game-regression.md` | What is the repeatable manual run in the game, and which log line does each step print? |
 | `docs/release-notes.md` | What does each release contain, what does it need, and what are its known limitations? The 0.1.0 alpha entry is a draft until acceptance. |
-| `docs/alpha-package.md` | What does a tester of a local candidate archive need to know? Shipped in the archive as `README.md`. |
-| `docs/bug-report.md` | How is a closed-alpha problem reported, with which evidence? Shipped as `BUG_REPORT.md`. |
+| `docs/alpha-package.md` | What does a tester of a local candidate archive need to know? Shipped in the archive as `BetterEnchantmentEffects-README.md`. |
+| `docs/bug-report.md` | How is a closed-alpha problem reported, with which evidence? Shipped as `BetterEnchantmentEffects-BUG_REPORT.md`. |
 | `docs/plans/`, `docs/checkpoints/`, `docs/history/` | Open work, dated records, and superseded documents. Each document begins with a status line; the folder and the dated filename give its kind and age. Source archives leave these folders out. |
 | `docs/plans/alpha-preparation-2026-09-22.md` | What is the active work toward alpha and source publication? Older plans, including the deletion inventory, are archived under `docs/history/`. |
 | `docs/plans/recipe-program-pipeline-2026-09-25.md` | How do recipe rows become evaluated programs, and which format decisions must be made before the format contract closes? Raised by authoring the cookbooks against the current language. |
