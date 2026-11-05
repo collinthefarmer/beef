@@ -3801,9 +3801,14 @@ The method and its prototype comparison are in
   finding of its file and check. `--changed` follows `#include` lines through
   `src/`, `src/extern/` and the `/FI` precompiled header to find the
   translation units a changed header reaches.
-- The baseline keeps the size and complexity findings that a split would
-  not make clearer (reviewed 2026-11-05, 74 functions). The limits are 60
-  lines, nesting depth 4, 4 parameters and cognitive complexity 25.
+- The baseline keeps 74 functions over the size and complexity limits
+  (2026-11-05). The limits are 60 lines, nesting depth 4, 4 parameters and
+  cognitive complexity 25. The functions were sorted by which limit they
+  cross, and 8 of them were read; the reasons below hold for the sorted
+  categories, not for each function. Of the 8, `DownstreamStepsOf` and
+  `TextField` would read better split, and
+  `docs/plans/code-review-backlog-2026-10-11.md` lists them; others in the
+  baseline may be the same.
   - Parameters (44): nearly all have 5, mostly render and orchestration
     helpers that pass an actor, its record and a context. A record made
     only to reach 4 would name no concept.

@@ -21,6 +21,11 @@ The user reads the code in an nvim pane that the `walk` skill drives. Each findi
 
 ## Cleanups
 
+- **Split candidates among the tidy baseline's size findings (2026-11-05).** A spot check of 8 of the 74 functions in `tools/tidy-baseline.txt` found two that would read better split; the other 66 were not read, so more may follow.
+  - `DownstreamStepsOf` (`planners/RenderPlan.cpp`, cognitive complexity 28) runs three phases: it builds reader and consumer edges, adds readback edges, then walks the steps reachable from each input. One named helper per phase.
+  - `TextField` (`menu/MenuWidgets.cpp`, cognitive complexity 27) mixes its commit decision (committed, left, check passed or failed, unapplied, Escape) into the ImGui calls. A pure step function, as `Studio::StepNameDraft` is for names, makes the transitions native-testable.
+- **The two render singletons return pointers that cannot be null.** `Compositor::GetSingleton` and `TextureLab::GetSingleton` return the address of a function-local static, so a caller's null check is dead. Callers check one and not the other (`EmitMetricsHeartbeat` checks the lab, not the compositor). Return references.
+
 - **`IsAny<Ts...>(variant)` with the next `Core.h` change.** It would replace the `Is<A>(v) || Is<B>(v) || …` chains in `TraitsOf` (`recipe/RecipeGraphLowering.cpp`). An edit to `Core.h` rebuilds most of the tree, so it waits for another reason to touch the file. `MaxBy` is dropped: the loop in `recipe/Resolve.cpp` returns early on a keyword miss, and the loop in `planners/RecipeTextureCache.h` filters first, so neither is a plain best-element fold.
 
 - **`ScreenStep::up` is derivable.** `ScreenStep` (`orchestration/Lifecycle.cpp`) stores `up` beside `from` and `to`, so it can hold a contradiction such as `{kFull, kHalf, up = true}`. `ResolutionLevel` is ordered from `kFull` to `kEighth`, so `up` is `LevelIndex(to) < LevelIndex(from)`. Its only reader is `needsRoom` in `StepLevel`. Replace the field with a `StepsUp(const ScreenStep &)` helper and drop the third argument in `ScreenStepOf`.
