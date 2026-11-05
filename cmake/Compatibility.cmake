@@ -53,13 +53,14 @@ if(runtimes_type STREQUAL "STRING")
   set(runtime_names)
   if(BEEF_COMPILE_SE)
     list(APPEND runtime_checks "(a_runtime >> 16) == 0x0105u")
-    list(APPEND runtime_names "Skyrim SE 1.5")
+    list(APPEND runtime_names "std::string{\"Skyrim SE 1.5\"}")
   endif()
   if(BEEF_COMPILE_AE)
-    list(APPEND runtime_checks "((a_runtime >> 16) == 0x0106u && a_runtime >= 0x010613D0u)")
-    list(APPEND runtime_names "Skyrim AE 1.6.317 and later 1.6 releases")
+    list(APPEND runtime_checks
+      "(a_runtime >= 0x010613D0u && (a_runtime | 0xFu) <= (a_newestAE | 0xFu))")
+    list(APPEND runtime_names "\"Skyrim AE 1.6.317 to \" + std::string{a_newestAE}")
   endif()
-  list(JOIN runtime_names " or " BEEF_SUPPORTED_RUNTIMES)
+  list(JOIN runtime_names " + \" or \" + " BEEF_SUPPORTED_RUNTIMES)
   if(NOT runtime_checks)
     message(FATAL_ERROR "${BEEF_EFFECTIVE_PROFILE}: address_library needs the SE or AE family compiled")
   endif()
@@ -80,9 +81,9 @@ else()
     profile_field(major runtimes ${index} version 0)
     profile_field(minor runtimes ${index} version 1)
     profile_field(patch runtimes ${index} version 2)
-    list(APPEND runtime_names "Skyrim ${major}.${minor}.${patch}")
+    list(APPEND runtime_names "std::string{\"Skyrim ${major}.${minor}.${patch}\"}")
   endforeach()
-  list(JOIN runtime_names " or " BEEF_SUPPORTED_RUNTIMES)
+  list(JOIN runtime_names " + \" or \" + " BEEF_SUPPORTED_RUNTIMES)
   list(JOIN runtime_versions ", " runtime_versions)
   set(BEEF_RUNTIME_DECLARATION "{ ${runtime_versions} }")
   list(JOIN runtime_checks " || " BEEF_RUNTIME_CHECKS)
@@ -101,13 +102,18 @@ endforeach()
 file(CONFIGURE OUTPUT "${CMAKE_BINARY_DIR}/generated/BuildCompatibility.h" CONTENT
 "#pragma once
 #include <cstdint>
+#include <string>
+#include <string_view>
 namespace BetterEnchantmentEffects::BuildCompatibility {
 inline constexpr const char *profile = \"@BEEF_COMPATIBILITY_PROFILE@\";
 inline constexpr std::uint32_t minimumSKSE = @BEEF_MINIMUM_SKSE_PACKED@;
 inline constexpr const char *minimumSKSEText = \"@BEEF_MINIMUM_SKSE_TEXT@\";
-inline constexpr const char *supportedRuntimes = \"@BEEF_SUPPORTED_RUNTIMES@\";
-inline constexpr bool SupportsRuntime(std::uint32_t a_runtime) noexcept {
+inline constexpr bool SupportsRuntime(std::uint32_t a_runtime,
+                                      [[maybe_unused]] std::uint32_t a_newestAE) noexcept {
   return @BEEF_RUNTIME_CHECKS@;
+}
+inline std::string SupportedRuntimes([[maybe_unused]] std::string_view a_newestAE) {
+  return @BEEF_SUPPORTED_RUNTIMES@;
 }
 }
 " @ONLY)

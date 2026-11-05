@@ -33,6 +33,12 @@ class CompatibilityTests(unittest.TestCase):
                                f'-DBEEF_COMPATIBILITY_PROFILE={profile["id"]}'],
                               text=True, capture_output=True)
 
+    def run_test(self, source: Path) -> None:
+        program = source.with_suffix('')
+        subprocess.run([os.environ.get('NATIVE_CXX', 'c++'), '-std=c++17', '-o', str(program), str(source)],
+                       check=True)
+        subprocess.run([str(program)], check=True)
+
     def test_profile_sets_pins_declaration_and_runtime_guard(self) -> None:
         result = self.configure(PROFILE)
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -44,11 +50,12 @@ class CompatibilityTests(unittest.TestCase):
         test = generated / 'test.cpp'
         test.write_text('#include "BuildCompatibility.h"\n'
                         'using namespace BetterEnchantmentEffects::BuildCompatibility;\n'
-                        'static_assert(SupportsRuntime(0x01064920));\n'
-                        'static_assert(!SupportsRuntime(0x01064921));\n'
-                        'static_assert(minimumSKSE == 0x02020060);\n')
-        subprocess.run([os.environ.get('NATIVE_CXX', 'c++'), '-std=c++17', '-fsyntax-only', str(test)],
-                       check=True)
+                        'static_assert(SupportsRuntime(0x01064920, 0x01070680));\n'
+                        'static_assert(!SupportsRuntime(0x01064921, 0x01070680));\n'
+                        'static_assert(!SupportsRuntime(0x01070680, 0x01070680));\n'
+                        'static_assert(minimumSKSE == 0x02020060);\n'
+                        'int main() { return SupportedRuntimes("1.7.104") == "Skyrim 1.6.1170" ? 0 : 1; }\n')
+        self.run_test(test)
         header = generated / 'BuildCompatibility.h'
         written = header.stat().st_mtime_ns
         self.assertEqual(self.configure(PROFILE).returncode, 0)
@@ -66,14 +73,23 @@ class CompatibilityTests(unittest.TestCase):
         test = generated / 'test.cpp'
         test.write_text('#include "BuildCompatibility.h"\n'
                         'using namespace BetterEnchantmentEffects::BuildCompatibility;\n'
-                        'static_assert(SupportsRuntime(0x01050610));\n'
-                        'static_assert(SupportsRuntime(0x010613D0));\n'
-                        'static_assert(SupportsRuntime(0x01064920));\n'
-                        'static_assert(SupportsRuntime(0x01064930));\n'
-                        'static_assert(!SupportsRuntime(0x010613C0));\n'
-                        'static_assert(!SupportsRuntime(0x010400F0));\n')
-        subprocess.run([os.environ.get('NATIVE_CXX', 'c++'), '-std=c++17', '-fsyntax-only', str(test)],
-                       check=True)
+                        'constexpr std::uint32_t newest = 0x01070680;\n'
+                        'static_assert(SupportsRuntime(0x01050610, newest));\n'
+                        'static_assert(SupportsRuntime(0x010613D0, newest));\n'
+                        'static_assert(SupportsRuntime(0x01064920, newest));\n'
+                        'static_assert(SupportsRuntime(0x01064931, newest));\n'
+                        'static_assert(SupportsRuntime(0x01070630, newest));\n'
+                        'static_assert(SupportsRuntime(0x01070681, newest));\n'
+                        'static_assert(!SupportsRuntime(0x01070690, newest));\n'
+                        'static_assert(!SupportsRuntime(0x01080000, newest));\n'
+                        'static_assert(!SupportsRuntime(0x010613C0, newest));\n'
+                        'static_assert(!SupportsRuntime(0x010400F0, newest));\n'
+                        'static_assert(!SupportsRuntime(0x01070630, 0x01064920));\n'
+                        'int main() {\n'
+                        '  return SupportedRuntimes("1.7.104") ==\n'
+                        '      "Skyrim SE 1.5 or Skyrim AE 1.6.317 to 1.7.104" ? 0 : 1;\n'
+                        '}\n')
+        self.run_test(test)
 
     def test_address_library_profile_needs_a_compiled_family(self) -> None:
         library = json.loads((ROOT / 'cmake/compatibility/address-library.json').read_text())

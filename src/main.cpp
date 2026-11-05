@@ -179,20 +179,21 @@ SKSEPluginLoad(const SKSE::LoadInterface *skse) {
   if (!skse || skse->IsEditor()) {
     return false;
   }
-  if (!BetterEnchantmentEffects::BuildCompatibility::SupportsRuntime(
-          skse->RuntimeVersion().pack()) ||
-      skse->SKSEVersion() <
-          BetterEnchantmentEffects::BuildCompatibility::minimumSKSE) {
-    namespace Compatibility = BetterEnchantmentEffects::BuildCompatibility;
+  namespace Compatibility = BetterEnchantmentEffects::BuildCompatibility;
+  if (!Compatibility::SupportsRuntime(skse->RuntimeVersion().pack(),
+                                      SKSE::RUNTIME_SSE_LATEST_AE.pack()) ||
+      skse->SKSEVersion() < Compatibility::minimumSKSE) {
     const std::string runtime = skse->RuntimeVersion().string(".");
     const std::string sksed =
         REL::Version::unpack(skse->SKSEVersion()).string(".");
-    logger::error("{} (compatibility profile {})",
-                  BetterEnchantmentEffects::RuntimeRefused(
-                      {runtime, sksed, Compatibility::supportedRuntimes,
-                       Compatibility::minimumSKSEText})
-                      .Line(),
-                  Compatibility::profile);
+    const std::string supported = Compatibility::SupportedRuntimes(
+        SKSE::RUNTIME_SSE_LATEST_AE.string("."));
+    logger::error(
+        "{} (compatibility profile {})",
+        BetterEnchantmentEffects::RuntimeRefused(
+            {runtime, sksed, supported, Compatibility::minimumSKSEText})
+            .Line(),
+        Compatibility::profile);
     return false;
   }
   logger::info("compatibility profile {} (runtime acceptance pending)",
