@@ -200,7 +200,9 @@ and moved the actor ID into `ActorStacks`.
   actor unloading (`unload`), first-/third-person switching (`camera`), and
   disable/retire/reapply (`lifecycle`, `unload`). The runs found and fixed
   an NPC armor model that attaches after the equip refresh.
-- [ ] Exercise new game. No case covers it.
+- [ ] Exercise new game. The unattended runner cannot start one; the manual
+  case is in `docs/in-game-regression.md` (Additional negative and
+  coexistence runs).
 - [x] Load saves during queued edits, gestures, and paint previews
   (`load-idle`, `load-apply`, `load-edit`, `load-gesture`, `load-paint`).
   Old work cannot affect the new session and no application stays pending.

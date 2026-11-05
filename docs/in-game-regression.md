@@ -412,6 +412,15 @@ of cleanup.
   must still emit `hooked PlayerCharacter::Update` once.
 
 
+- New game after a session with effects: load the regression save, equip
+  the enchanted fixture, and wait for `recipe(s) applied`. Return to the main
+  menu and start a new game; for a quick start, open the console at the main
+  menu and enter `coc qasmoke`. Expect `kNewGame` and `cleared … actor
+  states` in the file log, a `clear_end` load event in the trace, and no
+  effect on any actor before an equip. Add the
+  enchanted fixture (`player.additem`), equip it, and expect `recipe(s)
+  applied` and its effect. No case of the unattended runner covers a new game.
+
 - Bad file and recovery: add one malformed JSON in the isolated test recipe
   directory, reload, and record its filename and diagnostic. A separate
   valid recipe must still render. Repair or remove the bad fixture and
