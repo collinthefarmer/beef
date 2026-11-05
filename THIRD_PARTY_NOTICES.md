@@ -6,7 +6,9 @@ license texts are in `licenses/`.
 
 | Component | Version | License | Copyright |
 |---|---|---|---|
-| CommonLibSSE-NG | `b93280e832f263dbef44e44cbe2936622a02f91a` | [MIT](licenses/CommonLibSSE-NG.txt) | (c) 2018 Ryan-rsm-McKenzie |
+| CommonLibSSE NG, from alandtse/CommonLibVR | `cd21580f7e7cab47df0a7e0fa5e26525527b36bf` | [GPL-3.0-or-later](licenses/CommonLibVR-COPYING.txt) with [exceptions](licenses/CommonLibVR-EXCEPTIONS.md) | CommonLibSSE NG contributors |
+| CommonLibSSE NG: original code | | [MIT](licenses/CommonLibSSE-NG.txt) | (c) 2018 Ryan-rsm-McKenzie |
+| DirectXTK SimpleMath, used by CommonLibSSE NG | may2026 | [MIT](licenses/DirectXTK.txt) | (c) Microsoft Corporation |
 | spdlog | v1.15.3 | [MIT](licenses/spdlog.txt) | (c) 2016 Gabi Melman |
 | fmt, bundled with spdlog | 11.2.0 | [MIT with object-code exception](licenses/fmt.txt) | (c) 2012 - present, Victor Zverovich |
 | rapidcsv | v8.99 | [BSD-3-Clause](licenses/rapidcsv.txt) | (c) 2017 Kristofer Berggren |

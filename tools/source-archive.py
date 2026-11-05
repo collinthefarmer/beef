@@ -10,9 +10,9 @@ import sys
 import tarfile
 
 ROOT = Path(__file__).resolve().parents[1]
-DEPENDENCIES = {'commonlib': 'commonlibsse', 'spdlog': 'spdlog', 'rapidcsv': 'rapidcsv'}
-EXCLUDED = {'commonlibsse': ('Flash', 'tests/REL/version-1-4-15-0.csv',
-                             'tests/REL/version-1-5-97-0.bin', 'tests/REL/versionlib-1-6-353-0.bin')}
+DEPENDENCIES = {'commonlib': 'commonlibsse', 'spdlog': 'spdlog', 'rapidcsv': 'rapidcsv',
+                'directxtk': 'directxtk'}
+EXCLUDED = {'commonlibsse': ('Flash', 'tests/REL/version*')}
 
 
 def git(directory: Path, *args: str) -> bytes:

@@ -34,10 +34,12 @@ class SourceArchiveTests(unittest.TestCase):
         self.root = Path(folder.name) / 'project'
         self.deps = Path(folder.name) / 'deps'
         pins = {}
-        for key, name in (('commonlib', 'commonlibsse'), ('spdlog', 'spdlog'), ('rapidcsv', 'rapidcsv')):
+        for key, name in (('commonlib', 'commonlibsse'), ('spdlog', 'spdlog'), ('rapidcsv', 'rapidcsv'),
+                          ('directxtk', 'directxtk')):
             checkout = self.deps / f'{name}-src'
             repository(checkout, {'LICENSE': name, 'Flash/CLIK.as': 'proprietary',
-                                  'tests/REL/version-1-5-97-0.bin': 'data'})
+                                  'tests/REL/version-1-5-97-0.bin': 'data',
+                                  'tests/REL/versionlib-1-7-99-0.bin': 'data'})
             git(checkout, 'tag', 'v1.0')
             (checkout / 'LICENSE').write_text('edited after the pin')
             (checkout / 'untracked.txt').write_text('not source')
@@ -72,11 +74,15 @@ class SourceArchiveTests(unittest.TestCase):
         self.assertNotIn('docs/checkpoints/captured.log', names)
         self.assertIn('dependencies/spdlog/Flash/CLIK.as', names)
         self.assertFalse({'dependencies/commonlibsse/Flash/CLIK.as',
-                          'dependencies/commonlibsse/tests/REL/version-1-5-97-0.bin'} & names)
+                          'dependencies/commonlibsse/tests/REL/version-1-5-97-0.bin',
+                          'dependencies/commonlibsse/tests/REL/versionlib-1-7-99-0.bin'} & names)
+        self.assertIn('dependencies/directxtk/LICENSE', names)
         self.assertFalse(any(name.endswith('untracked.txt') for name in names))
         self.assertIn('set(FETCHCONTENT_FULLY_DISCONNECTED ON', bundled)
         self.assertIn('set(FETCHCONTENT_SOURCE_DIR_COMMONLIBSSE '
                       '"${CMAKE_CURRENT_LIST_DIR}/dependencies/commonlibsse"', bundled)
+        self.assertIn('set(FETCHCONTENT_SOURCE_DIR_DIRECTXTK '
+                      '"${CMAKE_CURRENT_LIST_DIR}/dependencies/directxtk"', bundled)
         checksum = path.with_name(path.name + '.sha256').read_text()
         self.assertEqual(checksum, f'{hashlib.sha256(path.read_bytes()).hexdigest()}  {path.name}\n')
 

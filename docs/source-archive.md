@@ -30,10 +30,10 @@ which build identity reads when there is no `.git`.
 Each dependency is `git archive` of its pinned revision from the profile, taken
 from its FetchContent checkout and placed under `dependencies/<name>/`. Untracked files
 and edits in the checkout do not enter the archive. `git archive` omits
-submodule contents; the current three dependency revisions have no
-submodules. CommonLib's unused `Flash/` Scaleform source and three Address
-Library test-data files under `tests/REL/` are excluded by `EXCLUDED` in the
-script. CommonLib tests that need the excluded data are not part of this
+submodule contents. CommonLib's one submodule, `extern/openvr`, is used only
+by the VR build, which no profile compiles. CommonLib's unused `Flash/`
+Scaleform source and its Address Library test-data files
+(`tests/REL/version*`) are excluded by `EXCLUDED` in the script. CommonLib tests that need the excluded data are not part of this
 configuration. Bundled spdlog includes its generated fmt headers and their
 embedded notices. The menu API, JSON, and Community Shaders reference headers
 remain in the project source with their notices in `THIRD_PARTY_NOTICES.md`.
