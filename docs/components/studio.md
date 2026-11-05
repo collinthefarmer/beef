@@ -66,6 +66,9 @@ holds `RecipeRow`s, and a `RecipeRow` holds its resource, **geometry** and
 | `LoadedRecipeRow` | One recipe file on disk: id, keys, per-resource counts, imported flag, diagnostics, and path. | `Snapshot.h` |
 | `RecipeRowInput` | The input to `BuildRecipeRow`, which composes the row builders in `Rows.h` (`OutputRowOf`, `LayerRowOf`, `SignalRowOf`, and others): the `Recipe`, matched key, priority, clock time, dirty and pinned flags, undo and redo depths, `ReferenceCounts`, and the optional `RecipeGraph` and `SignalState`. | `RecipeSnapshot.h` |
 | `Names` | The name pools for combo boxes and checks: signals and sources with their `ValueType`s, curves, and masks. `NamesOf` gathers them from a `RecipeRow` and, optionally, a `GeometryRow`. | `Names.h` |
+| `RecipeSection`, `RecipeSectionsOf`, `FolderOf` | The recipe list of the Recipes page grouped by folder. `FolderOf` gives the parent folder name of a recipe path, or `unsaved` (`kUnsavedSection`) when the path has none. `RecipeSectionsOf` groups the `LoadedRecipeRow` ids by folder without regard to case and sorts the `user` section (`kUserSection`) first, then the others by name. | `RecipeSections.h` |
+| `UnappliedSummary`, `UnappliedReasonName` | The text of one `UnappliedRecipeRow`: its reason (`held back` or `unreadable`), its first error with its `where`, and the count of further errors. | `RecipeSections.h` |
+| `UnsavedRecipesText` | The ids of the dirty recipes, at most `kMaxNamedUnsaved` (6) by name and the rest as a count, or none when no recipe is dirty. | `RecipeSections.h` |
 
 `PieceRow::selections` keeps the outcome of the normal actor-driven
 resolution. `PieceRow::previewOverride` is true when isolation or a pin
@@ -85,6 +88,9 @@ not on `View`.
 | `Isolation` | The one recipe, and optionally one output and layer, that the view shows. `TargetsOutput` and `TargetsLayer` answer the isolation badges. | `View.h` |
 | `Pin`, `PieceRef` | `Pin` names a recipe pinned on a piece. `PieceRef` names a piece by actor and armor form ids. | `View.h` |
 | `ViewCommand` | One solo command. `ApplyViewCommand` reduces it into a `View`. | `View.h` |
+| `ActivePreview`, `ActivePreviewsOf` | One active view filter and the `Intent` that clears it. `ActivePreviewsOf` lists the solo piece, the isolation and each muted layer of a `View`, with labels from the `Snapshot`. | `ActivePreviews.h` |
+| `Renumbering`, `OutputRenumbering`, `LayerPlace`, `RenumberingOf` | The new index of each output and of each of its layers after an edit, or none for a removed one. `RenumberingOf` aligns the outputs by surface and slot, and the layers of each kept output, and returns none when nothing moved. It aligns no list longer than `kMaxRenumberedEntries` (256). | `Renumbering.h` |
+| `OutputAfter`, `LayerAfter`, `RenumberedIsolation`, `RenumberedView` | Read one new place from a `Renumbering`, and move an `Isolation` and the muted layers of a `View` of one recipe to their new places. A muted layer whose layer is gone is dropped. `RecipeEditor` applies `RenumberedView` after an edit, an undo or redo, a revert and a reload. | `Renumbering.h` |
 | `Mode`, `Layout` | `Mode` is `kCompose` or `kPaint`. `Layout` is the panel set and sizes of one mode; `kLayouts` and `LayoutFor` give them. | `View.h` |
 
 ### Intents and recipe edits
@@ -157,6 +163,11 @@ recipe (`kPaintRecipe`). Keep sends the finished expression as a
 | `BuiltTerm` | The expression of one term and the edits that add the sources it needs. `BuildTerm` makes it. | `TermTemplates.h` |
 | `TermOffer`, `OfferGroup` | One pickable term in one of nine groups (`kOfferGroups`), with detail and coverage. `OffersOf` lists them for a geometry. `OffersInGroup` filters one group through `OfferMatches` and sorts by coverage. | `TermTemplates.h` |
 | `TermField` | One form field of a term and the function that turns its text into a new `TermKind`. | `TermTemplates.h` |
+| `ClusterAxis`, `kClusterAxes` | The eight axes of the cluster chart: roughness, metallic, occlusion, reflectance, luma, two chroma axes and detail. | `ClusterReadout.h` |
+| `ClusterProfile`, `AxisBand`, `AxisHistogram`, `ClusterChart` | One cluster on the chart: its id, share and colour, and per axis a band (the 10th percentile, the cluster centroid and the 90th percentile) and a histogram of `kHistogramBins` (16) bins. `ChartOf` builds the chart from a `MaterialGrouping`. | `ClusterReadout.h` |
+| `ClusterView`, `ClusterMemo`, `ClustersOf` | The `MaterialAnalysis` and `ClusterChart` of one grouping. `ClustersOf` rebuilds the memo only when the grouping changes; the memo also holds the compared cluster. | `ClusterReadout.h` |
+| `ProfileOf`, `NearestOther`, `LargestFirst` | One cluster's profile by id, the cluster with the nearest band centres, and the clusters ordered by share. | `ClusterReadout.h` |
+| `AxisSeparation`, `SeparationOf`, `CanSeparate` | The separation of two clusters per axis, largest first: the distance between centres over the sum of the half band widths. `CanSeparate` is true when one axis separates them by 1 or more. | `ClusterReadout.h` |
 | `MaskPreset`, `MaskPresets` | The `presets.json` model: a named partition, bone list and expression, with the sources it needs. `ParsePresets` reads it. | `Presets.h` |
 | `SourceCatalog`, `SourcePlanBuilder` | The sources a term or paint commit can reuse. `ReuseOrAdd` returns an existing equal source or stages an `AddSource`. | `SourcePlan.h` |
 | `PaintSession` | The paint session: paint recipe id, surface, read geometries, pending commit and revision, source edits, origin `Selection`, assignment, and peek. | `PaintSession.h` |
@@ -309,15 +320,15 @@ path: `KeepPaint` reaches `RecipeEditor::KeepPaint`, which calls
 
 | Concern | Files |
 |---|---|
-| Snapshot rows | `Snapshot.h`, `RecipeSnapshot.h/.cpp`, `Rows.h/.cpp`, `SourceRows.cpp`, `Names.h/.cpp` |
-| View and isolation | `View.h`, `Isolation.cpp` |
+| Snapshot rows | `Snapshot.h`, `RecipeSnapshot.h/.cpp`, `Rows.h/.cpp`, `SourceRows.cpp`, `Names.h/.cpp`, `RecipeSections.h/.cpp` |
+| View and isolation | `View.h`, `Isolation.cpp`, `ActivePreviews.h/.cpp`, `Renumbering.h/.cpp` |
 | Intents and recipe edits | `Intent.h`, `Edits.h/.cpp`, `EditChecks.h/.cpp`, `Relationships.h` |
 | Field checks and parsing | `FieldCheck.h/.cpp`, `FieldParsing.h/.cpp` |
 | Creation path | `Create.h/.cpp` |
 | Widget vocabulary and forms | `Widgets.h/.cpp`, `Fields.h/.cpp`, `Forms.h/.cpp` |
 | Budget readout | `BudgetView.h/.cpp` |
 | Menu state | `MenuState.h/.cpp`, `EditResult.h/.cpp`, `FileOperation.h` |
-| Mask editor | `Mask.h/.cpp`, `TermTemplates.h/.cpp`, `Presets.h/.cpp`, `SourcePlan.h/.cpp` |
+| Mask editor | `Mask.h/.cpp`, `TermTemplates.h/.cpp`, `Presets.h/.cpp`, `SourcePlan.h/.cpp`, `ClusterReadout.h/.cpp` |
 | Paint mode | `PaintSession.h/.cpp`, `PaintCommit.h` |
 | Selection, board and navigation | `Selection.h/.cpp`, `Board.h/.cpp`, `Panels.h/.cpp`, `Navigation.h/.cpp`, `PreviewWindows.h/.cpp`, `SelectorEdit.h/.cpp` |
 | Engine-side editor records | `DocumentRevisions.h/.cpp`, `History.h`, `Gesture.h/.cpp`, `ApplicationRecord.h/.cpp`, `ResolveOutput.h/.cpp` |

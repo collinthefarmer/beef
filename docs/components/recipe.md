@@ -235,6 +235,23 @@ recipe with its graph for the `Check*` and `*TypeOf` functions.
 | `FiringAnchor` | Where a firing's location resolves: nowhere, a `CarriedPoint`, or an `AnchorNode`. |
 | `RowTypes` | A recipe and its graph. |
 
+### Bus events (`BusEvents.h`)
+
+The bus events are the built-in event ids. The `event` of an `EventOrigin`
+is a glob over these ids and the `anim.<tag>` ids. `Validation.cpp` warns
+when the glob matches no built-in id. `studio/Forms.cpp` lists the ids, and
+`engine/` builds the ids that it fires through these functions.
+
+| Symbol | Description |
+|---|---|
+| `BusEvent` | One event: its `id`, its `payload` `ValueType`, its `meaning` text, and whether it also fires with a position (`carriesPosition`). |
+| `kBusEvents` | The eight known events: `equip`, `hit.received`, `hit.dealt` and one `spell.cast.<school>` per `SpellSchool`. The first three carry a position. |
+| `SpellSchool`, `kSpellCastEvents`, `SpellCastEventId` | The five spell schools and the cast event id of each. |
+| `PositionEventId`, `kPositionSuffix` | The id of an event's position form: the id with `.position` appended. |
+| `AnimEventId`, `kAnimPrefix` | The id of an animation tag: `anim.` and the tag. |
+| `FindBusEvent` | Returns the `BusEvent` of an id, or null. |
+| `IsKnownEventGlob` | True when a glob starts with `anim.`, matches `anim.event`, or matches a known id or the position form of an id that carries one. |
+
 ### The plan (`Merge.h`)
 
 Several recipes can land on one piece. The plan is the pure merge of their
@@ -331,6 +348,7 @@ EffectShaderRecord + template Recipe ──ImportEffectShader──▶ Recipe   
 | Graph operations | `GraphOperations.h`, `GraphOperations.cpp`, `Reduction.h`, `FunctionExecution.cpp` | The operation node types, `InputsOf`, `Stateful`, `FunctionResultTypeOf`, `ReductionKind`, and `EvaluateFunction`. |
 | Evaluation and checks | `Signals.h`, `Signals.cpp` | `SignalState`, `SignalEnvironment`, `Validate`, and the `Check*` and `*TypeOf` functions. `CheckSource` compiles a changed candidate row before it compares diagnostics. |
 | Expressions | `Expression.h`, `Expression.cpp`, `ExpressionMath.h`, `ExpressionMath.cpp` | `Program`, the parser, the type check, `ExpressionFunctions`, `ReplaceNumericLiteral`, `RenameInExpression`, and `ExpressionSummary`; the numeric helpers `ShufflePosition`, `HashUnit`, `RandomInRange`, `HueColor`, and `ShiftHue`, which the CPU reference shares. |
+| Bus events | `BusEvents.h`, `BusEvents.cpp` | `BusEvent`, `kBusEvents`, `SpellSchool`, `PositionEventId`, `AnimEventId`, `SpellCastEventId`, `FindBusEvent`, and `IsKnownEventGlob`. |
 | Merge | `Merge.h`, `Merge.cpp` | `PlanGeometry`, `PlanLights`, and the plan lookups. |
 | Import | `Importer.h`, `Importer.cpp`, `Efsh.h`, `Efsh.cpp` | `ParseEffectShaderRecord`, `ImportEffectShader`, `ImportSignalNames`, and the vanilla fill model that an `EfshSignal` reads. |
 | Editor walks | `Visit.h` | `ForEachParam`, `Visit*Params`, `LocatedVisitor`, and `PropertyLocation`, which the studio and menu use to walk a recipe's refs and params. |

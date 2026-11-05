@@ -125,7 +125,7 @@ the next tick.
 | `BuildAwaitedRender`, `FailAwaitedRender` | Build the render from a finished plan job within an `InstallBounds`, or fail the actor's outputs with the job's problem. | `Commands.h` |
 | `Install`, `InstallKind` | Install the actor from its facts and plan, as a first install or a reinstall, with its `InstallBounds` and its replaced bytes. | `Commands.h` |
 | `Retire`, `Forget`, `Observe`, `KeepModels`, `SettleApplications` | Undo the actor's effects and keep its tracking; drop everything held for it; observe it again; keep the models of a plan; end its equip and reinstall applications as flagged. | `Commands.h` |
-| `Command` | The variant of the fifteen commands. | `Commands.h` |
+| `Command` | The variant of the 19 commands. | `Commands.h` |
 | `LogLevel`, `LogRecord`, `TraceRecord` | One log line and one trace event that the engine writes for the core. | `Commands.h` |
 
 ### The steps and their helpers
@@ -143,6 +143,9 @@ the helpers that tests and the engine's heartbeat also read.
 | `WaitingStepUp`, `WaitingStepUpsOf` | Each live actor in view with a blocked step up, with its preemption request, largest screen fraction first. | `Budget.h` |
 | `EvictedActorsOf`, `LargestReturnBytes`, `FarthestTrackedDistance` | The evicted actors with their distances and return bytes, the largest return bytes, and the distance of the farthest actor with a state. | `Budget.h` |
 | `PlannerMs`, `ReturnBytesOf`, `RangeChanged` | The 32-bit planner time, the return bytes of a record, and whether an actor's range differs from what it has installed. | `Sync.h` |
+| `SpreadCommands`, `SpreadTickActors` | Splits a tick's commands into the commands to run now and the `TickActor` commands to spread over later frames. A `TickActor` is spread when it has `drawStacks` set and no other command of the tick names its actor. `engine/ManagerTick.cpp` calls it. | `DrawSpread.h` |
+| `ActorsNamedBy` | The actors that one command names: the `order` of a `DrawUnpublished`, none for a `CancelPlanJob`, otherwise the command's actor. | `DrawSpread.h` |
+| `DrawsDue` | The spread draws to run in this frame: the waiting count divided over the frames left, rounded up, or every waiting draw on the last frame. | `DrawSpread.h` |
 | `TickActorFor`, `EventName` | The `TickActor` flags of a phase, and the trace name of an event. | `Lifecycle.h` |
 | `VisibilityOf` | The planners' `ActorVisibility` of a sighting. | `World.h` |
 | `ApplyPhaseChange`, `TracePhase`, `TraceIgnored` | Write a `PhaseChange` to a render and append its commands, tracing `actor_phase` when the phase name changes and `actor_phase_ignored` when the event did not apply. The lifecycle and the budget both change phases through it. | `Output.h` |
@@ -211,6 +214,7 @@ Manager::Execute: one executor per command, in order       engine/ManagerCommand
 | `Lifecycle.h`/`.cpp` | `RecordRenderResults` and `RunLifecycle`: phase events, plan jobs, resize scheduling, the screen level step, admission of step ups, first-draw ends, `TickActor` and the unpublished draw order. |
 | `Budget.h`/`.cpp` | `RunBudget`: pressure, releases, step downs, preemption, the budget radius, the estimate and the install bound. |
 | `Agreement.h`/`.cpp` | The agreement check. |
+| `DrawSpread.h`/`.cpp` | `SpreadCommands`, `SpreadTickActors`, `ActorsNamedBy` and `DrawsDue`: the spread of stack-drawing `TickActor` commands over frames. |
 | `tests/orchestration/*_tests.cpp` | Unit tests per step and per phase change, and the scenario suites over hundreds of ticks. |
 | `tests/orchestration/sim/` | The simulator shell that executes commands with counters and failure injection, the invariants checked after every tick, and the contract table of each step. |
 

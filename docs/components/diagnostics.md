@@ -128,6 +128,49 @@ never become a crash.
 | `Pointer(p)` | Formats an address for a field value. | `Trace::Pointer(clone_.get())` |
 | `Fingerprint(text)` | Hashes an `std::string_view` for a field value. | `Trace::Fingerprint(settings.Serialize())` |
 
+### Counters (`Metrics.h`)
+
+`Metrics.h` declares process-wide performance counters in namespace
+`Metrics`; `Metrics.cpp` keeps them as relaxed atomics. Each `Count*`
+function adds to one counter or raises one peak. `Drain` returns a
+`Snapshot` and resets the per-interval counters. `Drain` does not reset the
+live target counts `targets`, `targetBytes` and their peaks.
+
+| Symbol | Description |
+|---|---|
+| `Section` | One timed section of a frame: `kFrame`, `kTick`, `kSnapshot`, `kSignals`, `kRender`, `kLights`, `kPreviews`, `kSweep`, `kRenderInputs`, `kRenderSlots`, `kRenderShell`, `kRenderEvaluate`, `kRenderExecute`, `kCull`. `kSections` gives each its wire name. |
+| `SectionTime{micros, maxMicros}` | The total and the largest single time of one section. |
+| `Snapshot` | One drained interval: sync, hidden-draw, sink, readback, render target, step and section counters, spike and hitch counts, and actors in and out of view. `Of` returns one section's `SectionTime`. `Quiet` is true when the interval has no syncs, sink changes, readbacks or render evaluations. |
+| `StepKindCounts` | One counter per render step kind, `kStepKindSlots` (32) wide. |
+| `kPluginSpikeMicros` | 8, 16 and 33 ms. `CountSection` counts a `kFrame` time above each threshold as a plugin spike. |
+| `kHitchMicros` | 50 and 100 ms. `CountFrameAt` counts a frame interval above each threshold as a hitch. |
+| `MippedRgbaBytes(side)` | The byte estimate side × side × 4 × 4 / 3 for a square four-byte-per-texel texture with mips. |
+| `Stopwatch` | Starts at construction; `Micros` returns the elapsed microseconds. |
+
+### GPU span timing (`GpuTiming.h`)
+
+`GpuTiming.h` declares the engine-free bookkeeping for GPU timestamp
+queries; `GpuTiming.cpp` implements it. `render/TextureLab.h` owns one
+`Ring` and one `Totals` and issues the queries. A tick records named spans
+into a free slot. A later `Resolve` turns the slot's timestamps into
+per-key totals and frees the slot.
+
+| Symbol | Description |
+|---|---|
+| `kFrameSlots`, `kMaxSpans` | 8 slots in the ring; at most 2048 spans in one slot. |
+| `SlotState` | `kFree`, `kRecording` or `kPending`. |
+| `FrameSlot{state, spans}` | One tick's state and its span keys in order. |
+| `Ring{slots, order, recording, nextTick}` | The slots, the tick number that started each slot, and the slot that records now. |
+| `SpanTotal{count, nanoseconds, maxNanoseconds}` | The accumulated time of one span key. |
+| `Totals` | The `SpanTotal` per key, and counts of timed, dropped and discarded ticks and of untimed spans. |
+| `Stamps{begin, end}`, `ResolvedTick{disjoint, frequency, spans}` | The query results for one slot. |
+| `BeginTick` | Claims a free slot. With no free slot it counts a dropped tick and returns nothing. |
+| `OpenSpan` | Adds a span key to the recording slot. Past `kMaxSpans` it counts an untimed span and returns nothing. |
+| `EndTick` | Marks the recording slot pending. |
+| `PendingOldestFirst` | Lists pending slots in the order their ticks began. |
+| `Resolve` | Adds the slot's spans to `Totals`, or counts a discarded tick when the results are disjoint, have zero frequency or have the wrong span count. It frees the slot. |
+| `Drain` | Returns the totals and resets them. |
+
 ## How an event flows
 
 ```
@@ -168,6 +211,8 @@ tools/trace-report.py            segments_of() finds a segment's siblings by
 |---|---|
 | `Trace.h` | `Event`, `Field`, `Context`, `Status`, `Recorder`, `Scope`, and the free-function API: `Get`, `Current`, `Command`, `NextID`, `BeginSession`, `Emit`, `EmitSafely`, `Safely`, `Page`, `Pointer`, `Fingerprint`. |
 | `Trace.cpp` | The event-name table, `Recorder`'s file and rotation logic, and the free functions. |
+| `Metrics.h`/`.cpp` | `Section`, `Snapshot`, the `Count*` functions, `Drain`, `MippedRgbaBytes` and `Stopwatch`. |
+| `GpuTiming.h`/`.cpp` | The GPU timestamp slot ring and per-span totals: `Ring`, `Totals`, `BeginTick`, `OpenSpan`, `EndTick`, `Resolve`, `Drain`. |
 | `WarningHistory.h`/`.cpp` | Mutex-protected, bounded warning deduplication with explicit owner-controlled session reset and a one-time budget notice. |
 
 ## See also

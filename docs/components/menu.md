@@ -163,6 +163,10 @@ Each panel is one free function over the **frame**. A panel reads the
 | `PostResourceAdd`, `DrawResourceRename`, `DrawResourceClone`, `ResourceLabel`, `PostResourceRename` | Resource actions. `PostResourceAdd` posts the add intent for one `Studio::ResourceTab`. `DrawResourceRename` checks the new name and posts the rename edit. `DrawResourceClone` posts a `Studio::NewCopy` and selects the copy. `ResourceLabel` makes the `NameLabelSpec` of a resource name, and `PostResourceRename` posts its rename. | `ResourcePanels.h` |
 | `DrawResponse` | Draws one `Studio::SignalRow`'s response graph. | `ResponsePanel.h` |
 | `RecipeFilePending`, `DrawRecipeRuleStatus`, `DrawRecipeSaveRevert`, `DrawMaskDraftHints`, `DrawRecipeFileActions` | The **recipe** file controls. `RecipeFilePending` is true while a file operation on the recipe runs. | `RecipeActions.h` |
+| `DrawClusterExplorer`, `ClusterSubject` | The material cluster explorer of one geometry: a cluster count line, the cluster chart, the separation table of the picked and the compared cluster, and the cluster table. It returns the cluster that a click picked. `ClusterSubject` is the geometry row, its `ClusterSettings` and the picked cluster. The Studio workspace and the mask editor draw it. | `ClusterChart.h` |
+| `DrawClusterChart`, `ChartFocus`, `ChartClick`, `ChartAction` | Draws a `Studio::ClusterChart` with the picked and compared clusters (`ChartFocus`) drawn last and the histograms of the picked cluster. A click returns a `ChartClick`: `kPick`, or `kCompare` with ctrl held. | `ClusterChart.h` |
+| `ClusterInk` | The packed colour of one cluster from the cluster palette, with the given alpha. | `ClusterChart.h` |
+| `DrawMaterialDump` | The "Dump material" button. It posts `Studio::DumpMaterial` for the frame's piece and geometry and shows the `materialDump` result of the snapshot for that geometry. | `ClusterChart.h` |
 
 ### The menu lifecycle (`Menu.h`)
 
@@ -243,7 +247,7 @@ next tick: Manager publishes a new Snapshot; RenderStudio reads it
 | Widget toolkit | `MenuWidgets.h`/`.cpp` (the only `render/` include) |
 | Form and field drawing | `FormDraw.h`/`.cpp` |
 | Pages | `StudioPage.h`/`.cpp`, `RecipesPage.cpp`, `SetupPage.cpp`, `BoardPage.h`/`.cpp` |
-| Studio panels | `Workspace.h`/`.cpp` (navigator, inspector subjects, preview), `StackPanel.h`/`.cpp`, `RelationshipPanel.h`/`.cpp`, `ContextRows.h`/`.cpp`, `ResourcePanels.h`/`.cpp`, `ResponsePanel.h`/`.cpp`, `RecipeActions.h`/`.cpp` |
+| Studio panels | `Workspace.h`/`.cpp` (navigator, inspector subjects, preview), `StackPanel.h`/`.cpp`, `RelationshipPanel.h`/`.cpp`, `ContextRows.h`/`.cpp`, `ResourcePanels.h`/`.cpp`, `ResponsePanel.h`/`.cpp`, `RecipeActions.h`/`.cpp`, `ClusterChart.h`/`.cpp` (the cluster explorer and the material dump button) |
 | Special-input popups | `ExpressionShelf.h`/`.cpp`, `Tuning.h`/`.cpp`, `PatternChooser.h`/`.cpp`, `WearerInputs.h`/`.cpp` |
 | Mask editor | `PaintPanel.h`/`.cpp` |
 

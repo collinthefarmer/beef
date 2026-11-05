@@ -181,6 +181,28 @@ reads no engine state.
 | `PlanBuildOutput`, `PlanBuildPhases` | The plan or its error, the demand warnings as text, and the demand and lowering times with the demand count. |
 | `BuildPlanFrom` | Collects the layer demands (`CollectTextureDemand`) and lowers the plan (`BuildRenderPlan`) from a `PlanBuildInput`. The install executor and the worker both call it. |
 
+`JobQueue.h` is the generic worker queue that the plan builds and the
+material grouping run on.
+
+| Type or function | Description |
+|---|---|
+| `JobQueue<Input, Output>` | One worker thread over a bounded queue of jobs. `Submit` returns a `JobId` or a `JobRefusal`. `TakeDone` returns the finished jobs, and fails every queued and running job when the worker stopped. `Cancel` and `DropQueued` remove queued jobs; `Unfinished` counts the jobs not yet taken. |
+| `JobId`, `JobRefusal`, `JobDone`, `JobTiming` | A job's id; the reason a submit failed (`kFull`, `kNoWorker`); a finished job with its result or error text; the queue wait and work time in microseconds. |
+
+### Material grouping off the main thread
+
+`MaterialGrouper.h` groups material samples into clusters on a worker thread
+and keeps the results. `render/` polls it from the material bake and the
+render instance.
+
+| Type or function | Description |
+|---|---|
+| `GroupingJob`, `GroupingTicket` | One grouping: its content key, its optional identity key, the `MaterialPixels`, the mesh and its `MeshAnalysis`, and the `ClusterSettings`. A ticket wraps one job. |
+| `GroupingResult` | A shared `MaterialGrouping` or an error text. |
+| `GroupingKeyOf`, `IdentityKeyOf` | The content key from the pixels, the mesh hash and the settings; the identity key from the map names, the mesh hash and the settings. |
+| `GroupJob` | Groups one job's material sample (`GroupMaterial`) over the mesh's chart raster. When the raster covers too few texels, every texel counts as one chart. |
+| `MaterialGrouper` | The process grouper (`GetSingleton`) over a `JobQueue` of `kGroupingJobCapacity` (8) jobs. It keeps at most `kGroupingCacheSize` (64) results and identities. `Poll` returns a kept result, submits the job when it is not pending, and returns nothing while the job waits or the queue is full. `Known` returns the grouping kept for an identity key. |
+
 ### Retention and identity helpers
 
 | Function | Description |
@@ -333,11 +355,11 @@ checks each alternative's operand types and order.
 | `BuildBakeBuffersStep` | Builds bake buffers from a mesh for a `BakeKind` or a computed operation. |
 | `BakeMeshStep` | Rasterizes bake buffers into a texture, optionally with `nearest` sampling. |
 | `NormalSlopeStep` | Derives a slope texture from a material's normal map. |
-| `SubmitMaterialSampleStep` | Copies a material's maps for a readback. |
-| `ClusterMaterialStep` | Clusters a material sample with `ClusterSettings`. |
+| `SubmitMaterialSampleStep` | Copies a material's maps for a readback. It also carries the mesh and the `ClusterSettings` of the grouping. |
 | `DrawClustersStep` | Draws a cluster analysis into a texture. |
+| `FilterFieldStep` | Filters a field with a radius and a `FilterOperation` (`kBlur`, `kGrow`, `kShrink`, `kEdge`), optionally within chart ids (`chartIds`). |
 | `SampleFieldStep` | Samples a texture at computed coordinates. |
-| `SubmitReductionStep` | Submits a reduction (`ReductionKind`) of a value over a `ReductionDomain`. |
+| `SubmitReductionStep` | Submits a reduction (`ReductionKind`) of a value over the side that its `domain` (a `SideRef`) names. |
 | `BuildLookupStep` | Samples a recipe function into a **lookup** of 256 entries, with the other arguments bound (`LookupArgument`). |
 | `EvaluateValueStep` | Evaluates a uniform graph value on the CPU. |
 | `EvaluateProgramStep` | Draws a `FieldProgram` with its inputs and lookups into a texture. |
@@ -345,6 +367,7 @@ checks each alternative's operand types and order.
 | `ComposeVectorStep` | Composes two or three components into one vector field. |
 | `DrawRippleStep` | Draws a ripple field from bake positions. |
 | `CompositeStackStep` | Composites a stack: a base, a visibility input, `PlannedLayer`s, the requirements, the `Slot` and the stack's `LayerField`s. |
+| `GenerateMipsStep` | Generates a `MipLevelRange` of a stack's mips, at most once per `intervalMS`. `AttachMipSteps` appends two to a stack whose `MipPolicy` is `kGenerate`: the near mips 1 to `kNearMipLevels` (3) every `kNearMipIntervalMS` (50 ms), and the far mips every `kFarMipIntervalMS` (500 ms). |
 
 ### Layer fields
 
@@ -442,6 +465,7 @@ the CPU model of the interpreter that the tests compare against.
 | `LayerShape` | `StackShader.h` | One layer's source read, channel, blend, channel bits, mask read and mask channel. |
 | `StackShape` | `StackShader.h` | The **stack shape**: whether a base exists, the `LayerShape`s, the packed code from `CodeWithoutNumbers`, the texture slots and the segments. Equal shapes share one generated shader. |
 | `kMaxStackLayers` | `StackShader.h` | 8, the most layers `CheckStackShape` accepts. |
+| `ShaderFile`, `ShaderFiles` | `ShaderFiles.h` | The name and text of one `src/shaders/*.hlsl` file, and the list of all of them. `cmake/EmbedShaders.cmake` generates `ShaderFiles.cpp` in the build folder. `ShaderSource.cpp` reads the files by name. |
 | `LookupTable`, `ProgramTexel` | `ProgramReference.h` | A 256-entry lookup, and the inputs and lookups of one texel. `EvaluateProgramOnCpu` runs a program on them. `QuantizeUnorm8` models the RGBA8 store. |
 
 ### Reductions and readbacks
@@ -486,6 +510,9 @@ engine handle.
 | `Returns` | `Eviction.h` | A `constexpr` function. It tells if an actor with nothing installed returns at an eviction distance. `Actors::InRange` and `RingOf` call it. |
 | `TransformStorage` | `TransformStorage.h` | An engine transform array's base address, `count`, `stride` and `offset`. `TransformStorageIndex` decodes a pointer into a row index. `render/SkinPalette.cpp` uses it. |
 | `ImageCacheKey`, `IsPlaceholderExtent` | `TextureIdentity.h` | `ImageCacheKey` lower-cases a path into a cache key. `IsPlaceholderExtent` reports a width or height at or under `kPlaceholderTextureExtent` (4). |
+| `TextureExtent`, `Tiling` | `MipLevel.h` | A texture's width, height and mip count, and its UV tiling. |
+| `FootprintMip`, `SampleMip`, `MipThatFits` | `MipLevel.h` | `FootprintMip` gives the mip whose texels match a target side after tiling, clamped to the texture's mips. `SampleMip` gives the larger of that mip and a floor. `MipThatFits` gives the coarsest mip whose largest side stays at or above a side. `render/TextureLabPass.cpp`, `render/TextureLabReadback.cpp` and `render/TexturePreviews.cpp` call them. |
+| `NormalDetailScale`, `NormalDetailScaleOf` | `MipLevel.h` | The fine and coarse mips of a normal map's detail and its footprint. The fine mip fits `kNormalDetailSide` (256), the coarse mip is `kNormalDetailCoarseSteps` (2) coarser, and the footprint is 1 / `kNormalDetailFootprintSide` (64). |
 | `NamedTexture`, `NamedTextureOf` | `TextureIdentity.h` | The identity of an engine texture: its lowercased name and its extent. A texture without a name has none. `render/TextureLab` keys channel means by it. |
 
 ## How an actor's plans flow
@@ -544,6 +571,9 @@ PSGeneratedStack, or PSStack until the compile finishes     render/GeneratedShad
 | `RenderPlanLowering.cpp` | Render planning | `LowerRenderPlan` and `BuildRenderPlan`. |
 | `RenderPlanKey.h`/`.cpp`, `RenderPlanCache.h`/`.cpp` | Render planning | `RenderPlanKeyOf`, `RenderPlanKeyHash`, `GraphsNamedBy`; `RenderPlanCache`. |
 | `RenderPlanJob.h`/`.cpp`, `IdentityFacts.h`/`.cpp` | Render planning | `PlanBuildInput`, `BuildPlanFrom`; `IdentityFacts`, `IdentityBindings`, `InstanceIdentity`. |
+| `JobQueue.h` | Render planning | `JobQueue`, `JobId`, `JobRefusal`, `JobDone`, `JobTiming`: the generic worker queue. |
+| `MaterialGrouper.h`/`.cpp` | Render planning | `GroupingJob`, `GroupingTicket`, `GroupingKeyOf`, `IdentityKeyOf`, `GroupJob`, `MaterialGrouper`. |
+| `MipLevel.h`/`.cpp` | Render planning | `TextureExtent`, `Tiling`, `FootprintMip`, `SampleMip`, `MipThatFits`, `NormalDetailScaleOf`. |
 | `RenderMemory.h`/`.cpp` | Render planning | `NextHoldingStep`, `HoldingsOf`, `LargestHoldings`, `IsBurst`, `SpreadOf`, `HoldingLine`, `BurstLine`. |
 | `RenderBudget.h`/`.cpp` | Render planning | The render target budget: `AllowanceOf`, `NextBudget`, `AdmitGrowth`, `FittingLevel`, `StepDownOf`, `RespondToPressure` and the log lines. |
 | `BudgetRadius.h`/`.cpp` | Render planning | The budget radius: `EffectiveEvictDistance`, `ShrinkRadius`, the ring (`RingOf`, `FitRing`), `GrowRadius` and the log lines. |
@@ -554,12 +584,13 @@ PSGeneratedStack, or PSStack until the compile finishes     render/GeneratedShad
 | `InstallPacing.h`/`.cpp` | Render planning | The install budget per tick and the order of deferred installs: `CanInstallThisTick`, `Synced`, `NextInstall`, `Deferred`, `Removed`, `WaitedMS`. |
 | `DrawPacing.h`/`.cpp` | Render planning | The unpublished-draw budget per tick, the order of unpublished draws and the end of a first draw: `MayDrawStack`, `Drew`, `UnpublishedDrawOrder`, `FirstDrawDone`. |
 | `TargetCost.h`/`.cpp` | Render planning | `HeldTarget`, `PlanTargets`, `TargetCost`, `KeptWhenReleased`, `TargetBytes`, `HeldSteps`, `TargetsOf`, `CostOf`. |
-| `PlanSizes.h`/`.cpp`, `ResolutionLevel.h`/`.cpp`, `ResolutionResize.h`/`.cpp`, `ActorRole.h` | Render planning | `PlanSizes`, `SizesFor`, `SizeOf`, `SharedKeyOf`; `ResolutionLevel`, `PerLevel`, `IdealLevel`, `WantedLevel`, `LevelStepOf`, `CoarserLevel`, `LevelGap`, `AtLevel`, `LevelName`; `DrawOf`, `SwapDue`, `NextResize`; `ActorRole`. |
+| `PlanSizes.h`/`.cpp`, `ResolutionLevel.h`/`.cpp`, `ResolutionResize.h`/`.cpp`, `ActorRole.h` | Render planning | `PlanSizes`, `SizesFor`, `SizeOf`, `SharedKeyOf`; `ResolutionLevel`, `PerLevel`, `IdealLevel`, `LevelFor`, `LevelStepOf`, `CoarserLevel`, `LevelGap`, `AtLevel`, `LevelName`; `DrawOf`, `SwapDue`, `NextResize`; `ActorRole`. |
 | `FieldInlining.h`/`.cpp` | Render planning | `AsProgramLike` and `InlineFields`. |
 | `RenderExecution.h` | Render planning | `RenderExecution` and its state records. `ReleaseIdle` and `ReleaseWhere` release step outputs. |
 | `RenderFirings.h` | Render planning | `RenderFiring` and `RenderFirings`. |
 | `FieldProgram.h`/`.cpp` | Programs | `FieldProgram`, the opcode set, the limits, `PackPrograms`. |
 | `ProgramShader.h`/`.cpp`, `StackShader.h`/`.cpp` | Programs | The opcode statement table, `GenerateProgramShader`, `ProgramFunction`; `StackShape`, `CheckStackShape`, `GenerateStackShader`. |
+| `ShaderFiles.h` | Programs | `ShaderFile` and `ShaderFiles`, the embedded `.hlsl` texts. |
 | `ProgramReference.h`/`.cpp` | Programs | `EvaluateProgramOnCpu` and `QuantizeUnorm8`. |
 | `GpuReduction.h`/`.cpp` | Programs | Reduction levels, `DecodeReduction`, the `ReadbackRing` functions. |
 | `TargetPool.h`, `ConsumptionLeases.h`, `TextureLeases.h`, `OwnedState.h`, `RetainedStore.h` | Resource primitives | The lease and retention templates. |
