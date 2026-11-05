@@ -15,8 +15,8 @@ int main() {
   });
   Check(missing && missing->contains("not loaded") && probes == 0,
         "an unloaded framework refuses registration without probing exports");
-  Check(missing && missing->contains("loader log") &&
-            missing->contains("Recipe playback"),
+  Check(missing && missing->contains("skse64.log") &&
+            missing->contains("still play") && missing->contains("restart"),
         "missing framework explains recovery and optional editor scope");
   Check(!CheckMenuFramework(true, [](const char *) { return true; }),
         "a loaded framework with all required exports permits registration");
@@ -25,7 +25,7 @@ int main() {
       return std::string_view{name} != symbol;
     });
     Check(refused && refused->contains(symbol) &&
-              refused->contains("editor disabled") &&
+              refused->contains("editor is unavailable") &&
               refused->contains("restart"),
           "each missing export refuses registration with an actionable reason");
   }

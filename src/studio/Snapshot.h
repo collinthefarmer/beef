@@ -351,6 +351,7 @@ struct UnappliedRecipeRow {
 struct Status {
   bool emissivePath = false;
   bool layoutVerified = false;
+  bool layoutRejected = false;
   bool textureLab = false;
   std::uint32_t actors = 0;
   std::uint32_t pieces = 0;

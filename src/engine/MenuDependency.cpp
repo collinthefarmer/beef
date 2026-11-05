@@ -164,16 +164,20 @@ std::optional<std::string>
 CheckMenuFramework(bool a_loaded,
                    const std::function<bool(const char *)> &a_hasExport) {
   if (!a_loaded) {
-    return "SKSE Menu Framework is not loaded; editor unavailable. Check its "
-           "installation and SKSE loader log, then restart. Recipe playback "
-           "does not require the menu.";
+    return "SKSE Menu Framework is not loaded, so the in-game editor is "
+           "unavailable. Effects from recipe files still play. To use the "
+           "editor, install SKSE Menu Framework, enable it in your mod "
+           "manager, and restart Skyrim. If it is enabled, skse64.log in the "
+           "SKSE log folder says why it did not load.";
   }
   for (const char *name : MenuFrameworkExports()) {
     if (!a_hasExport(name)) {
       return std::format(
-          "SKSE Menu Framework is missing export '{}'; editor disabled. "
-          "Install a framework release matching this plugin's menu API, then "
-          "restart. Recipe playback does not require the menu.",
+          "The installed SKSE Menu Framework does not provide '{}', a "
+          "function the in-game editor calls, so the editor is unavailable. "
+          "Effects from recipe files still play. Install an SKSE Menu "
+          "Framework release that the release notes list as tested, and "
+          "restart Skyrim.",
           name);
     }
   }

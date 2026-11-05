@@ -9,6 +9,7 @@
 #include "engine/Events.h"
 #include "engine/Hooks.h"
 #include "engine/Manager.h"
+#include "engine/PeerMessages.h"
 #include "engine/PluginEvents.h"
 #include "engine/RecipeStore.h"
 #include "engine/RegressionRequests.h"
@@ -101,10 +102,8 @@ void TraceLoadedRecipes() {
 bool EnableEmissivePath(BetterEnchantmentEffects::Manager &a_manager) {
   a_manager.SetEmissivePathEnabled(false);
   if (!CommunityShadersLoaded()) {
-    logger::error("CommunityShaders.dll is not loaded; emissive path "
-                  "disabled, plugin idle");
-    logger::error("Check the Community Shaders installation and SKSE loader "
-                  "log, then restart Skyrim; all effects require it.");
+    logger::error("{}",
+                  BetterEnchantmentEffects::CommunityShadersMissing().Line());
     return false;
   }
   if (!BetterEnchantmentEffects::InstallHooks()) {
@@ -184,10 +183,16 @@ SKSEPluginLoad(const SKSE::LoadInterface *skse) {
           skse->RuntimeVersion().pack()) ||
       skse->SKSEVersion() <
           BetterEnchantmentEffects::BuildCompatibility::minimumSKSE) {
-    logger::error("compatibility profile {} refuses runtime {} / SKSE {}; "
-                  "install the matching targeted build",
-                  BetterEnchantmentEffects::BuildCompatibility::profile,
-                  skse->RuntimeVersion().string(), skse->SKSEVersion());
+    namespace Compatibility = BetterEnchantmentEffects::BuildCompatibility;
+    const std::string runtime = skse->RuntimeVersion().string(".");
+    const std::string sksed =
+        REL::Version::unpack(skse->SKSEVersion()).string(".");
+    logger::error("{} (compatibility profile {})",
+                  BetterEnchantmentEffects::RuntimeRefused(
+                      {runtime, sksed, Compatibility::supportedRuntimes,
+                       Compatibility::minimumSKSEText})
+                      .Line(),
+                  Compatibility::profile);
     return false;
   }
   logger::info("compatibility profile {} (runtime acceptance pending)",

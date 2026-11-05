@@ -544,6 +544,7 @@ Manager::Status Manager::GetStatus() const {
   Status s;
   s.emissivePath = emissivePathEnabled_;
   s.layoutVerified = materialLayout_ == MaterialLayout::kVerified;
+  s.layoutRejected = materialLayout_ == MaterialLayout::kFailed;
   const TextureLab *lab = TextureLab::GetSingleton();
   s.textureLab = lab && lab->Available();
   s.actors = static_cast<std::uint32_t>(live_.size());
@@ -630,10 +631,18 @@ void Manager::PublishStatus(Snapshot &a_out) const {
   const Status status = GetStatus();
   const RecipeStoreStatus store = GetRecipeStoreStatus();
   a_out.tickMS = status.tickMS;
-  a_out.status = {status.emissivePath, status.layoutVerified, status.textureLab,
-                  status.actors,       status.pieces,         status.recipes,
-                  status.geometries,   status.shells,         status.lights,
-                  store.loaded,        store.withErrors};
+  a_out.status = {.emissivePath = status.emissivePath,
+                  .layoutVerified = status.layoutVerified,
+                  .layoutRejected = status.layoutRejected,
+                  .textureLab = status.textureLab,
+                  .actors = status.actors,
+                  .pieces = status.pieces,
+                  .recipes = status.recipes,
+                  .geometries = status.geometries,
+                  .shells = status.shells,
+                  .lights = status.lights,
+                  .loadedFiles = store.loaded,
+                  .withErrors = store.withErrors};
 }
 
 void Manager::PublishPieces(

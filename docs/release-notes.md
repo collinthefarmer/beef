@@ -68,10 +68,15 @@ editor can still change.
 One DLL covers every runtime that Address Library covers. The plugin refuses
 no peer version by number: an unrecognized Community Shaders layout turns its
 effects off with a log line, and missing Menu Framework functions turn the
-editor off. Without Community Shaders the plugin logs
-`CommunityShaders.dll is not loaded; emissive path disabled, plugin idle` and
-does nothing; without SKSE Menu Framework it logs `editor unavailable` and
-recipes still play (both checked on 2026-11-05).
+editor off. Each case writes one line to the plugin log that names the
+problem and what to install, and the editor header shows the same text:
+
+| Situation | The plugin |
+|---|---|
+| Community Shaders is not loaded | Shows no effects. |
+| Community Shaders has a material layout the plugin does not recognize | Shows no effects. |
+| SKSE Menu Framework is not loaded, or lacks a function the editor calls | Has no editor; recipe files still play. |
+| Skyrim or SKSE is outside what the build supports | Does not load, and names the supported versions. |
 
 ### Install and upgrade
 

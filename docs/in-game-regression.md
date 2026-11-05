@@ -440,14 +440,15 @@ of cleanup.
   another system`; the other owner's result survives. An ordinary unequip
   is not evidence of this branch. Otherwise mark the case blocked.
 - Missing dependencies: in separate launches of the disposable profile,
-  disable Community Shaders and expect `CommunityShaders.dll is not loaded;
-  emissive path disabled, plugin idle`. Disable only SKSE Menu Framework
-  and expect `SKSE Menu Framework is not loaded; editor unavailable`, while a
-  saved recipe still renders. A DLL present on disk but rejected by SKSE must
-  follow the same branch and must not log successful page registration. A
-  loaded framework missing a required export must name it and log `editor
-  disabled`, with no page registration. Verify the missing-CS message in the
-  editor header when the framework remains available. Restore dependencies;
+  disable Community Shaders and expect `Community Shaders is not loaded, so
+  BetterEnchantmentEffects shows no effects.` followed by what to install.
+  Disable only SKSE Menu Framework and expect `SKSE Menu Framework is not
+  loaded, so the in-game editor is unavailable.`, while a saved recipe still
+  renders. A DLL present on disk but rejected by SKSE must follow the same
+  branch and must not log successful page registration. A loaded framework
+  missing a required function must name it and log `the editor is
+  unavailable`, with no page registration. Verify the missing-CS message in
+  the editor header when the framework remains available. Restore dependencies;
   archive each log. Export availability does not prove ABI compatibility.
 
 ## Record and acceptance

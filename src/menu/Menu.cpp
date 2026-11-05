@@ -12,6 +12,7 @@
 #include "engine/Hooks.h"
 #include "engine/Manager.h"
 #include "engine/MenuDependency.h"
+#include "engine/PeerMessages.h"
 #include "studio/Board.h"
 #include "studio/Edits.h"
 
@@ -276,6 +277,11 @@ void Dispatch(Studio::Intents &a_intents, Studio::MenuState &a_state,
   a_intents.clear();
 }
 
+void ShowPeerMessage(const PeerMessage &a_message) {
+  Problem(a_message.problem.c_str());
+  ImGui::TextWrapped("%s", a_message.action.c_str());
+}
+
 void RenderStatus(const Studio::Snapshot &a_snapshot) {
   const auto diagnostics = Trace::Get().Inspect();
   if (diagnostics.fileFailed) {
@@ -283,15 +289,17 @@ void RenderStatus(const Studio::Snapshot &a_snapshot) {
   }
   const Studio::Status &status = a_snapshot.status;
   if (status.emissivePath) {
-    Ok("emissive path on");
+    Ok("effects on");
   } else {
-    Problem("emissive path OFF");
+    Problem("effects OFF");
   }
   ImGui::SameLine();
   if (status.layoutVerified) {
-    Ok("| layout verified");
+    Ok("| material layout recognized");
+  } else if (status.layoutRejected) {
+    Problem("| material layout not recognized");
   } else {
-    Warn("| layout unverified");
+    Warn("| material layout not checked yet");
   }
   ImGui::SameLine();
   if (status.textureLab) {
@@ -311,10 +319,14 @@ void RenderStatus(const Studio::Snapshot &a_snapshot) {
 
 void RenderHeader(const Studio::Snapshot &a_snapshot) {
   RenderStatus(a_snapshot);
-  if (!a_snapshot.status.emissivePath) {
-    Problem("Effects are disabled.");
-    ImGui::TextWrapped("Check the plugin log for missing dependencies or a "
-                       "failed PBR material layout check.");
+  if (!GetModuleHandleW(L"CommunityShaders.dll")) {
+    ShowPeerMessage(CommunityShadersMissing());
+  } else if (a_snapshot.status.layoutRejected) {
+    ShowPeerMessage(CommunityShadersLayoutUnknown());
+  } else if (!a_snapshot.status.emissivePath) {
+    Problem("Effects are off.");
+    ImGui::TextWrapped("The plugin log, %s, says why.",
+                       Identity::LogFileName().c_str());
   }
   ImGui::Separator();
 }
@@ -330,9 +342,7 @@ void RenderPendingStatus() {
     Warn("Waiting for game status.");
     return;
   }
-  Problem("Community Shaders is not loaded; effects are disabled.");
-  ImGui::TextWrapped("Check the Community Shaders installation and SKSE loader "
-                     "log, then restart Skyrim.");
+  ShowPeerMessage(CommunityShadersMissing());
 }
 
 namespace {

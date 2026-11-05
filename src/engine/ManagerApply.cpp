@@ -17,6 +17,7 @@
 #include "engine/GameObjectService.h"
 #include "engine/InstallStages.h"
 #include "engine/LogOnce.h"
+#include "engine/PeerMessages.h"
 #include "engine/PhaseTrace.h"
 #include "engine/PlanJobs.h"
 #include "engine/RecipeStore.h"
@@ -1156,8 +1157,9 @@ void Manager::NoteMaterialLayout(MaterialLayout a_before) {
     logger::info("PBR material layout check passed");
     return;
   }
-  logger::error("PBR material layout check failed: texture slots are not all "
-                "NiSourceTexture; emissive path disabled");
+  logger::error("{} (PBR material layout check: texture slots are not all "
+                "NiSourceTexture)",
+                CommunityShadersLayoutUnknown().Line());
   emissivePathEnabled_ = false;
 }
 

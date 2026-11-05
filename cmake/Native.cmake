@@ -21,6 +21,7 @@ add_library(BeefEngineServices STATIC
   src/engine/SessionQueue.cpp src/engine/ApplicationService.cpp
   src/engine/TextFile.cpp src/engine/PluginEvents.cpp src/engine/RecipeFiles.cpp
   src/engine/InstanceTime.cpp src/engine/MenuDependency.cpp
+  src/engine/PeerMessages.cpp
   src/engine/PlanJobs.cpp)
 target_link_libraries(BeefEngineServices PUBLIC ${PROJECT_NAME}Native)
 file(GLOB_RECURSE TEST_SOURCES CONFIGURE_DEPENDS tests/*_tests.cpp)
