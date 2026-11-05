@@ -1,4 +1,4 @@
-Status: active (2026-11-05) on branch `commonlib-fork`, so `main` and its candidate stay releasable. Steps 1 and 2 are done (9aac44f), step 3 (a0aa8f5) and step 4 (e99ea2b). Step 5 is decided: VR is deferred to `docs/plans/vr-support-2026-11-05.md`. Step 6 is closed with no code change: a header review at each Community Shaders release replaces a run-time scalar check. Nothing is seen in game yet.
+Status: active (2026-11-05) on branch `commonlib-fork`, so `main` and its candidate stay releasable. Steps 1 and 2 are done (9aac44f), step 3 (a0aa8f5) and step 4 (e99ea2b). Step 5 is decided: VR is deferred to `docs/plans/vr-support-2026-11-05.md`. Step 6 is closed with no code change: a header review at each Community Shaders release replaces a run-time scalar check. Step 7 ran in game on 2026-11-05 (see the step 7 record); step 8 is open.
 
 # A version-agnostic plugin
 
@@ -42,6 +42,19 @@ them, and needs no rebuild for a new peer version.
 | 6 | Closed with no code change (Q2). The layout check stays a texture-slot check. Each new Community Shaders release's header is diffed against `src/cs/` before the release notes name it as tested; `docs/build.md` holds the step and `REFERENCE.md` (Bindings) what the check misses. | review |
 | 7 | Regression: native and sanitized suites, the release gate, and the full in-game suite on 1.6.1170 with `--timeout 3600`, against the 2026-11-05 run of the c8ddb85 candidate. 1.7 is "loads, not tested in game" unless a 1.7 install is available. | `tools/regression-run.py`, census scan |
 | 8 | Docs: the release notes' "Loads with" column, the tester README, `docs/build.md`'s profile section, and `REFERENCE.md` for each fact found. | review |
+
+
+## Step 7 record (2026-11-05)
+
+Build `a0aa8f5e72d9-dirty-7f80a83949df-Release`: e99ea2b's code before a whitespace-only format, installed with `./install.sh`, profile `Skyrim 2`, Steam 1.6.1170. The plugin loaded and hooked slot `0xAD`.
+
+| Run | Cases | Result |
+|---|---|---|
+| `20261105T190316-1` and `-2` | the 29 cases except `soak-hour`, `studio-reload` in its own launch | 24 of 29 pass. `soak-fight` and `soak-fight-orbit` fail as in the 62fba5d baseline (`20261105T043901`): fighters never draw weapons. `camera`, `soak-enchanted` and `soak-distance` fail. |
+| `20261105T195235-1` | the three, on the c8ddb85 candidate (`beef candidate`) | `soak-enchanted` fails; the other two pass. |
+| `20261105T195906-1` | the three, on this build, alone | All pass. |
+
+The census of trace `1793905408757924` is clean: 2528 `target_holders` heartbeats with empty `slot_only`, `unreached` and `unplanned`, and no resource disagreement. In `soak-enchanted` and `soak-distance`, equip events that the regression does not issue reach the mannequins after they are dressed (24 per case on 2026-11-05 evening, 12 in the baseline). Each retires the applications that have not drawn yet, and a mannequin that no longer wears its enchanted cuirass ends `unmatched`. The game shows "Mannequins can only have Armor equipped" during these runs. `camera` failed only in the full run, while the user was at the game. No failure is attributed to the CommonLib move.
 
 ## Open questions
 
